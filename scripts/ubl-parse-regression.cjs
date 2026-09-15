@@ -402,5 +402,45 @@ ${line(2, 'Deterjan', 1, 1000, 1000, `<cac:TaxTotal><cbc:TaxAmount currencyID="T
   approx(pb.tevkifatKdv, 400, '13b: tevkifat 400');
 }
 
+// 14) ÖTV KDV MATRAHININ İÇİNDE (2026-09-15 — HAS OTOMOTİV kamyon alışı): KDV tabanı = mal bedeli + ÖTV; ÖTV çift sayılmasın.
+{
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<Invoice>
+  <ID>10N2026000000416</ID><ProfileID>TEMELFATURA</ProfileID><IssueDate>2026-08-21</IssueDate><DocumentCurrencyCode>TRY</DocumentCurrencyCode>
+  <AccountingSupplierParty><Party><PartyName><Name>HAS OTOMOTİV</Name></PartyName><PartyIdentification><ID schemeID="VKN">4580014378</ID></PartyIdentification></Party></AccountingSupplierParty>
+  <AccountingCustomerParty><Party><PartyName><Name>YORGUN NAKLİYAT</Name></PartyName><PartyIdentification><ID schemeID="VKN">9821096129</ID></PartyIdentification></Party></AccountingCustomerParty>
+  <TaxTotal><TaxAmount currencyID="TRY">894712.48</TaxAmount>
+    <TaxSubtotal><TaxableAmount currencyID="TRY">3749340.84</TaxableAmount><TaxAmount currencyID="TRY">749868.17</TaxAmount><Percent>20.00</Percent><TaxCategory><TaxScheme><Name>KDV</Name><TaxTypeCode>0015</TaxTypeCode></TaxScheme></TaxCategory></TaxSubtotal>
+    <TaxSubtotal><TaxableAmount currencyID="TRY">3621107.75</TaxableAmount><TaxAmount currencyID="TRY">144844.31</TaxAmount><Percent>4.00</Percent><TaxCategory><TaxScheme><Name>ÖTV</Name><TaxTypeCode>9077</TaxTypeCode></TaxScheme></TaxCategory></TaxSubtotal>
+  </TaxTotal>
+  <LegalMonetaryTotal>
+    <LineExtensionAmount currencyID="TRY">3621107.66</LineExtensionAmount>
+    <TaxExclusiveAmount currencyID="TRY">3621107.66</TaxExclusiveAmount>
+    <TaxInclusiveAmount currencyID="TRY">4499209.01</TaxInclusiveAmount>
+    <AllowanceTotalAmount currencyID="TRY">16611.13</AllowanceTotalAmount>
+    <PayableAmount currencyID="TRY">4499209.01</PayableAmount>
+  </LegalMonetaryTotal>
+</Invoice>`;
+  const p = parseUblInvoice(xml);
+  assert(p, '14: parse null');
+  approx(p.digerVergiToplam, 144844.31, '14: ÖTV diğer vergi');
+  assert(p.digerVergiMatrahaDahil === true, '14: digerVergiMatrahaDahil bayrağı');
+  approx(p.matrah, 3604496.53, '14: matrah = mal bedeli (ÖTV arındırılmış, iskonto düşülmüş)');
+  assert(p.kdvBreakdown && p.kdvBreakdown.length === 1, '14: tek oran kırılımı');
+  approx(p.kdvBreakdown[0].base, 3604496.53, '14: %20 tabanı ÖTV arındırılmış');
+  approx(p.kdvBreakdown[0].amount, 749868.17, '14: KDV tutarı değişmez');
+  approx(p.matrah + p.kdvTutari + p.digerVergiToplam, 4499209.01, '14: mal bedeli + ÖTV + KDV = ödenecek');
+  const f = ublOcrDataFields(p);
+  assert(f.digerVergiMatrahaDahil === true, '14: ocrData.digerVergiMatrahaDahil');
+  // Karşıt: ÖİV gibi KDV matrahına GİRMEYEN vergi (denklem zaten tutar) → dokunulmaz.
+  const xmlOiv = xml
+    .replace('3749340.84', '3604496.53').replace('749868.17', '720899.31').replace('749868.17', '720899.31')
+    .replace('894712.48', '865743.62').replace(/4499209\.01/g, '4470240.15')
+    .replace('<Name>ÖTV</Name><TaxTypeCode>9077</TaxTypeCode>', '<Name>ÖİV</Name><TaxTypeCode>4080</TaxTypeCode>');
+  const q = parseUblInvoice(xmlOiv);
+  assert(q && !q.digerVergiMatrahaDahil, '14b: KDV matrahına girmeyen vergide düzeltme yok');
+  approx(q.kdvBreakdown[0].base, 3604496.53, '14b: taban dokunulmadı');
+}
+
 if (failed) { console.error(`[ubl-parse] ${failed} hata`); process.exit(1); }
-console.log('[ubl-parse] OK — tevkifatlı satış, telekom karışık vergi, iade/iptal (not karar vermez), iskonto, döviz, vergi türü süzgeci, kısmi tevkifat, e-SMM stopaj, yuvarlama, çok oranlı kdvOrani, tevkifat çıkarımı (sentetik XML), alt toplamsız tevkifat aritmetiği');
+console.log('[ubl-parse] OK — tevkifatlı satış, telekom karışık vergi, iade/iptal (not karar vermez), iskonto, döviz, vergi türü süzgeci, kısmi tevkifat, e-SMM stopaj, yuvarlama, çok oranlı kdvOrani, tevkifat çıkarımı (sentetik XML), alt toplamsız tevkifat aritmetiği, ÖTV KDV-matrahı arındırma');

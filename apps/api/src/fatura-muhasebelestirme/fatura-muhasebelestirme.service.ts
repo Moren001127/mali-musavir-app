@@ -16459,6 +16459,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   yorumu satıcı gözünden "satış" diyordu (lokananın havuç ALIŞINA "havuç satışı"; marketten alışa
     //   "perakende satılmış") — burada yön rematch'te KESİN, mükellefin faaliyetine bağlanır.
     if (isReturn) return `${fpre}${isSale ? 'Alıştan' : 'Satıştan'} iade (ters kayıt); yön ve tutarlar kontrol edilmeli${kodAd ? ` → ${kodAd}` : ''}.`;
+    // DEMİRBAŞ SATIŞI (2026-09-15): sabit kıymet çıkışı olağan satış geliri DEĞİLDİR; hesap otomatik atanmaz (sahip kararı).
+    if (isSale && String(kat || '').toLowerCase() === 'demirbas') {
+      return `${fpre}Sabit kıymet (demirbaş) satışı — olağan satış geliri değil${kodAd ? ` → ${kodAd} (taslak)` : '; hesap seçilmedi: 25x çıkış + 257 birikmiş amortisman + 679/689 kâr-zarar kaydı sahip kararıyla kurulur'}.`;
+    }
     if (isSale) return `${fpre}Mükellefin sattığı ${ic}; olağan satış geliri${kodAd ? ` → ${kodAd}` : ' (600 hesabı)'}.`;
     if (!kodAd) return `${fpre}Mükellef ${ic} almış; faaliyetine uygun hesap bulunamadı, manuel seçim gerekir.`;
     return `${fpre}Mükellef ${ic} almış; ${kodAd} hesabına işlenir.`;
@@ -17620,6 +17624,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         //   leaf'i seç (153.01.001 "%1" / .002 "%10" / .003 "%20"; satışta 600 aynı). Eskiden hep en
         //   genel leaf (153.01.001=%1) atanıyordu → çok-oranlı faturada %10 matrahı da %1 hesabına
         //   gidiyordu (kullanıcı: "aynı faturada birden fazla oran var, niye orana dikkat etmiyor").
+        // DEMİRBAŞ SATIŞI (Muzaffer Bey 2026-09-15 — Yorgun YRG2026000000744 "34 EYF 101 plakalı araç satışı" 600.01.001 NAKLİYE
+        //   GELİRLERİ %20'ye düşüyordu): sabit kıymet çıkışı 600 gelir DEĞİLDİR — oran havuzu da varsayılan da uygulanmaz, matrah
+        //   BOŞ kalır (aşağıdaki satır döngüsü mevcut kodu da boşaltır). Sahip "yine de işle" derse 679/689 taslağı KULLANICI
+        //   kaynaklı yazılır, "demirbaş değil" derse faDet.is=false → normal 600 akışı.
+        if (!m && isSale && !isReturn && faDet.is) { matrahCache.set(rate, null); return null; }
         if (!m && rate) {
           // ALIŞTAN iade (isSale && isReturn): oran-eşleşmesi 600'e (ciro) SIZMASIN — matrah orijinal
           //   stok/gider grubunda (categoryGroupLeaves) aranır (saleMatrahDefault zaten öyle döner).
@@ -17734,6 +17743,18 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             continue;
           }
           // (alıştan iade matrahı → aşağıdaki normal categoryMatrah akışına düşer)
+        }
+        // DEMİRBAŞ SATIŞI (Muzaffer Bey 2026-09-15: "demirbaş satışı tespit ediyor ama matrah hesap kodunu yine de atıyor, atmasın"):
+        //   sabit kıymet çıkışında matraha 600 gelir / AI'ın 679 seçimi ATANMAZ — satır BOŞ kalır (FIXED_ASSET_MANUAL "karar
+        //   bekliyor" engeli zaten var). "Yine de işle" kararı 679/689 taslağını KULLANICI kaynaklı yazar (dokunulmaz);
+        //   "Luca'da elle işledim" kapatılmış belgeye dokunulmaz; "demirbaş değil" → faDet.is=false → normal akış.
+        if (group === 'matrah' && isSale && !isReturn && faDet.is && kararFa !== 'elle_islendi'
+            && String(line.kaynak || '').toUpperCase() !== 'KULLANICI') {
+          if (String(line.accountCode || '').trim()) {
+            await (this.prisma as any).invoiceAccountingLine.update({ where: { id: line.id }, data: { accountCode: '', description: 'Demirbaş satışı — hesap seçilmedi', kaynak: null } });
+            this.logger.log(`[DEMIRBAS-SATIS] ${doc.belgeNo || doc.id}: sabit kıymet çıkışı, matrah ${String(line.accountCode)} (${String(line.kaynak || '-')}) boşaltıldı — 600/679 otomatik atanmaz`);
+          }
+          continue;
         }
         // FAALİYET DIŞI ALIM (2026-09-15): işaretli belgede matrah boş kalır — varsayılan/kategori dolgusu YAPILMAZ (kullanıcı seçimi hariç).
         if (group === 'matrah' && (doc.ocrData as any)?.faaliyetUyumsuz?.not && String(line.kaynak || '').toUpperCase() !== 'KULLANICI') {
@@ -17986,7 +18007,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           const code = String(ln.accountCode || '');
           const acc = code ? accounts.find((a: any) => String(a.accountCode || '') === code) : null;
           const wantDesc = acc ? String(acc.accountName || '') : '';
-          if (String(ln.description || '') !== wantDesc) {
+          // Kod BOŞKEN gerekçe metni KORUNUR ("Demirbaş satışı — hesap seçilmedi", "Faaliyetle uyumsuz — hesap seçilmedi",
+          //   "İade KDV hesabı planda yok"); yalnız bayat HESAP ADI temizlenir (2026-09-15 — eskiden gerekçe de siliniyordu).
+          const curDesc = String(ln.description || '');
+          if (!acc && curDesc && !accounts.some((a: any) => String(a.accountName || '') === curDesc)) continue;
+          if (curDesc !== wantDesc) {
             await (this.prisma as any).invoiceAccountingLine.update({ where: { id: ln.id }, data: { description: wantDesc } });
           }
         }

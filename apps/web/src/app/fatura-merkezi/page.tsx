@@ -1586,10 +1586,11 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
     enabled: !!taxpayerId,
     // Okuma AKTİFKEN hızlı (3sn); boştayken seyrelt (15sn) → çoklu bilgisayarda gereksiz yük düşer,
     //   başka makinede başlayan okuma yine (15sn içinde) yakalanır. Cache'ten güncel duruma bakılır.
-    refetchInterval: () => {
-      const d: any = qc.getQueryData(['fm-ocr-progress', taxpayerId, period]);
-      return d?.active ? 3000 : 15000;
-    },
+    // 2026-09-15 (Muzaffer Bey: "sayaç o anda okunan sayıyla aynı olmuyor, çok sonradan doluyor"): eski kod
+    //   qc.getQueryData(['fm-ocr-progress', taxpayerId, period]) ile 3 parçalı anahtara bakıyordu; sorgu anahtarı 4 parçalı
+    //   (kind dahil) olduğundan hiç bulunamıyor, okuma sürerken de 15 sn'de bir yenileniyordu (liste 2,5 sn'de yenilenince
+    //   sayaç geride kalıyordu). React Query v5 imzası: sorgu nesnesinin kendi verisi.
+    refetchInterval: (q: any) => (q?.state?.data?.active ? 3000 : 15000),
   });
   const ocrProg: any = ocrProgQ.data;
   // Faz F/6: eksik belge takibi — sadece Alış'ta, düzenli gelip bu dönem gelmeyen satıcılar.

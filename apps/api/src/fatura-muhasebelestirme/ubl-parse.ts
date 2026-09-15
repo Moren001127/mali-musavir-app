@@ -59,6 +59,8 @@ export type ParsedProviderInvoice = {
   /** KDV dışı vergiler (0015 dışındaki her TaxSubtotal): ÖİV 4080/4081, telsiz 8001-8008, ÖTV, damga … */
   digerVergiler?: Array<{ kod: string; ad: string; tutar: number; oran?: number }>;
   digerVergiToplam?: number;
+  /** KDV dışı vergi (ÖTV) KDV tabanlarının İÇİNDEYDİ; kırılım tabanları + matrah ondan arındırıldı (2026-09-15). */
+  digerVergiMatrahaDahil?: boolean;
   /** İskonto: kalem düzeyi (satır AllowanceCharge) + belge düzeyi (kalemlere oransal dağıtıldı). */
   iskonto?: { kalem: number; belge: number; toplam: number };
   toplamTutar?: number | null;
@@ -464,6 +466,31 @@ export function parseUblInvoice(xml: string, warn?: (msg: string) => void): Pars
     const stopajTutari = stopajSum > 0 ? round2(stopajSum) : undefined;
     const tevkifatOrani = tevkifatKdv ? resolveTevkifatOrani(kdvTutari, tevkifatKdv, tevkifatYuzde) : undefined;
 
+    // ── KDV DIŞI VERGİ, KDV MATRAHININ İÇİNDE (2026-09-15 canlı bulgu — Yorgun Nakliyat, HAS OTOMOTİV kamyon alışı) ──
+    //   KDV Kanunu 24/b: ÖTV, KDV matrahına DAHİLDİR → KDV TaxSubtotal/TaxableAmount = mal bedeli + ÖTV. Kırılım tabanları
+    //   matrah sayılınca ÖTV bir kez matrahta, bir kez diğer-vergi satırında sayılıyordu (3.749.340,84 + 749.868,17 +
+    //   144.844,31 = 4.644.053,32 ≠ ödenecek 4.499.209,01 → "Tutar tutarsız" engeli). ARİTMETİK karar: Σtaban + KDV +
+    //   diğer vergi − tevkifat − stopaj, ödenecekten TAM diğer-vergi kadar fazlaysa diğer vergi tabanların içindedir →
+    //   tabanlardan oran payına göre düşülür (mal bedeli + diğer vergi + KDV = ödenecek); matrah da düzeltilmiş taban
+    //   toplamına çekilir. ÖİV / konaklama / damga KDV matrahına girmez → denklem zaten tutar, dokunulmaz.
+    let digerVergiMatrahaDahil = false;
+    let matrahOut = matrah;
+    if (digerVergiToplam > 0 && odenecekTutar != null && kdvTutari != null && kdvBreakdown.length) {
+      const tabanToplam = round2(kdvBreakdown.reduce((s, b) => s + b.base, 0));
+      const kesinti = round2((tevkifatKdvSum > 0 ? tevkifatKdvSum : 0) + (stopajSum > 0 ? stopajSum : 0));
+      const fazla = round2(tabanToplam + kdvTutari + digerVergiToplam - kesinti - odenecekTutar);
+      if (tabanToplam > digerVergiToplam && Math.abs(fazla - digerVergiToplam) <= 0.05) {
+        let kalan = digerVergiToplam;
+        kdvBreakdown = kdvBreakdown.map((b, i, arr) => {
+          const pay = i === arr.length - 1 ? kalan : round2(digerVergiToplam * (b.base / tabanToplam));
+          kalan = round2(kalan - pay);
+          return { ...b, base: round2(b.base - pay) };
+        });
+        matrahOut = round2(tabanToplam - digerVergiToplam);
+        digerVergiMatrahaDahil = true;
+      }
+    }
+
     // ── İADE / İPTAL / TASLAK ──
     //   Karar KAYNAKLARI: CreditNote kökü (e-SMM hariç), InvoiceTypeCode IADE/TEVKIFATIADE/IPTAL,
     //   ProfileID/ID TASLAK. Serbest metin <cbc:Note> karar VERMEZ: normal satış faturalarının standart
@@ -510,7 +537,7 @@ export function parseUblInvoice(xml: string, warn?: (msg: string) => void): Pars
       saticiVergiNo: taxNoFromParty(supplier) || taxNoFromXmlBlock('AccountingSupplierParty') || null,
       alici: txt(customer?.PartyName?.Name) || txt(customer?.PartyLegalEntity?.RegistrationName) || kisiAdi(customer) || null,
       aliciVergiNo: taxNoFromParty(customer) || taxNoFromXmlBlock('AccountingCustomerParty') || null,
-      matrah,
+      matrah: matrahOut,
       kdvTutari,
       // kdvOrani: tek oranlı belgede o oran; ÇOK ORANLI (%1+%20) belgede null (harman "%14" gibi sahte oran
       //   yazılmaz — reprocess 'kdv-oran-gecersiz' adayı üretmesin); kırılım yoksa tutar oranı (yedek).
@@ -530,6 +557,7 @@ export function parseUblInvoice(xml: string, warn?: (msg: string) => void): Pars
       faturaTipi,
       belgeDurumu,
       ...(digerVergiler.length ? { digerVergiler, digerVergiToplam } : {}),
+      ...(digerVergiMatrahaDahil ? { digerVergiMatrahaDahil: true } : {}),
       ...(iskontoToplam > 0 ? { iskonto: { kalem: round2(kalemIskonto), belge: belgeIskonto, toplam: iskontoToplam } } : {}),
       toplamTutar,
       ...(odenecekTutar != null ? { odenecekTutar } : {}),
@@ -573,6 +601,7 @@ export function ublOcrDataFields(p: ParsedProviderInvoice | null | undefined): R
     ...(p.faturaTipi ? { faturaTipi: p.faturaTipi } : {}),
     belgeDurumu: p.belgeDurumu || 'onayli',
     ...(Array.isArray(p.digerVergiler) && p.digerVergiler.length ? { digerVergiler: p.digerVergiler, digerVergiToplam: p.digerVergiToplam || 0 } : { digerVergiToplam: 0 }),
+    ...(p.digerVergiMatrahaDahil ? { digerVergiMatrahaDahil: true } : {}),
     ...(p.iskonto ? { iskonto: p.iskonto } : {}),
     paraBirimi: p.paraBirimi || 'TL',
     ...(p.kur != null ? { kur: p.kur } : {}),
@@ -589,7 +618,7 @@ export function ublOcrDataFields(p: ParsedProviderInvoice | null | undefined): R
  */
 export const UBL_ONLY_OCR_FIELDS = [
   'odenecekTutar', 'odenecekYuvarlama', 'digerVergiToplam', 'digerVergiler', 'belgeDurumu', 'parserVersion',
-  'tevkifatKodu', 'tevkifatYuzde', 'tevkifatUygulanmamis', 'tevkifatCikarim', 'iskonto', 'kur', 'faturaTipi',
+  'tevkifatKodu', 'tevkifatYuzde', 'tevkifatUygulanmamis', 'tevkifatCikarim', 'iskonto', 'kur', 'faturaTipi', 'digerVergiMatrahaDahil',
 ] as const;
 
 /** Spread ile ocrData'ya yazılır: `{ ...eski, ...clearUblOnlyOcrFields(), ...yeni }` → bayat UBL alanı kalmaz. */
