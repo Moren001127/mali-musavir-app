@@ -16057,7 +16057,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           invoiceKind: kind,
           totalAmount: money(total),
           ...(mappedType ? { documentType: mappedType } : {}),
-          belgeNo: zNoDet || (parsed.belgeNo ? String(parsed.belgeNo) : null) || d.belgeNo || null,
+          // Z NO metinden (baştaki sıfırlar OCR'da düşebilir: "483" vs görselden "01483" → mevcut no Z NO ile bitiyorsa mevcut kalır).
+          belgeNo: (zNoDet && !String(parsed.belgeNo || d.belgeNo || '').endsWith(zNoDet) ? zNoDet : null) || (parsed.belgeNo ? String(parsed.belgeNo) : null) || d.belgeNo || null,
           ...(parseDate(parsed.tarih) ? { faturaTarihi: parseDate(parsed.tarih) } : {}),
           // GERÇEK iki tarafın VKN'si → sahiplik/yön kontrolü çalışır.
           ...(vknOk(aiSaticiVkn) ? { sellerVkn: aiSaticiVkn } : {}),
@@ -16734,10 +16735,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const planOnbellek = this.planCodeCache.get(`${tenantId}:${doc.taxpayerId}`);
     const planYaprakMi = (c: string) => !!planKodlari && planKodlari.has(c) && !planOnbellek?.groups?.has(c) && c.includes('.') && c.split('.')[0].replace(/\D/g, '').length >= 3;
     const oneriYonRe = isReturn ? (isSale ? /^(15|25|7)/ : /^(61|60)/) : (isSale ? /^(60|64|67)/ : /^(15|25|7)/);
-    const oneriAdaylari: string[] = planKodlari
-      ? [...planKodlari].filter((c) => oneriYonRe.test(c) && planYaprakMi(c)).sort().slice(0, 80).map((c) => `${c} = ${planOnbellek?.names?.get(c) || ''}`.trim())
-      : [];
     const mevcutMatrahKodlari = new Set<string>(matrahLines.map((l: any) => String(l.accountCode || '').trim()).filter(Boolean));
+    // ADAY LİSTESİ TOKEN KISITI (2026-09-15, Muzaffer Bey Gemini maliyeti): 80 aday ≈ 800 token/belge idi. Önce MEVCUT hesabın
+    //   grubu (770.* gibi) ve kardeşleri, sonra diğerleri; en çok 40 aday → yorum çağrısı ~%25 küçülür, öneri kalitesi korunur.
+    const _mevcutGrup = new Set<string>([...mevcutMatrahKodlari].map((c) => c.split('.')[0]).filter(Boolean));
+    const oneriAdaylari: string[] = planKodlari
+      ? [...planKodlari].filter((c) => oneriYonRe.test(c) && planYaprakMi(c)).sort()
+          .sort((x, y) => Number(_mevcutGrup.has(y.split('.')[0])) - Number(_mevcutGrup.has(x.split('.')[0])))
+          .slice(0, 40).map((c) => `${c} = ${planOnbellek?.names?.get(c) || ''}`.trim())
+      : [];
 
     // Hesap atanmamışsa zengin yorum anlamsız → deterministik özet (AI çağırma).
     if (!hesapStr || !matrahAccForNeden) {
