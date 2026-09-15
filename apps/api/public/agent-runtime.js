@@ -75,7 +75,10 @@
   //   alanlar, yanıt metni (her zaman), doc.write sonrası grid ölçümü ve Fiş Kes sonrası ekran metni loglanır.
   // v1.47.44 (2026-09-15): İŞLETME CSV TANI-2 — yükleme ÖNCESİ sayfa + yanıt HTML'i + CSV ilk satırları iş
   //   snapshot'ına (payload.screen) yazılır; yanıtta grid satırı (detaylar[1..]) yoksa "Fiş Kes" BASILMAZ (boş fiş riski).
-  const AGENT_VERSION = '1.47.44';
+  // v1.47.45 (2026-09-15): İŞLETME CSV — Luca'nın yanıtı bulundu: "2. SATIRDA HATA ALINDI … Sütun sayısı 36'dan fazladır"
+  //   (bizim CSV 37 sütun). Luca'nın resmi şablonu (hizliFisCsvSablonIndirAction.do) yüklemeden ÖNCE çekilip snapshot'a
+  //   yazılır (başlık satırı loga); Luca'nın hata metni (lucaNotYaz) yanıttan ayıklanıp loga düşer.
+  const AGENT_VERSION = '1.47.45';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -3026,8 +3029,26 @@
                       let oncesiHtml = ''; let csvBas = '';
                       try { oncesiHtml = String(fdoc.documentElement.outerHTML || ''); } catch {}
                       try { csvBas = String(await fi.files[0].text()).slice(0, 1200); } catch (e3) { csvBas = 'okunamadı: ' + ((e3 && e3.message) || e3); }
+                      // v1.47.45: Luca'nın RESMİ CSV şablonunu çek (aynı form, dosyasız) → başlık satırı
+                      let sablonCsv = '';
+                      try {
+                        const fd0 = new fw.FormData();
+                        for (const el of alanlar) { try { const tp0 = (el.type || '').toLowerCase(); if (!el.name || tp0 === 'file' || tp0 === 'submit' || tp0 === 'button') continue; if ((tp0 === 'checkbox' || tp0 === 'radio') && !el.checked) continue; fd0.append(el.name, el.value == null ? '' : el.value); } catch {} }
+                        const sUrl = new fw.URL('hizliFisCsvSablonIndirAction.do?r=' + Math.random(), taban).href;
+                        const sr = await fw.fetch(sUrl, { method: 'POST', body: fd0, credentials: 'include' });
+                        const buf = await sr.arrayBuffer();
+                        let metin = ''; try { metin = new TextDecoder('windows-1254').decode(buf); } catch { metin = new TextDecoder().decode(buf); }
+                        sablonCsv = metin.slice(0, 20000);
+                        const ilk = sablonCsv.split(/\r?\n/)[0] || '';
+                        await log(`ℹ[şablon] HTTP ${sr.status} ${Math.round(buf.byteLength / 1024)}KB ct=${sr.headers.get('content-type') || '-'} · sütun=${ilk ? ilk.split(';').length : '?'} · başlık=${ilk.slice(0, 700)}`);
+                      } catch (e5) { await log(`şablon çekilemedi: ${(e5 && e5.message) || e5}`); }
                       const resp = await fw.fetch(action, { method: 'POST', body: fd, credentials: 'include' });
                       const html = await resp.text();
+                      // v1.47.45: Luca'nın kendi hata/uyarı metni (lucaNotYaz("...")) → loga
+                      try {
+                        const notlar = []; for (const m of html.matchAll(/lucaNotYaz\(\s*"([\s\S]*?)"\s*,/g)) notlar.push(m[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim());
+                        if (notlar.length) await log(`⚠[Luca] ${notlar.join(' || ').slice(0, 500)}`);
+                      } catch {}
                       const detaySayisi = (h) => { try { const set = new Set(); for (const m of String(h).matchAll(/detaylar\[(\d+)\]/g)) set.add(m[1]); return set.size; } catch { return -1; } };
                       gridSatir = detaySayisi(html);
                       try {
@@ -3035,7 +3056,7 @@
                         let pencere = {};
                         try { pencere = { url: String(fw.location.href).slice(0, 160), topUrl: String(fw.top.location.href).slice(0, 160), ustPencereAcan: !!(fw.top && fw.top.opener), popupListe: (() => { try { return ((window.top || window).__morenLucaPopups || []).length; } catch { return -1; } })(), iframeMi: fw !== fw.top }; } catch {}
                         await fetch(API + `/agent/luca/jobs/${job.id}/screen`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
-                          body: JSON.stringify({ snapshot: { tur: 'isletme-csv-tani', zaman: new Date().toISOString(), http: resp.status, action: String(action).slice(0, 200), pencere, alanlar: alanTum, csvBas, oncesiDetay: detaySayisi(oncesiHtml), yanitDetay: gridSatir, oncesiHtml: oncesiHtml.slice(0, 300000), yanitHtml: html.slice(0, 300000) } }) }).catch(() => {});
+                          body: JSON.stringify({ snapshot: { tur: 'isletme-csv-tani', zaman: new Date().toISOString(), http: resp.status, action: String(action).slice(0, 200), pencere, alanlar: alanTum, csvBas, sablonCsv, oncesiDetay: detaySayisi(oncesiHtml), yanitDetay: gridSatir, oncesiHtml: oncesiHtml.slice(0, 300000), yanitHtml: html.slice(0, 300000) } }) }).catch(() => {});
                         await log(`ℹ[tanı-2] snapshot yazıldı · öncesi detaylar=${detaySayisi(oncesiHtml)} yanıt detaylar=${gridSatir} · csv=${csvBas.split(/\r?\n/).length - 1} satır`);
                       } catch (e4) { await log(`tanı-2: ${(e4 && e4.message) || e4}`); }
                       const rowInd = (html.match(/Sat[ıi]r\s*Say[ıi]s[ıi]\s*:?\s*(\d+)/i) || [])[1];
@@ -3079,7 +3100,7 @@
                   if (gc <= 8) throw new Error(`CSV grid'e yüklenmedi (gösterge=${gc}, yanıtTr=${postTr}).`);
                   // v1.47.44: yanıtta GERÇEK grid satırı yoksa (yalnız boş şablon satırı detaylar[0]) Fiş Kes BASILMAZ —
                   //   boş/tek satırlık fiş kesme riski. Satırlar gelmediyse hata ver, tanı snapshot'ı incelenir.
-                  if (gridSatir >= 0 && gridSatir <= 1) throw new Error(`CSV satırları HIZLI FİŞ grid'ine girmedi (yanıtta detaylar satırı=${gridSatir}); "Fiş Kes" basılmadı.`);
+                  if (gridSatir >= 0 && gridSatir <= 1) throw new Error(`CSV satırları HIZLI FİŞ grid'ine girmedi (yanıtta detaylar satırı=${gridSatir}); "Fiş Kes" basılmadı. Luca'nın hata metni logda (⚠[Luca]).`);
                   // 3) "Fiş Kes" — sayfa fonksiyonu (fn:gonder) → popup-trusted → ana native → fireEl
                   const fkEl = findBtn(/^Fi[şs]\s*Kes$/i);
                   let fk = false;
