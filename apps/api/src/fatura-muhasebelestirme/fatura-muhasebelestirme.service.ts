@@ -334,6 +334,10 @@ type ProviderInvoicePayload = {
   htmlContent?: string | null;
   /** Faz 2 — sağlayıcı liste satırındaki belge durumu (iptal/red/GİB hata/taslak süzgeci). Yoksa UBL'den türetilir. */
   providerStatus?: { approval?: string | null; iptal?: string | null } | null;
+  /** Sağlayıcının BELGE TÜRÜ bilgisi (2026-09-15): tür-özel listeden geldiyse (eLogo DOCUMENTTYPE=EARCHIVE) UBL profil tahminini ezer.
+   *  Canlı: PERİHAN ŞAHİN BBB2026000000003 e-Arşiv listesinden indi ama ProfileID EARSIV demediği için "E_FATURA, OUT_EARSIV
+   *  kanalında değil" diye atlandı → fatura HİÇBİR kanala girmedi. */
+  providerDocType?: 'E_ARSIV' | 'E_FATURA' | null;
 };
 
 type ProviderPayloadLookup = {
@@ -5598,7 +5602,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
               this.logger.warn(`[${cfg.provider}] fatura atlandi — ${atlanan}`);
               return;
             }
-            const docType = this.documentTypeFromProviderXml(payload.xml);
+            // Sağlayıcı tür-özel listeden getirdiyse (eLogo EARCHIVE/EINVOICE) o tür esastır; yoksa UBL profilinden tahmin.
+            const docType = payload.providerDocType || this.documentTypeFromProviderXml(payload.xml);
             // ALIS kanali: entegratorun GELEN kutusundan ne geldiyse mukellefin alis belgesidir.
             //   Tur tespiti bir gun yine yanilirsa fatura KAYBOLMASIN diye burada ELEME YAPILMAZ.
             if (channel !== 'IN_EFATURA') {
@@ -5969,7 +5974,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       if (row.documentId || row.processedAt || row.isTransferred) {
         if (row.documentId) {
           okunacakBelgeler.push(String(row.documentId));
-          const visualPayload = this.providerPayloadFromStoredVisual(String(row.ublXmlRaw || ''), row.uuid, row.faturaNo, raw?.originalVisual);
+          const visualPayload = this.providerPayloadFromStoredVisual(String(row.ublXmlRaw || ''), row.uuid, row.faturaNo, raw?.originalVisual, raw?.channel);
           if (visualPayload.pdfBuffer || visualPayload.htmlContent) {
             await this.createDocumentFromProviderXml(
               tenantId,
@@ -6072,7 +6077,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           taxpayer,
           runtimeCfg,
           direction === 'OUT' ? 'SATIS' : 'ALIS',
-          this.providerPayloadFromStoredVisual(xml, row.uuid, row.faturaNo, storedVisual),
+          this.providerPayloadFromStoredVisual(xml, row.uuid, row.faturaNo, storedVisual, raw?.channel),
           { skipMatching },
         );
         const parsed = this.parseProviderUblInvoice(xml) || this.regexProviderInvoiceFallback(xml);
@@ -11730,7 +11735,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           // FATURA TARİHİ süzgeci: sorgu penceresi bugüne genişti; asıl ölçüt fatura tarihi → dönem dışını ele.
           const iss = ublIssueYmd(xml);
           if (iss && (iss < faturaStart || iss > faturaEnd)) continue;
-          payloads.push({ externalId: `elogo:${uuid}`, originalName: `${uuid}.xml`, xml, providerStatus: elogoStatus.get(uuid) || null });
+          payloads.push({ externalId: `elogo:${uuid}`, originalName: `${uuid}.xml`, xml, providerStatus: elogoStatus.get(uuid) || null, providerDocType: isEarsiv ? 'E_ARSIV' : 'E_FATURA' });
         }
       }
       return payloads;
@@ -12390,11 +12395,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     externalId?: string | null,
     faturaNo?: string | null,
     visual?: ProviderStoredVisual | null,
+    channel?: string | null,
   ): ProviderInvoicePayload {
     const payload: ProviderInvoicePayload = {
       xml,
       externalId: externalId || null,
       originalName: `${faturaNo || externalId || randomUUID()}.xml`,
+      // Kanal e-Arşiv ise belge e-Arşiv'dir (sağlayıcı listesi tür-özel; UBL profili yanıltabilir — 2026-09-15).
+      providerDocType: String(channel || '').toUpperCase() === 'OUT_EARSIV' ? 'E_ARSIV' : null,
     };
     if (!visual || typeof visual !== 'object') return payload;
     if (/pdf/i.test(String(visual.mimeType || '')) && visual.base64) {
@@ -12673,7 +12681,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           data: {
             source,
             sourceRefId,
-            documentType: parsed.documentType === 'E_SMM' ? 'E_SMM' : this.documentTypeFromProviderXml(xml),
+            documentType: parsed.documentType === 'E_SMM' ? 'E_SMM' : (payload.providerDocType || this.documentTypeFromProviderXml(xml)),
             invoiceKind: direction,
             originalName: stored.originalName,
             mimeType: stored.mimeType,
@@ -12774,7 +12782,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         taxpayerId: taxpayer.id,
         source,
         sourceRefId,
-        documentType: parsed.documentType === 'E_SMM' ? 'E_SMM' : this.documentTypeFromProviderXml(xml),
+        documentType: parsed.documentType === 'E_SMM' ? 'E_SMM' : (payload.providerDocType || this.documentTypeFromProviderXml(xml)),
         invoiceKind: direction,
         status: duplicate ? 'NEEDS_REVIEW' : 'READY',
         duplicateOfId: duplicate?.duplicateOfId || null,
