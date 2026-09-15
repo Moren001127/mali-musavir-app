@@ -328,6 +328,18 @@ export function buildLucaIsletmeHizliFisCsv(payload: BatchPayload): Buffer {
       ? (isZ ? 'Z Raporu' : (iadeMi ? 'Alıştan İade' : 'Satış'))
       : (iadeMi ? 'Satıştan İade' : 'Alış');
     const lucaTevkifat = (v: any) => { const t = String(v || '').trim(); return t === '10/10' ? 'Tam' : t; };
+    // 17 ALIŞ/SATIŞ TÜRÜ — Luca'nın satış türü adları (CSV doğrulama mesajı 2026-09-15): "Normal Satışlar", "Kısmi İstisna
+    //   Kapsamına Giren İşlemler", "Tam İstisna Kapsamına Giren İşlemler", "Özel Matraha Tabi İşlemler", "Diğer" (Mihsap adları
+    //   "Normal Satış" / "Özel Matrah" reddediliyordu).
+    const lucaAlisSatisTuru = (ad: string) => {
+      const t = String(ad || '').trim();
+      if (isSale) {
+        if (/^normal\s+sat/i.test(t)) return 'Normal Satışlar';
+        if (/^özel\s+matrah/i.test(t)) return 'Özel Matraha Tabi İşlemler';
+        if (/^diğer\s+işlemler/i.test(t)) return 'Diğer';
+      }
+      return t;
+    };
 
     for (const st of satirlar) {
       const kdvOranNum = ({ KDV20: '20', KDV10: '10', KDV1: '1', KDV0: '0' } as Record<string, string>)[String(st.kdvOranKod || '')] || rate || '';
@@ -360,7 +372,7 @@ export function buildLucaIsletmeHizliFisCsv(payload: BatchPayload): Buffer {
         '',                                           // 14 KDV İSTİSNASI
         '',                                           // 15 KOD (KDV istisna/tevkifat tablo kodu — FM üretmez)
         belgeTuruAdResolved,                          // 16 BELGE TÜRÜ(DB) — Defter-Beyan belge türü ADI
-        alisSatisAdResolved,                          // 17 ALIŞ/SATIŞ TÜRÜ
+        lucaAlisSatisTuru(alisSatisAdResolved),       // 17 ALIŞ/SATIŞ TÜRÜ (Luca adları)
         kayitAltAdResolved,                           // 18 KAYIT ALT TÜRÜ
         '',                                           // 19 MAL VE HİZMET KODU
         counterpartyName || '',                       // 20 AÇIKLAMA

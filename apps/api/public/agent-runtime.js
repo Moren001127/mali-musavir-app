@@ -81,7 +81,10 @@
   // v1.47.46 (2026-09-15): İŞLETME CSV — Fiş Kes doğrulaması: yüklemede grid'e giren satır sayısı (detaylar[N]) Fiş Kes
   //   sonrası ≤1'e düşünce (grid boşaldı) başarı sayılır; tr sayımı tek başına yanıltıyordu (Fiş Kes sonrası liste ekranı
   //   482 tr). Başarıda kalan/işlenen satır sayısı loglanır.
-  const AGENT_VERSION = '1.47.46';
+  // v1.47.47 (2026-09-15): İŞLETME CSV — Luca'nın Defter-Beyan değer listeleri (belge türü, satış/alış türü, kayıt (alt)
+  //   türü, stopaj) yüklemeden önce isletme/defter_beyan_json.jq'dan çekilip snapshot'a yazılır → CSV sütun adları
+  //   Luca'nın beklediği adlarla TEK SEFERDE hizalanır (her denemede tek sütun hatası okumak yerine).
+  const AGENT_VERSION = '1.47.47';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -3032,6 +3035,29 @@
                       let oncesiHtml = ''; let csvBas = '';
                       try { oncesiHtml = String(fdoc.documentElement.outerHTML || ''); } catch {}
                       try { csvBas = String(await fi.files[0].text()).slice(0, 1200); } catch (e3) { csvBas = 'okunamadı: ' + ((e3 && e3.message) || e3); }
+                      // v1.47.47: Defter-Beyan değer listeleri (Luca'nın kendi ajax('isletme/defter_beyan_json.jq', {json, prop, izin}) çağrısı)
+                      let dbListeler = {};
+                      try {
+                        const izin = (() => { try { return String(fw.db_izin || 'i'); } catch { return 'i'; } })();
+                        const istekler = [
+                          ['gelir_belge_turleri', 'gelirBelgeTuru'], ['gider_belge_turleri', 'giderBelgeTuru'],
+                          ['satis_turleri', 'aciklama'], ['alis_turleri', 'ad'],
+                          ['gelir_kayit_turleri', 'kayitTuru'], ['gelir_kayit_alt_turleri', 'kayitTuru'],
+                          ['gider_kayit_turleri', 'kayitTuru'], ['gider_kayit_alt_turleri', 'kayitTuru'],
+                          ['stopaj_oranlari', 'aciklama'],
+                        ];
+                        for (const [json, prop] of istekler) {
+                          try {
+                            const u = new fw.URL('isletme/defter_beyan_json.jq', taban).href;
+                            const rr = await fw.fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ json, prop, izin }), credentials: 'include' });
+                            const txt = await rr.text();
+                            let j = null; try { j = JSON.parse(txt); } catch {}
+                            dbListeler[json] = j != null ? j : txt.slice(0, 2000);
+                            const ozet = Array.isArray(j) ? j.map((x) => (x && (x.label || x.ad || x.aciklama || x.tanim || x[prop] || JSON.stringify(x)))).join(' | ') : String(txt).slice(0, 300);
+                            await log(`ℹ[db-liste ${json}] ${Array.isArray(j) ? j.length + ' kayıt · ' : ''}${String(ozet).slice(0, 600)}`);
+                          } catch (e6) { await log(`db-liste ${json}: ${(e6 && e6.message) || e6}`); }
+                        }
+                      } catch {}
                       // v1.47.45: Luca'nın RESMİ CSV şablonunu çek (aynı form, dosyasız) → başlık satırı
                       let sablonCsv = '';
                       try {
@@ -3059,7 +3085,7 @@
                         let pencere = {};
                         try { pencere = { url: String(fw.location.href).slice(0, 160), topUrl: String(fw.top.location.href).slice(0, 160), ustPencereAcan: !!(fw.top && fw.top.opener), popupListe: (() => { try { return ((window.top || window).__morenLucaPopups || []).length; } catch { return -1; } })(), iframeMi: fw !== fw.top }; } catch {}
                         await fetch(API + `/agent/luca/jobs/${job.id}/screen`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
-                          body: JSON.stringify({ snapshot: { tur: 'isletme-csv-tani', zaman: new Date().toISOString(), http: resp.status, action: String(action).slice(0, 200), pencere, alanlar: alanTum, csvBas, sablonCsv, oncesiDetay: detaySayisi(oncesiHtml), yanitDetay: gridSatir, oncesiHtml: oncesiHtml.slice(0, 300000), yanitHtml: html.slice(0, 300000) } }) }).catch(() => {});
+                          body: JSON.stringify({ snapshot: { tur: 'isletme-csv-tani', zaman: new Date().toISOString(), http: resp.status, action: String(action).slice(0, 200), pencere, alanlar: alanTum, csvBas, sablonCsv, dbListeler, oncesiDetay: detaySayisi(oncesiHtml), yanitDetay: gridSatir, oncesiHtml: oncesiHtml.slice(0, 300000), yanitHtml: html.slice(0, 300000) } }) }).catch(() => {});
                         await log(`ℹ[tanı-2] snapshot yazıldı · öncesi detaylar=${detaySayisi(oncesiHtml)} yanıt detaylar=${gridSatir} · csv=${csvBas.split(/\r?\n/).length - 1} satır`);
                       } catch (e4) { await log(`tanı-2: ${(e4 && e4.message) || e4}`); }
                       const rowInd = (html.match(/Sat[ıi]r\s*Say[ıi]s[ıi]\s*:?\s*(\d+)/i) || [])[1];
