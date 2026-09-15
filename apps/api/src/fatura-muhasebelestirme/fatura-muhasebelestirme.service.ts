@@ -509,6 +509,13 @@ function mukellefKimlikSeti(tp: any): Set<string> {
   return out;
 }
 
+/** Z raporu metninden yazarkasa Z NUMARASI ("Z NO 01467"); FİŞ NO değil (2026-09-15). Bulunamazsa null. */
+export function zRaporuNoBul(metin: string): string | null {
+  const t = String(metin || '');
+  const m = t.match(/\bZ\s*(?:NO|NUMARASI|RAPOR\s*NO|RAPORU\s*NO)\s*[:.\-]?\s*(\d{2,8})\b/i);
+  return m ? m[1] : null;
+}
+
 function money(value: string | number | null | undefined) {
   if (value === null || value === undefined || value === '') return null;
   if (typeof value === 'number') {
@@ -15929,6 +15936,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // Z RAPORU: karşı taraf müşteri (120) DEĞİL, 100 Kasa (+108 POS) — bayrak geçilmeyince "AI ile
     //   oku" yeniden okumada nakit/kart ayrımı kaybolup normal cari satırı kuruluyordu.
     const zRep = kind === 'SATIS' && String(mappedType || d.documentType || '').toUpperCase() === 'Z_RAPORU';
+    // Z RAPORU NUMARASI (Muzaffer Bey 2026-09-15, KADİR CEYLAN KORKMAZ: "bazılarına FİŞ NO yazılmış, Z NO yazılmalı"): AI metin
+    //   okumasında "FİŞ NO 00016" belge no sanılıyordu; metindeki "Z NO 01467" DETERMİNİSTİK olarak belge no'yu ezer.
+    const zNoDet = zRep ? zRaporuNoBul(`${azureText || ''}\n${String((parsed as any)?._azureText || '')}\n${html || ''}`) : null;
     const zPay = zRep ? this.parseZPayments(String(azureText || (parsed as any)._azureText || (parsed as any)._htmlText || html || ''), total) : null;
     // KALEM-BAZLI (Faz 1 wiring): okuma AI'ı kalem başına 'hesap' ürettiyse (bayrak açık) matrahSplit türet.
     //   linesFromAmounts, ≥2 farklı hesap + her oran matrahına denk gelirse matrahı HESAP bazında böler;
@@ -16047,7 +16057,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           invoiceKind: kind,
           totalAmount: money(total),
           ...(mappedType ? { documentType: mappedType } : {}),
-          belgeNo: (parsed.belgeNo ? String(parsed.belgeNo) : null) || d.belgeNo || null,
+          belgeNo: zNoDet || (parsed.belgeNo ? String(parsed.belgeNo) : null) || d.belgeNo || null,
           ...(parseDate(parsed.tarih) ? { faturaTarihi: parseDate(parsed.tarih) } : {}),
           // GERÇEK iki tarafın VKN'si → sahiplik/yön kontrolü çalışır.
           ...(vknOk(aiSaticiVkn) ? { sellerVkn: aiSaticiVkn } : {}),

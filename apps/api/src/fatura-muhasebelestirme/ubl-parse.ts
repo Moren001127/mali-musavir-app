@@ -521,14 +521,15 @@ export function parseUblInvoice(xml: string, warn?: (msg: string) => void): Pars
       const bdCiftsiz = kdvBreakdown.filter((b) => !(b.rate === 0 && b.amount === 0 && kdvBreakdown.some((o) => o !== b && o.rate > 0 && Math.abs(o.base - b.base) <= 0.05)));
       const saticiAdFold = String(txt(supplier?.PartyName?.Name) || txt(supplier?.PartyLegalEntity?.RegistrationName) || '').replace(/İ/g, 'i').toLowerCase().replace(/\u0307/g, '');
       const telekomSatici = /telekom|turkcell|vodafone|ttnet|superonline|tt mobil|iletisim|iletişim|netgsm|turknet|türknet/.test(saticiAdFold);
-      type Varyant = { ad: string; bd: typeof kdvBreakdown; kdv: number; mal: number; diger: number; dahil?: boolean; ozel?: boolean; kdvsizKalem?: number; oiv?: number };
+      type Varyant = { ad: string; bd: typeof kdvBreakdown; kdv: number; mal: number; diger: number; dahil?: boolean; ozel?: boolean; kdvsizKalem?: number; oiv?: number; telsiz?: number };
       const varyantlar: Varyant[] = [];
       const ekle = (v: Varyant) => varyantlar.push(v);
       for (const [bdAd, bd] of [['', kdvBreakdown], ['ciftsiz', bdCiftsiz]] as Array<[string, typeof kdvBreakdown]>) {
         if (bdAd === 'ciftsiz' && bd.length === kdvBreakdown.length) continue; // fark yok
         const taban = bd.length ? bdSum(bd) : (matrah ?? 0);
-        for (const [kdvAd, kdvV] of [['', kdvTutari], ['bd', kdvBd]] as Array<[string, number]>) {
-          if (kdvAd === 'bd' && (!(kdvBd > 0) || Math.abs(kdvBd - kdvTutari) <= 0.05)) continue;
+        // KDV seçenekleri: önce KIRILIM toplamı (servis fişi kırılımdan kurar; TaxTotal şişkinse — Turkcell 47,50 vs 43,82 — kırılım esas), sonra TaxTotal.
+        const kdvSecenekleri: Array<[string, number]> = (kdvBd > 0 && Math.abs(kdvBd - kdvTutari) > 0.05) ? [['bd', kdvBd], ['', kdvTutari]] : [['', kdvTutari]];
+        for (const [kdvAd, kdvV] of kdvSecenekleri) {
           ekle({ ad: `${bdAd}${kdvAd}`, bd, kdv: kdvV, mal: taban, diger: digerVergiToplam });
           if (digerVergiToplam > 0 && taban > digerVergiToplam) ekle({ ad: `${bdAd}${kdvAd}-dahil`, bd, kdv: kdvV, mal: round2(taban - digerVergiToplam), diger: digerVergiToplam, dahil: true });
           if (matrah != null && matrah > 0 && Math.abs(matrah - taban) > 0.05 && bd.length) {
@@ -537,11 +538,16 @@ export function parseUblInvoice(xml: string, warn?: (msg: string) => void): Pars
           }
         }
       }
-      // ÖİV çıkarımı (yalnız diğer vergi yokken, telekom satıcı, tek oran): fark = tabanın %10'u
-      if (!(digerVergiToplam > 0) && telekomSatici && kdvBreakdown.length === 1) {
-        const taban = kdvBreakdown[0].base;
+      // ÖİV çıkarımı (yalnız diğer vergi yokken, telekom satıcı, tek oran ya da kırılımsız özet): fark = tabanın %10'u;
+      //   fark ÖİV'den büyükse artan kısım (tabanın en çok %30'u) TELSİZ KULLANIM ÜCRETİ sayılır (mobil hat; Zeki GB2…: ÖİV 27,99 + telsiz 26,65).
+      if (!(digerVergiToplam > 0) && telekomSatici && kdvBreakdown.length <= 1) {
+        const taban = kdvBreakdown.length === 1 ? kdvBreakdown[0].base : (matrah != null && matrah > 0 ? matrah : 0);
         const oiv = round2(taban * 0.10);
-        if (oiv > 0) ekle({ ad: 'oiv', bd: kdvBreakdown, kdv: kdvTutari, mal: taban, diger: oiv, oiv });
+        if (oiv > 0) {
+          ekle({ ad: 'oiv', bd: kdvBreakdown, kdv: kdvTutari, mal: taban, diger: oiv, oiv });
+          const fark = round2(odenecekHam - (taban + kdvTutari - kesinti) - oiv);
+          if (fark > 0.05 && fark <= round2(taban * 0.30)) ekle({ ad: 'oiv-telsiz', bd: kdvBreakdown, kdv: kdvTutari, mal: taban, diger: round2(oiv + fark), oiv, telsiz: fark });
+        }
       }
       type Aday = { t: number; kaynak: 'odenecek' | 'ham' | 'ham+r' | 'taxInclusive' };
       const adaylar: Aday[] = [];
@@ -555,11 +561,13 @@ export function parseUblInvoice(xml: string, warn?: (msg: string) => void): Pars
       if (odenecekYuvarlama) aday(odenecekHam + odenecekYuvarlama, 'ham+r');
       aday(taxInclusiveRaw, 'taxInclusive');
       let secim: { v: Varyant; a: Aday; tol: number; eq: number } | null = null;
-      for (const tol of [0.05, 0.5, 2]) {
+      for (const kademe of [0.05, 0.5, -1]) {
         for (const v of varyantlar) {
           const eq = round2(v.mal + v.kdv + v.diger - kesinti);
+          // 3. kademe: yuvarlama toleransı en az 2 ₺, en çok 5 ₺, tutarın %1'i (Turkcell 482,04 → 485; CK önceki+güncel yuvarlama).
+          const tol = kademe > 0 ? kademe : Math.max(2, Math.min(5, round2(eq * 0.01)));
           for (const a of adaylar) {
-            if (tol > 0.5 && a.kaynak !== 'ham' && a.kaynak !== 'taxInclusive') continue;
+            if (kademe < 0 && a.kaynak !== 'ham' && a.kaynak !== 'taxInclusive') continue;
             if (Math.abs(eq - a.t) <= tol) { secim = { v, a, tol, eq }; break; }
           }
           if (secim) break;
@@ -589,7 +597,8 @@ export function parseUblInvoice(xml: string, warn?: (msg: string) => void): Pars
         if (v.kdvsizKalem && v.kdvsizKalem > 0) kdvBreakdown = [...kdvBreakdown, { rate: 0, base: v.kdvsizKalem, amount: 0 }];
         if (v.oiv) {
           digerVergiler.push({ kod: '4080', ad: 'Özel İletişim Vergisi (ödenecek farkından çıkarım)', tutar: v.oiv, oran: 10 });
-          digerVergiToplam = round2(digerVergiToplam + v.oiv);
+          if (v.telsiz) digerVergiler.push({ kod: '8006', ad: 'Telsiz kullanım ücreti (ödenecek farkından çıkarım)', tutar: v.telsiz });
+          digerVergiToplam = round2(digerVergiToplam + v.oiv + (v.telsiz || 0));
           oivCikarim = true;
         }
         matrahOut = round2(v.mal); // kdvsiz varyantında mal = TaxExclusive (KDV'siz kalem zaten içinde)

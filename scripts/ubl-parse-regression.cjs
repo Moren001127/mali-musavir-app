@@ -655,5 +655,51 @@ ${line(2, 'Deterjan', 1, 1000, 1000, `<cac:TaxTotal><cbc:TaxAmount currencyID="T
   assert(q && !q.oivCikarim, '22b: telekom değilse çıkarım yok');
 }
 
+// 22c) Paraşüt GİDER FİŞİ özeti (kırılım yok) + ÖİV + telsiz (Zeki GB22026004357170): 279,88 + 55,98 + 27,99 ÖİV + 26,65 telsiz = 390,50.
+{
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<Invoice>
+  <ID>GB22026004357170</ID><ProfileID>TICARIFATURA</ProfileID><IssueDate>2026-07-26</IssueDate><DocumentCurrencyCode>TRY</DocumentCurrencyCode>
+  <AccountingSupplierParty><Party><PartyName><Name>TT MOBİL İletişim Hizmetleri A.Ş.</Name></PartyName><PartyIdentification><ID schemeID="VKN">8590380323</ID></PartyIdentification></Party></AccountingSupplierParty>
+  <AccountingCustomerParty><Party><PartyName><Name>ZEKİ ÖZKAYNAK</Name></PartyName><PartyIdentification><ID schemeID="TCKN">65647060374</ID></PartyIdentification></Party></AccountingCustomerParty>
+  <TaxTotal><TaxAmount currencyID="TRY">55.98</TaxAmount></TaxTotal>
+  <LegalMonetaryTotal>
+    <TaxExclusiveAmount currencyID="TRY">279.88</TaxExclusiveAmount>
+    <TaxInclusiveAmount currencyID="TRY">390.50</TaxInclusiveAmount>
+    <PayableAmount currencyID="TRY">390.50</PayableAmount>
+  </LegalMonetaryTotal>
+</Invoice>`;
+  const p = parseUblInvoice(xml);
+  assert(p, '22c: parse null');
+  assert(p.oivCikarim === true, '22c: oivCikarim');
+  assert(p.digerVergiler && p.digerVergiler.length === 2 && p.digerVergiler[1].kod === '8006', `22c: ÖİV + telsiz (bulundu ${JSON.stringify(p.digerVergiler)})`);
+  approx(p.digerVergiToplam, 54.64, '22c: diğer vergi 54,64');
+  approx(p.matrah + p.kdvTutari + p.digerVergiToplam, 390.5, '22c: denklem');
+}
+
+// 23) Turkcell KDV8: TaxTotal 47,50 ama kırılım 43,82; TaxInclusive 484,27 ≠ hesap; ödenecek 485 → kırılım KDV esas, %1 yuvarlama.
+{
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<Invoice>
+  <ID>BEA2026025124548</ID><ProfileID>EARSIVFATURA</ProfileID><IssueDate>2026-08-05</IssueDate><DocumentCurrencyCode>TRY</DocumentCurrencyCode>
+  <AccountingSupplierParty><Party><PartyName><Name>Turkcell Iletisim Hizmetleri A.S.</Name></PartyName><PartyIdentification><ID schemeID="VKN">8770013406</ID></PartyIdentification></Party></AccountingSupplierParty>
+  <AccountingCustomerParty><Party><PartyName><Name>ABONE</Name></PartyName><PartyIdentification><ID schemeID="TCKN">11111111111</ID></PartyIdentification></Party></AccountingCustomerParty>
+  <TaxTotal><TaxAmount currencyID="TRY">47.5</TaxAmount><TaxSubtotal><TaxableAmount currencyID="TRY">438.22</TaxableAmount><TaxAmount currencyID="TRY">43.82</TaxAmount><Percent>10</Percent><TaxCategory><TaxScheme><Name>KDV8</Name><TaxTypeCode>0015</TaxTypeCode></TaxScheme></TaxCategory></TaxSubtotal></TaxTotal>
+  <LegalMonetaryTotal>
+    <LineExtensionAmount currencyID="TRY">438.22</LineExtensionAmount>
+    <TaxExclusiveAmount currencyID="TRY">484.27</TaxExclusiveAmount>
+    <TaxInclusiveAmount currencyID="TRY">484.27</TaxInclusiveAmount>
+    <PayableRoundingAmount currencyID="TRY">484.27</PayableRoundingAmount>
+    <PayableAmount currencyID="TRY">485</PayableAmount>
+  </LegalMonetaryTotal>
+</Invoice>`;
+  const p = parseUblInvoice(xml);
+  assert(p, '23: parse null');
+  approx(p.kdvTutari, 43.82, '23: KDV kırılımdan');
+  approx(p.odenecekTutar, 482.04, '23: ödenecek = denklem');
+  approx(p.odenecekFarki, 2.96, '23: yuvarlama 2,96');
+  assert(p.odenecekFarkiNeden === 'yuvarlama', '23: neden yuvarlama');
+}
+
 if (failed) { console.error(`[ubl-parse] ${failed} hata`); process.exit(1); }
 console.log('[ubl-parse] OK — tevkifatlı satış, telekom karışık vergi, iade/iptal (not karar vermez), iskonto, döviz, vergi türü süzgeci, kısmi tevkifat, e-SMM stopaj, yuvarlama, çok oranlı kdvOrani, tevkifat çıkarımı (sentetik XML), alt toplamsız tevkifat aritmetiği, ÖTV/BTV KDV-matrahı arındırma, bakiye/yuvarlama ödenecek çözümü, TaxableAmount eksik taban türetme, şişkin TaxTotal, KDVsiz kalem/çift %0, özel matrah 23/f, ÖİV çıkarımı');
