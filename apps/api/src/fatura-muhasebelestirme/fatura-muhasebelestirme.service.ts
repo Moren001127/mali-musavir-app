@@ -6919,7 +6919,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (!doc) return { status: 'OK', issues: [] };
 
     // ocrData içinden breakdown'ı oku (varsa)
-    const ocrData: any = doc.ocrData || {};
+    let ocrData: any = doc.ocrData || {}; // let (2026-09-15): iade türü belirlenince ocrData tazelenir
     const breakdown = Array.isArray(ocrData?.kdvBreakdown) ? ocrData.kdvBreakdown : null;
     // K7: tevkifat tespiti — fatura tevkifatlı (OCR'da tevkifat tutarı/oranı) ama tevkifat
     // fişi (360/KDV2 sorumlu sıfatı) kurulmamışsa onayda blokla (düz KDV ile gitmesin).
@@ -6969,23 +6969,33 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   Belge iade (ocrData.isReturn) ve satırlar NORMAL yönde kurulmuşsa (satışta cari BORÇ / alışta cari ALACAK) borç↔alacak
     //   otomatik takas edilir, açıklamalar "… iade" olur, satışta matrah 600→610 yaprağına taşınır (planda varsa). Yalnız
     //   düzenlenebilir belgede (onaylı / kuyrukta / Luca'ya gitmiş belgeye dokunulmaz). İkinci çağrıda no-op (idempotent).
+    // İADE YÖN KURALI (2026-09-15, bkz. linesFromAmounts): gelen iade = satıştan iade → cari (120) ALACAK, 610 + 191-iade BORÇ;
+    //   giden iade = alıştan iade → cari (320) BORÇ, stok/gider + 391-iade ALACAK; nihai tüketiciye e-Arşiv iade → cari ALACAK,
+    //   610 + 391 BORÇ. Satırlar hedef yönde değilse borç↔alacak takas edilir (eski "her iadede takas" kuralının izleri de düzelir).
+    let iadeTuruR: 'alistan' | 'satistan' | null = null;
     if (isReturn && String(doc.status || '') !== 'APPROVED' && !['POSTED', 'POSTING', 'MANUAL_DONE', 'QUEUED'].includes(String(doc.lucaStatus || '')) && Array.isArray(doc.lines) && doc.lines.length) {
       const saleR = String(doc.invoiceKind || '').toUpperCase() === 'SATIS';
+      iadeTuruR = await this.iadeTuruBelirle(tenantId, doc.taxpayerId, doc.invoiceKind, ocrData, saleR ? doc.buyerVkn : doc.sellerVkn);
+      if (iadeTuruR && ocrData?.iadeTuru !== iadeTuruR) {
+        ocrData = { ...(ocrData || {}), iadeTuru: iadeTuruR };
+        await (this.prisma as any).invoiceAccountingDocument.update({ where: { id }, data: { ocrData } }).catch(() => null);
+      }
       const cariR = doc.lines.find((l: any) => String(l.group || '') === 'cari');
       const cariBorcR = Number(cariR?.debit || 0) > 0, cariAlacakR = Number(cariR?.credit || 0) > 0;
-      const normalYon = !!cariR && (saleR ? (cariBorcR && !cariAlacakR) : (cariAlacakR && !cariBorcR));
-      if (normalYon) {
-        const iade610 = saleR ? await this.planYapragiBul(tenantId, doc.taxpayerId, ['610'], /iade/i).catch(() => null) : null;
+      const hedefCariBorc = saleR && iadeTuruR === 'alistan'; // alıştan iade: satıcı borçlanır; diğer iadelerde cari alacak
+      const yanlisYon = !!cariR && (hedefCariBorc ? (cariAlacakR && !cariBorcR) : (cariBorcR && !cariAlacakR));
+      if (yanlisYon) {
+        const iade610 = (saleR && iadeTuruR === 'satistan') ? await this.planYapragiBul(tenantId, doc.taxpayerId, ['610'], /iade/i).catch(() => null) : null;
         for (const l of doc.lines) {
           const g = String(l.group || '');
           const data: any = { debit: l.credit ?? 0, credit: l.debit ?? 0 };
-          if (g === 'matrah') { data.description = saleR ? 'Satıştan iade' : 'Alıştan iade'; if (saleR && iade610?.code) data.accountCode = iade610.code; }
+          if (g === 'matrah') { data.description = iadeTuruR === 'alistan' ? 'Alıştan iade' : 'Satıştan iade'; if (iade610?.code) data.accountCode = iade610.code; }
           else if (g === 'vergi' && !/İADE|IADE/i.test(String(l.description || ''))) data.description = `${saleR ? 'Hesaplanan' : 'İndirilecek'} KDV — İADE ${l.rate || ''}`.trim();
           await (this.prisma as any).invoiceAccountingLine.update({ where: { id: l.id }, data }).catch(() => null);
           Object.assign(l, data);
         }
-        await this.logAudit(tenantId, null, 'IADE_OTO_TERS', id, { yon: 'normal' }, { yon: 'ters', matrah610: iade610?.code || null }).catch(() => null);
-        this.logger.log(`[IADE] ${doc.belgeNo || id}: iade belgesi ters kayda çevrildi (otomatik)${iade610?.code ? ` · 610=${iade610.code}` : ''}`);
+        await this.logAudit(tenantId, null, 'IADE_OTO_TERS', id, { yon: 'yanlis' }, { yon: 'duzeltildi', iadeTuru: iadeTuruR, matrah610: iade610?.code || null }).catch(() => null);
+        this.logger.log(`[IADE] ${doc.belgeNo || id}: iade belgesi yönü düzeltildi (${iadeTuruR}${iade610?.code ? ` · 610=${iade610.code}` : ''})`);
       }
     }
     // İADE-UYGUN satır var mı? SATIŞTAN iade → 610/611 (matrah ters kayıt). ALIŞTAN iade → matrah
@@ -7140,6 +7150,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       hasTevkifatLine,
       tevkifatOrani,
       isReturn,
+      iadeTuru: iadeTuruR || this.iadeTuruSaf(doc.invoiceKind, ocrData, String(doc.invoiceKind || '').toUpperCase() === 'SATIS' ? doc.buyerVkn : doc.sellerVkn, true),
       hasReturnLine,
       documentType: doc.documentType,
       lines: doc.lines || [],
@@ -8057,7 +8068,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           invoiceKind: doc.invoiceKind, matrah: ocr.matrah, kdvTutari: ocr.kdvTutari, kdvOrani: ocr.kdvOrani, total: doc.totalAmount,
           vendorName: isSale ? doc.customerName : doc.vendorName, kdvBreakdown: bd,
           tevkifatOrani: Number(ocr.tevkifatOrani) || undefined, tevkifatKdv: Number(ocr.tevkifatKdv) || 0,
-          digerVergiToplam: Number(ocr.digerVergiToplam) || 0, isReturn: ocr.isReturn === true,
+          digerVergiToplam: Number(ocr.digerVergiToplam) || 0, isReturn: ocr.isReturn === true, iadeTuru: ocr.iadeTuru || null,
         } as any));
       }
       const hw = hitWord.toLowerCase();
@@ -12545,6 +12556,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   (ham "beklemede" belge; validationStatus=INCOMPLETE → Luca gönderiminden elenir). Eşleştirme
     //   sonradan "AI ile işle" (reapplyAccountCodes / aiRead) ile çalışır. (Kullanıcı: "Aktar sadece aktarsın.")
     const skipMatching = !!opts.skipMatching;
+    // İADE TÜRÜ (2026-09-15): mükellef kestiyse alıştan iade, gelen iade satıştan iade; nihai tüketici istisnası (iadeTuruBelirle).
+    const parsedIcinIade = this.parseProviderUblInvoice(payload.xml) || this.regexProviderInvoiceFallback(payload.xml);
+    const iadeTuruProv: 'alistan' | 'satistan' | null = parsedIcinIade?.iade === true
+      ? await this.iadeTuruBelirle(tenantId, taxpayer?.id, direction, { isReturn: true }, direction === 'SATIS' ? parsedIcinIade.aliciVergiNo : parsedIcinIade.saticiVergiNo).catch(() => null)
+      : null;
     let xml = String(payload.xml || '').trim();
     const unpacked: ProviderInvoicePayload[] = [];
     const rawBuffer = Buffer.from(xml, 'utf8');
@@ -12626,8 +12642,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           tevkifatKdv: Number(parsed.tevkifatKdv) || 0,
           // KDV DIŞI VERGİ (ÖİV/telsiz/ÖTV …): matraha karıştırılmaz, ayrı 'diger_vergi' satırı (gider).
           digerVergiToplam: Number(parsed.digerVergiToplam) || 0,
-          // İADE belgesi: borç/alacak yönü ÜRETİM anında çevrilir (satıştan iade cari ALACAK, alıştan iade cari BORÇ).
+          // İADE belgesi: yön kuralı linesFromAmounts'ta (alıştan iade cari BORÇ, satıştan iade cari ALACAK).
           isReturn: parsed.iade === true,
+          iadeTuru: iadeTuruProv,
           // e-SMM (UBL 0003 stopajı): cari NET + 'kesinti' 360 satırı.
           smmStopaj: (direction === 'ALIS' && parsed.documentType === 'E_SMM' && Number(parsed.stopajTutari) > 0) ? Number(parsed.stopajTutari) : null,
         }))
@@ -12690,6 +12707,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
                 // Faz 0 — TEK OKUMA SONUCU: tevkifat (oran/tutar/kod/yüzde), iade, belge durumu, KDV dışı
                 //   vergiler, iskonto, para birimi + kur, UBL ödenecek tutar. "AI ile oku" yoluyla AYNI adlar.
                 ...ublOcrDataFields(parsed),
+                ...(iadeTuruProv ? { iadeTuru: iadeTuruProv } : {}),
               },
             } : {}),
           },
@@ -12746,6 +12764,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       // KDV DIŞI VERGİ → ayrı 'diger_vergi' satırı (bkz. yukarıdaki dal).
       digerVergiToplam: Number(parsed.digerVergiToplam) || 0,
       isReturn: parsed.iade === true,
+      iadeTuru: iadeTuruProv,
       smmStopaj: (direction === 'ALIS' && parsed.documentType === 'E_SMM' && Number(parsed.stopajTutari) > 0) ? Number(parsed.stopajTutari) : null,
     }));
 
@@ -12794,6 +12813,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           kalemler: Array.isArray(parsed.kalemler) ? parsed.kalemler.slice(0, 30).map((k: any) => ({ ad: String(k?.ad || '').slice(0, 80), tutar: Number(k?.tutar) || 0, oran: Number(k?.oran) || 0 })).filter((k: any) => k.ad) : undefined,
           // Faz 0 — TEK OKUMA SONUCU (bkz. yukarıdaki dal): tevkifat/iade/belge durumu/diğer vergi/iskonto/kur/ödenecek.
           ...ublOcrDataFields(parsed),
+          ...(iadeTuruProv ? { iadeTuru: iadeTuruProv } : {}),
         },
         createdBy: userId || null,
         lines: { create: lines },
@@ -13416,24 +13436,39 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   sorumlu-191 satırı ve cari NET bu TUTARDAN kurulur; tevkifatOrani yalnız oran-satırlarına dağıtım ve
     //   191/391 hesap seçimi için kalır. Verilmezse eski davranış (oran × KDV).
     tevkifatKdv?: number | null;
-    // İADE belgesi (InvoiceTypeCode IADE / CreditNote / AI iade): borç-alacak TAKAS edilir → satıştan iadede
-    //   610 BORÇ, 391-iade BORÇ, cari ALACAK; alıştan iadede cari BORÇ, stok/gider + 191-iade ALACAK.
-    //   RETURN_DIRECTION_REVERSED yalnız gerçekten ters kalan kayıtta kalır; editörde yön düğmesi de var.
+    // İADE belgesi (InvoiceTypeCode IADE / CreditNote / AI iade). YÖN KURALI (Muzaffer Bey 2026-09-15 — "biz kesiyorsak
+    //   ALIŞTAN iade; borç/alacak yanlış"): iade faturasının UBL yönü akışı ZATEN çevirir, borç/alacak TAKAS EDİLMEZ; yalnız
+    //   HESAPLAR değişir:
+    //   • GELEN iade (ALIS görünümlü) = SATIŞTAN İADE: 610 BORÇ, 191-iade BORÇ, 120 (müşteri) ALACAK — alış fişiyle aynı yönler.
+    //   • GİDEN iade (SATIS görünümlü, mükellef kesti) = ALIŞTAN İADE: 320 (satıcı) BORÇ, stok/gider ALACAK, 391-iade ALACAK —
+    //     satış fişiyle aynı yönler.
+    //   • Tek istisna: mükellefin NİHAİ TÜKETİCİYE kestiği e-Arşiv iade (iadeTuru 'satistan' + SATIS): 610 BORÇ, 391 BORÇ,
+    //     120 ALACAK → satış yönleri TAKAS edilir.
+    //   Eski kod her iadede takas yapıyordu → SN22026000000267 610 ALACAK / cari BORÇ, GIB2026000000463 153 BORÇ / 120 ALACAK
+    //   (canlı 2026-09-15). RETURN_DIRECTION_REVERSED aynı kurala bakar.
     isReturn?: boolean;
+    /** İade türü: 'alistan' (mükellef kesti, satıcıya iade) | 'satistan' (müşteri iadesi). Boşsa SATIS→alistan, ALIS→satistan. */
+    iadeTuru?: 'alistan' | 'satistan' | null;
   }) {
     const isSale = opts.invoiceKind === 'SATIS';
-    const cariCode = isSale ? '120.01.001' : '320.01.001';
-    const matrahCode = isSale ? '600.01.001' : '770.01.010';
+    const iadeTuru: 'alistan' | 'satistan' | null = opts.isReturn === true ? (opts.iadeTuru || (isSale ? 'alistan' : 'satistan')) : null;
+    const alistanIade = iadeTuru === 'alistan' && isSale;
+    // Alıştan iadede karşı taraf SATICI (320), matrah yer-tutucusu alış gideri (rematch orijinal stok/gideri bulur).
+    const cariCode = isSale ? (alistanIade ? '320.01.001' : '120.01.001') : '320.01.001';
+    const matrahCode = isSale ? (alistanIade ? '770.01.010' : '600.01.001') : '770.01.010';
     const zero = () => new Prisma.Decimal(0);
-    // İade yönü: tüm satırlarda borç ↔ alacak takası (denge korunur; tutarlar değişmez).
+    // İade yönü: yalnız nihai tüketiciye kesilen satıştan iadede (SATIS + 'satistan') borç ↔ alacak takası; diğer iadelerde
+    //   yönler belge yönüyle aynı kalır, yalnız açıklamalar iade olur.
     const applyReturnDirection = (rows: any[]): any[] => {
       if (opts.isReturn !== true) return rows;
+      const takas = isSale && iadeTuru === 'satistan';
+      const matrahAd = iadeTuru === 'alistan' ? 'Alıştan iade' : 'Satıştan iade';
       return rows.map((r: any) => ({
         ...r,
-        debit: r.credit || zero(),
-        credit: r.debit || zero(),
+        debit: takas ? (r.credit || zero()) : (r.debit || zero()),
+        credit: takas ? (r.debit || zero()) : (r.credit || zero()),
         description: r.group === 'matrah'
-          ? (isSale ? 'Satıştan iade' : 'Alıştan iade')
+          ? matrahAd
           : r.group === 'vergi' ? `${isSale ? 'Hesaplanan' : 'İndirilecek'} KDV — İADE ${r.rate || ''}`.trim()
             : r.description,
       }));
@@ -13935,6 +13970,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     digerVergiToplam?: any;
     tevkifatKdv?: any;
     belgeDurumu?: string | null;
+    /** İade türü (2026-09-15): 'alistan' → cari BORÇ beklenir; 'satistan' → cari ALACAK beklenir. */
+    iadeTuru?: 'alistan' | 'satistan' | null;
     /** Aktarımda sağlayıcının metinsiz iptal/itiraz bayrağı (ocrData.saglayiciIsareti.not) → UYARI, engel değil (2026-09-15). */
     saglayiciIsareti?: string | null;
     /** SMM gelir vergisi stopajı (alışta ödenecek = brüt + KDV − stopaj). */
@@ -14155,7 +14192,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       issues.push({
         code: 'RETURN_NEEDS_REVERSAL',
         severity: 'ERROR',
-        message: 'İade/iptal faturası — normal kayıt yapılamaz. Satıştan iadede 610 (ters kayıt) kullan; borç/alacak yönünü çevir. Satırları elle düzelt, sonra onayla.',
+        message: 'İade faturası — iade hesabı yok: satıştan iadede 610 + "iade" KDV (cari alacak), alıştan iadede orijinal stok/gider + "iade" 391 (cari borç) olmalı. Satırları düzeltin, sonra onaylayın.',
       });
     }
     // ── 7b) RETURN_DIRECTION_REVERSED — iade belgede yön TERS (Faz 0). İade satırı (610/İADE-KDV) konmuş
@@ -14168,14 +14205,17 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       if (cari) {
         const cariBorc = Number(cari.debit || 0) > 0;
         const cariAlacak = Number(cari.credit || 0) > 0;
-        const ters = sale ? (cariBorc && !cariAlacak) : (cariAlacak && !cariBorc);
+        // YÖN KURALI (2026-09-15): alıştan iade (mükellef kesti) → cari (satıcı) BORÇ; satıştan iade (gelen ya da nihai
+        //   tüketiciye e-Arşiv) → cari (müşteri) ALACAK. Eski kural yönleri tersine bekliyordu.
+        const alistan = opts.iadeTuru ? opts.iadeTuru === 'alistan' : sale;
+        const ters = alistan ? (cariAlacak && !cariBorc) : (cariBorc && !cariAlacak);
         if (ters) {
           issues.push({
             code: 'RETURN_DIRECTION_REVERSED',
             severity: 'ERROR',
-            message: sale
-              ? 'Satıştan iade — cari satırı BORÇ yazılmış; iadede cari ALACAK, 610 BORÇ olmalı (borç/alacak yönünü çevirin).'
-              : 'Alıştan iade — cari satırı ALACAK yazılmış; iadede cari BORÇ, stok/gider ALACAK olmalı (borç/alacak yönünü çevirin).',
+            message: alistan
+              ? 'Alıştan iade (mükellef kesti) — cari satırı ALACAK yazılmış; satıcı BORÇ, stok/gider ve iade KDV ALACAK olmalı (borç/alacak yönünü çevirin).'
+              : 'Satıştan iade — cari satırı BORÇ yazılmış; müşteri ALACAK, 610 ve iade KDV BORÇ olmalı (borç/alacak yönünü çevirin).',
           });
         }
       }
@@ -14838,6 +14878,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         tevkifatOrani: tevkifatOrani || null,
         digerVergiToplam: digerVergi > 0 ? digerVergi : null,
         isReturn: _od.isReturn === true,
+        iadeTuru: _od.iadeTuru || null,
       }));
       await (this.prisma as any).$transaction(async (tx: any) => {
         await tx.invoiceAccountingLine.deleteMany({ where: { documentId: d.id } });
@@ -15667,6 +15708,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   ise "iade edilemez / iade ve değişim şartları" notlarında yanlış-pozitif veriyordu.
       || /(FATURA\s*T[IU]P[IU]?|SENARYO)\s*:?\s*\b(IADE|IPTAL)\b/.test(azNormForIade)
       || /\bIADE\s+FATURAS?I?\b/.test(azNormForIade);
+    // İADE TÜRÜ (2026-09-15): mükellef kestiyse alıştan iade (satıcıya), gelen iade satıştan iade; nihai tüketici istisnası (bkz. iadeTuruBelirle).
+    const iadeTuruDet = isReturnDet
+      ? await this.iadeTuruBelirle(tenantId, d.taxpayerId, kind, { isReturn: true, iadeTuru: (d.ocrData as any)?.iadeTuru }, isSale ? aiAliciVkn : aiSaticiVkn).catch(() => null)
+      : null;
 
     // SATICI-EMSAL TUTARLILIĞI (kullanıcı kuralı: "aynı satıcı hep aynı sonuç"): aynı mükellef + aynı
     //   satıcı VKN'nin KALEM-ÖRTÜŞEN önceki belgesindeki kategoriyi yeni okumaya uygula. AMA GÜVENLİ:
@@ -15735,6 +15780,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       smmStopaj: smmStopaj > 0 ? smmStopaj : null,
       digerVergiToplam: digerVergiToplam > 0 ? digerVergiToplam : null,
       isReturn: isReturnDet,
+      iadeTuru: iadeTuruDet,
       ...(matrahSplit && matrahSplit.length ? { matrahSplit } : {}),
       ...(zRep ? { zRaporu: true, nakit: zPay?.nakit || 0, kart: zPay?.kart || 0 } : {}),
     }));
@@ -15860,7 +15906,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
               kalemKaynak: kalemKaynak || undefined,
               kalemPdfBilgi: kalemKaynak && kalemPdfBilgi ? kalemPdfBilgi : undefined,
               ...(kalemKaynak ? { aiMatrahGuven: aiMatrahGuvenTavani(ogrenmeSecimiOkuma ? 'yuksek' : (hafizaOkuma?.uygula ? hafizaOkuma.guven : (d.ocrData as any)?.aiMatrahGuven), kalemKaynak) } : {}),
-              kalemler: Array.isArray(parsed.kalemler) ? parsed.kalemler.slice(0, 30).map((k: any) => { const h = typeof k?.hesap === 'string' ? String(k.hesap).trim() : ''; return { ad: String(k?.ad || '').slice(0, 80), tutar: Number(k?.tutar) || 0, oran: Number(k?.oran) || 0, ...(h && planLeafSet.has(h) ? { hesap: h } : {}) }; }).filter((k: any) => k.ad) : undefined, ...(islSinifAi ? { isletme: islSinifAi } : {}), ...((parsed as any)?._ubl ? ublOcrDataFields((parsed as any)._ubl) : clearUblOnlyOcrFields()), isReturn: isReturnDet, kalemSplit: kalemSplitApplied || undefined, tevkifatHint: parsed.tevkifat === true || tevkifatOrani > 0 || /tevkifat/i.test(String(html || '')), tevkifatOrani: tevkifatOrani || 0, tevkifatKdv: tevkKdv || 0, ...(smmStopaj > 0 ? { stopajTutari: smmStopaj } : {}), engine: parsed._azure ? 'azure-read' : (parsed === preParsed ? 'ubl-xml' : 'max-vision'),
+              kalemler: Array.isArray(parsed.kalemler) ? parsed.kalemler.slice(0, 30).map((k: any) => { const h = typeof k?.hesap === 'string' ? String(k.hesap).trim() : ''; return { ad: String(k?.ad || '').slice(0, 80), tutar: Number(k?.tutar) || 0, oran: Number(k?.oran) || 0, ...(h && planLeafSet.has(h) ? { hesap: h } : {}) }; }).filter((k: any) => k.ad) : undefined, ...(islSinifAi ? { isletme: islSinifAi } : {}), ...((parsed as any)?._ubl ? ublOcrDataFields((parsed as any)._ubl) : clearUblOnlyOcrFields()), isReturn: isReturnDet, ...(iadeTuruDet ? { iadeTuru: iadeTuruDet } : {}), kalemSplit: kalemSplitApplied || undefined, tevkifatHint: parsed.tevkifat === true || tevkifatOrani > 0 || /tevkifat/i.test(String(html || '')), tevkifatOrani: tevkifatOrani || 0, tevkifatKdv: tevkKdv || 0, ...(smmStopaj > 0 ? { stopajTutari: smmStopaj } : {}), engine: parsed._azure ? 'azure-read' : (parsed === preParsed ? 'ubl-xml' : 'max-vision'),
             readMode: parsed === preParsed ? 'ubl-xml' : (isImage ? 'image' : /pdf/i.test(imgMedia) ? 'pdf-text' : /xml/i.test(imgMedia) ? 'xml-text' : 'html'),
             ...(!preParsed && imgBuf && /xml/i.test(imgMedia) ? { xmlHead: imgBuf.toString('utf8').slice(0, 220).replace(/\s+/g, ' ') } : {}),
             // uyarilar KOŞULSUZ yazılır: yeni okuma uyarı üretmediyse ESKİ okumanın bayat uyarısı
@@ -16324,6 +16370,35 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       .filter(Boolean).join('\n').trim().slice(0, 9000);
   }
 
+  /**
+   * İADE TÜRÜ (2026-09-15): gelen iade (ALIS) → 'satistan' (müşteri iadesi). Giden iade (SATIS, mükellef kesti) → 'alistan'
+   * (satıcıya iade); karşı taraf TCKN'li ve mükellefin ondan alışı YOKSA (nihai tüketici) → 'satistan' (e-Arşiv müşteri iadesi).
+   * ocrData.iadeTuru varsa o esas alınır.
+   */
+  private iadeTuruSaf(invoiceKind: string | null | undefined, ocrData: any, karsiVkn: string | null | undefined, alisGecmisiVar: boolean): 'alistan' | 'satistan' | null {
+    if (ocrData?.isReturn !== true) return null;
+    const kayitli = String(ocrData?.iadeTuru || '');
+    if (kayitli === 'alistan' || kayitli === 'satistan') return kayitli;
+    if (String(invoiceKind || '').toUpperCase() !== 'SATIS') return 'satistan';
+    const k = String(karsiVkn || '').replace(/\D/g, '');
+    if (k.length === 11 && !alisGecmisiVar) return 'satistan';
+    return 'alistan';
+  }
+
+  private async iadeTuruBelirle(tenantId: string, taxpayerId: string | null | undefined, invoiceKind: string | null | undefined, ocrData: any, karsiVkn: string | null | undefined): Promise<'alistan' | 'satistan' | null> {
+    if (ocrData?.isReturn !== true) return null;
+    const kayitli = String(ocrData?.iadeTuru || '');
+    if (kayitli === 'alistan' || kayitli === 'satistan') return kayitli;
+    let alisGecmisiVar = false;
+    const k = String(karsiVkn || '').replace(/\D/g, '');
+    if (String(invoiceKind || '').toUpperCase() === 'SATIS' && k.length === 11 && taxpayerId) {
+      alisGecmisiVar = !!(await (this.prisma as any).invoiceAccountingDocument.findFirst({
+        where: { tenantId, taxpayerId, invoiceKind: 'ALIS', sellerVkn: k }, select: { id: true },
+      }).catch(() => null));
+    }
+    return this.iadeTuruSaf(invoiceKind, ocrData, karsiVkn, alisGecmisiVar);
+  }
+
   private buildMuhasebeNeden(faaliyet: string, isSale: boolean, kat: string, giderTuru: string, matrahAcc: any, isReturn: boolean): string {
     const parts = String(faaliyet || '').split('—');
     let faal = (parts.length > 1 ? parts[1] : parts[0]).replace(/\s+/g, ' ').trim();
@@ -16585,28 +16660,58 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const onerilen = (uyumsuz && oneriHam && !/^YOK$/i.test(oneriHam) && planYaprakMi(oneriHam) && oneriYonRe.test(oneriHam) && !mevcutMatrahKodlari.has(oneriHam)) ? oneriHam : null;
       // UYUMSUZ'da yorumun "... 600.01.001 ... hesabına işlenmiştir." kapanışı yanıltır (kullanıcı bulgusu) →
       //   "hesap korundu, öneri: X" kapanışıyla değiştir (eski metin "hesap atanmadı, manuel seçin" idi — artık boşaltma yok).
+      // ÖNERİYİ OTOMATİK UYGULA (Muzaffer Bey 2026-09-15, iki kez: "madem doğru hesabı gösteriyor, niye ilk başta seçmiyor"):
+      //   içerik denetimi UYUMSUZ + geçerli öneri varsa ve hesap AI/kural kaynaklıysa (kullanıcı seçimi / öğrenilmiş DEĞİL),
+      //   belge onaylı/Luca'ya gitmiş değilse ve tüm matrah satırları aynı hesaptaysa → hesap öneriye ÇEVRİLİR, uyarı yerine
+      //   yorumda "X yerine Y'ye alındı" yazılır. Eski davranış (koru + "Öneriyi uygula") FM_UYUM_OTO=off ile geri gelir.
+      const matrahKodSeti = new Set(matrahLines.map((l: any) => String(l.accountCode || '').trim()).filter(Boolean));
+      const kaynaklar = matrahLines.map((l: any) => String(l.kaynak || '').toUpperCase());
+      const kullaniciVeyaOgrenilmis = kaynaklar.some((k: string) => k === 'KULLANICI' || k === 'OGRENILMIS' || k === 'HAFIZA');
+      const otoUygulanabilir = uyumsuz && !!onerilen
+        && String(process.env.FM_UYUM_OTO || 'on').toLowerCase() !== 'off'
+        && String(doc.status || '') !== 'APPROVED' && !/POSTED|SENT/i.test(String(doc.lucaStatus || ''))
+        && matrahKodSeti.size === 1 && !kullaniciVeyaOgrenilmis;
+      let otoUygulandi = false;
+      if (otoUygulanabilir) {
+        const yeniAd = String(planOnbellek?.names?.get(onerilen!) || '').trim();
+        const r = await (this.prisma as any).invoiceAccountingLine.updateMany({
+          where: { documentId: doc.id, group: 'matrah' },
+          data: { accountCode: onerilen, kaynak: 'AI', ...(yeniAd ? { description: yeniAd } : {}) },
+        }).catch(() => null);
+        otoUygulandi = !!r && Number(r.count || 0) > 0;
+        if (otoUygulandi) this.logger.log(`[UYUM-OTO] ${doc.belgeNo || doc.id}: içerik denetimi ${hesapStr} → ${onerilen} ${yeniAd} (AI ilk seçimi düzeltildi)`);
+      }
       let finalText = text;
       if (uyumsuz && finalText) {
-        const kapanis = onerilen
-          ? `; ancak bu içerik ana faaliyetle uyuşmadığından hesap (${hesapStr}) yalnız KORUNDU — önerilen hesap: ${onerilen} ("Öneriyi uygula" ya da editörde düzeltin).`
-          : `; ancak bu içerik ana faaliyetle uyuşmadığından hesap (${hesapStr}) yalnız KORUNDU — doğru hesabı editörde seçin.`;
+        const onerilenAd = onerilen ? String(planOnbellek?.names?.get(onerilen) || '').trim() : '';
+        const kapanis = otoUygulandi
+          ? `; içerik ana faaliyetle uyuşmadığından hesap ${hesapStr} yerine ${onerilen}${onerilenAd ? ' ' + onerilenAd : ''} hesabına alındı (içerik denetimi düzeltti).`
+          : onerilen
+            ? `; ancak bu içerik ana faaliyetle uyuşmadığından hesap (${hesapStr}) yalnız KORUNDU — önerilen hesap: ${onerilen} ("Öneriyi uygula" ya da editörde düzeltin).`
+            : `; ancak bu içerik ana faaliyetle uyuşmadığından hesap (${hesapStr}) yalnız KORUNDU — doğru hesabı editörde seçin.`;
         const yeni = finalText.replace(/,?\s*[\dA-ZÇĞİÖŞÜ.\s]+hesab[ıi]na işlenmiştir\.?\s*$/i, kapanis);
-        finalText = (yeni !== finalText ? yeni : finalText.replace(/işlenmiştir\.?\s*$/i, `için hesap korundu — ${onerilen ? `önerilen hesap: ${onerilen}` : 'doğru hesabı editörde seçin'}.`)).trim();
+        finalText = (yeni !== finalText ? yeni : finalText.replace(/işlenmiştir\.?\s*$/i, otoUygulandi ? `için hesap ${onerilen} olarak düzeltildi (içerik denetimi).` : `için hesap korundu — ${onerilen ? `önerilen hesap: ${onerilen}` : 'doğru hesabı editörde seçin'}.`)).trim();
       }
-      const patch: any = {
-        hesapUyumsuz: uyumsuz,
-        hesapUyumNot: uyumsuz ? 'Fatura içeriği ana faaliyet/hesapla uyuşmuyor — hesap KORUNDU; öneriyi uygulayın ya da editörde düzeltin.' : null,
-        // Yargılanan kod: kullanıcı/rematch hesabı değiştirirse revalidate uyarıyı BAYAT sayar (yeniden değerlendirilene kadar sessiz).
-        hesapUyumKod: uyumsuz ? (String(matrahLines[0]?.accountCode || '').trim() || null) : null,
-        onerilenHesap: uyumsuz ? onerilen : null,
-      };
+      const patch: any = otoUygulandi
+        ? {
+            hesapUyumsuz: false, hesapUyumNot: null, hesapUyumKod: null, onerilenHesap: null, hesapSuphe: null,
+            aiMatrahKodu: onerilen,
+            uyumOtoUygulandi: { eski: String(matrahLines[0]?.accountCode || '').trim() || null, yeni: onerilen, tarih: new Date().toISOString() },
+          }
+        : {
+            hesapUyumsuz: uyumsuz,
+            hesapUyumNot: uyumsuz ? 'Fatura içeriği ana faaliyet/hesapla uyuşmuyor — hesap KORUNDU; öneriyi uygulayın ya da editörde düzeltin.' : null,
+            // Yargılanan kod: kullanıcı/rematch hesabı değiştirirse revalidate uyarıyı BAYAT sayar (yeniden değerlendirilene kadar sessiz).
+            hesapUyumKod: uyumsuz ? (String(matrahLines[0]?.accountCode || '').trim() || null) : null,
+            onerilenHesap: uyumsuz ? onerilen : null,
+          };
       if (finalText) patch.muhasebeNedenZengin = finalText; // Deterministik muhasebeNeden'e DOKUNMA (anlık fallback).
       await (this.prisma as any).invoiceAccountingDocument
         .update({ where: { id: doc.id }, data: { ocrData: { ...ocr, ...patch } } })
         .catch(() => {});
       // (matrah satırı BOŞALTILMAZ — eski updateMany accountCode:null kaldırıldı.) Uyarı katmanı tazelensin:
-      //   UYUMSUZ ise ICERIK_HESAP_UYUMSUZ üretilir; UYUMLU'ya döndüyse eski uyarı kalkar.
-      if (uyumsuz || (ocr as any)?.hesapUyumsuz === true) {
+      //   UYUMSUZ ise ICERIK_HESAP_UYUMSUZ üretilir; UYUMLU'ya döndüyse / öneri otomatik uygulandıysa eski uyarı kalkar.
+      if (uyumsuz || otoUygulandi || (ocr as any)?.hesapUyumsuz === true) {
         await this.revalidateDocument(tenantId, doc.id).catch(() => null);
       }
       return { text: finalText, denetim };
@@ -17215,7 +17320,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       // İADE carisi YÖN-belirsiz: satıştan iade → MÜŞTERİ (120), alıştan iade → SATICI (320). İade
       //   ALIŞ görünüp cari 120'de olunca 320'de aranıp bulunamıyordu (kullanıcı: "carisi Luca'da
       //   var ama eşleştirmedi"). İade'de her iki grubu + her iki tarafın adını dene.
-      const cariPrefixes = isReturn ? ['120', '320', '329', '331'] : (isSale ? ['120'] : ['320', '329', '331']);
+      // İADE TÜRÜ (2026-09-15): alıştan iade (mükellef kesti) → önce SATICI (320); satıştan iade → önce MÜŞTERİ (120).
+      const iadeTuruRm = isReturn ? this.iadeTuruSaf(doc.invoiceKind, doc.ocrData, isSale ? doc.buyerVkn : doc.sellerVkn, true) : null;
+      const cariPrefixes = isReturn
+        ? (iadeTuruRm === 'alistan' ? ['320', '329', '331', '120'] : ['120', '320', '329', '331'])
+        : (isSale ? ['120'] : ['320', '329', '331']);
       const cariNames = isReturn ? [doc.customerName, doc.vendorName].filter(Boolean) : [vendorName];
       // CARI seçim ÖNCELİĞİ (kullanıcı bulgusu: MERT REKLAM faturası → yanlış "AKILLI KARTUŞ" cari):
       //   1) Plandaki cari hesaplar arasında VKN'si satıcının VKN'siyle BİREBİR tutan (yön öneki uygun)
@@ -17510,7 +17619,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         //   iade hesabı varsa ata (RETURN_NEEDS_REVERSAL uyarısı da kalkar), yoksa boş bırak (kullanıcı
         //   ekler). Tevkifat iade'de boşalır. Cari (karşı taraf) normal akışta kalır — iade aynı cariye işlenir.
         if (isReturn && (group === 'matrah' || group === 'vergi' || group === 'tevkifat')) {
-          const ret = group === 'matrah' ? returnMatrah : group === 'vergi' ? returnVergi : null;
+          // İADE-KDV yedeği (2026-09-15): planda "İADE" adlı 191/391 yoksa satırı BOŞ bırakma — oranın normal KDV hesabını
+          //   "… — İADE" açıklamasıyla ata (hasReturnLine açıklamadaki İADE'yi tanır; RETURN_NEEDS_REVERSAL sahte engel olmaz).
+          const vergiYedek = group === 'vergi' && !returnVergi ? vergiForRate(lineRate) : null;
+          const ret = group === 'matrah' ? returnMatrah : group === 'vergi' ? (returnVergi || vergiYedek) : null;
           // ALIŞTAN İADE matrahı (returnMatrah null, satış görünümlü): 610 DEĞİL — orijinal stok/gider
           //   (153/770). Bu satırı normal matrah akışına BIRAK (continue etme); matrahForRate
           //   saleMatrahDefault=categoryMatrah'ı atar. returnMatrah yalnız SATIŞTAN iade'de dolu (610).
@@ -17519,7 +17631,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             if (String(line.accountCode || '') !== want) {
               await (this.prisma as any).invoiceAccountingLine.update({
                 where: { id: line.id },
-                data: want ? { accountCode: want, description: (ret as any).accountName, kaynak: 'KURAL' } : { accountCode: '', description: '', kaynak: null },
+                data: want ? { accountCode: want, description: vergiYedek && ret === vergiYedek ? `${(ret as any).accountName} — İADE` : (ret as any).accountName, kaynak: 'KURAL' } : { accountCode: '', description: '', kaynak: null },
               });
             }
             continue;
