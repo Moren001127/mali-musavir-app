@@ -70,7 +70,10 @@
   //   FORM'a bağlı değilken SESSİZCE atlanıyor, yedek tıklama dosyayı göndermiyor → "CSV grid'e yüklenmedi (yanıtTr=0)"
   //   (KADİR CEYLAN KORKMAZ 29 Z raporu). Artık girdinin KENDİ penceresi (ownerDocument.defaultView) kullanılır, form yoksa
   //   FormData elle kurulur (formFile + gizli alanlar), yanıt girdinin belgesine yazılır; atlanırsa nedeni loglanır.
-  const AGENT_VERSION = '1.47.42';
+  // v1.47.43 (2026-09-15): İŞLETME CSV TANI — fetch-POST yanıtı 8 belgede de 29 belgede de aynı (27KB/17 tr) → satırlar
+  //   grid'e GİRMİYOR. Artık: Yükle fonksiyonunun kaynağı IFRAME penceresinde de aranır; form action/target/gizli
+  //   alanlar, yanıt metni (her zaman), doc.write sonrası grid ölçümü ve Fiş Kes sonrası ekran metni loglanır.
+  const AGENT_VERSION = '1.47.43';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -2968,10 +2971,14 @@
                     // Yükle fonksiyonunun KAYNAĞINI dök (ne yaptığını gör: hangi input, hangi endpoint)
                     try {
                       const pw2 = popupWin();
-                      let src = '';
-                      for (const fn of ['csvSablonYukle', 'excelYukle', 'sablonYukle', 'yukle']) { try { if (pw2 && typeof pw2[fn] === 'function') { src = pw2[fn].toString(); break; } } catch {} }
-                      const clean = src.replace(/https?:\/\/\S+/g, '[url]').replace(/["']/g, '`').replace(/\s+/g, ' ').slice(0, 420);
-                      await log(`ℹ[fnsrc] ${clean || 'fn-erişilemedi'}`);
+                      let fiW = null; try { const f0 = findFileInput(); fiW = f0 && f0.ownerDocument && f0.ownerDocument.defaultView; } catch {}
+                      let src = ''; let nerede = '';
+                      for (const [ad, w] of [['iframe', fiW], ['popup', pw2], ['top', window.top]]) {
+                        for (const fn of ['csvSablonYukle', 'excelYukle', 'sablonYukle', 'yukle']) { try { if (w && typeof w[fn] === 'function') { src = w[fn].toString(); nerede = ad + '.' + fn; break; } } catch {} }
+                        if (src) break;
+                      }
+                      const clean = src.replace(/https?:\/\/\S+/g, '[url]').replace(/["']/g, '`').replace(/\s+/g, ' ').slice(0, 700);
+                      await log(`ℹ[fnsrc ${nerede || '-'}] ${clean || 'fn-erişilemedi'}`);
                     } catch (e) { await log(`fnsrc: ${(e && e.message) || e}`); }
                   } catch {}
                   // 1) Yükle — Luca "csvSablonYukle" FORM.submit yapıyor (uploadHizliFisAktarimCsvAction.do).
@@ -3007,6 +3014,11 @@
                       const taban = (fdoc && fdoc.location && fdoc.location.href) || (pw && pw.location && pw.location.href) || '';
                       let action = (form && (form.action || (form.getAttribute && form.getAttribute('action')))) || taban;
                       try { action = new fw.URL('uploadHizliFisAktarimCsvAction.do', taban).href; } catch {}
+                      // v1.47.43 TANI: form/iframe kimliği + gizli alanlar
+                      try {
+                        const gizli = []; for (const el of alanlar) { try { if (el.name && (el.type || '').toLowerCase() !== 'file') gizli.push(`${el.name}=${String(el.value == null ? '' : el.value).slice(0, 30)}`); } catch {} }
+                        await log(`ℹ[form] action=${form ? String(form.getAttribute('action') || '').slice(0, 80) : '-'} target=${form ? form.target || '-' : '-'} method=${form ? form.method || '-' : '-'} enctype=${form ? form.enctype || '-' : '-'} · iframeUrl=${String(taban).replace(/^https?:\/\/[^/]+/, '').slice(0, 90)} · alanlar=${gizli.slice(0, 14).join(' ')}`);
+                      } catch {}
                       const resp = await fw.fetch(action, { method: 'POST', body: fd, credentials: 'include' });
                       const html = await resp.text();
                       const rowInd = (html.match(/Sat[ıi]r\s*Say[ıi]s[ıi]\s*:?\s*(\d+)/i) || [])[1];
@@ -3014,10 +3026,26 @@
                       const err = /ge[çc]ersiz|ba[şs]ar[ıi]s[ıi]z|okunama|hatal[ıi]|format\s*hatas/i.test(html);
                       const ozet = html.replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
                       await log(`ℹ fetch-POST → HTTP ${resp.status} ${Math.round(html.length / 1024)}KB · yanıtSatır=${rowInd || '?'} tr=${trc} hata=${err} fname=${fi.name || fi.id || '-'} form=${!!form} iframe=${fw !== pw}`);
-                      if (trc <= 8 || err) await log(`ℹ[yanıt] ${ozet.slice(0, 400)}`);
+                      // v1.47.43 TANI: yanıt metni HER ZAMAN + işaretler (title, checkbox, secim/fisKes, parent/opener çağrıları)
+                      try {
+                        const title = (html.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1] || '';
+                        const cb = (html.match(/type\s*=\s*["']?checkbox/gi) || []).length;
+                        const ustCagri = (html.match(/(?:parent|opener|top)\s*\.\s*[A-Za-z_$][\w$]*\s*\(/g) || []).slice(0, 5).join(' ');
+                        await log(`ℹ[yanıt-işaret] title=${title.replace(/\s+/g, ' ').trim().slice(0, 60)} checkbox=${cb} secim=${/secim/i.test(html)} fisKes=${/fisKes/i.test(html)} script=${(html.match(/<script/gi) || []).length} üstÇağrı=${ustCagri || '-'}`);
+                        await log(`ℹ[yanıt] ${ozet.slice(0, 600)}`);
+                      } catch {}
                       if (resp.status >= 200 && resp.status < 400 && html.length > 500) {
                         const tdoc = fdoc || pw.document;
                         try { tdoc.open(); tdoc.write(html); tdoc.close(); yOk = true; } catch (e2) { await log(`doc.write: ${(e2 && e2.message) || e2}`); }
+                        // v1.47.43 TANI: yazımdan sonra grid gerçekten doldu mu? (popup ana tablo, secim kutuları, fis-aktarim, Satır Sayısı)
+                        try {
+                          await sleep(1500);
+                          let popTr = 0, secim = 0, fisAkt = 0; const docs = lucaDocuments();
+                          try { popTr = pw ? pw.document.querySelectorAll('table tr').length : -1; } catch {}
+                          for (const d of docs) { try { secim += d.querySelectorAll('input.secim, input[name*="secim" i]').length; fisAkt += d.querySelectorAll('.fis-aktarim, [class*="fis-aktarim"]').length; } catch {} }
+                          const popMetin = (() => { try { return ((pw && pw.document.body && pw.document.body.textContent) || '').replace(/\s+/g, ' ').trim(); } catch { return ''; } })();
+                          await log(`ℹ[yazım-sonrası] popupTr=${popTr} secim=${secim} fisAktarim=${fisAkt} satırSayısı=${gridCount()} belgeSayısı=${docs.length} · popupMetin=${popMetin.slice(0, 300)}`);
+                        } catch {}
                       }
                     }
                   } catch (e) { await log(`fetch-POST hata: ${(e && e.message) || e}`); }
@@ -3057,6 +3085,18 @@
                   let liveTr = 0; try { for (const d of lucaDocuments()) { try { liveTr += d.querySelectorAll('table tr').length; } catch {} } } catch {}
                   if (postTr > 8 && liveTr > 0 && liveTr < postTr - 4) ok = true; // Fiş Kes sonrası grid boşaldı
                   await log(`ℹ Fiş Kes sonrası tr=${liveTr} (yükleme tr=${postTr}) · başarı=${ok}`);
+                  // v1.47.43 TANI: Fiş Kes sonrası hangi ekran? (popup URL + metin; en kalabalık belge)
+                  try {
+                    const pw3 = popupWin();
+                    const purl = (() => { try { return String(pw3 && pw3.location.href || '').replace(/^https?:\/\/[^/]+/, '').slice(0, 90); } catch { return '?'; } })();
+                    let enBuyuk = null, enBuyukTr = -1;
+                    for (const d of lucaDocuments()) { try { const n = d.querySelectorAll('table tr').length; if (n > enBuyukTr) { enBuyukTr = n; enBuyuk = d; } } catch {} }
+                    const m1 = (() => { try { return ((pw3 && pw3.document.body && pw3.document.body.textContent) || '').replace(/\s+/g, ' ').trim(); } catch { return ''; } })();
+                    const m2 = (() => { try { return ((enBuyuk && enBuyuk.body && enBuyuk.body.textContent) || '').replace(/\s+/g, ' ').trim(); } catch { return ''; } })();
+                    const u2 = (() => { try { return String(enBuyuk && enBuyuk.location && enBuyuk.location.href || '').replace(/^https?:\/\/[^/]+/, '').slice(0, 90); } catch { return '?'; } })();
+                    await log(`ℹ[fişkes-sonrası] popupUrl=${purl} popupMetin=${m1.slice(0, 350)}`);
+                    await log(`ℹ[fişkes-sonrası] enKalabalık tr=${enBuyukTr} url=${u2} metin=${m2.slice(0, 350)}`);
+                  } catch {}
                   if (ok) {
                     await fetch(API + `/agent/luca/jobs/${job.id}/done`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN }, body: JSON.stringify({ recordCount: p.totalCount || 0 }) }).catch(() => {});
                     setStatus('Luca: İşletme fişi OLUŞTURULDU');
