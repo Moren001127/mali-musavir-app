@@ -740,4 +740,18 @@ export class FaturaMuhasebelestirmeController {
       },
     );
   }
+
+  // ── Birim maliyet bekçisi (2026-09-15) — süreç-genel durum; yalnız SAHİP kaldırabilir ──
+  @Get('ai-bekci')
+  @UseGuards(OwnerOnlyGuard)
+  aiBekciDurumu() {
+    return this.service.aiBekciDurumu();
+  }
+
+  @Post('ai-bekci/devam')
+  @UseGuards(OwnerOnlyGuard)
+  aiBekciDevam() {
+    return this.service.aiBekciDevam();
+  }
+
 }

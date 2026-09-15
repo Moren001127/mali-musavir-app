@@ -12,11 +12,13 @@ import { claudeTextViaMax } from './max-inference';
 import {
   fmTextAi, fmAiSaglayiciSec, openAiMaliyetUsd, geminiMaliyetUsd, anonimlestir, fmAnonimUygulanirMi, kodCitiSoy, geminiDusunmeAyari,
   FM_OPENAI_MODEL_VARSAYILAN, FM_OPENAI_GUCLU_MODEL_VARSAYILAN, FM_GEMINI_MODEL_VARSAYILAN, FM_GEMINI_GUCLU_MODEL_VARSAYILAN,
+  fmAiOnbellekTemizle, fmAiBekciDurumu, fmAiBekciDevam, fmAiDefterBagla, fmAiBaglamIle,
 } from './fm-ai';
 
 const ENV_ANAHTARLARI = [
   'FM_AI_SAGLAYICI', 'FM_AI_GUCLU_SAGLAYICI', 'FM_OPENAI_MODEL', 'FM_OPENAI_GUCLU_MODEL', 'FM_GEMINI_MODEL', 'FM_GEMINI_GUCLU_MODEL',
   'FM_AI_YEDEK', 'FM_AI_ANONIM', 'FM_AI_ANONIM_OKUMA', 'FM_AI_TEKRAR_BEKLEME_MS', 'MOREN_AI_ALLOW_OPENAI_API', 'OPENAI_API_KEY', 'GEMINI_API_KEY',
+  'FM_AI_ONBELLEK_SN', 'FM_AI_BEKCI', 'FM_AI_BEKCI_KAT', 'FM_AI_BEKCI_DURAKLAT_DK', 'FM_AI_BEKCI_TEK_TOKEN', 'FM_AI_BEKCI_NORMAL_USD', 'MOREN_OWNER_TENANT_SLUG',
 ];
 const eskiEnv: Record<string, string | undefined> = {};
 const gercekFetch = (globalThis as any).fetch;
@@ -40,6 +42,9 @@ beforeEach(() => {
   for (const k of ENV_ANAHTARLARI) { eskiEnv[k] = process.env[k]; delete process.env[k]; }
   process.env.FM_AI_TEKRAR_BEKLEME_MS = '0';
   (claudeTextViaMax as jest.Mock).mockClear();
+  fmAiOnbellekTemizle();
+  fmAiBekciDevam();
+  fmAiDefterBagla(null);
 });
 afterEach(() => {
   for (const k of ENV_ANAHTARLARI) { if (eskiEnv[k] === undefined) delete process.env[k]; else process.env[k] = eskiEnv[k]; }
@@ -63,7 +68,7 @@ describe('fm-ai — sağlayıcı seçimi', () => {
     expect(fmAiSaglayiciSec('sinifGuclu', 'claude-sonnet-4-6', { FM_AI_GUCLU_SAGLAYICI: 'openai' } as any)).toEqual({ saglayici: 'openai', model: FM_OPENAI_GUCLU_MODEL_VARSAYILAN, guclu: true });
     expect(fmAiSaglayiciSec('sinifGuclu', 'claude-sonnet-4-6', { FM_AI_GUCLU_SAGLAYICI: 'gemini', FM_GEMINI_GUCLU_MODEL: 'gemini-3-flash-preview' } as any)).toEqual({ saglayici: 'gemini', model: 'gemini-3-flash-preview', guclu: true });
   });
-  it('FM_AI_SAGLAYICI=gemini → gemini-3.8-flash (hızlı) / gemini-3-flash-preview (güçlü)', () => {
+  it('FM_AI_SAGLAYICI=gemini → gemini-3.1-flash-lite (hızlı) / gemini-3.8-flash (güçlü) — 2026-09-15 ucuz model koda sabit', () => {
     const env: any = { FM_AI_SAGLAYICI: 'gemini' };
     expect(fmAiSaglayiciSec('sinif', 'claude-haiku-4-5-20251001', env)).toEqual({ saglayici: 'gemini', model: FM_GEMINI_MODEL_VARSAYILAN, guclu: false });
     expect(fmAiSaglayiciSec('okuma', undefined, env).model).toBe(FM_GEMINI_GUCLU_MODEL_VARSAYILAN);
@@ -78,10 +83,10 @@ describe('fm-ai — maliyet', () => {
     expect(openAiMaliyetUsd('gpt-4.1-mini', 1_000_000, 0)).toBeCloseTo(0.4, 6);
     expect(openAiMaliyetUsd('gpt-5-super', 1_000_000, 1_000_000)).toBe(0);
   });
-  it('Gemini: flash-lite 0.10/0.40, flash 0.30/2.50, bilinmeyen 0', () => {
-    expect(geminiMaliyetUsd('gemini-3.1-flash-lite', 1_000_000, 1_000_000)).toBeCloseTo(0.5, 6);
-    expect(geminiMaliyetUsd('gemini-2.5-flash-lite', 1000, 1000)).toBeCloseTo(0.0005, 6);
-    expect(geminiMaliyetUsd('gemini-3-flash-preview', 1_000_000, 1_000_000)).toBeCloseTo(2.8, 6);
+  it('Gemini: flash-lite 0.25/1.50, flash 0.75/3.75 (Google resmî fiyat 2026-09-15), bilinmeyen 0', () => {
+    expect(geminiMaliyetUsd('gemini-3.1-flash-lite', 1_000_000, 1_000_000)).toBeCloseTo(1.75, 6);
+    expect(geminiMaliyetUsd('gemini-2.5-flash-lite', 1000, 1000)).toBeCloseTo(0.00175, 6);
+    expect(geminiMaliyetUsd('gemini-3-flash-preview', 1_000_000, 1_000_000)).toBeCloseTo(4.5, 6);
     expect(geminiMaliyetUsd('gemini-3-pro', 1_000_000, 1_000_000)).toBe(0);
   });
 });
@@ -246,9 +251,9 @@ describe('fm-ai — fmTextAi (fetch sahte)', () => {
     const f = jest.fn(async () => jsonYanit(200, geminiGovde('```json\n{"kategori":"pazarlama"}\n```')));
     (globalThis as any).fetch = f;
     const r = await fmTextAi({ prompt: 'sınıfla', system: 'SYS', model: 'claude-haiku-4-5-20251001', amac: 'sinif', images: [{ base64: 'B'.repeat(200), mediaType: 'image/jpeg' }] });
-    expect(r).toEqual({ ok: true, text: '{"kategori":"pazarlama"}', model: 'gemini-3.8-flash', costUsd: geminiMaliyetUsd('gemini-3.8-flash', 1000, 200) });
+    expect(r).toEqual({ ok: true, text: '{"kategori":"pazarlama"}', model: 'gemini-3.8-flash', costUsd: geminiMaliyetUsd('gemini-3.8-flash', 1000, 200) }); // sahte yanıt modelVersion=gemini-3.8-flash
     const [url, init] = (f as jest.Mock).mock.calls[0];
-    expect(url).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent');
+    expect(url).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent'); // varsayılan ucuz model (2026-09-15)
     expect(url).not.toContain('gm-test'); // anahtar URL'de taşınmaz
     expect(init.headers['x-goog-api-key']).toBe('gm-test');
     const body = JSON.parse(init.body);
@@ -260,13 +265,13 @@ describe('fm-ai — fmTextAi (fetch sahte)', () => {
     expect(claudeTextViaMax).not.toHaveBeenCalled();
   });
 
-  it('gemini: 503 → tekrar → yine 503 → Max yedeği; güçlü tur (okuma, model undefined) gemini-3-flash-preview', async () => {
+  it('gemini: 503 → tekrar → yine 503 → Max yedeği; güçlü tur (okuma, model undefined) gemini-3.8-flash', async () => {
     process.env.FM_AI_SAGLAYICI = 'gemini'; process.env.GEMINI_API_KEY = 'gm-test';
     const f = jest.fn(async () => jsonYanit(503, { error: { message: 'overloaded' } }));
     (globalThis as any).fetch = f;
     const r = await fmTextAi({ prompt: 'oku', amac: 'okuma', model: undefined });
     expect(f).toHaveBeenCalledTimes(2);
-    expect((f as jest.Mock).mock.calls[0][0]).toContain('gemini-3-flash-preview');
+    expect((f as jest.Mock).mock.calls[0][0]).toContain('gemini-3.8-flash');
     expect(claudeTextViaMax).toHaveBeenCalledTimes(1);
     expect(r.text.startsWith('MAX:')).toBe(true);
   });
@@ -290,5 +295,156 @@ describe('fm-ai — fmTextAi (fetch sahte)', () => {
     const r = await fmTextAi({ prompt: '   ', amac: 'sinif' });
     expect(r.ok).toBe(false);
     expect(f).not.toHaveBeenCalled();
+  });
+});
+
+describe('fm-ai — önbellek / defter / birim maliyet bekçisi (2026-09-15)', () => {
+  const geminiHazirla = () => { process.env.FM_AI_SAGLAYICI = 'gemini'; process.env.GEMINI_API_KEY = 'gm-test'; };
+
+  it('birebir aynı çağrı 15 dk içinde sağlayıcıya gitmez (fetch 1 kez); model anahtara girer (güçlü tur ayrı)', async () => {
+    geminiHazirla();
+    const f = jest.fn(async () => jsonYanit(200, geminiGovde('{"k":1}', 'gemini-3.1-flash-lite')));
+    (globalThis as any).fetch = f;
+    const r1 = await fmTextAi({ prompt: 'aynı soru', amac: 'sinif', model: 'claude-haiku-4-5-20251001' });
+    const r2 = await fmTextAi({ prompt: 'aynı soru', amac: 'sinif', model: 'claude-haiku-4-5-20251001' });
+    expect(f).toHaveBeenCalledTimes(1);
+    expect(r2.text).toBe(r1.text);
+    // güçlü model istenince (model undefined) anahtar farklı → yeni çağrı
+    await fmTextAi({ prompt: 'aynı soru', amac: 'sinif', model: undefined });
+    expect(f).toHaveBeenCalledTimes(2);
+    // görsel farkı anahtara girer
+    await fmTextAi({ prompt: 'aynı soru', amac: 'sinif', model: 'claude-haiku-4-5-20251001', images: [{ base64: 'A'.repeat(200), mediaType: 'image/jpeg' }] });
+    await fmTextAi({ prompt: 'aynı soru', amac: 'sinif', model: 'claude-haiku-4-5-20251001', images: [{ base64: 'B'.repeat(200), mediaType: 'image/jpeg' }] });
+    expect(f).toHaveBeenCalledTimes(4);
+  });
+
+  it('FM_AI_ONBELLEK_SN=0 → önbellek kapalı; başarısız yanıt önbelleğe girmez', async () => {
+    geminiHazirla();
+    process.env.FM_AI_ONBELLEK_SN = '0';
+    const f = jest.fn(async () => jsonYanit(200, geminiGovde('{"k":2}', 'gemini-3.1-flash-lite')));
+    (globalThis as any).fetch = f;
+    await fmTextAi({ prompt: 'q', amac: 'yorum', model: 'claude-haiku-4-5-20251001' });
+    await fmTextAi({ prompt: 'q', amac: 'yorum', model: 'claude-haiku-4-5-20251001' });
+    expect(f).toHaveBeenCalledTimes(2);
+    delete process.env.FM_AI_ONBELLEK_SN;
+    process.env.FM_AI_YEDEK = 'off';
+    const g = jest.fn(async () => jsonYanit(200, geminiGovde('', 'gemini-3.1-flash-lite')));
+    (globalThis as any).fetch = g;
+    const r = await fmTextAi({ prompt: 'bos', amac: 'yorum', model: 'claude-haiku-4-5-20251001' });
+    expect(r.ok).toBe(false);
+    await fmTextAi({ prompt: 'bos', amac: 'yorum', model: 'claude-haiku-4-5-20251001' });
+    expect(g).toHaveBeenCalledTimes(2);
+  });
+
+  it('defter: her çağrı ai_usage_logs\'a fm-<amaç> kaynağı, gerçek maliyet ve bağlam kimliğiyle yazılır; önbellek isabeti cacheHit', async () => {
+    geminiHazirla();
+    const create = jest.fn(async (_a: any) => ({}));
+    fmAiDefterBagla({ aiUsageLog: { create }, notification: { create: jest.fn(async () => ({})) } });
+    (globalThis as any).fetch = jest.fn(async () => jsonYanit(200, geminiGovde('{"k":3}', 'gemini-3.1-flash-lite', 2000, 300)));
+    await fmAiBaglamIle({ tenantId: 't1', taxpayerId: 'tp1', belgeNo: 'ABC2026000000001', kaynak: 'kuyruk:AI_READ' }, () =>
+      fmTextAi({ prompt: 'defter', amac: 'okuma', model: 'claude-haiku-4-5-20251001' }));
+    await new Promise((r) => setTimeout(r, 5));
+    expect(create).toHaveBeenCalledTimes(1);
+    const d = (create.mock.calls[0] as any[])[0].data;
+    expect(d.tenantId).toBe('t1'); expect(d.taxpayerId).toBe('tp1'); expect(d.belgeNo).toBe('ABC2026000000001');
+    expect(d.source).toBe('fm-okuma'); expect(d.model).toBe('gemini:gemini-3.1-flash-lite');
+    expect(d.inputTokens).toBe(2000); expect(d.outputTokens).toBe(300);
+    expect(d.costUsd).toBeCloseTo(geminiMaliyetUsd('gemini-3.1-flash-lite', 2000, 300), 6);
+    expect(d.cacheHit).toBe(false);
+    await fmAiBaglamIle({ tenantId: 't1' }, () => fmTextAi({ prompt: 'defter', amac: 'okuma', model: 'claude-haiku-4-5-20251001' }));
+    await new Promise((r) => setTimeout(r, 5));
+    expect(create).toHaveBeenCalledTimes(2);
+    expect((create.mock.calls[1] as any[])[0].data.cacheHit).toBe(true);
+    expect((create.mock.calls[1] as any[])[0].data.costUsd).toBe(0);
+  });
+
+  it('bekçi: 30 çağrının ortalaması normalin 4 katını aşınca duraklatır + bildirim; toplam hacim tek başına durdurmaz; devam/off', async () => {
+    geminiHazirla();
+    process.env.FM_AI_ONBELLEK_SN = '0';
+    const bildirim = jest.fn(async (_a: any) => ({}));
+    fmAiDefterBagla({ aiUsageLog: { create: jest.fn(async () => ({})) }, notification: { create: bildirim }, tenant: { findFirst: async () => ({ id: 'tenant-1' }) } });
+    // NORMAL: 100 ucuz çağrı (hacim büyük ama birim maliyet normal) → durmaz
+    (globalThis as any).fetch = jest.fn(async () => jsonYanit(200, geminiGovde('{"k":4}', 'gemini-3.1-flash-lite', 1500, 120)));
+    for (let i = 0; i < 100; i++) await fmTextAi({ prompt: `normal ${i}`, amac: 'yorum', model: 'claude-haiku-4-5-20251001' });
+    expect(fmAiBekciDurumu().durduruldu).toBe(false);
+    // ANORMAL: pahalı model + dev prompt (45k token) → 30 çağrıda durur
+    (globalThis as any).fetch = jest.fn(async () => jsonYanit(200, geminiGovde('{"k":5}', 'gemini-3.8-flash', 45000, 400)));
+    for (let i = 0; i < 30; i++) await fmTextAi({ prompt: `pahalı ${i}`, amac: 'yorum', model: 'claude-haiku-4-5-20251001' });
+    const d = fmAiBekciDurumu();
+    expect(d.durduruldu).toBe(true);
+    expect(String(d.neden)).toMatch(/birim maliyet|pahalı model/);
+    await new Promise((r) => setTimeout(r, 5));
+    expect(bildirim).toHaveBeenCalledTimes(1);
+    expect((bildirim.mock.calls[0] as any[])[0].data.type).toBe('AI_COST_LIMIT');
+    expect((bildirim.mock.calls[0] as any[])[0].data.tenantId).toBe('tenant-1'); // slug değil, gerçek id
+    // tekil çağrılar durmaz (yalnız kuyruk/süpürme bakar)
+    const r = await fmTextAi({ prompt: 'tekil', amac: 'yorum', model: 'claude-haiku-4-5-20251001' });
+    expect(r.ok).toBe(true);
+    fmAiBekciDevam();
+    expect(fmAiBekciDurumu().durduruldu).toBe(false);
+    // FM_AI_BEKCI=off → hiç durmaz
+    process.env.FM_AI_BEKCI = 'off';
+    for (let i = 0; i < 40; i++) await fmTextAi({ prompt: `off ${i}`, amac: 'yorum', model: 'claude-haiku-4-5-20251001' });
+    expect(fmAiBekciDurumu().durduruldu).toBe(false);
+  });
+
+  it('bekçi: düşünme (thinking) toplu açıksa durdurur (kural 3); FM_AI_BEKCI=log kipinde durdurmaz ama sayar', async () => {
+    geminiHazirla();
+    process.env.FM_AI_ONBELLEK_SN = '0';
+    const dusunmeliGovde = (i: number) => ({ ...geminiGovde(`{"k":${i}}`, 'gemini-3.1-flash-lite', 1500, 120), usageMetadata: { promptTokenCount: 1500, candidatesTokenCount: 120, thoughtsTokenCount: 900 } });
+    let i = 0;
+    (globalThis as any).fetch = jest.fn(async () => jsonYanit(200, dusunmeliGovde(i++)));
+    for (let n = 0; n < 30; n++) await fmTextAi({ prompt: `d ${n}`, amac: 'yorum', model: 'claude-haiku-4-5-20251001' });
+    const d = fmAiBekciDurumu();
+    expect(d.durduruldu).toBe(true);
+    expect(String(d.neden)).toMatch(/düşünme|birim maliyet/);
+    fmAiBekciDevam();
+    process.env.FM_AI_BEKCI = 'log';
+    for (let n = 0; n < 30; n++) await fmTextAi({ prompt: `l ${n}`, amac: 'yorum', model: 'claude-haiku-4-5-20251001' });
+    const d2 = fmAiBekciDurumu();
+    expect(d2.durduruldu).toBe(false);
+    expect(d2.sayac).toBeGreaterThanOrEqual(1);
+  });
+
+  it('bekçi: 10 belgelik parti çağrısı belge başına ölçülür (bekciBirim) → meşru dolu partiler durdurmaz', async () => {
+    geminiHazirla();
+    process.env.FM_AI_ONBELLEK_SN = '0';
+    // parti: 18k giriş + 2k çıkış ≈ 0,0075$ / çağrı → belge başına 0,00075$ (normal sinif 0,0012) → durmaz
+    (globalThis as any).fetch = jest.fn(async () => jsonYanit(200, geminiGovde('[]', 'gemini-3.1-flash-lite', 18000, 2000)));
+    for (let n = 0; n < 40; n++) await fmTextAi({ prompt: `parti ${n}`, amac: 'sinif', model: 'claude-haiku-4-5-20251001', bekciBirim: 10 });
+    expect(fmAiBekciDurumu().durduruldu).toBe(false);
+    // aynı çağrı tek belge sayılsaydı (birim yok) 0,0075 > 4×0,0012 → dururdu
+    for (let n = 0; n < 30; n++) await fmTextAi({ prompt: `tek ${n}`, amac: 'sinif', model: 'claude-haiku-4-5-20251001' });
+    expect(fmAiBekciDurumu().durduruldu).toBe(true);
+  });
+
+  it('bekçi: sahip Railway\'de bilerek pahalı hızlı model seçtiyse (FM_GEMINI_MODEL=3.8-flash) pahalı-model kuralı uygulanmaz, normal 3× ölçeklenir', async () => {
+    geminiHazirla();
+    process.env.FM_AI_ONBELLEK_SN = '0';
+    process.env.FM_GEMINI_MODEL = 'gemini-3.8-flash';
+    (globalThis as any).fetch = jest.fn(async () => jsonYanit(200, geminiGovde('{"k":1}', 'gemini-3.8-flash', 1700, 130)));
+    for (let n = 0; n < 35; n++) await fmTextAi({ prompt: `pahalı-ayar ${n}`, amac: 'yorum', model: 'claude-haiku-4-5-20251001' });
+    expect(fmAiBekciDurumu().durduruldu).toBe(false);
+  });
+
+  it('onbellek:false → aynı çağrı yeniden sağlayıcıya gider (okuma 2. denemesi); fiyat env "0.30,2.00" okunur, bozuk env varsayılan', async () => {
+    geminiHazirla();
+    const f = jest.fn(async () => jsonYanit(200, geminiGovde('{"k":9}', 'gemini-3.1-flash-lite')));
+    (globalThis as any).fetch = f;
+    await fmTextAi({ prompt: 'tekrar', amac: 'okuma', model: 'claude-haiku-4-5-20251001' });
+    await fmTextAi({ prompt: 'tekrar', amac: 'okuma', model: 'claude-haiku-4-5-20251001', onbellek: false });
+    await fmTextAi({ prompt: 'tekrar', amac: 'okuma', model: 'claude-haiku-4-5-20251001' });
+    expect(f).toHaveBeenCalledTimes(2); // 1: gerçek, 2: onbellek:false gerçek, 3: isabet
+    // fiyat tablosu modül yüklenirken okunur → burada yalnız çift ayrıştırıcıyı dolaylı doğrula: bozuk env ile maliyet yine > 0
+    expect(geminiMaliyetUsd('gemini-3.1-flash-lite', 1000, 1000)).toBeGreaterThan(0);
+  });
+
+  it('bekçi: sinifGuclu amacında güçlü model normaldir (pahalı-model kuralı uygulanmaz)', async () => {
+    geminiHazirla();
+    process.env.FM_AI_ONBELLEK_SN = '0';
+    process.env.FM_AI_GUCLU_SAGLAYICI = 'gemini';
+    (globalThis as any).fetch = jest.fn(async () => jsonYanit(200, geminiGovde('[]', 'gemini-3.8-flash', 5000, 200)));
+    for (let i = 0; i < 35; i++) await fmTextAi({ prompt: `guclu ${i}`, amac: 'sinifGuclu', model: undefined });
+    expect(fmAiBekciDurumu().durduruldu).toBe(false);
   });
 });

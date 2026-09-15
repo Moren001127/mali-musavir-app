@@ -3,6 +3,7 @@ import { Cron, Interval } from '@nestjs/schedule';
 import { hostname } from 'os';
 import { PrismaService } from '../prisma/prisma.service';
 import { BelgeKuyrukGirdisi, BelgeKuyrukKancasi, FaturaMuhasebelestirmeService } from './fatura-muhasebelestirme.service';
+import { fmAiBaglamIle, fmAiBekciDurumu } from '../common/fm-ai';
 
 /**
  * KALICI BELGE KUYRUĞU — Fatura Merkezi (2026-09-13)
@@ -39,6 +40,8 @@ export const GECE_KUYRUK_CRON = '0 45 3 * * *';
 export const BAYAT_KILIT_MS = 15 * 60 * 1000;
 /** Açılış kurtarması gecikmesi: rolling deploy örtüşmesi bitsin diye (eski süreç bu arada işini bitirirse DONE yazar, dokunulmaz). */
 export const ACILIS_KURTARMA_GECIKME_MS = 2 * 60 * 1000;
+/** Açılış kurtarmasında bu süreden TAZE kilitler (eski süreç hâlâ işliyor olabilir) geri alınmaz. Env: KUYRUK_ACILIS_TAZE_KILIT_SN (180). */
+export const ACILIS_TAZE_KILIT_MS = Math.max(0, Number(process.env.KUYRUK_ACILIS_TAZE_KILIT_SN ?? 180) || 180) * 1000;
 export const MAX_DENEME = 3;
 export const GECE_TAVAN = 400;
 export const ISCI_TIK_MS = 5000;
@@ -103,8 +106,13 @@ export class BelgeKuyrukService implements OnModuleInit, BelgeKuyrukKancasi {
 
   /** Başka süreçte kilitli kalmış RUNNING işleri PENDING'e al (deploy/çökme). @returns kurtarılan sayısı */
   async acilisKurtar(surecBaslangici: Date = this.surecBaslangici): Promise<number> {
+    // YAYIN ÖRTÜŞMESİ (2026-09-15 Gemini maliyet incelemesi): Railway yeni süreci açarken eski süreç işini bitiriyor olabilir;
+    //   açılışta TAZE kilitli (son ACILIS_TAZE_KILIT_MS) işleri geri almak aynı belgeyi iki kez Gemini'ye okutuyordu
+    //   (sabah 30+ yayında aynı 5 belge 3 kez okundu). Taze kilit eski sürece bırakılır; gerçekten yarım kalanı 15 dk
+    //   bayat-kilit kurtarması alır.
+    const esik = new Date(Math.min(surecBaslangici.getTime(), Date.now() - ACILIS_TAZE_KILIT_MS));
     const r = await this.db.invoiceProcessingJob.updateMany({
-      where: { status: 'RUNNING', lockedBy: { not: this.instanceId }, lockedAt: { lt: surecBaslangici } },
+      where: { status: 'RUNNING', lockedBy: { not: this.instanceId }, lockedAt: { lt: esik } },
       data: { status: 'PENDING', lockedBy: null, lockedAt: null, startedAt: null, lastError: 'deploy: önceki süreç yarım bıraktı — açılışta yeniden kuyruğa alındı' },
     }).catch(() => ({ count: 0 }));
     const n = Number(r?.count || 0);
@@ -237,6 +245,9 @@ export class BelgeKuyrukService implements OnModuleInit, BelgeKuyrukKancasi {
 
   // ── İŞÇİ ────────────────────────────────────────────────────────────────────────────────────────
 
+  /** Bekçi duraklatma logu en çok 5 dk'da bir. */
+  private bekciSonLog = 0;
+
   @Interval(ISCI_TIK_MS)
   async isciTik() {
     if (!this.isciAcik) return;
@@ -249,6 +260,13 @@ export class BelgeKuyrukService implements OnModuleInit, BelgeKuyrukKancasi {
     this.tikCalisiyor = true;
     try {
       const kurtarilan = await this.bayatKilitleriKurtar().catch((e: any) => { this.logger.warn(`[KUYRUK] bayat kilit kurtarma hatası: ${e?.message || e}`); return 0; });
+      // BİRİM MALİYET BEKÇİSİ (2026-09-15): anormal harcama tespit edildiyse yeni iş ALINMAZ — belgeler PENDING kalır
+      //   (FAILED/72 saat kilidine düşmez), süre dolunca ya da sahip "devam" deyince kaldığı yerden sürer.
+      const bekci = fmAiBekciDurumu();
+      if (bekci.durduruldu) {
+        if (Date.now() - this.bekciSonLog > 300000) { this.bekciSonLog = Date.now(); this.logger.warn(`[KUYRUK] AI bekçisi duraklattı — iş alınmıyor (${bekci.neden}; bitiş ${bekci.bitis ? new Date(bekci.bitis).toISOString() : '-'})`); }
+        return { baslatilanOkuma: 0, baslatilanParti: 0, kurtarilan };
+      }
       const ayar = kuyrukAyarlari();
       let baslatilanOkuma = 0; let baslatilanParti = 0;
       while (this.aktifOkuma < ayar.okumaEszamanli) {
@@ -347,6 +365,10 @@ export class BelgeKuyrukService implements OnModuleInit, BelgeKuyrukKancasi {
 
   /** (d)+(e) Partiyi işle, her işi DONE/FAILED yaz. */
   private async isle(kind: KuyrukTuru, tenantId: string, taxpayerId: string | null, isler: Is[]) {
+    return fmAiBaglamIle({ tenantId, taxpayerId: taxpayerId || undefined, kaynak: `kuyruk:${kind}` }, () => this.isleGovde(kind, tenantId, taxpayerId, isler));
+  }
+
+  private async isleGovde(kind: KuyrukTuru, tenantId: string, taxpayerId: string | null, isler: Is[]) {
     const t0 = Date.now();
     const byDoc = new Map<string, Is>();
     for (const i of isler) byDoc.set(i.documentId, i);

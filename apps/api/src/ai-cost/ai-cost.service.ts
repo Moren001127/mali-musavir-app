@@ -21,6 +21,12 @@ const SOURCE_LABELS: Record<string, string> = {
   'mihsap-isletme': 'Fatura İşleme',
   'mihsap-isletme-cheap': 'Fatura İşleme',
   'mihsap-isletme-cheap-max': 'Fatura İşleme',
+  // Fatura Merkezi Gemini/OpenAI çağrıları (fm-ai.ts defteri, 2026-09-15)
+  'fm-okuma': 'Fatura Merkezi (AI)',
+  'fm-kalem': 'Fatura Merkezi (AI)',
+  'fm-sinif': 'Fatura Merkezi (AI)',
+  'fm-sinifGuclu': 'Fatura Merkezi (AI)',
+  'fm-yorum': 'Fatura Merkezi (AI)',
   'kdv-ocr': 'KDV Kontrol (OCR)',
   'kdv-content-audit': 'KDV Kontrol (OCR)',
   'moren-ai': 'Moren AI (Sohbet)',

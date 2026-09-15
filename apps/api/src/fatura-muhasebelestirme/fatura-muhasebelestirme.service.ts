@@ -12,7 +12,7 @@ import { EarsivRenderService } from '../earsiv/earsiv-render.service';
 import { encrypt, tryDecrypt } from '../common/crypto';
 import { MAX_MODEL_CHEAP, MAX_MODEL_DEFAULT } from '../common/max-inference';
 // 2026-09-15: FM AI çağrıları (okuma/kalem/sınıf/yorum) tek kapıdan — FM_AI_SAGLAYICI=openai → gpt-4o-mini, boş → Max (bugünkü yol).
-import { fmTextAi } from '../common/fm-ai';
+import { fmTextAi, fmAiBaglamIle, fmAiBaglamGuncelle, fmAiBaglamOku, fmAiDefterBagla, fmAiBekciDurumu, fmAiBekciDevam, FmAiBaglam } from '../common/fm-ai';
 import { saticiHafizasiKarari, HafizaOrnegi, SaticiHafizasiKarari, saticiHafizasiModu } from './satici-hafizasi';
 import { buildLucaImportExcel, buildLucaIsletmeHizliFisCsv } from './luca-excel.service';
 import { reconcileMatrahSplit } from './kalem-split';
@@ -661,7 +661,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // ipucu: belge-bazlı kelime kuralı ipucu (PLAN/15 Faz 1-B) — parti anahtarına GİRMEZ (partiler bölünmesin), belge bloğuna yazılır.
     items: Array<{ contentText: string; resolve: (v: ClassifyResult | null) => void; ipucu?: string; hafizaIpucu?: string }>;
     timer: NodeJS.Timeout | null;
-    shared: { mukellefBilgi: string; isIsletme: boolean; invoiceKind?: 'ALIS' | 'SATIS'; planAdaylar?: string; planKodlari?: Set<string>; strong?: boolean };
+    shared: { mukellefBilgi: string; isIsletme: boolean; invoiceKind?: 'ALIS' | 'SATIS'; planAdaylar?: string; planKodlari?: Set<string>; baglam?: FmAiBaglam; strong?: boolean };
   }>();
   private readonly uploadOcrActiveIds = new Set<string>(); // işlenmekte olan belge id'leri (resume çift-işlemesin)
   private ocrResumeTimer: NodeJS.Timeout | null = null;
@@ -702,7 +702,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     private readonly moduleRef: ModuleRef,
   ) {}
 
+  /** Birim maliyet bekçisi durumu (panel/teşhis). */
+  aiBekciDurumu() { return fmAiBekciDurumu(); }
+  /** Sahip "devam et" dedi → duraklatma kalkar. */
+  aiBekciDevam() { fmAiBekciDevam(); return fmAiBekciDurumu(); }
+
   onModuleInit() {
+    // FM AI kalıcı defteri (2026-09-15): her Gemini/OpenAI çağrısı ai_usage_logs'a yazılır (panel AI kutusu FM'yi görür).
+    try { fmAiDefterBagla(this.prisma); } catch { /* defter zorunlu değil */ }
     // AKTAR → OKU kancası (2026-09-15): GİB e-Arşiv portal aktarımı da (portal-automation) e-Fatura gibi otomatik okumaya girsin.
     try {
       this.portalAutomation.setAktarSonrasiOkumaKancasi((tenantId, ids, kaynak) => this.aktarSonrasiOkumaKuyruga(tenantId, ids, kaynak));
@@ -3634,6 +3641,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   private richSweepBusy = new Set<string>();
   private async sweepRichYorum(tenantId: string) {
     if (this.richSweepBusy.has(tenantId)) return;
+    // Birim maliyet bekçisi duraklattıysa (anormal harcama) süpürme de bekler — belge kaybı yok, sonra kaldığı yerden.
+    if (fmAiBekciDurumu().durduruldu) return;
     this.richSweepBusy.add(tenantId);
     try {
       const docs: any[] = await (this.prisma as any).invoiceAccountingDocument.findMany({
@@ -3659,7 +3668,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const isci = async () => {
         while (!durdu) {
           // Okuma kuyruğuna yeni iş geldiyse ona yol ver — süpürme sonraki tetikte devam eder.
-          if (this.uploadOcrQueue.length || this.uploadOcrActive) { durdu = true; break; }
+          if (this.uploadOcrQueue.length || this.uploadOcrActive || fmAiBekciDurumu().durduruldu) { durdu = true; break; }
           const i = idx++;
           if (i >= bekleyen.length) break;
           await this.generateRichMuhasebeNeden(tenantId, bekleyen[i].id, true).catch(() => {});
@@ -15241,6 +15250,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
    *   (kalem-pdf.ts) — taraf/yön/tutar yine XML'den. FM_KALEM_PDF=off kapatır.
    */
   async aiReadDocument(tenantId: string, documentId: string) {
+    // FM AI bağlamı (2026-09-15): defter/log satırı için tenant + mükellef + belge kimliği zincir boyunca taşınır.
+    return fmAiBaglamIle({ tenantId, belgeNo: documentId, kaynak: fmAiBaglamOku().kaynak || 'okuma' }, () => this.aiReadDocumentGovde(tenantId, documentId));
+  }
+
+  private async aiReadDocumentGovde(tenantId: string, documentId: string) {
     const d = await (this.prisma as any).invoiceAccountingDocument.findFirst({
       where: { tenantId, id: documentId },
       // sellerVkn/buyerVkn (2026-09-13 doğrulayıcı bulgusu): öğrenme hızlı yolu + işletme hafızası bu okuma yolunda d.sellerVkn/buyerVkn
@@ -15249,6 +15263,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     });
     if (!d) throw new NotFoundException('Belge bulunamadı');
     if (d.status === 'APPROVED') return { ok: false, reason: 'onaylı' };
+    fmAiBaglamGuncelle({ taxpayerId: d.taxpayerId || undefined, belgeNo: d.belgeNo || documentId });
 
     // Belge içeriğini fileUrl mantığıyla getir — Mihsap CDN indirme + XML→HTML render
     // ORADA çalışıyor (belge görüntüsü açılıyor). Eski özel indirme yolu "dosya yok"
@@ -15602,10 +15617,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   eskale eden İKİ-AŞAMALI okuma — güven-skoruyla.)
       const model = attempt >= 3 ? undefined : MAX_MODEL_CHEAP; // 3. deneme: Sonnet (varsayılan)
       // 2026-09-15: fmTextAi (amac=okuma) — OpenAI'de model env'den; 3. deneme (model=undefined=Sonnet) güçlü OpenAI modeli.
+      // onbellek: yalnız 1. denemede — 2. deneme "aynı soruyu tekrar sor" demektir, önceki (çözülemeyen) cevabı geri almak istemeyiz.
       const res = await fmTextAi(
         (isImage && !useAzureText)
-          ? { prompt: callPrompt, images: [{ base64: imgBuf!.toString('base64'), mediaType: imgMedia }], timeoutMs: 75000, model, amac: 'okuma' }
-          : { prompt: callPrompt, timeoutMs: 85000, model, amac: 'okuma' },
+          ? { prompt: callPrompt, images: [{ base64: imgBuf!.toString('base64'), mediaType: imgMedia }], timeoutMs: 75000, model, amac: 'okuma', onbellek: attempt === 1 }
+          : { prompt: callPrompt, timeoutMs: 85000, model, amac: 'okuma', onbellek: attempt === 1 },
       );
       if (!res.ok || !res.text) {
         reason = res.error || 'okunamadı';
@@ -16329,7 +16345,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   "uyumsuz dönen=0" → tek-tek fallback (10 ayrı çağrı) sarmalına giriyordu. Tavan 300 sn (MAX_CLASSIFY_BATCH_TIMEOUT_MS).
       const tmo = Math.min(this.classifyTimeoutMs + n * 15000, Math.max(140000, Number(process.env.MAX_CLASSIFY_BATCH_TIMEOUT_MS || 300000)));
       // 2026-09-15: fmTextAi — toplu sınıflandırma (amac=sinif); Sonnet ikinci turu (strong) amac=sinifGuclu (FM_AI_GUCLU_SAGLAYICI).
-      res = await fmTextAi({ prompt, timeoutMs: strong ? Math.min(tmo + 40000, 200000) : tmo, model: strong ? MAX_MODEL_DEFAULT : MAX_MODEL_CHEAP, amac: strong ? 'sinifGuclu' : 'sinif' }).catch(() => null);
+      res = await fmTextAi({ prompt, timeoutMs: strong ? Math.min(tmo + 40000, 200000) : tmo, model: strong ? MAX_MODEL_DEFAULT : MAX_MODEL_CHEAP, amac: strong ? 'sinifGuclu' : 'sinif', bekciBirim: contents.length }).catch(() => null);
     } finally {
       releaseSlot();
     }
@@ -16378,7 +16394,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     return new Promise<ClassifyResult | null>((resolve) => {
       let buf = this.classifyBatchBuffers.get(key);
       if (!buf) {
-        buf = { items: [], timer: null, shared: { mukellefBilgi, isIsletme, invoiceKind, planAdaylar, planKodlari: ek?.planKodlari, strong } };
+        buf = { items: [], timer: null, shared: { mukellefBilgi, isIsletme, invoiceKind, planAdaylar, planKodlari: ek?.planKodlari, strong, baglam: fmAiBaglamOku() } };
         this.classifyBatchBuffers.set(key, buf);
       }
       if (!buf.shared.planKodlari && ek?.planKodlari) buf.shared.planKodlari = ek.planKodlari;
@@ -16396,6 +16412,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   private async flushClassifyBatch(key: string): Promise<void> {
     const buf = this.classifyBatchBuffers.get(key);
     if (!buf || !buf.items.length) return;
+    const b: FmAiBaglam = { ...(buf.shared.baglam || {}), belgeNo: undefined, kaynak: (buf.shared.baglam?.kaynak || 'sinif') };
+    return fmAiBaglamIle(b, () => this.flushClassifyBatchGovde(key, buf));
+  }
+
+  private async flushClassifyBatchGovde(key: string, buf: NonNullable<ReturnType<FaturaMuhasebelestirmeService['classifyBatchBuffers']['get']>>): Promise<void> {
     this.classifyBatchBuffers.delete(key); // bu partiyi sahiplen (yeni gelenler ayrı partiye)
     if (buf.timer) { clearTimeout(buf.timer); buf.timer = null; }
     const items = buf.items;
@@ -16710,10 +16731,19 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     docId: string,
     force = false,
   ): Promise<{ ok: boolean; neden: string; zengin: boolean; denetim?: any }> {
+    return fmAiBaglamIle({ tenantId, belgeNo: docId, kaynak: fmAiBaglamOku().kaynak || 'yorum' }, () => this.generateRichMuhasebeNedenGovde(tenantId, docId, force));
+  }
+
+  private async generateRichMuhasebeNedenGovde(
+    tenantId: string,
+    docId: string,
+    force = false,
+  ): Promise<{ ok: boolean; neden: string; zengin: boolean; denetim?: any }> {
     const doc: any = await (this.prisma as any).invoiceAccountingDocument
       .findFirst({ where: { id: docId, tenantId }, include: { lines: { orderBy: { orderNo: 'asc' } } } })
       .catch(() => null);
     if (!doc) return { ok: false, neden: '', zengin: false };
+    fmAiBaglamGuncelle({ taxpayerId: doc.taxpayerId || undefined, belgeNo: doc.belgeNo || docId });
     const ocr = (doc.ocrData as any) || {};
     // Katman 2 — AI Denetçi kararı (varsa cache'ten). Yanıtta hep döndürülür (frontend rozeti buradan).
     const cachedDenetim = ocr.denetim && typeof ocr.denetim === 'object' ? ocr.denetim : null;
@@ -17044,6 +17074,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   }
 
   private async rematchPendingDocumentsWithAccountPlan(
+    tenantId: string,
+    taxpayerId: string,
+    snapshotId: string,
+    documentIds?: string[],
+  ) {
+    return fmAiBaglamIle({ tenantId, taxpayerId, kaynak: fmAiBaglamOku().kaynak || 'rematch' }, () => this.rematchPendingDocumentsWithAccountPlanGovde(tenantId, taxpayerId, snapshotId, documentIds));
+  }
+
+  private async rematchPendingDocumentsWithAccountPlanGovde(
     tenantId: string,
     taxpayerId: string,
     snapshotId: string,
@@ -17380,6 +17419,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       // DEMİRBAŞ'ta AI gider tahmini YANLIŞ: mevcut sabit-kıymet hesaplarından (IPHONE/araç/mobilya)
       //   birini seçmeye zorlar; oysa her demirbaş kendi hesabına gider → BOŞ kalsın (müşavir açar).
       //   Demirbaş HARİCİNDE AI içerik-bazlı gider seçer (entegratör XML dahil — kalemlere bakar).
+      // GEREKSİZ İKİNCİ SORU (2026-09-15 Gemini maliyet incelemesi): AI okuma/parti sınıflandırması bu belge için zaten
+      //   plandan geçerli bir yaprak seçtiyse (aiMatrahAcc), matrahForRate ③ o kodu ÖNCELİKLE kullanır; aşağıdaki belge
+      //   başına ~3.200 tokenlik "gider hesabı seç" çağrısının sonucu satır hesabında KULLANILMIYORDU, yalnız deterministik
+      //   gerekçe metnine (composeMuhasebeNeden) ve kodDegisti hesabına giriyordu — orada da satırdaki koddan FARKLI bir kodu
+      //   yazabiliyordu (tutarsızlık). Artık AI kodu varsa kategori matrahı = o yaprak → gerekçe satırdaki hesapla tutarlı,
+      //   zengin yorum boşuna silinmez; AI kodu YOKSA çağrı aynen. (Bağımsız denetim 2026-09-15: satır hesabı değişmez.)
+      if (!isSale && !categoryMatrah && kat !== 'demirbas' && leafOnly(aiMatrahAcc)) {
+        categoryMatrah = leafOnly(aiMatrahAcc);
+      }
       if (!isSale && !categoryMatrah && giderIcerik && kat !== 'demirbas') {
         const ck = this.norm(giderIcerik).slice(0, 180);
         if (aiGiderCache.has(ck)) {

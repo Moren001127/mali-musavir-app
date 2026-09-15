@@ -40,7 +40,8 @@ export class OwnerNotifierService implements OnModuleInit {
   // atıp uyandırıyordu). Bildirimler zaten DB'de birikir; sabah 09:00'da
   // OwnerDigestService tek toplu özet mesajı gönderir. İSTİSNA: güvenlik
   // (yeni cihaz girişi) gece de anında gider.
-  private static readonly NIGHT_INSTANT_TYPES = new Set<string>(['AUTH_NEW_DEVICE']);
+  //   + AI_COST_LIMIT (2026-09-15): AI harcaması anormalse (bekçi/tavan) sahip sabahı beklemeden öğrensin.
+  private static readonly NIGHT_INSTANT_TYPES = new Set<string>(['AUTH_NEW_DEVICE', 'AI_COST_LIMIT']);
 
   /** Europe/Istanbul saatine göre sessiz saat penceresi içinde miyiz? */
   static isQuietHours(now: Date = new Date()): boolean {

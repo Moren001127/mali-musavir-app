@@ -20,6 +20,11 @@ const PRICES: Record<string, { in: number; out: number; cacheR: number; cacheW: 
   'claude-sonnet-4-6':         { in: 3.0, out: 15.0, cacheR: 0.3, cacheW: 3.75 },
   'gpt-realtime-mini':         { in: 0.6, out: 2.4, cacheR: 0.06, cacheW: 0 },
   'gemini-2.5-flash-lite':     { in: 0.1, out: 0.4, cacheR: 0, cacheW: 0 },
+  // Fatura Merkezi (fm-ai.ts) — Google resmî fiyat 2026-09-15; FM kayıtları fixedCostUsd ile gelir, bu satırlar yedek.
+  'gemini-3.1-flash-lite':     { in: 0.25, out: 1.5, cacheR: 0, cacheW: 0 },
+  'gemini-3.8-flash':          { in: 0.75, out: 3.75, cacheR: 0, cacheW: 0 },
+  'gpt-4o-mini':               { in: 0.15, out: 0.6, cacheR: 0, cacheW: 0 },
+  'gpt-4.1-mini':              { in: 0.4, out: 1.6, cacheR: 0, cacheW: 0 },
   'gpt-5.4-nano':              { in: 0.2, out: 1.25, cacheR: 0, cacheW: 0 },
   'gpt-5.4-mini':              { in: 0.75, out: 4.5, cacheR: 0, cacheW: 0 },
   // Fallback
@@ -188,6 +193,12 @@ const DEFAULT_MONTHLY_CAP_USD = 50; // ~1750 TL; normal kullanımda asla çarpma
 function isSubscriptionSource(source?: string | null): boolean {
   return /max/i.test(String(source || ''));
 }
+/** Fatura Merkezi Gemini kayıtları (fm-*) AYLIK TAVANA SAYILMAZ (Muzaffer Bey 2026-09-15: "1 günde bütün faturaları
+ *  işleyebilirim" — hacme göre durdurma yok; FM'yi birim-maliyet bekçisi korur). Panelde görünür, tavanı tetiklemez;
+ *  yoksa FM'nin meşru hacmi OCR/ses gibi diğer ücretli modülleri ay sonuna kadar sessizce keserdi. */
+function isFmSource(source?: string | null): boolean {
+  return /^fm-/i.test(String(source || ''));
+}
 
 /** Bu ay (UTC) ücretli API harcaması — Max kaynakları hariç. */
 export async function getMonthlyApiCostUsd(prisma: any, tenantId: string): Promise<number> {
@@ -201,7 +212,7 @@ export async function getMonthlyApiCostUsd(prisma: any, tenantId: string): Promi
     });
     let total = 0;
     for (const r of rows as any[]) {
-      if (isSubscriptionSource(r.source)) continue;
+      if (isSubscriptionSource(r.source) || isFmSource(r.source)) continue;
       total += Number(r?._sum?.costUsd || 0);
     }
     return Number(total.toFixed(4));
@@ -239,6 +250,24 @@ export async function getAiBudgetStatus(prisma: any, tenantId: string): Promise<
 
 // Owner bildirimini ayda bir kez at (in-memory; tek Railway process için yeterli).
 const _capNotified = new Set<string>();
+
+/** Sahip tenant'ının GERÇEK id'si (Notification.tenantId FK ister). MOREN_OWNER_TENANT_ID varsa o; yoksa
+ *  MOREN_OWNER_TENANT_SLUG slug'ından tek seferlik tenant.findFirst ile çözülür ve süreçte önbellekte tutulur.
+ *  (2026-09-15 denetim: eskiden slug doğrudan tenantId'ye yazılıyor, FK hatası sessizce yutuluyordu → bildirim hiç oluşmuyordu.) */
+let _sahipTenantId: string | null = null;
+export async function sahipTenantIdBul(prisma: any): Promise<string | null> {
+  const envId = String(process.env.MOREN_OWNER_TENANT_ID || '').trim();
+  if (envId) return envId;
+  if (_sahipTenantId) return _sahipTenantId;
+  const slug = String(process.env.MOREN_OWNER_TENANT_SLUG || '').trim();
+  try {
+    const t = slug
+      ? await prisma.tenant.findFirst({ where: { OR: [{ slug }, { id: slug }] }, select: { id: true } })
+      : await prisma.tenant.findFirst({ orderBy: { createdAt: 'asc' }, select: { id: true } });
+    _sahipTenantId = t?.id || null;
+  } catch { _sahipTenantId = null; }
+  return _sahipTenantId;
+}
 
 /**
  * ÜCRETLİ API çağrısından ÖNCE çağır. Tavan aşıldıysa false döner →
@@ -291,7 +320,7 @@ export async function getGlobalMonthlyApiCostUsd(prisma: any): Promise<number> {
     });
     let total = 0;
     for (const r of rows as any[]) {
-      if (isSubscriptionSource(r.source)) continue;
+      if (isSubscriptionSource(r.source) || isFmSource(r.source)) continue;
       total += Number(r?._sum?.costUsd || 0);
     }
     return Number(total.toFixed(4));
@@ -318,9 +347,11 @@ export async function canSpendOnApiGlobal(prisma: any, source?: string): Promise
   if (!_capNotified.has(dedupeKey)) {
     _capNotified.add(dedupeKey);
     try {
+      const sahipId = await sahipTenantIdBul(prisma);
+      if (!sahipId) throw new Error('sahip tenant bulunamadı');
       await prisma.notification.create({
         data: {
-          tenantId: process.env.MOREN_OWNER_TENANT_SLUG || 'default',
+          tenantId: sahipId,
           type: 'AI_COST_LIMIT',
           title: '⚠️ AI maliyet tavanı doldu',
           body:

@@ -9,6 +9,12 @@
  */
 jest.mock('./fatura-muhasebelestirme.service', () => ({ FaturaMuhasebelestirmeService: class FaturaMuhasebelestirmeService {} }));
 jest.mock('../prisma/prisma.service', () => ({ PrismaService: class PrismaService {} }));
+// fm-ai sahte: bağlam sarmalı olduğu gibi çalışır, bekçi durumu testten kontrol edilir
+const bekciSahte = { durduruldu: false, neden: '' as string | undefined, bitis: 0 };
+jest.mock('../common/fm-ai', () => ({
+  fmAiBaglamIle: (_b: any, fn: () => Promise<any>) => fn(),
+  fmAiBekciDurumu: () => ({ ...bekciSahte, sayac: 0 }),
+}));
 
 import { BelgeKuyrukService, MAX_DENEME, BAYAT_KILIT_MS, geceKuyrukEnvKapaliMi, kuyrukAyarlari, GECE_TAVAN } from './belge-kuyruk.service';
 
@@ -100,15 +106,18 @@ describe('BelgeKuyrukService', () => {
   it('açılış kurtarması: önceki süreçte RUNNING kalan işler PENDING olur; kendi kilidi ve açılış sonrası kilitler dokunulmaz', async () => {
     const { svc, jobs } = kur();
     const boot = new Date();
-    const eski = new Date(boot.getTime() - 60_000);
+    const eski = new Date(boot.getTime() - 10 * 60_000); // 10 dk önce: gerçekten yarım kalmış
+    const taze = new Date(boot.getTime() - 60_000);      // 1 dk önce: eski süreç büyük olasılıkla hâlâ işliyor (2026-09-15: geri ALINMAZ)
     const yeniKilit = new Date(boot.getTime() + 1_000);
     jobs.rows.push(
       { id: 'r1', status: 'RUNNING', lockedBy: 'olu-surec:1', lockedAt: eski, attempts: 1, kind: 'CLASSIFY' },
       { id: 'r2', status: 'RUNNING', lockedBy: svc.instanceId, lockedAt: eski, attempts: 0, kind: 'CLASSIFY' },
       { id: 'r3', status: 'RUNNING', lockedBy: 'baska:2', lockedAt: yeniKilit, attempts: 0, kind: 'AI_READ' },
       { id: 'r4', status: 'DONE', lockedBy: 'olu-surec:1', lockedAt: eski, attempts: 0, kind: 'CLASSIFY' },
+      { id: 'r5', status: 'RUNNING', lockedBy: 'olu-surec:1', lockedAt: taze, attempts: 0, kind: 'AI_READ' },
     );
     expect(await svc.acilisKurtar(boot)).toBe(1);
+    expect(jobs.rows.find((r: any) => r.id === 'r5').status).toBe('RUNNING');
     const r1 = jobs.rows.find((r: any) => r.id === 'r1');
     expect(r1.status).toBe('PENDING');
     expect(r1.lockedBy).toBeNull();
@@ -154,6 +163,22 @@ describe('BelgeKuyrukService', () => {
     expect(jobs.rows[1]).toMatchObject({ status: 'FAILED', attempts: MAX_DENEME });
     expect(jobs.rows[1].lastError).toMatch(/bayat/);
     expect(jobs.rows[2].status).toBe('RUNNING'); // taze kilit dokunulmaz
+  });
+
+  it('birim maliyet bekçisi duraklattıysa tik iş ALMAZ (belgeler PENDING kalır, deneme sayısı artmaz); açılınca sürer', async () => {
+    const { svc, jobs, cagrilar } = kur();
+    await svc.topluKuyrugaAl([g('p1', 'AI_READ', 10), g('p2', 'CLASSIFY', 0)]);
+    bekciSahte.durduruldu = true; bekciSahte.neden = 'test: birim maliyet anormal'; bekciSahte.bitis = Date.now() + 60000;
+    try {
+      const t = await svc.tik();
+      await bekle(); await bekle();
+      expect(t.baslatilanOkuma + t.baslatilanParti).toBe(0);
+      expect(cagrilar).toHaveLength(0);
+      expect(jobs.rows.every((x) => x.status === 'PENDING' && (x.attempts || 0) === 0)).toBe(true);
+    } finally { bekciSahte.durduruldu = false; }
+    const t2 = await svc.tik();
+    await bekle(); await bekle();
+    expect(t2.baslatilanOkuma + t2.baslatilanParti).toBeGreaterThan(0);
   });
 
   it('parti seçimi: aynı mükelleften ≤ MAX_CLASSIFY_BATCH, en yüksek öncelik önce, tek kuyrukIsle çağrısı', async () => {

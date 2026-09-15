@@ -5046,46 +5046,40 @@ Fatura görüntüsünü incele. Yukarıdaki MEVCUT SEÇENEKLER'den Kayıt Türü
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
+    // 2026-09-15: toplama VERİTABANINDA (aggregate + groupBy) — eskiden tüm satırlar Node'a çekiliyordu; Fatura Merkezi defteri
+    //   günde binlerce satır ekleyince (5 sn'lik panel yenilemesiyle) bu yol büyüyordu.
     const aggregate = async (since?: Date) => {
       const where: any = { tenantId };
       if (since) where.createdAt = { gte: since };
-      const rows = await (this.prisma as any).aiUsageLog.findMany({
-        where,
-        select: {
-          inputTokens: true,
-          outputTokens: true,
-          cacheReadTokens: true,
-          cacheWriteTokens: true,
-          costUsd: true,
-          karar: true,
-          cacheHit: true,
-        },
-      });
+      const [top, gruplar] = await Promise.all([
+        (this.prisma as any).aiUsageLog.aggregate({
+          where,
+          _count: { _all: true },
+          _sum: { inputTokens: true, outputTokens: true, cacheReadTokens: true, cacheWriteTokens: true, costUsd: true },
+        }),
+        (this.prisma as any).aiUsageLog.groupBy({ by: ['karar', 'cacheHit'], where, _count: { _all: true } }),
+      ]);
       const acc = {
-        sorguSayisi: rows.length,
+        sorguSayisi: Number(top?._count?._all || 0),
         cacheHitSayisi: 0,
         gercekCagriSayisi: 0,
         onaySayisi: 0,
         atlaSayisi: 0,
         eminDegilSayisi: 0,
-        inputTokens: 0,
-        outputTokens: 0,
-        cacheReadTokens: 0,
-        cacheWriteTokens: 0,
+        inputTokens: Number(top?._sum?.inputTokens || 0),
+        outputTokens: Number(top?._sum?.outputTokens || 0),
+        cacheReadTokens: Number(top?._sum?.cacheReadTokens || 0),
+        cacheWriteTokens: Number(top?._sum?.cacheWriteTokens || 0),
         toplamToken: 0,
-        maliyetUsd: 0,
+        maliyetUsd: Number(top?._sum?.costUsd || 0),
       };
-      for (const r of rows) {
-        if (r.cacheHit) acc.cacheHitSayisi++;
-        else acc.gercekCagriSayisi++;
-        if (r.karar === 'onay') acc.onaySayisi++;
-        else if (r.karar === 'atla') acc.atlaSayisi++;
-        else acc.eminDegilSayisi++;
-        acc.inputTokens += r.inputTokens || 0;
-        acc.outputTokens += r.outputTokens || 0;
-        acc.cacheReadTokens += r.cacheReadTokens || 0;
-        acc.cacheWriteTokens += r.cacheWriteTokens || 0;
-        acc.maliyetUsd += r.costUsd || 0;
+      for (const g of (gruplar || []) as any[]) {
+        const n = Number(g?._count?._all || 0);
+        if (g.cacheHit) acc.cacheHitSayisi += n; else acc.gercekCagriSayisi += n;
+        // karar: onay/atla (Mihsap fatura kararı), ok (başarılı AI çağrısı — Fatura Merkezi defteri), diğerleri "emin değil/hata"
+        if (g.karar === 'onay' || g.karar === 'ok') acc.onaySayisi += n;
+        else if (g.karar === 'atla') acc.atlaSayisi += n;
+        else acc.eminDegilSayisi += n;
       }
       acc.toplamToken = acc.inputTokens + acc.outputTokens + acc.cacheReadTokens + acc.cacheWriteTokens;
       return acc;

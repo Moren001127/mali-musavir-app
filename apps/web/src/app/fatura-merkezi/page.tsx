@@ -49,6 +49,34 @@ function showFetchResult(d: any) {
  */
 
 // SVG ikonları string olarak gömüyoruz (kebab attribute'ler React'i bozmasın diye)
+/** AI BEKÇİSİ BANDI (2026-09-15): birim maliyet bekçisi otomatik kuyruğu duraklattıysa üstte tek satır uyarı + "Devam et". */
+function AiBekciBandi() {
+  const qc = useQueryClient();
+  const q = useQuery({
+    queryKey: ['fm-ai-bekci'],
+    queryFn: () => api.get('/fatura-muhasebelestirme/ai-bekci').then((r) => r.data),
+    refetchInterval: 60000,
+    retry: false,
+  });
+  const devam = useMutation({
+    mutationFn: () => api.post('/fatura-muhasebelestirme/ai-bekci/devam').then((r) => r.data),
+    onSuccess: () => { toast.success('AI kuyruğu devam ettirildi'); qc.invalidateQueries({ queryKey: ['fm-ai-bekci'] }); },
+    onError: () => toast.error('Devam ettirilemedi'),
+  });
+  const d: any = q.data;
+  if (!d?.durduruldu) return null;
+  const bitis = d.bitis ? new Date(d.bitis).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : '';
+  return (
+    <div style={{ margin: '0 0 10px', padding: '10px 14px', borderRadius: 10, border: '1px solid #f59e0b', background: 'rgba(245,158,11,0.10)', color: '#92400e', fontSize: 13, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+      <b>AI bekçisi otomatik kuyruğu duraklattı</b>
+      <span style={{ flex: 1, minWidth: 240 }}>{String(d.neden || '')}{bitis ? ` · kendiliğinden ${bitis}'de açılır` : ''}. Belgeler kaybolmadı, bekliyor. Model/düşünme ayarını kontrol edin.</span>
+      <button type="button" disabled={devam.isPending} onClick={() => devam.mutate()} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid #b45309', background: '#fff', color: '#92400e', fontWeight: 700, cursor: 'pointer' }}>
+        {devam.isPending ? 'Açılıyor…' : 'Devam et'}
+      </button>
+    </div>
+  );
+}
+
 function Ico({ html, size = 17 }: { html: string; size?: number }) {
   return (
     <span
@@ -1197,6 +1225,7 @@ export default function FaturaMerkeziPage() {
         </aside>
 
         <div className="main">
+          <AiBekciBandi />
           <div className="top">
             <div className="crumb" dangerouslySetInnerHTML={{ __html: TITLES[screen] || '' }} />
             <div className="sp" />
