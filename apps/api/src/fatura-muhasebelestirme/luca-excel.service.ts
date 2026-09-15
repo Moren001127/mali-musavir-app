@@ -222,8 +222,13 @@ export async function buildLucaImportExcel(payload: BatchPayload): Promise<Buffe
 // Luca "Hızlı Fiş" Excel Aktarım şablonu — 37 sütun (kullanıcı şablonu doğrulandı). cp1254 yazılır.
 // ÖNEMLİ: "PLAKA NO" (19. sütun) önceki sürümde EKSİKTİ → sonraki tüm sütunlar 1 kayıyordu (veri yanlış
 //   alana düşüyordu, İşletme yüklemesini bozuyordu). Şablona birebir uyduruldu.
+// LUCA RESMİ ŞABLONU — 36 SÜTUN (2026-09-15, Luca HIZLI FİŞ › Excel Aktarım › "Excel Şablonu indir":
+//   hizliFisCsvSablonIndirAction.do; ajan v1.47.45 canlıdan çekti). Eski 37 sütunlu başlıkta PLAKA NO vardı;
+//   Luca yüklemeyi "2. SATIRDA HATA ALINDI … Sütun sayısı 36'dan fazladır" diye SESSİZCE reddediyordu
+//   (Kadir Ceylan Korkmaz 29 Z raporu, Ayşegül Arslan 8 fatura). Şablonda PLAKA NO sütunu YOK; başlık metni birebir.
 const ISLETME_HEADER =
-  'İŞLEM;KATEGORİ;BELGE TÜRÜ;EVRAK TARİHİ;KAYIT TARİHİ;SERİ NO;EVRAK NO;TCKN/VKN;VERGİ DAİRESİ;SOYADI ÜNVAN;ADI DEVAMI;ADRES;CARİ HESAP;KDV İSTİSNASI;KOD;BELGE TÜRÜ(DB);ALIŞ/SATIŞ TÜRÜ;KAYIT ALT TÜRÜ;PLAKA NO;MAL VE HİZMET KODU;AÇIKLAMA;MİKTAR;B.FİYAT;TUTAR;TEVKİFAT;KDV ORANI;İŞLEM BEDELİ;MATRAHTAN DÜŞÜLECEK TUTAR;ÖZEL MATRAH ŞEKLİNE DAHİL OLMAYAN BEDEL;KDV TUTARI;TOPLAM TUTAR;KREDİLİ TUTAR;STOPAJ KODU;STOPAJ TUTARI;DÖNEMSELLIK İLKESİ;FAALIYET KODU;ÖDEME TÜRÜ';
+  'İŞLEM;KATEGORİ;BELGE TURU;EVRAK TARİHİ;KAYIT TARİHİ;SERİ NO;EVRAK NO;TCKN/VKN;VERGİ DAİRESİ;SOYADI ÜNVAN;ADI DEVAMI;ADRES;CARİ HESAP;KDV İSTİSNASI;KOD;BELGE TÜRÜ(DB);ALIŞ/SATIŞ TÜRÜ;KAYIT ALT TÜRÜ;MAL VE HİZMET KODU;AÇIKLAMA;MİKTAR;B.FİYAT;TUTAR;TEVKİFAT;KDV ORANI;ÖZEL MATRAH İŞLEM BEDELİ;MATRAHTAN DÜŞÜLECEK TUTAR;MATRAHA DAHİL OLMAYAN BEDEL;KDV TUTARI;TOPLAM TUTAR;KREDİLİ TUTAR;STOPAJ KODU;STOPAJ TUTARI;DÖNEMSELLİK İLKESİ;FAALIYET KODU;ÖDEME TÜRÜ';
+export const ISLETME_CSV_SUTUN_SAYISI = 36;
 
 /** cp1254 CSV hucresi — ; veya tirnak/yeni satir varsa tirnakla. GUVENLIK: =,+,-,@ ile baslayan
  *  metin (cari/firma adi fatura icerigi) Excel/LibreOffice'te FORMUL calisir → basina apostrof koy. */
@@ -321,7 +326,8 @@ export function buildLucaIsletmeHizliFisCsv(payload: BatchPayload): Buffer {
       const donemFlag = st.donem != null ? !!st.donem : !!kayitAltItem?.donem;
       const stMatrah = Number(st.matrah) || 0;
       const stKdv = Number(st.kdvTutar) || 0;
-      // 37 sutun — sirayla. Üst bilgi (isl) tüm satırlarda aynı; satıra özgü alanlar (st).
+      // 36 sutun — Luca şablonu sırasıyla. Üst bilgi (isl) tüm satırlarda aynı; satıra özgü alanlar (st).
+      //   PLAKA NO şablonda yok (ekranda var, CSV'de yok) — isl.plakaNo CSV'ye yazılamaz.
       const row = [
         isSale ? 'Gelir' : 'Gider',                  // 1 İŞLEM
         kayitTuruAdResolved,                          // 2 KATEGORİ
@@ -341,26 +347,26 @@ export function buildLucaIsletmeHizliFisCsv(payload: BatchPayload): Buffer {
         isl.belgeTuruKod || '',                       // 16 BELGE TÜRÜ(DB)
         alisSatisAdResolved,                          // 17 ALIŞ/SATIŞ TÜRÜ
         kayitAltAdResolved,                           // 18 KAYIT ALT TÜRÜ
-        isl.plakaNo || '',                            // 19 PLAKA NO
-        '',                                           // 20 MAL VE HİZMET KODU
-        counterpartyName || '',                       // 21 AÇIKLAMA
-        '',                                           // 22 MİKTAR
-        '',                                           // 23 B.FİYAT
-        trAmount(stMatrah),                           // 24 TUTAR
-        st.tevkifatOrani || '',                       // 25 TEVKİFAT
-        kdvOranNum,                                   // 26 KDV ORANI
-        '',                                           // 27 İŞLEM BEDELİ
-        '',                                           // 28 MATRAHTAN DÜŞÜLECEK TUTAR
-        '',                                           // 29 ÖZEL MATRAH ŞEKLİNE DAHİL OLMAYAN BEDEL
-        trAmount(stKdv),                              // 30 KDV TUTARI
-        trAmount(stMatrah + stKdv),                   // 31 TOPLAM TUTAR (satır)
-        st.krediliTutar ? trAmount(Number(st.krediliTutar)) : '', // 32 KREDİLİ TUTAR
-        st.stopajOrani || '',                         // 33 STOPAJ KODU
-        st.stopajTutar ? trAmount(Number(st.stopajTutar)) : '',   // 34 STOPAJ TUTARI
-        donemFlag ? 'Evet' : '',                      // 35 DÖNEMSELLİK İLKESİ
-        '',                                           // 36 FAALIYET KODU
-        '',                                           // 37 ÖDEME TÜRÜ
+        '',                                           // 19 MAL VE HİZMET KODU
+        counterpartyName || '',                       // 20 AÇIKLAMA
+        '',                                           // 21 MİKTAR
+        '',                                           // 22 B.FİYAT
+        trAmount(stMatrah),                           // 23 TUTAR
+        st.tevkifatOrani || '',                       // 24 TEVKİFAT
+        kdvOranNum,                                   // 25 KDV ORANI
+        '',                                           // 26 ÖZEL MATRAH İŞLEM BEDELİ
+        '',                                           // 27 MATRAHTAN DÜŞÜLECEK TUTAR
+        '',                                           // 28 MATRAHA DAHİL OLMAYAN BEDEL
+        trAmount(stKdv),                              // 29 KDV TUTARI
+        trAmount(stMatrah + stKdv),                   // 30 TOPLAM TUTAR (satır)
+        st.krediliTutar ? trAmount(Number(st.krediliTutar)) : '', // 31 KREDİLİ TUTAR
+        st.stopajOrani || '',                         // 32 STOPAJ KODU
+        st.stopajTutar ? trAmount(Number(st.stopajTutar)) : '',   // 33 STOPAJ TUTARI
+        donemFlag ? 'Evet' : '',                      // 34 DÖNEMSELLİK İLKESİ
+        '',                                           // 35 FAALIYET KODU
+        '',                                           // 36 ÖDEME TÜRÜ
       ].map(csvCell).join(';');
+      if (row.split(';').length !== ISLETME_CSV_SUTUN_SAYISI && !/"/.test(row)) throw new Error(`İşletme CSV satırı ${row.split(';').length} sütun — Luca şablonu ${ISLETME_CSV_SUTUN_SAYISI} ister`);
       lines.push(iconv.encode(row, 'win1254'));
     }
   }

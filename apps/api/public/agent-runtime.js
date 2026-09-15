@@ -78,7 +78,10 @@
   // v1.47.45 (2026-09-15): İŞLETME CSV — Luca'nın yanıtı bulundu: "2. SATIRDA HATA ALINDI … Sütun sayısı 36'dan fazladır"
   //   (bizim CSV 37 sütun). Luca'nın resmi şablonu (hizliFisCsvSablonIndirAction.do) yüklemeden ÖNCE çekilip snapshot'a
   //   yazılır (başlık satırı loga); Luca'nın hata metni (lucaNotYaz) yanıttan ayıklanıp loga düşer.
-  const AGENT_VERSION = '1.47.45';
+  // v1.47.46 (2026-09-15): İŞLETME CSV — Fiş Kes doğrulaması: yüklemede grid'e giren satır sayısı (detaylar[N]) Fiş Kes
+  //   sonrası ≤1'e düşünce (grid boşaldı) başarı sayılır; tr sayımı tek başına yanıltıyordu (Fiş Kes sonrası liste ekranı
+  //   482 tr). Başarıda kalan/işlenen satır sayısı loglanır.
+  const AGENT_VERSION = '1.47.46';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -3125,7 +3128,14 @@
                   }
                   let liveTr = 0; try { for (const d of lucaDocuments()) { try { liveTr += d.querySelectorAll('table tr').length; } catch {} } } catch {}
                   if (postTr > 8 && liveTr > 0 && liveTr < postTr - 4) ok = true; // Fiş Kes sonrası grid boşaldı
-                  await log(`ℹ Fiş Kes sonrası tr=${liveTr} (yükleme tr=${postTr}) · başarı=${ok}`);
+                  // v1.47.46: HIZLI FİŞ grid satırı (detaylar[N] girdileri) — yüklemede ≥2 satır girdiyse ve Fiş Kes sonrası
+                  //   hiçbir belgede ≥2 satır kalmadıysa fiş kesilmiş demektir (boş şablon satırı detaylar[0] kalır).
+                  let sonDetay = 0;
+                  try {
+                    for (const d of lucaDocuments()) { try { const set = new Set(); for (const el of d.querySelectorAll('input[name^="detaylar["],select[name^="detaylar["]')) { const m = String(el.name).match(/^detaylar\[(\d+)\]/); if (m) set.add(m[1]); } if (set.size > sonDetay) sonDetay = set.size; } catch {} }
+                  } catch {}
+                  if (gridSatir >= 2 && sonDetay <= 1) ok = true;
+                  await log(`ℹ Fiş Kes sonrası tr=${liveTr} (yükleme tr=${postTr}) · gridSatır yükleme=${gridSatir} sonra=${sonDetay} · başarı=${ok}`);
                   // v1.47.43 TANI: Fiş Kes sonrası hangi ekran? (popup URL + metin; en kalabalık belge)
                   try {
                     const pw3 = popupWin();
