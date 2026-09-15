@@ -439,13 +439,14 @@ export class ActionDispatcherService {
       where: { id: taxpayerId, tenantId: ctx.tenantId },
       select: { mihsapId: true, firstName: true, lastName: true, companyName: true, type: true },
     });
-    if (!taxpayer?.mihsapId) {
-      throw new Error('fetch_invoices_for_period: Bu mukellefin MIHSAP ID\'si yok. Mukellef kartindan ekleyin.');
-    }
+    // 2026-09-15 (Muzaffer Bey): Mihsap'tan kademeli çıkış — "evraklar işlendi" işaretlenince faturalar hem Mihsap'tan
+    //   hem Fatura İşleme Merkezi › ARŞİVİM'den (Luca'ya aktarılanlar) çekilir, Drive'a yedeklenir. Mihsap ID yoksa
+    //   Mihsap adımı atlanır (hata değil), yalnız FM arşivi çekilir.
+    const mihsapVar = !!taxpayer?.mihsapId;
 
     const results: any[] = [];
     const turler: ('ALIS' | 'SATIS')[] = faturaTuru ? [faturaTuru] : ['ALIS', 'SATIS'];
-    for (const tur of turler) {
+    for (const tur of mihsapVar ? turler : []) {
       try {
         // fetchAndStoreInvoices senkron çeker; { jobId, total, fetched, errorMsg } döner.
         // Hata olursa fırlatır (catch'e düşer). Hatasız ama 0 fatura = "yeşil ama boş".
@@ -467,6 +468,20 @@ export class ActionDispatcherService {
       } catch (err: any) {
         results.push({ tur, ok: false, error: err.message?.slice(0, 200) });
       }
+    }
+    // FM ARŞİVİM (Luca'ya aktarılmış / elle işlenmiş belgeler) → İşlenen Faturalar + Drive
+    let fmArsiv: any = null;
+    try {
+      fmArsiv = await this.mihsap.importFromFmArsiv({
+        tenantId: ctx.tenantId,
+        mukellefId: taxpayerId,
+        donem,
+        faturaTuru: faturaTuru || null,
+        triggerDrive: !mihsapVar || results.every((r) => !r.ok),
+      });
+      results.push({ tur: 'FM_ARSIV', bulunan: fmArsiv.total, cekilen: fmArsiv.added, mukerrer: fmArsiv.mukerrer, ok: true });
+    } catch (err: any) {
+      results.push({ tur: 'FM_ARSIV', ok: false, error: err.message?.slice(0, 200) });
     }
     const cekilenFatura = results.reduce((s, r) => s + (Number(r.cekilen) || 0), 0);
     const bulunanFatura = results.reduce((s, r) => s + (Number(r.bulunan) || 0), 0);

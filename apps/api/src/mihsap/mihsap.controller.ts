@@ -79,19 +79,43 @@ export class MihsapController {
       kaynak?: 'arsiv' | 'bekleyen';
     },
   ) {
-    if (!body?.mukellefId || !body?.mukellefMihsapId || !body?.donem) {
-      throw new BadRequestException('mukellefId, mukellefMihsapId ve donem gerekli');
+    if (!body?.mukellefId || !body?.donem) {
+      throw new BadRequestException('mukellefId ve donem gerekli');
     }
-    return this.service.fetchAndStoreInvoices({
+    // 2026-09-15: Mihsap ID yoksa (Mihsap'ı bırakan mükellef) yalnız FM Arşivim'den çekilir; varsa ikisi de.
+    //   "bekleyen" kaynağı (Fatura İşleme Merkezi'nin Mihsap'tan Çek'i) FM arşivine dokunmaz.
+    let mihsap: any = null;
+    let mihsapHata: string | null = null;
+    if (body.mukellefMihsapId) {
+      try {
+        mihsap = await this.service.fetchAndStoreInvoices({
+          tenantId: req.user.tenantId,
+          mukellefId: body.mukellefId,
+          mukellefMihsapId: body.mukellefMihsapId,
+          donem: body.donem,
+          faturaTuru: body.faturaTuru,
+          forceRefresh: body.forceRefresh,
+          kaynak: body.kaynak,
+          createdBy: req.user.userId,
+        });
+      } catch (e: any) {
+        mihsapHata = e?.response?.message || e?.message || 'Mihsap hatası';
+      }
+    }
+    if ((body.kaynak || 'arsiv') === 'bekleyen') {
+      if (mihsapHata) throw new BadRequestException(mihsapHata);
+      return mihsap;
+    }
+    const fm = await this.service.importFromFmArsiv({
       tenantId: req.user.tenantId,
       mukellefId: body.mukellefId,
-      mukellefMihsapId: body.mukellefMihsapId,
       donem: body.donem,
-      faturaTuru: body.faturaTuru,
-      forceRefresh: body.forceRefresh,
-      kaynak: body.kaynak,
-      createdBy: req.user.userId,
+      faturaTuru: body.faturaTuru || null,
+      // Mihsap çekimi Drive olayını zaten yayınlar; Mihsap yoksa/hata verdiyse FM aktarımı yayınlasın.
+      triggerDrive: !mihsap,
     });
+    if (mihsapHata && !fm.added && !fm.total) throw new BadRequestException(mihsapHata);
+    return { ...(mihsap || { jobId: null, total: 0, fetched: 0 }), errorMsg: mihsapHata || mihsap?.errorMsg || null, fmArsiv: fm };
   }
 
   /** Panelden indirilmiş faturaları listele */

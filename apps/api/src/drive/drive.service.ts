@@ -673,6 +673,23 @@ export class DriveService implements OnModuleInit, OnModuleDestroy {
       already.add(inv.mihsapId);
       return 'skipped';
     }
+    // 1b) KAYNAKLAR ARASI MÜKERRER (2026-09-15): aynı fatura hem Mihsap'tan hem FM Arşivim'den gelmiş olabilir
+    //   (geçiş dönemi). Aynı mükellef + dönem + yön için kütükte "tarih - faturaNo -" ile başlayan dosya varsa
+    //   (uzantısı farklı olsa bile) ikinci kez YÜKLEME; bu kaydı da kütüğe o dosyayla bağla.
+    const oncekiAyni = await this.findCrossSourceBackup(tenantId, inv);
+    if (oncekiAyni) {
+      await (this.prisma as any).driveBackup
+        .create({
+          data: {
+            tenantId, mihsapId: inv.mihsapId, mukellefId: inv.mukellefId || null, donem: inv.donem || null,
+            faturaTuru: inv.faturaTuru || null, driveFileId: oncekiAyni.driveFileId, driveFolderId: oncekiAyni.driveFolderId || null,
+            filePath: oncekiAyni.filePath || null, fileName: oncekiAyni.fileName || null, sizeBytes: oncekiAyni.sizeBytes || null,
+          },
+        })
+        .catch(() => null);
+      already.add(inv.mihsapId);
+      return 'skipped';
+    }
 
     // 2) Klasor yolu: FATURALAR / {mukellef} / {yil} / {ay} / {Alis|Satis}
     const mukellefAd = await this.resolveMukellefName(tenantId, inv, nameCache);
@@ -949,6 +966,19 @@ export class DriveService implements OnModuleInit, OnModuleDestroy {
     if (t.includes('SATIS')) return 'Satış';
     if (t.includes('ALIS')) return 'Alış';
     return 'Diğer';
+  }
+
+  /** Aynı mükellef+dönem+yön kütüğünde aynı "tarih - faturaNo" ile başlayan (başka kaynaktan yüklenmiş) dosya. */
+  private async findCrossSourceBackup(tenantId: string, inv: any): Promise<any | null> {
+    const tarih = this.formatDate(inv.faturaTarihi);
+    const belgeNo = this.sanitizeName(inv.faturaNo || '');
+    if (!tarih || !belgeNo || !inv.mukellefId) return null;
+    const onek = `${tarih} - ${belgeNo}`;
+    const rows: any[] = await (this.prisma as any).driveBackup.findMany({
+      where: { tenantId, mukellefId: inv.mukellefId, donem: inv.donem || null, faturaTuru: inv.faturaTuru || null, fileName: { startsWith: onek } },
+      take: 3,
+    });
+    return rows.find((r) => r.mihsapId !== inv.mihsapId && (r.fileName === `${onek}` || String(r.fileName || '').startsWith(`${onek} -`) || String(r.fileName || '').startsWith(`${onek}.`))) || null;
   }
 
   private buildFileName(inv: any, ext: string): string {

@@ -836,6 +836,153 @@ export class MihsapService implements OnModuleInit {
     return { jobId: job.id, total, fetched, errorMsg };
   }
 
+  // ==================== FM ARŞİVİM → İŞLENEN FATURALAR (2026-09-15) ====================
+  // Muzaffer Bey: "kademeli olarak Mihsap'ı bırakıp kendi sistemimize geçeceğiz" → Aylık Takip'te "evraklar
+  //   işlendi" işaretlenince ve İşlenen Faturalar'da "Hepsini Çek" denince faturalar YALNIZ Mihsap'tan değil,
+  //   Fatura İşleme Merkezi › ARŞİVİM'den (Luca'ya aktarılmış = POSTED / elle işlenmiş = MANUAL_DONE) de çekilir
+  //   ve Drive'a yedeklenir. Kayıt anahtarı mihsapId = "fm:<belgeId>" (kalıcı, tekil) → Drive kütüğü mükerreri engeller.
+  //   Aynı fatura Mihsap'tan da çekilmişse (geçiş dönemi) FM kopyası EKLENMEZ (fatura no + yön eşleşmesi).
+
+  private isFmArsivKaydi(inv: any): boolean {
+    return String(inv?.kaynak || '') === 'fm-arsiv' || String(inv?.mihsapId || '').startsWith('fm:') || String(inv?.mihsapFileLink || '').startsWith('fm://');
+  }
+
+  private static faturaNoAnahtar(no: any): string {
+    return String(no || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  }
+
+  /** FM Arşivim belgelerini İşlenen Faturalar kayıtlarına aktarır. Dönem = belge tarihi ayı ("YYYY-MM"). */
+  async importFromFmArsiv(params: {
+    tenantId: string;
+    mukellefId: string;
+    donem: string;
+    faturaTuru?: 'ALIS' | 'SATIS' | null;
+    triggerDrive?: boolean;
+  }): Promise<{ total: number; added: number; skipped: number; mukerrer: number }> {
+    const m = /^(\d{4})-(\d{2})$/.exec(String(params.donem || ''));
+    if (!m) throw new BadRequestException('donem "YYYY-AA" olmalı');
+    const y = Number(m[1]); const mo = Number(m[2]);
+    const start = new Date(Date.UTC(y, mo - 1, 1));
+    const end = new Date(Date.UTC(mo === 12 ? y + 1 : y, mo === 12 ? 0 : mo, 1));
+    const taxpayer = await (this.prisma as any).taxpayer.findFirst({
+      where: { id: params.mukellefId, tenantId: params.tenantId },
+      select: { id: true, mihsapId: true },
+    });
+    if (!taxpayer) throw new BadRequestException('Mükellef bulunamadı');
+    const docs: any[] = await (this.prisma as any).invoiceAccountingDocument.findMany({
+      where: {
+        tenantId: params.tenantId,
+        taxpayerId: params.mukellefId,
+        lucaStatus: { in: ['POSTED', 'MANUAL_DONE'] },
+        faturaTarihi: { gte: start, lt: end },
+        ...(params.faturaTuru ? { invoiceKind: params.faturaTuru } : {}),
+      },
+      select: {
+        id: true, invoiceKind: true, documentType: true, belgeNo: true, seriNo: true, faturaTarihi: true, createdAt: true,
+        sellerVkn: true, buyerVkn: true, vendorName: true, customerName: true, totalAmount: true,
+        s3Key: true, originalName: true, mimeType: true, sizeBytes: true, lucaStatus: true, source: true,
+      },
+      orderBy: { faturaTarihi: 'asc' },
+    });
+    const mevcut: any[] = await (this.prisma as any).mihsapInvoice.findMany({
+      where: { tenantId: params.tenantId, mukellefId: params.mukellefId, donem: params.donem },
+      select: { mihsapId: true, faturaNo: true, faturaTuru: true, kaynak: true },
+    });
+    const fmVar = new Set<string>(mevcut.filter((r) => this.isFmArsivKaydi(r)).map((r) => String(r.mihsapId)));
+    // Mihsap kaynaklı (aynı dönem) fatura no + yön → FM kopyası mükerrer olur, eklenmez
+    const mihsapNo = new Set<string>(
+      mevcut.filter((r) => !this.isFmArsivKaydi(r) && String(r.kaynak || 'arsiv') !== 'bekleyen')
+        .map((r) => `${MihsapService.faturaNoAnahtar(r.faturaNo)}|${String(r.faturaTuru || '').toUpperCase() === 'SATIS' ? 'SATIS' : 'ALIS'}`),
+    );
+    let added = 0, skipped = 0, mukerrer = 0;
+    for (const d of docs) {
+      const mihsapId = `fm:${d.id}`;
+      if (fmVar.has(mihsapId)) { skipped++; continue; }
+      if (!d.s3Key) { skipped++; continue; } // dosyasız belge yedeklenemez
+      const isSale = String(d.invoiceKind || '').toUpperCase() === 'SATIS';
+      const faturaTuru = isSale ? 'SATIS' : 'ALIS';
+      const faturaNo = String(d.belgeNo || '').trim() || String(d.originalName || '').replace(/\.[^.]+$/, '') || d.id;
+      const noKey = `${MihsapService.faturaNoAnahtar(faturaNo)}|${faturaTuru}`;
+      if (MihsapService.faturaNoAnahtar(faturaNo) && mihsapNo.has(noKey)) { mukerrer++; continue; }
+      const ext = (String(d.originalName || '').split('.').pop() || '').toUpperCase();
+      try {
+        await (this.prisma as any).mihsapInvoice.create({
+          data: {
+            tenantId: params.tenantId,
+            mukellefId: params.mukellefId,
+            mukellefMihsapId: String(taxpayer.mihsapId || 'FM'),
+            donem: params.donem,
+            faturaTuru,
+            belgeTuru: String(d.documentType || 'DIGER'),
+            faturaNo,
+            firmaKimlikNo: (isSale ? d.buyerVkn : d.sellerVkn) || null,
+            firmaUnvan: (isSale ? d.customerName : d.vendorName) || null,
+            faturaTarihi: d.faturaTarihi || d.createdAt || new Date(),
+            toplamTutar: Number(d.totalAmount) || 0,
+            onayDurumu: d.lucaStatus === 'MANUAL_DONE' ? 'ELLE_ISLENDI' : 'LUCAYA_AKTARILDI',
+            mihsapId,
+            storageKey: d.s3Key,
+            orjDosyaTuru: ext || (String(d.mimeType || '').split('/').pop() || '').toUpperCase() || null,
+            mihsapFileLink: `fm://${d.id}`,
+            kaynak: 'fm-arsiv',
+            downloadedAt: new Date(),
+            raw: { source: 'fm-arsiv', documentId: d.id, lucaStatus: d.lucaStatus, fmSource: d.source, mimeType: d.mimeType, sizeBytes: d.sizeBytes },
+          },
+        });
+        added++;
+        fmVar.add(mihsapId);
+      } catch (e: any) {
+        // eşzamanlı ikinci çağrı (unique mihsapId) → atla
+        skipped++;
+        this.logger.warn(`FM arşiv kaydı yazılamadı (${d.id}): ${e?.message || e}`);
+      }
+    }
+    this.logger.log(`FM Arşivim → İşlenen Faturalar (${params.mukellefId} ${params.donem}${params.faturaTuru ? ' ' + params.faturaTuru : ''}): ${docs.length} belge, ${added} yeni, ${skipped} mevcut/dosyasız, ${mukerrer} Mihsap'ta zaten var`);
+    if (params.triggerDrive && added > 0 && this.eventBus) {
+      try { this.eventBus.emit('Mihsap.InvoicesFetched', { tenantId: params.tenantId, mukellefId: params.mukellefId, donem: params.donem }); } catch { /* yut */ }
+    }
+    return { total: docs.length, added, skipped, mukerrer };
+  }
+
+  /** FM belgesinin dosyası (zip ise içindeki PDF/HTML/görsel; yoksa dosyanın kendisi). */
+  private async getFmArsivFile(tenantId: string, inv: any): Promise<{ buffer: Buffer; contentType: string; filename: string }> {
+    const docId = String(inv?.raw?.documentId || String(inv.mihsapFileLink || '').replace(/^fm:\/\//, '') || String(inv.mihsapId || '').replace(/^fm:/, ''));
+    const doc = await (this.prisma as any).invoiceAccountingDocument.findFirst({
+      where: { id: docId, tenantId },
+      select: { s3Key: true, originalName: true, mimeType: true, belgeNo: true },
+    });
+    if (!doc?.s3Key) throw new BadRequestException(`FM belgesi bulunamadı ya da dosyası yok (${docId})`);
+    const buffer = await this.storage.getBuffer(doc.s3Key);
+    const base = this.sanitizeFileBase(inv.faturaNo || doc.belgeNo || docId);
+    const mime = String(doc.mimeType || '');
+    const isZip = buffer.length > 4 && buffer[0] === 0x50 && buffer[1] === 0x4b && buffer[2] === 0x03 && buffer[3] === 0x04;
+    if (isZip || /zip/i.test(mime)) {
+      try {
+        const JSZip = (await import('jszip')).default;
+        const zip = await JSZip.loadAsync(buffer);
+        const files = Object.values(zip.files).filter((f: any) => !f.dir) as any[];
+        const rank = (n: string) => (/\.pdf$/i.test(n) ? 0 : /\.(html?|xhtml)$/i.test(n) ? 1 : /\.(jpe?g|png)$/i.test(n) ? 2 : /\.(xml|ubl)$/i.test(n) ? 3 : 9);
+        files.sort((a, b) => rank(a.name) - rank(b.name));
+        const pick = files.find((f) => rank(f.name) < 9);
+        if (pick) {
+          const inner: Buffer = await pick.async('nodebuffer');
+          const ext = (pick.name.split('.').pop() || 'bin').toLowerCase();
+          const ct = ext === 'pdf' ? 'application/pdf' : /^html?$|^xhtml$/.test(ext) ? 'text/html; charset=utf-8' : /^jpe?g$/.test(ext) ? 'image/jpeg' : ext === 'png' ? 'image/png' : 'application/xml';
+          return { buffer: inner, contentType: ct, filename: `${base}.${ext === 'jpeg' ? 'jpg' : ext}` };
+        }
+      } catch (e: any) {
+        this.logger.warn(`FM zip açılamadı (${docId}): ${e?.message || e}`);
+      }
+    }
+    const extFromName = (String(doc.originalName || '').split('.').pop() || '').toLowerCase();
+    const ext = extFromName && extFromName.length <= 5 ? extFromName : (mime.split('/').pop() || 'bin');
+    return { buffer, contentType: mime || 'application/octet-stream', filename: `${base}.${ext}` };
+  }
+
+  private sanitizeFileBase(s: string): string {
+    return String(s || '').replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim().slice(0, 80) || 'belge';
+  }
+
   // ==================== LİSTELEME ====================
 
   /** Panel için DB'deki indirilmiş faturaları listele */
@@ -907,6 +1054,8 @@ export class MihsapService implements OnModuleInit {
     if (!inv || inv.tenantId !== tenantId) {
       throw new BadRequestException(`Fatura kaydı bulunamadı (${invoiceId})`);
     }
+    // FM ARŞİVİM kaynaklı kayıt (2026-09-15): dosya bizim depoda (Fatura İşleme Merkezi belgesi) — Mihsap'a gidilmez.
+    if (this.isFmArsivKaydi(inv)) return this.getFmArsivFile(tenantId, inv);
 
     // URL'yi hazırla — S3 artık kullanılmıyor, doğrudan MIHSAP CDN link'ini kullan.
     // (Eski kayıtlarda `storageKey` dolu olabilir ama S3 bucket erişilemez; o yüzden atla.)
@@ -1015,6 +1164,10 @@ export class MihsapService implements OnModuleInit {
     const inv = await (this.prisma as any).mihsapInvoice.findUnique({ where: { id: invoiceId } });
     if (!inv || inv.tenantId !== tenantId) return null;
 
+    // FM Arşivim kaynaklı kayıt: dosya bizim depoda → imzalı (presigned) bağlantı
+    if (this.isFmArsivKaydi(inv) && inv.storageKey) {
+      try { return await this.storage.getPresignedInlineUrl(inv.storageKey, `${inv.faturaNo || 'belge'}`); } catch { return null; }
+    }
     // MIHSAP CDN URL'i (auth gerektirmez, path hash ile korumalı)
     if (inv.mihsapFileLink) {
       return inv.mihsapFileLink;

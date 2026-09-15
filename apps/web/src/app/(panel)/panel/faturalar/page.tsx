@@ -42,6 +42,8 @@ type MihsapInvoice = {
   storageKey?: string | null;
   downloadedAt?: string | null;
   orjDosyaTuru?: string | null;
+  /** 'arsiv' (Mihsap Arşivim) | 'bekleyen' | 'fm-arsiv' (Fatura İşleme Merkezi › Arşivim, 2026-09-15) */
+  kaynak?: string | null;
   mihsapFileLink?: string | null;
 };
 
@@ -323,9 +325,10 @@ ${isPdf
     faturaTuru?: 'ALIS' | 'SATIS',
     forceRefresh = false,
   ) => {
-    const eligible = taxpayers.filter((t) => !!t.mihsapId);
+    // 2026-09-15: Mihsap ID'si olmayan mükellefler de dahil — onlar için yalnız Fatura İşleme Merkezi › Arşivim çekilir.
+    const eligible = taxpayers;
     if (eligible.length === 0) {
-      toast.error('MIHSAP ID tanımlı mükellef bulunamadı. Mükellef kartlarına Mihsap ID girin.', { duration: 8000 });
+      toast.error('Mükellef bulunamadı.', { duration: 8000 });
       return;
     }
     const label =
@@ -345,7 +348,7 @@ ${isPdf
       try {
         const res: any = await agentsApi.mihsapFetch({
           mukellefId: t.id,
-          mukellefMihsapId: t.mihsapId!,
+          mukellefMihsapId: t.mihsapId || '',
           donem,
           faturaTuru,
           forceRefresh,
@@ -399,8 +402,7 @@ ${isPdf
       return;
     }
     if (!selectedTaxpayer.mihsapId) {
-      toast.error('Bu mükellef için MIHSAP ID kayıtlı değil. Mükellef düzenleme sayfasından "Otomasyon Ajanları" bölümüne Mihsap ID giriniz.', { duration: 8000 });
-      return;
+      toast('Bu mükellefte MIHSAP ID yok — yalnız Fatura İşleme Merkezi › Arşivim\'den çekilecek.', { duration: 6000 });
     }
     const label = faturaTuru === 'ALIS' ? 'alış' : faturaTuru === 'SATIS' ? 'satış' : 'tüm';
     if (forceRefresh) {
@@ -410,7 +412,7 @@ ${isPdf
     fetchMut.mutate(
       {
         mukellefId: selectedTaxpayer.id,
-        mukellefMihsapId: selectedTaxpayer.mihsapId,
+        mukellefMihsapId: selectedTaxpayer.mihsapId || '',
         donem,
         faturaTuru,
         forceRefresh,
@@ -418,7 +420,10 @@ ${isPdf
       {
         onSuccess: (data: any) => {
           console.log('[Faturalar] mutate SUCCESS (raw):', JSON.stringify(data));
-          toast.success(`Mihsap çekme tamam: ${JSON.stringify(data).slice(0, 150)}`, { duration: 12000 });
+          const fm = data?.fmArsiv;
+          const mihsapOzet = selectedTaxpayer.mihsapId ? `Mihsap ${Number(data?.fetched || 0)}/${Number(data?.total || 0)}` : 'Mihsap yok';
+          const fmOzet = fm ? `Arşivim ${fm.added} yeni / ${fm.total} belge${fm.mukerrer ? ` (${fm.mukerrer} Mihsap'ta zaten var)` : ''}` : '';
+          toast.success(`Çekim tamam · ${mihsapOzet}${fmOzet ? ' · ' + fmOzet : ''}${data?.errorMsg ? ` · Mihsap: ${String(data.errorMsg).slice(0, 80)}` : ''} → Drive yedeği başladı`, { duration: 12000 });
         },
         onError: (e: any) => {
           console.error('[Faturalar] mutate ERROR:', e?.response?.status, JSON.stringify(e?.response?.data || {}), e?.message);
@@ -927,7 +932,7 @@ ${isPdf
                   const checked = selectedMukellef === t.id;
                   const name = taxpayerName(t);
                   const initial = name.charAt(0).toUpperCase();
-                  const disabled = !t.mihsapId;
+                  const disabled = false; // 2026-09-15: Mihsap ID'siz mükellef de seçilir (FM Arşivim kaynağı)
                   return (
                     <button
                       key={t.id}
@@ -1137,6 +1142,9 @@ function InvoiceRow({
         </span>
         <div className="text-[10px] mt-0.5 flex items-center gap-1" style={{ color: 'rgba(250,250,249,0.4)' }}>
           {invoice.belgeTuru}
+          {invoice.kaynak === 'fm-arsiv' && (
+            <span title="Fatura İşleme Merkezi › Arşivim (Luca'ya aktarılan)" style={{ color: '#d4b876', fontWeight: 700 }}>· ARŞİVİM</span>
+          )}
           {backedUp && (
             <Cloud size={10} style={{ color: '#22c55e' }} aria-label="Drive'da yedekli" />
           )}
