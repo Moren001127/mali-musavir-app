@@ -10,7 +10,7 @@
 import { parseUblInvoice } from './ubl-parse';
 import {
   kalemPdfAcikMi, xmlKalemsizMi, kalemPdfGerekliMi, kalemPdfYanitiCoz, kalemPdfBirlestir, kalemPdfTamamla,
-  aiMatrahGuvenTavani, kalemPdfPromptu, xmlMatrahi, KalemPdfAiCagri,
+  aiMatrahGuvenTavani, kalemPdfPromptu, xmlMatrahi, KalemPdfAiCagri, pdfDigerVergileriUygula, pdfDigerVergiKodu,
 } from './kalem-pdf';
 
 /** Paraşüt gelen e-Fatura ÖZETİNDEN üretilen sentetik UBL (parasutInboundEInvoiceXml ile aynı biçim — kalem YOK). */
@@ -185,5 +185,50 @@ describe('kalem-pdf — yanıt çözme, prompt ve güven tavanı', () => {
     expect(aiMatrahGuvenTavani('dusuk', 'pdf')).toBe('dusuk');
     expect(aiMatrahGuvenTavani('yuksek', undefined)).toBe('yuksek');
     expect(aiMatrahGuvenTavani(undefined, 'pdf')).toBeUndefined();
+  });
+});
+
+describe('kalem-pdf — KDV dışı vergiler PDF\'ten (2026-09-15 Zeki Özkaynak TT Mobil / Türk Telekom)', () => {
+  const ozet = (toplam: number, kdv: number) => ({
+    kdv: [{ oran: Math.round((kdv / (toplam - kdv)) * 100), matrah: Math.round((toplam - kdv) * 100) / 100, kdv }],
+    toplam,
+    kalemler: [],
+    _ubl: { matrah: Math.round((toplam - kdv) * 100) / 100, kdvTutari: kdv, kdvBreakdown: [{ rate: 18, base: Math.round((toplam - kdv) * 100) / 100, amount: kdv }], toplamTutar: toplam, odenecekTutar: toplam },
+  });
+  it('Türk Telekom P01: 284,25 toplam, KDV 43,73 → PDF ÖİV 21,87 → matrah 218,65 %20, ÖİV 4080 ayrı', () => {
+    const pre: any = ozet(284.25, 43.73);
+    const r = pdfDigerVergileriUygula(pre, { kalemler: [{ ad: 'İletişim Hizmeti', tutar: 218.65, oran: 20 }], giderTuru: 'telefon', digerVergiler: [{ ad: 'Özel İletişim Vergisi', tutar: 21.87 }] });
+    expect(r).toEqual({ toplam: 21.87, adet: 1, oran: 20, eskiMatrah: 240.52, yeniMatrah: 218.65 });
+    expect(pre.kdv).toEqual([{ oran: 20, matrah: 218.65, kdv: 43.73 }]);
+    expect(pre._ubl.digerVergiler).toEqual([{ kod: '4080', ad: 'Özel İletişim Vergisi', tutar: 21.87 }]);
+    expect(pre._ubl.digerVergiToplam).toBe(21.87);
+    expect(pre._ubl.kdvBreakdown).toEqual([{ rate: 20, base: 218.65, amount: 43.73 }]);
+    expect(pre._ubl.digerVergiKaynak).toBe('pdf');
+  });
+  it('TT Mobil GB2: ÖİV 27,75 + telsiz 26,98 → matrah 280,04 %20 (±%1 tolerans, devir 0,15 matrahta kalır)', () => {
+    const pre: any = ozet(390.75, 55.98);
+    const r = pdfDigerVergileriUygula(pre, { kalemler: [{ ad: 'Yeni Emniyet 30', tutar: 279.89, oran: 20 }], giderTuru: 'telefon', digerVergiler: [{ ad: 'Özel İletişim Vergisi', tutar: 27.75 }, { ad: 'Telsiz Kullanım Ücreti', tutar: 26.98 }] });
+    expect(r?.oran).toBe(20);
+    expect(r?.yeniMatrah).toBe(280.04);
+    expect(pre._ubl.digerVergiler.map((v: any) => v.kod)).toEqual(['4080', '8006']);
+  });
+  it('denklem tutmuyorsa (XML zaten doğru, PDF vergisi yanlış) HİÇBİR ŞEY değişmez; XML kendi vergisini biliyorsa da dokunulmaz', () => {
+    const pre: any = { kdv: [{ oran: 20, matrah: 1000, kdv: 200 }], toplam: 1200, kalemler: [], _ubl: { matrah: 1000, kdvBreakdown: [{ rate: 20, base: 1000, amount: 200 }] } };
+    expect(pdfDigerVergileriUygula(pre, { kalemler: [], giderTuru: '', digerVergiler: [{ ad: 'ÖİV', tutar: 100 }] })).toBeNull();
+    expect(pre.kdv[0].matrah).toBe(1000);
+    const pre2: any = { kdv: [{ oran: 18, matrah: 240.52, kdv: 43.73 }], toplam: 284.25, kalemler: [], _ubl: { digerVergiler: [{ kod: '4081', ad: 'ÖİV', tutar: 21.87 }], digerVergiToplam: 21.87 } };
+    expect(pdfDigerVergileriUygula(pre2, { kalemler: [], giderTuru: '', digerVergiler: [{ ad: 'ÖİV', tutar: 21.87 }] })).toBeNull();
+  });
+  it('yanıt çözme: digerVergiler süzülür (KDV/toplam/devir elenir, negatif elenir); kod eşlemesi', () => {
+    const ok = kalemPdfYanitiCoz('{"kalemler":[{"ad":"Hat","tutar":100,"oran":20}],"giderTuru":"telefon","digerVergiler":[{"ad":"KDV %20","tutar":20},{"ad":"Özel İletişim Vergisi","tutar":"27,75"},{"ad":"Gelecek Aya Devir","tutar":-0.04},{"ad":"Toplam Fatura Tutarı","tutar":390.75}]}');
+    expect(ok?.digerVergiler).toEqual([{ ad: 'Özel İletişim Vergisi', tutar: 27.75 }]);
+    expect(pdfDigerVergiKodu('Telsiz Kullanım Ücreti')).toBe('8006');
+    expect(pdfDigerVergiKodu('ÖİV')).toBe('4080');
+    expect(pdfDigerVergiKodu('Damga Vergisi')).toBe('????');
+  });
+  it('prompt KDV dışı vergileri de ister', () => {
+    const pr = kalemPdfPromptu({ yon: 'ALIS', dosya: { tur: 'pdf-metin', metin: 'x'.repeat(100) } as any, xmlMatrah: 240.52 });
+    expect(pr).toContain('digerVergiler');
+    expect(pr).toContain('Özel İletişim Vergisi');
   });
 });

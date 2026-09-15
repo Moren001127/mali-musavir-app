@@ -20,6 +20,11 @@
  */
 
 export type KalemPdfKalem = { ad: string; tutar: number; oran: number };
+/** PDF/görselden okunan KDV DIŞI vergi/ücret satırı (ÖİV, telsiz kullanım ücreti, ÖTV, damga…) — 2026-09-15. */
+export type KalemPdfDigerVergi = { ad: string; tutar: number };
+export type KalemPdfOkunan = { kalemler: KalemPdfKalem[]; giderTuru?: string; digerVergiler?: KalemPdfDigerVergi[] };
+/** PDF'ten okunan KDV dışı vergiler sentetik/özet XML'e uygulandı (Paraşüt /e_invoices özeti ÖİV/telsiz bilmez). */
+export type PdfDigerVergiSonuc = { toplam: number; adet: number; oran: number; eskiMatrah: number; yeniMatrah: number };
 export type KalemKaynak = 'pdf' | 'pdf-tahmin';
 
 /** Kalem toplamı ↔ XML matrahı kabul edilen sapma (oran; 0.05 = ±%5). */
@@ -50,6 +55,8 @@ export interface KalemPdfSonuc {
   /** Kalemleri hangi model okudu (log/ölçüm). */
   model?: string;
   dosyaTuru: KalemPdfDosya['tur'];
+  /** PDF'ten okunan KDV dışı vergiler (ÖİV/telsiz…) XML'e uygulandıysa (2026-09-15). */
+  digerVergi?: PdfDigerVergiSonuc | null;
 }
 
 const r2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
@@ -93,8 +100,9 @@ export function kalemPdfPromptu(p: { yon: 'ALIS' | 'SATIS'; dosya: KalemPdfDosya
       : 'Aşağıda bir Türk e-Fatura / e-Arşiv faturasının PDF metni var.',
     `Belgenin tarafları, tutarları, tarihi ve yönü (${p.yon === 'SATIS' ? 'mükellef SATICI' : 'mükellef ALICI'}) ZATEN BİLİNİYOR — onları OKUMA, YAZMA.`,
     'YALNIZ mal/hizmet KALEMLERİNİ çıkar. YALNIZCA şu JSON\'u döndür — kod bloğu, açıklama, başka metin YOK:',
-    `{"kalemler":[{"ad":"<mal/hizmet kalem adı>","tutar":<o kalemin KDV hariç tutarı sayı>,"oran":<o kalemin KDV oranı sayı>}],"giderTuru":"<${p.yon === 'ALIS' ? 'faturadaki ANA mal/hizmetin kısa adı (akaryakıt/kira/elektrik/su/doğalgaz/telefon/internet/kırtasiye/danışmanlık/nakliye/yemek/temizlik/bakım onarım/sigorta/reklam/araç kiralama…); net değilse boş' : 'boş bırak'}>"}`,
+    `{"kalemler":[{"ad":"<mal/hizmet kalem adı>","tutar":<o kalemin KDV hariç tutarı sayı>,"oran":<o kalemin KDV oranı sayı>}],"giderTuru":"<${p.yon === 'ALIS' ? 'faturadaki ANA mal/hizmetin kısa adı (akaryakıt/kira/elektrik/su/doğalgaz/telefon/internet/kırtasiye/danışmanlık/nakliye/yemek/temizlik/bakım onarım/sigorta/reklam/araç kiralama…); net değilse boş' : 'boş bırak'}>","digerVergiler":[{"ad":"<KDV DIŞI vergi/ücret adı>","tutar":<sayı>}]}`,
     'kalemler: faturadaki mal/hizmet satırları (kalem adı + KDV hariç tutar + KDV oranı). ⚠️ ÇOK KALEMLİYSE (>15 satır) KDV oranına ve benzer ürün grubuna göre BİRLEŞTİR — en fazla 15 nesne (ör. "%1 gıda ürünleri", "%20 temizlik/sarf"). Az kalemliyse her satır ayrı.',
+    'digerVergiler: faturada KDV DIŞINDA ayrıca gösterilen vergi/ücret satırları — Özel İletişim Vergisi (ÖİV), Telsiz Kullanım Ücreti, ÖTV, Damga Vergisi, Konaklama Vergisi, Elektrik Tüketim Vergisi gibi — her biri ad + tutar. KDV\'yi, toplamları, devir/bakiye satırlarını BURAYA YAZMA. Yoksa [].',
     'KURALLAR: Türk sayı biçimi "1.234,56" = 1234.56 (ondalıklı sayıya çevir). tutar = KDV HARİÇ satır tutarı (miktar × birim fiyat − satır iskontosu); KDV dahil tutarı YAZMA. Okunamayan tutarı 0 bırak, UYDURMA. Kalem hiç okunamıyorsa "kalemler": [].',
     matrahNotu,
     p.belgeNo ? `Belge no: ${p.belgeNo}` : '',
@@ -103,7 +111,7 @@ export function kalemPdfPromptu(p: { yon: 'ALIS' | 'SATIS'; dosya: KalemPdfDosya
 }
 
 /** AI yanıtındaki JSON'u çöz; kalemleri temizle (ad ≤80, sayılar). Kalem yoksa/çözülemezse null. */
-export function kalemPdfYanitiCoz(text: string | null | undefined): { kalemler: KalemPdfKalem[]; giderTuru: string } | null {
+export function kalemPdfYanitiCoz(text: string | null | undefined): KalemPdfOkunan | null {
   const s = String(text || '');
   const m = s.match(/\{[\s\S]*\}/);
   if (!m) return null;
@@ -124,7 +132,58 @@ export function kalemPdfYanitiCoz(text: string | null | undefined): { kalemler: 
     .filter((k: KalemPdfKalem) => k.ad)
     .slice(0, KALEM_PDF_EN_COK_KALEM);
   if (!kalemler.length) return null;
-  return { kalemler, giderTuru: String(j.giderTuru || '').replace(/\s+/g, ' ').trim().slice(0, 40) };
+  // KDV dışı vergiler (2026-09-15): KDV/toplam/devir satırları elenir; yalnız pozitif tutarlar.
+  const digerVergiler: KalemPdfDigerVergi[] = (Array.isArray(j.digerVergiler) ? j.digerVergiler : [])
+    .map((v: any) => ({ ad: String(v?.ad || '').replace(/\s+/g, ' ').trim().slice(0, 60), tutar: r2(num(v?.tutar)) }))
+    .filter((v: KalemPdfDigerVergi) => v.ad && v.tutar > 0 && !/\bkdv\b|katma de[gğ]er|toplam|devir|bakiye|[öo]denecek/i.test(v.ad))
+    .slice(0, 8);
+  return { kalemler, giderTuru: String(j.giderTuru || '').replace(/\s+/g, ' ').trim().slice(0, 40), ...(digerVergiler.length ? { digerVergiler } : {}) };
+}
+
+/** KDV dışı vergi adından GİB vergi türü kodu (ÖİV 4080 · telsiz 8006 · ÖTV 0071 · damga 0059? → konaklama 0059; bilinmeyen '????'). */
+export function pdfDigerVergiKodu(ad: string): string {
+  // Türkçe 'İ' toLowerCase'de "i̇" (i + U+0307) olur → regex kaçırır; önce İ→i, sonra birleşik noktayı at.
+  const a = String(ad || '').replace(/İ/g, 'i').toLowerCase().replace(/\u0307/g, '');
+  if (/ileti[şs]im|(^|[^a-zçğıöşü])[öo][iı]v([^a-zçğıöşü]|$)/.test(a)) return '4080'; // \b 'ö' önünde çalışmaz (ASCII sınırı)
+  if (/telsiz/.test(a)) return '8006';
+  if (/[öo]tv|[öo]zel t[üu]ketim/.test(a)) return '0071';
+  if (/konaklama/.test(a)) return '0059';
+  if (/elektrik.*t[üu]ketim|havagaz/.test(a)) return '8005';
+  return '????';
+}
+
+/**
+ * PDF'TEN OKUNAN KDV DIŞI VERGİLERİ sentetik/özet XML'e UYGULA (2026-09-15 — Zeki Özkaynak TT Mobil GB22026004653071,
+ * Türk Telekom P012026004279158): Paraşüt /e_invoices özeti yalnız toplam + KDV verir; ÖİV/telsiz matrahın içinde kalıyor,
+ * KDV oranı %17/%18 çıkıyor, "KDV kodu boş" (planda %17 yok). Kural: XML'de KDV dışı vergi YOK + PDF'te var + tek oran +
+ * (XML matrahı − Σ) × standart oran ≈ KDV (±%1, en az 0,05) → matrah/kırılım tabanı düşürülür, oran standarda çekilir,
+ * _ubl.digerVergiler/digerVergiToplam yazılır (ÖİV → rematch 689 ÖİV yaprağı). Denklem tutmazsa hiçbir şey değişmez.
+ */
+export function pdfDigerVergileriUygula(preParsed: any, okunan: KalemPdfOkunan | null | undefined): PdfDigerVergiSonuc | null {
+  const liste = (okunan?.digerVergiler || []).filter((v) => v && v.tutar > 0);
+  if (!preParsed || !liste.length) return null;
+  const ubl: any = preParsed._ubl || null;
+  if (ubl && Array.isArray(ubl.digerVergiler) && ubl.digerVergiler.length) return null; // XML zaten biliyor
+  const kd = Array.isArray(preParsed.kdv) ? preParsed.kdv : [];
+  if (kd.length !== 1) return null;
+  const eskiMatrah = r2(Number(kd[0]?.matrah) || 0);
+  const kdv = r2(Number(kd[0]?.kdv) || 0);
+  const toplam = r2(liste.reduce((s, v) => s + v.tutar, 0));
+  const yeniMatrah = r2(eskiMatrah - toplam);
+  if (!(eskiMatrah > 0) || !(kdv > 0) || !(yeniMatrah > 0)) return null;
+  const oran = [20, 10, 1, 18, 8].find((r) => Math.abs(yeniMatrah * r / 100 - kdv) <= Math.max(0.05, kdv * 0.01));
+  if (!oran) return null;
+  preParsed.kdv = [{ oran, matrah: yeniMatrah, kdv }];
+  if (ubl) {
+    ubl.kdvBreakdown = [{ rate: oran, base: yeniMatrah, amount: kdv }];
+    ubl.matrah = yeniMatrah;
+    ubl.kdvOrani = oran;
+    ubl.digerVergiler = liste.map((v) => ({ kod: pdfDigerVergiKodu(v.ad), ad: v.ad, tutar: v.tutar }));
+    ubl.digerVergiToplam = toplam;
+    ubl.digerVergiKaynak = 'pdf';
+  }
+  preParsed._pdfDigerVergiler = liste;
+  return { toplam, adet: liste.length, oran, eskiMatrah, yeniMatrah };
 }
 
 /**
@@ -134,7 +193,7 @@ export function kalemPdfYanitiCoz(text: string | null | undefined): { kalemler: 
  */
 export function kalemPdfBirlestir(
   preParsed: any,
-  okunan: { kalemler: KalemPdfKalem[]; giderTuru?: string } | null | undefined,
+  okunan: KalemPdfOkunan | null | undefined,
   opts?: { sapmaEsigi?: number },
 ): Omit<KalemPdfSonuc, 'model' | 'dosyaTuru'> | null {
   if (!preParsed || typeof preParsed !== 'object') return null;
@@ -150,7 +209,8 @@ export function kalemPdfBirlestir(
   const gt = String(okunan?.giderTuru || '').trim().slice(0, 40);
   if (gt) preParsed._pdfGiderTuru = gt;
   preParsed._kalemKaynak = kalemKaynak;
-  return { kalemKaynak, kalemSayisi: kalemler.length, kalemToplam, xmlMatrah, sapmaYuzde: sapma == null ? null : r2(sapma * 100) };
+  const digerVergi = pdfDigerVergileriUygula(preParsed, okunan);
+  return { kalemKaynak, kalemSayisi: kalemler.length, kalemToplam, xmlMatrah, sapmaYuzde: sapma == null ? null : r2(sapma * 100), digerVergi };
 }
 
 /**
@@ -169,7 +229,7 @@ export async function kalemPdfTamamla(
   if (dosya.tur === 'gorsel' && String(dosya.base64 || '').length < 100) return null;
   const prompt = kalemPdfPromptu({ yon: opts.yon, dosya, xmlMatrah: xmlMatrahi(preParsed), belgeNo: opts.belgeNo });
   const modeller = opts.modeller && opts.modeller.length ? opts.modeller : [undefined];
-  let okunan: { kalemler: KalemPdfKalem[]; giderTuru: string } | null = null;
+  let okunan: KalemPdfOkunan | null = null;
   let kullanilan: string | undefined;
   for (const model of modeller) {
     const res = await aiCagri({

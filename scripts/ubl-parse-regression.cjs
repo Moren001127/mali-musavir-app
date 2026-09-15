@@ -33,7 +33,7 @@ function loadTsNode() {
 }
 loadTsNode();
 
-const { parseUblInvoice, isKdvTaxSubtotal, ublOcrDataFields, distributeDocumentDiscount, resolveTevkifatOrani, clearUblOnlyOcrFields } = require(path.join(
+const { parseUblInvoice, isKdvTaxSubtotal, ublOcrDataFields, distributeDocumentDiscount, resolveTevkifatOrani, clearUblOnlyOcrFields, kdvDisiVergiOivMi } = require(path.join(
   ROOT, 'apps', 'api', 'src', 'fatura-muhasebelestirme', 'ubl-parse.ts',
 ));
 
@@ -442,5 +442,91 @@ ${line(2, 'Deterjan', 1, 1000, 1000, `<cac:TaxTotal><cbc:TaxAmount currencyID="T
   approx(q.kdvBreakdown[0].base, 3604496.53, '14b: taban dokunulmadı');
 }
 
+// 15) ÖDENECEK ≠ FATURA TUTARI — önceki dönem bakiyesi (2026-09-15 İGDAŞ ES02026002064120): fiş fatura tutarıyla kurulur.
+{
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<Invoice>
+  <ID>ES02026002064120</ID><ProfileID>TEMELFATURA</ProfileID><IssueDate>2026-08-18</IssueDate><DocumentCurrencyCode>TRY</DocumentCurrencyCode>
+  <AccountingSupplierParty><Party><PartyName><Name>İGDAŞ</Name></PartyName><PartyIdentification><ID schemeID="VKN">4700022607</ID></PartyIdentification></Party></AccountingSupplierParty>
+  <AccountingCustomerParty><Party><PartyName><Name>ÖZ ELA</Name></PartyName><PartyIdentification><ID schemeID="VKN">6620808781</ID></PartyIdentification></Party></AccountingCustomerParty>
+  <TaxTotal><TaxAmount currencyID="TRY">8.48</TaxAmount><TaxSubtotal><TaxableAmount currencyID="TRY">42.39</TaxableAmount><TaxAmount currencyID="TRY">8.48</TaxAmount><Percent>20</Percent><TaxCategory><TaxScheme><Name>KDV</Name><TaxTypeCode>0015</TaxTypeCode></TaxScheme></TaxCategory></TaxSubtotal></TaxTotal>
+  <LegalMonetaryTotal>
+    <LineExtensionAmount currencyID="TRY">42.39</LineExtensionAmount>
+    <TaxExclusiveAmount currencyID="TRY">42.39</TaxExclusiveAmount>
+    <TaxInclusiveAmount currencyID="TRY">50.87</TaxInclusiveAmount>
+    <PayableRoundingAmount currencyID="TRY">-0.19</PayableRoundingAmount>
+    <PayableAmount currencyID="TRY">438.00</PayableAmount>
+  </LegalMonetaryTotal>
+</Invoice>`;
+  const p = parseUblInvoice(xml);
+  assert(p, '15: parse null');
+  approx(p.odenecekTutar, 50.87, '15: ödenecek = fatura tutarı (TaxInclusive)');
+  approx(p.odenecekFarki, 387.13, '15: bakiye farkı 438,00 − 50,87');
+  assert(p.odenecekFarkiNeden === 'bakiye', '15: neden bakiye');
+  approx(p.toplamTutar, 438, '15: ham ödenecek toplamTutar\'da kalır');
+  const f = ublOcrDataFields(p);
+  approx(f.odenecekTutar, 50.87, '15: ocrData.odenecekTutar');
+  approx(f.odenecekFarki, 387.13, '15: ocrData.odenecekFarki');
+}
+
+// 16) YUVARLAMA İŞARETİ ERP'ye göre (2026-09-15 Superonline 01S2026001550180): PayableRounding +0,06 ama fiilen −0,06.
+{
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<Invoice>
+  <ID>01S2026001550180</ID><ProfileID>TEMELFATURA</ProfileID><IssueDate>2026-08-31</IssueDate><DocumentCurrencyCode>TRY</DocumentCurrencyCode>
+  <AccountingSupplierParty><Party><PartyName><Name>SUPERONLINE</Name></PartyName><PartyIdentification><ID schemeID="VKN">1750331214</ID></PartyIdentification></Party></AccountingSupplierParty>
+  <AccountingCustomerParty><Party><PartyName><Name>ÖZ ELA</Name></PartyName><PartyIdentification><ID schemeID="VKN">6620808781</ID></PartyIdentification></Party></AccountingCustomerParty>
+  <TaxTotal><TaxAmount currencyID="TRY">276.42</TaxAmount>
+    <TaxSubtotal><TaxableAmount currencyID="TRY">939.74</TaxableAmount><TaxAmount currencyID="TRY">187.95</TaxAmount><Percent>20</Percent><TaxCategory><TaxScheme><Name>KDV</Name><TaxTypeCode>0015</TaxTypeCode></TaxScheme></TaxCategory></TaxSubtotal>
+    <TaxSubtotal><TaxableAmount currencyID="TRY">884.71</TaxableAmount><TaxAmount currencyID="TRY">88.47</TaxAmount><Percent>10</Percent><TaxCategory><TaxScheme><Name>Özel İletişim Vergisi</Name><TaxTypeCode>4081</TaxTypeCode></TaxScheme></TaxCategory></TaxSubtotal>
+  </TaxTotal>
+  <LegalMonetaryTotal>
+    <LineExtensionAmount currencyID="TRY">939.68</LineExtensionAmount>
+    <TaxExclusiveAmount currencyID="TRY">939.74</TaxExclusiveAmount>
+    <TaxInclusiveAmount currencyID="TRY">1216.10</TaxInclusiveAmount>
+    <PayableRoundingAmount currencyID="TRY">0.06</PayableRoundingAmount>
+    <PayableAmount currencyID="TRY">1216.10</PayableAmount>
+  </LegalMonetaryTotal>
+</Invoice>`;
+  const p = parseUblInvoice(xml);
+  assert(p, '16: parse null');
+  approx(p.odenecekTutar, 1216.16, '16: ödenecek = denklem (ham + 0,06)');
+  approx(p.odenecekFarki, -0.06, '16: yuvarlama farkı −0,06');
+  assert(p.odenecekFarkiNeden === 'yuvarlama', '16: neden yuvarlama');
+  assert(!p.digerVergiMatrahaDahil, '16: ÖİV tabana dahil değil');
+  approx(p.matrah + p.kdvTutari + p.digerVergiToplam, 1216.16, '16: denklem');
+  assert(kdvDisiVergiOivMi(p.digerVergiler[0]) === true, '16: ÖİV tanındı');
+}
+
+// 17) BTV (elektrik tüketim vergisi) KDV TABANINDA + PayableRounding alanına fatura tutarı yazan ERP (2026-09-15 CK Boğaziçi BEF2026002999464).
+{
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<Invoice>
+  <ID>BEF2026002999464</ID><ProfileID>TEMELFATURA</ProfileID><IssueDate>2026-08-12</IssueDate><DocumentCurrencyCode>TRY</DocumentCurrencyCode>
+  <AccountingSupplierParty><Party><PartyName><Name>CK BOĞAZİÇİ</Name></PartyName><PartyIdentification><ID schemeID="VKN">1790617537</ID></PartyIdentification></Party></AccountingSupplierParty>
+  <AccountingCustomerParty><Party><PartyName><Name>İLGİ OTO</Name></PartyName><PartyIdentification><ID schemeID="VKN">4711002578</ID></PartyIdentification></Party></AccountingCustomerParty>
+  <TaxTotal><TaxAmount currencyID="TRY">267.34</TaxAmount>
+    <TaxSubtotal><TaxableAmount currencyID="TRY">1182.19</TaxableAmount><TaxAmount currencyID="TRY">236.44</TaxAmount><Percent>20</Percent><TaxCategory><TaxScheme><Name>KDV</Name><TaxTypeCode>0015</TaxTypeCode></TaxScheme></TaxCategory></TaxSubtotal>
+    <TaxSubtotal><TaxableAmount currencyID="TRY">30.9</TaxableAmount><TaxAmount currencyID="TRY">30.9</TaxAmount><TaxCategory><TaxScheme><Name>BTV</Name><TaxTypeCode>8005</TaxTypeCode></TaxScheme></TaxCategory></TaxSubtotal>
+  </TaxTotal>
+  <LegalMonetaryTotal>
+    <LineExtensionAmount currencyID="TRY">1182.19</LineExtensionAmount>
+    <TaxExclusiveAmount currencyID="TRY">1151.12</TaxExclusiveAmount>
+    <TaxInclusiveAmount currencyID="TRY">1418.46</TaxInclusiveAmount>
+    <PayableRoundingAmount currencyID="TRY">1418.46</PayableRoundingAmount>
+    <PayableAmount currencyID="TRY">1420</PayableAmount>
+  </LegalMonetaryTotal>
+</Invoice>`;
+  const p = parseUblInvoice(xml);
+  assert(p, '17: parse null');
+  assert(p.digerVergiMatrahaDahil === true, '17: BTV tabana dahil');
+  approx(p.kdvBreakdown[0].base, 1151.29, '17: taban BTV arındırılmış');
+  approx(p.matrah, 1151.29, '17: matrah = enerji bedeli');
+  approx(p.odenecekTutar, 1418.46, '17: ödenecek = fatura tutarı (TaxInclusive)');
+  approx(p.odenecekFarki, 1.54, '17: güncel yuvarlama 1,54');
+  assert(p.odenecekFarkiNeden === 'yuvarlama', '17: neden yuvarlama');
+  assert(Math.abs(p.matrah + p.kdvTutari + p.digerVergiToplam - p.odenecekTutar) <= 0.5, '17: denklem ±0,50 (önceki yuvarlama 0,17)');
+}
+
 if (failed) { console.error(`[ubl-parse] ${failed} hata`); process.exit(1); }
-console.log('[ubl-parse] OK — tevkifatlı satış, telekom karışık vergi, iade/iptal (not karar vermez), iskonto, döviz, vergi türü süzgeci, kısmi tevkifat, e-SMM stopaj, yuvarlama, çok oranlı kdvOrani, tevkifat çıkarımı (sentetik XML), alt toplamsız tevkifat aritmetiği, ÖTV KDV-matrahı arındırma');
+console.log('[ubl-parse] OK — tevkifatlı satış, telekom karışık vergi, iade/iptal (not karar vermez), iskonto, döviz, vergi türü süzgeci, kısmi tevkifat, e-SMM stopaj, yuvarlama, çok oranlı kdvOrani, tevkifat çıkarımı (sentetik XML), alt toplamsız tevkifat aritmetiği, ÖTV/BTV KDV-matrahı arındırma, bakiye/yuvarlama ödenecek çözümü');

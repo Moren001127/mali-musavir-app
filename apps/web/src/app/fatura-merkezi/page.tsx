@@ -150,7 +150,7 @@ function deriveDurum(doc: any, isIsletme = false, autoKtKod = ''): { k: string; 
     const c = String(l.accountCode || '');
     return /^61[01]/.test(c) || (/^(191|391)/.test(c) && /İADE|IADE/i.test(String(l.description || '')));
   });
-  const nonAmountIssues = issues.filter((i: any) => i?.code && i?.severity !== 'WARNING'
+  const nonAmountIssues = issues.filter((i: any) => i?.code && i?.severity !== 'WARNING' && i?.severity !== 'INFO'
     && !['INCOMPLETE_AMOUNTS', 'TOTAL_MISMATCH', 'BALANCE_MISMATCH'].includes(i.code)
     && !(i.code === 'RETURN_NEEDS_REVERSAL' && hasReturnLine));
   // Faz 2 (PLAN/15) — TEK UYARI MODELİ: ocrData.uyarilar[] {kod, seviye: bilgi|uyari|engel, ...}.
@@ -2105,7 +2105,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                 const tevkUyari = uyariListeFE(docUyarilar).find((u) => u.kod === 'TEVKIFAT_VAR');
                 const tevkEtiket = (tevkUyari || docTevkifatliFE(d)) ? `Tevkifatlı${tevkUyari?.meta?.oranMetni ? ' ' + String(tevkUyari.meta.oranMetni) : ''}` : '';
                 const demirbasEtiket = uyariListeFE(docUyarilar).some((u) => u.kod === 'DEMIRBAS') || (d.ocrData as any)?.fixedAsset?.is === true ? (demEylemler.length ? 'Demirbaş — karar bekliyor' : 'Demirbaş') : '';
-                const durumIpucu = du.cat === 'okunamadi' && d.lucaErrorMessage ? `Neden: ${d.lucaErrorMessage}` : du.cat === 'celiski' ? ((Array.isArray(d.validationIssues) ? d.validationIssues : (Array.isArray(d.ocrData?.validationIssues) ? d.ocrData.validationIssues : [])).filter((i: any) => i?.code && i.code !== 'INCOMPLETE_AMOUNTS' && i?.severity !== 'WARNING').map((i: any) => i.message).filter(Boolean).join(' · ') || du.t) : du.t;
+                const durumIpucu = du.cat === 'okunamadi' && d.lucaErrorMessage ? `Neden: ${d.lucaErrorMessage}` : du.cat === 'celiski' ? ((Array.isArray(d.validationIssues) ? d.validationIssues : (Array.isArray(d.ocrData?.validationIssues) ? d.ocrData.validationIssues : [])).filter((i: any) => i?.code && i.code !== 'INCOMPLETE_AMOUNTS' && i?.severity !== 'WARNING' && i?.severity !== 'INFO').map((i: any) => i.message).filter(Boolean).join(' · ') || du.t) : du.t;
                 return (
                   <Fragment key={d.id}>
                   <tr className={`${ocrCls || ''}${fisAcik ? ' detay-on' : ''}`.trim() || undefined}>
@@ -2221,7 +2221,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                               </tbody>
                             </table>
                           ) : <div className="empty" style={{ padding: 10 }}>Fiş satırı yok — önce "AI ile oku".</div>}
-                          {(() => { const sB = fisLines.reduce((s: number, l: any) => s + Number(l.debit || 0), 0); const sA = fisLines.reduce((s: number, l: any) => s + Number(l.credit || 0), 0); const msgs: string[] = []; if (fisLines.length > 0 && Math.abs(sB - sA) > 0.5) msgs.push(`Yevmiye dengesiz: Borç ${fmtMoney(sB)} ₺ ≠ Alacak ${fmtMoney(sA)} ₺ (${Math.abs(sB - sA).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺ fark) — bir satır eksik/fazla.`); (Array.isArray(d.validationIssues) ? d.validationIssues : (Array.isArray(d.ocrData?.validationIssues) ? d.ocrData.validationIssues : [])).filter((i: any) => i?.code && i?.severity !== 'WARNING' && !['INCOMPLETE_AMOUNTS', 'TOTAL_MISMATCH', 'BALANCE_MISMATCH'].includes(i.code) && !(i.code === 'RETURN_NEEDS_REVERSAL' && fisLines.some((l: any) => /^61[01]/.test(String(l.accountCode || ''))))).forEach((i: any) => i.message && msgs.push(i.message)); return msgs.length ? <div className="celiskibanner"><b>Çelişki sebebi:</b>{msgs.map((m: string, k: number) => <div key={k}>• {m}</div>)}</div> : null; })()}
+                          {(() => { const sB = fisLines.reduce((s: number, l: any) => s + Number(l.debit || 0), 0); const sA = fisLines.reduce((s: number, l: any) => s + Number(l.credit || 0), 0); const msgs: string[] = []; if (fisLines.length > 0 && Math.abs(sB - sA) > 0.5) msgs.push(`Yevmiye dengesiz: Borç ${fmtMoney(sB)} ₺ ≠ Alacak ${fmtMoney(sA)} ₺ (${Math.abs(sB - sA).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺ fark) — bir satır eksik/fazla.`); (Array.isArray(d.validationIssues) ? d.validationIssues : (Array.isArray(d.ocrData?.validationIssues) ? d.ocrData.validationIssues : [])).filter((i: any) => i?.code && i?.severity !== 'WARNING' && i?.severity !== 'INFO' && !['INCOMPLETE_AMOUNTS', 'TOTAL_MISMATCH', 'BALANCE_MISMATCH'].includes(i.code) && !(i.code === 'RETURN_NEEDS_REVERSAL' && fisLines.some((l: any) => /^61[01]/.test(String(l.accountCode || ''))))).forEach((i: any) => i.message && msgs.push(i.message)); return msgs.length ? <div className="celiskibanner"><b>Çelişki sebebi:</b>{msgs.map((m: string, k: number) => <div key={k}>• {m}</div>)}</div> : null; })()}
                         </div>
                       </td>
                     </tr>

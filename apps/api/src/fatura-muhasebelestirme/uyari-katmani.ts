@@ -143,7 +143,8 @@ export function dogrulamaUyarilari(issues: Array<{ code: string; severity: strin
   };
   for (const i of issues || []) {
     const code = String(i?.code || '');
-    const sev: UyariSeviye = String(i?.severity || '').toUpperCase() === 'WARNING' ? 'uyari' : 'engel';
+    const sevRaw = String(i?.severity || '').toUpperCase();
+    const sev: UyariSeviye = sevRaw === 'INFO' ? 'bilgi' : sevRaw === 'WARNING' ? 'uyari' : 'engel';
     const msg = String(i?.message || '');
     switch (code) {
       case 'FIXED_ASSET_MANUAL':
@@ -171,6 +172,9 @@ export function dogrulamaUyarilari(issues: Array<{ code: string; severity: strin
         break;
       case 'FAALIYET_UYUMSUZ':
         ekle('FAALIYET_UYUMSUZ', 'engel', 'Faaliyetle uyumsuz alım', msg, 'Bu alım mükellefin işine yabancı görünüyor (ör. kırtasiyecinin kuyumcudan altın alması); gider olarak işlenmedi. KKEG mi, şahsi harcama mı, yanlış mükellef mi karar verin; işlenecekse hesabı editörde elle seçin — o zaman engel kalkar.');
+        break;
+      case 'ODENECEK_FARKI':
+        ekle('ODENECEK_FARKI', 'bilgi', 'Ödenecek tutar fatura tutarından farklı', msg, 'Fiş fatura tutarıyla kuruldu; önceki dönem borcu/alacağı ya da yuvarlama bu belgeye işlenmez.');
         break;
       case 'ENTEGRATOR_ISARETI':
         ekle('ENTEGRATOR_ISARETI', 'uyari', 'Entegratör iptal/itiraz işareti', msg, 'Entegratör portalında belgenin iptal/itiraz durumunu kontrol edin; sorun yoksa belgeyi normal işleyin.');
