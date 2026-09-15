@@ -186,10 +186,19 @@ function isletmeTevkifatVarsayilanlari(doc: any, isl: any): any {
   return { ...isl, tevkifatOrani: oranTxt, ...(tevkifatTutar ? { tevkifatTutar } : {}), ...(kod ? { tevkifatKodu: kod } : {}) };
 }
 
+/** SMM stopajı (belge okuması ocrData.stopajTutari) → isletme.stopajTutar / stopajKod 022 (elle girilen önde). Satışta dokunmaz. */
+function isletmeStopajVarsayilanlari(doc: any, isl: any): any {
+  if (isletmeKind(doc) === 'SATIS') return isl;
+  const ocr: any = doc?.ocrData || {};
+  const tutar = Number(ocr?.stopajTutari) || 0;
+  if (!(tutar > 0)) return isl;
+  return { ...isl, ...(Number(isl?.stopajTutar) > 0 ? {} : { stopajTutar: Math.round(tutar * 100) / 100 }), ...(String(isl?.stopajKod || '').trim() ? {} : { stopajKod: '022' }) };
+}
+
 function isletmeWithBelgeDefaults(doc: any): any {
   const kind = isletmeKind(doc);
   const ocr: any = doc?.ocrData || {};
-  const isl: any = isletmeTevkifatVarsayilanlari(doc, ocr?.isletme || {});
+  const isl: any = isletmeStopajVarsayilanlari(doc, isletmeTevkifatVarsayilanlari(doc, ocr?.isletme || {}));
   const normalized = normalizeDocumentType(doc?.documentType || ocr?.belgeTuru || ocr?.documentType);
   const belgeTuruKod = String(isl.belgeTuruKod || (normalized ? defaultBelgeTuruKod(normalized, kind) : '')).trim();
   if (!belgeTuruKod) return isl;

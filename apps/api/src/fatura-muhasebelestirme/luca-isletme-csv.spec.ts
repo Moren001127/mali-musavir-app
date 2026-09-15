@@ -48,6 +48,33 @@ describe('İşletme HIZLI FİŞ CSV — Luca fiş türü ve tevkifatlı satış 
   });
 });
 
+describe('İşletme HIZLI FİŞ CSV — KDV dışı vergi (ÖİV) ve stopaj sütunları (2026-09-15)', () => {
+  const hucreler = (buf: Buffer) => require('iconv-lite').decode(buf, 'win1254').split('\r\n')[1].split(';');
+  it('Turkcell: ÖİV 28. sütuna (matraha dahil olmayan), TUTAR salt matrah, KDV ve toplam tutarlı', () => {
+    process.env.LUCA_ISLETME_UNVAN_ASCII = '2';
+    const p: any = { ...payload(), invoices: [{ ...payload().invoices[0], vendorName: 'TURKCELL', isletme: { belgeTuruKod: '9', belgeTuruAd: 'e-Fatura', kayitTuruKod: '4', kayitTuruAd: 'İndirilecek Giderler (GVK Md. 40)', kayitAltKod: '87', kayitAltAd: 'Telefon Giderleri (GVK 40/1)', kdvOranKod: 'KDV20' },
+      lines: [
+        { group: 'matrah', description: 'tel', rate: '20', debit: '65.18', credit: '0', orderNo: 0 },
+        { group: 'vergi', description: 'kdv', rate: '20', debit: '13.04', credit: '0', orderNo: 1 },
+        { group: 'diger_vergi', description: 'ÖİV', rate: 'ÖİV', debit: '6.52', credit: '0', orderNo: 2 },
+      ] }] };
+    const h = hucreler(buildLucaIsletmeHizliFisCsv(p));
+    expect(h[2]).toBe('Diğer Alışlar');
+    expect([h[22], h[27], h[28], h[29]]).toEqual(['65,18', '6,52', '13,04', '84,74']);
+  });
+  it('SMM: stopaj kodu Luca etiketi (022) + tutar; oran "20" artık kod sütununa yazılmaz', () => {
+    process.env.LUCA_ISLETME_UNVAN_ASCII = '2';
+    const p: any = { ...payload(), invoices: [{ ...payload().invoices[0], documentType: 'E_SMM', vendorName: 'AVUKAT X', isletme: { belgeTuruKod: '13', belgeTuruAd: 'e-Serbest Meslek Makbuzu', kayitTuruKod: '4', kayitTuruAd: 'İndirilecek Giderler (GVK Md. 40)', kayitAltKod: '196', kayitAltAd: 'Avukatlık, Hukuk ve Müşavirlik Giderleri (GVK 40/1)', kdvOranKod: 'KDV20', stopajKod: '022', stopajTutar: 11000, stopajOrani: '20' } }] };
+    const h = hucreler(buildLucaIsletmeHizliFisCsv(p));
+    expect(h[31]).toBe('Diğer Serbest Meslek Kazancı Ödemeleri (GVK Md. 94/2-b)');
+    expect(h[32]).toBe('11000,00');
+    const q: any = { ...p, invoices: [{ ...p.invoices[0], isletme: { ...p.invoices[0].isletme, stopajKod: '', stopajTutar: 0, stopajOrani: '20' } }] };
+    const g = hucreler(buildLucaIsletmeHizliFisCsv(q));
+    expect(g[31]).toBe('Diğer Serbest Meslek Kazancı Ödemeleri (GVK Md. 94/2-b)'); // SMM + oran → 022
+    expect(g[32]).toBe('');
+  });
+});
+
 describe('İşletme HIZLI FİŞ CSV — kodlama', () => {
   const eski = { k: process.env.LUCA_ISLETME_CSV_KODLAMA, a: process.env.LUCA_ISLETME_UNVAN_ASCII };
   afterEach(() => {

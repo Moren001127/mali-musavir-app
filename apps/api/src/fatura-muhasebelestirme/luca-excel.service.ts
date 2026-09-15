@@ -56,7 +56,9 @@ export interface InvoicePayload {
     kayitAltKod?: string; kayitAltAd?: string;
     kdvOranKod?: string; plakaNo?: string; kayitTarihi?: string;
     matrah?: number; kdvTutar?: number; krediliTutar?: number; donem?: boolean;
-    hesapKodu?: string; tevkifatOrani?: string; tevkifatTutar?: number; tevkifatKodu?: string; stopajOrani?: string; stopajTutar?: number;
+    hesapKodu?: string; tevkifatOrani?: string; tevkifatTutar?: number; tevkifatKodu?: string; stopajOrani?: string; stopajTutar?: number; stopajKod?: string;
+    /** KDV matrahına dahil olmayan bedel (ÖİV/telsiz/damga …) — Luca 28. sütun; belge okumasından (diger_vergi satırları). */
+    digerVergi?: number;
     satirlar?: Array<{ kayitTuruAd?: string; kayitAltAd?: string; kdvOranKod?: string; matrah?: number; kdvTutar?: number; krediliTutar?: number; donem?: boolean; hesapKodu?: string; tevkifatOrani?: string; stopajOrani?: string; stopajTutar?: number }>;
   } | null;
 }
@@ -314,14 +316,17 @@ export function buildLucaIsletmeHizliFisCsv(payload: BatchPayload): Buffer {
   for (const inv of payload.invoices) {
     const isSale = isSaleKind(inv.invoiceKind);
     // Fiş satırlarından toplam (geriye uyum / kdvBreakdown yoksa)
-    let lineMatrah = 0, lineKdv = 0, rate = '';
+    let lineMatrah = 0, lineKdv = 0, lineDiger = 0, rate = '';
     for (const l of inv.lines || []) {
       // IADE belgede yon cevrilmis (satista matrah BORC) → dolu olan tarafi al; normal belgede eskisi gibi.
       const amt = Number(isSale ? l.credit : l.debit) || Number(isSale ? l.debit : l.credit) || 0;
-      // KDV disi vergi (OIV/telsiz - Faz 0) isletme defterinde gider tutarina dahil (indirilemez, maliyet).
-      if (l.group === 'matrah' || l.group === 'diger_vergi') lineMatrah += amt;
+      // KDV DIŞI VERGİ (ÖİV/telsiz/damga) — 2026-09-15: eskiden TUTAR'a (KDV matrahı) katılıyordu → Luca'nın KDV'si
+      //   (TUTAR × oran) belgedekiyle tutmuyordu. Artık 28 "MATRAHA DAHİL OLMAYAN BEDEL" (DBS alanı; toplam yine kapsar).
+      if (l.group === 'matrah') lineMatrah += amt;
+      else if (l.group === 'diger_vergi') lineDiger += amt;
       else if (l.group === 'vergi' || l.group === 'vergi-sorumlu') { lineKdv += amt; if (!rate && l.rate) rate = String(l.rate).replace(/[%\s]/g, ''); }
     }
+    lineDiger = Math.round(lineDiger * 100) / 100;
     const fatTarihi = parseDate(inv.faturaTarihi);
     const tarihStr = fatTarihi ? fmtTr(fatTarihi) : '';
     const counterpartyVkn = isSale ? (inv.buyerVkn || '') : (inv.sellerVkn || '');
@@ -332,7 +337,7 @@ export function buildLucaIsletmeHizliFisCsv(payload: BatchPayload): Buffer {
     // ÇOKLU SATIR: her İşletme satırı (farklı KDV oranı / gider türü) AYRI CSV satırı.
     const satirlar: any[] = Array.isArray(isl.satirlar) && isl.satirlar.length
       ? isl.satirlar
-      : [{ kayitTuruAd: isl.kayitTuruAd, kayitAltAd: isl.kayitAltAd, kdvOranKod: isl.kdvOranKod, matrah: isl.matrah ?? lineMatrah, kdvTutar: isl.kdvTutar ?? lineKdv, krediliTutar: isl.krediliTutar, donem: isl.donem, hesapKodu: isl.hesapKodu, tevkifatOrani: isl.tevkifatOrani, stopajOrani: isl.stopajOrani, stopajTutar: isl.stopajTutar }];
+      : [{ kayitTuruAd: isl.kayitTuruAd, kayitAltAd: isl.kayitAltAd, kdvOranKod: isl.kdvOranKod, matrah: isl.matrah ?? lineMatrah, kdvTutar: isl.kdvTutar ?? lineKdv, krediliTutar: isl.krediliTutar, donem: isl.donem, hesapKodu: isl.hesapKodu, tevkifatOrani: isl.tevkifatOrani, stopajOrani: isl.stopajOrani, stopajTutar: isl.stopajTutar, digerVergi: isl.digerVergi ?? lineDiger }];
 
     // KOD→AD ÇÖZÜMÜ: belge Muhasebeleştir formunda AÇILMADAN otomatik sınıflanıp onaylandıysa
     //   ...Ad alanları BOŞ olur; eskiden CSV bunları sabit "Normal Alım/Satış" ya da boş yazıyordu
@@ -366,6 +371,23 @@ export function buildLucaIsletmeHizliFisCsv(payload: BatchPayload): Buffer {
     //   Bağlı Tam Tevkifat Uygulanan İşlemler"), KDV Tablo Türü "Tablo 2(KISMİ TEVKİFAT UYGULANAN İŞLEMLER)", Kodu 614 (servis
     //   taşımacılığı) ve tevkifat oranı — eskiden hepsi boş/Tablo 1 gidiyor, elle düzeltiliyordu.
     const tevkPayOf = (v: any) => { const m = String(v || '').trim().match(/^(\d{1,2})\s*\/\s*10$/); return m ? Number(m[1]) : 0; };
+    // 32 STOPAJ KODU — Luca stopaj_oranlari listesinin ETİKETİ (kod değil, oran değil; 2026-09-15 canlı liste):
+    //   022 SMM (%20) → "Diğer Serbest Meslek Kazancı Ödemeleri (GVK Md. 94/2-b)"; 041 işyeri kirası (%20) → "70'nci Maddede …
+    //   (GVK Md. 94/5)". Eskiden st.stopajOrani ("20") yazılıyordu → Luca "STOPAJ KODU sütunu …" reddi (tüm parti düşer).
+    const STOPAJ_ETIKET: Record<string, string> = {
+      '022': 'Diğer Serbest Meslek Kazancı Ödemeleri (GVK Md. 94/2-b)',
+      '021': "18'nci Madde Kapsamına Giren Ödemeler (GVK Md. 94/2-a)",
+      '041': "70'nci Maddede Yazılı Mal ve Hakların Kiralanması Karşılığı Yapılan Ödemeler (GVK Md. 94/5)",
+    };
+    const stopajEtiketi = (st: any): string => {
+      if (isSale) return '';
+      const kod = String(st.stopajKod || isl.stopajKod || '').replace(/\D/g, '').padStart(3, '0');
+      if (STOPAJ_ETIKET[kod]) return STOPAJ_ETIKET[kod];
+      // Kod yok ama kullanıcı oran girmiş: SMM belgesinde 022 kabul edilir; başka bağlamda uydurulmaz.
+      const oran = Number(String(st.stopajOrani || '').replace(',', '.')) || 0;
+      if (oran > 0 && /SMM|SERBEST\s*MESLEK/i.test(`${belgeTuruAdResolved} ${normalizeDocumentType(inv.documentType) || ''}`)) return STOPAJ_ETIKET['022'];
+      return '';
+    };
     // 17 ALIŞ/SATIŞ TÜRÜ — Luca'nın satış türü adları (CSV doğrulama mesajı 2026-09-15): "Normal Satışlar", "Kısmi İstisna
     //   Kapsamına Giren İşlemler", "Tam İstisna Kapsamına Giren İşlemler", "Özel Matraha Tabi İşlemler", "Diğer" (Mihsap adları
     //   "Normal Satış" / "Özel Matrah" reddediliyordu).
@@ -400,6 +422,10 @@ export function buildLucaIsletmeHizliFisCsv(payload: BatchPayload): Buffer {
       const donemFlag = st.donem != null ? !!st.donem : !!kayitAltItem?.donem;
       const stMatrah = Number(st.matrah) || 0;
       const stKdv = Number(st.kdvTutar) || 0;
+      // KDV dışı vergi: çok satırlı belgede yalnız İLK satıra yazılır (belge başına tek tutar; iki kez sayılmasın).
+      const stDiger = satirlar.indexOf(st) === 0 ? (Number(st.digerVergi ?? isl.digerVergi ?? lineDiger) || 0) : 0;
+      const stStopajEtiket = stopajEtiketi(st);
+      const stStopajTutar = Number(st.stopajTutar) || (stStopajEtiket ? Number(isl.stopajTutar) || 0 : 0);
       // 36 sutun — Luca şablonu sırasıyla. Üst bilgi (isl) tüm satırlarda aynı; satıra özgü alanlar (st).
       //   PLAKA NO şablonda yok (ekranda var, CSV'de yok) — isl.plakaNo CSV'ye yazılamaz.
       const rowCells: string[] = [
@@ -430,12 +456,12 @@ export function buildLucaIsletmeHizliFisCsv(payload: BatchPayload): Buffer {
         kdvOranNum,                                   // 25 KDV ORANI
         '',                                           // 26 ÖZEL MATRAH İŞLEM BEDELİ
         '',                                           // 27 MATRAHTAN DÜŞÜLECEK TUTAR
-        '',                                           // 28 MATRAHA DAHİL OLMAYAN BEDEL
+        stDiger > 0 ? trAmount(stDiger) : '',         // 28 MATRAHA DAHİL OLMAYAN BEDEL (ÖİV/telsiz/damga — KDV matrahı dışı)
         trAmount(stKdv),                              // 29 KDV TUTARI
-        trAmount(stMatrah + stKdv),                   // 30 TOPLAM TUTAR (satır)
+        trAmount(stMatrah + stKdv + stDiger),         // 30 TOPLAM TUTAR (satır; KDV dışı vergi dahil)
         st.krediliTutar ? trAmount(Number(st.krediliTutar)) : '', // 31 KREDİLİ TUTAR
-        st.stopajOrani || '',                         // 32 STOPAJ KODU
-        st.stopajTutar ? trAmount(Number(st.stopajTutar)) : '',   // 33 STOPAJ TUTARI
+        stStopajEtiket,                               // 32 STOPAJ KODU (Luca etiketi; 022 SMM / 041 kira)
+        stStopajEtiket && stStopajTutar > 0 ? trAmount(stStopajTutar) : '', // 33 STOPAJ TUTARI
         donemFlag ? 'Evet' : '',                      // 34 DÖNEMSELLİK İLKESİ
         '',                                           // 35 FAALIYET KODU
         '',                                           // 36 ÖDEME TÜRÜ
