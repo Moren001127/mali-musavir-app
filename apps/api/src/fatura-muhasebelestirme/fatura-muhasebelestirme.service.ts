@@ -8822,10 +8822,23 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         data: { documentId: null, isTransferred: false, processedAt: null },
       }).catch(() => {});
     }
-    if (String((doc as any).source || '') !== 'earsiv' && !String(doc.s3Key || '').startsWith('earsiv-inline://')) {
+    // ORTAK DOSYA KORUMASI (2026-09-15 canlı bulgu — ERDOĞAN BALÇIK: GİB e-Arşiv'den aktarılmış 10 belge silinince portal_documents ve
+    //   evrak arşivinin PAYLAŞTIĞI HTML de S3'ten silindi → yeniden sorguda tutar/görsel yok, aktar çalışmaz). '/portal-documents/'
+    //   altındaki nesne portal-automation'a aittir: FM belgesi silinince dosya SİLİNMEZ (portal satırı yeniden aktarabilsin).
+    if (this.s3NesnesiSilinebilir((doc as any).source, doc.s3Key)) {
       this.storage.deleteObject(doc.s3Key).catch(() => {});
     }
     return { deleted: true };
+  }
+
+  /** FM belgesinin S3 nesnesi silinebilir mi? e-Arşiv inline (dosya yok), 'earsiv' kaynağı ve portal-automation'ın ortak
+   *  '/portal-documents/' dosyaları (portal_documents + evrak arşivi aynı anahtarı kullanır) SİLİNMEZ (2026-09-15). */
+  private s3NesnesiSilinebilir(source: any, s3Key: any): boolean {
+    const key = String(s3Key || '');
+    if (!key || key.startsWith('earsiv-inline://')) return false;
+    if (String(source || '') === 'earsiv') return false;
+    if (key.includes('/portal-documents/')) return false;
+    return true;
   }
 
   private resolveRuntimeConfig(
@@ -12593,7 +12606,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         s3Key: stored.s3Key,
       },
     });
-    if (current.s3Key && current.s3Key !== stored.s3Key && !String(current.s3Key).startsWith('earsiv-inline://')) {
+    if (current.s3Key && current.s3Key !== stored.s3Key && this.s3NesnesiSilinebilir((current as any).source, current.s3Key)) {
       this.storage.deleteObject(current.s3Key).catch(() => {});
     }
   }
@@ -12770,7 +12783,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           include: { lines: { orderBy: { orderNo: 'asc' } } },
         });
       });
-      if (existing.s3Key && existing.s3Key !== stored.s3Key && !String(existing.s3Key).startsWith('earsiv-inline://')) {
+      if (existing.s3Key && existing.s3Key !== stored.s3Key && this.s3NesnesiSilinebilir((existing as any).source, existing.s3Key)) {
         this.storage.deleteObject(existing.s3Key).catch(() => {});
       }
       if (shouldRewriteAccounting) {
