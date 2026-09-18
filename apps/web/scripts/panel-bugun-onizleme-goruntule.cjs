@@ -6,7 +6,7 @@ const path = require('path');
 const fs = require('fs');
 const { chromium } = require(path.join(__dirname, '..', '..', '..', 'node_modules', '.pnpm', 'playwright@1.60.0', 'node_modules', 'playwright'));
 const CIKIS = process.argv[2] || path.join(__dirname, '..', '..', '..', '_previews', 'panel-bugun');
-const TASARIM = 'a'; // Karar 2026-09-18: yalnız A (liste); B kaldırıldı
+const TASARIM = 'b'; // Karar 2026-09-18: B (Mükellef Masası) + nane; A liste yedek bileşen olarak duruyor
 const TEMA = process.env.TEMA || 'nane';      // nane | gece | bakir
 const ON_EK = TEMA === 'nane' ? TASARIM : `${TASARIM}-${TEMA}`;
 const PORT = process.env.SAHTE_WEB_PORT || '3005';
@@ -40,10 +40,8 @@ async function giris(pg) {
   await alan.screenshot({ path: path.join(CIKIS, `${ON_EK}-01-kapali.png`) });
 
   // Tahsilat ve fatura yığını satırlarını aç
-  for (const metin of ['açık bakiye', 'işlenmemiş fatura birikti']) {
-    const satir = pg.locator('div.cursor-pointer', { hasText: metin }).first();
-    if (await satir.count()) await satir.click();
-  }
+  const daha = pg.getByRole('button', { name: /mükellef daha/ });
+  if (await daha.count()) await daha.click();
   await pg.waitForTimeout(500);
   await alan.screenshot({ path: path.join(CIKIS, `${ON_EK}-02-acik.png`) });
 
