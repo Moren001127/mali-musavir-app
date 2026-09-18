@@ -1020,31 +1020,32 @@ sunucu.listen(PORT, () => {
 
 // ---- Gösterge paneli üst alanı sahte verisi ----
 const BUGUN_SAHTE = () => ({
-  tarih: new Date().toISOString().slice(0, 10), gun: new Date().getDate(),
-  odak: 'Önce: 2 okunmamış e-Tebligat (1 yeni) — ÖZ ULU İNŞAAT',
-  odakHref: '/panel/mukellefler/tx-1',
-  gruplar: [
-    { key: 'gorev', baslik: 'Görevler', bosMetin: 'Bugün ve geciken görev yok', ozet: '3 bugün · 12 geciken', toplam: 15, href: '/panel/gorevler', satirlar: [
-      { id: 'gv-1', metin: 'Vergi levhası yenile — GİTO GIDA', alt: 'bugün', sayi: null, vurgu: 'uyari', href: '/panel/gorevler' },
-      { id: 'gv-2', metin: 'SGK işe giriş bildirimi — ÖZ ULU', alt: '3 gün gecikti', sayi: 3, sayiEtiket: 'gün', vurgu: 'kritik', href: '/panel/gorevler' },
-      { id: 'gv-3', metin: 'Mizan kontrolü Ağustos', alt: '6 gün gecikti', sayi: 6, sayiEtiket: 'gün', vurgu: 'kritik', href: '/panel/gorevler' },
-      { id: 'gv-4', metin: 'Kira kontratı damga — KAYATAN MİMARLIK', alt: '9 gün gecikti', sayi: 9, sayiEtiket: 'gün', vurgu: 'kritik', href: '/panel/gorevler' },
+  tarih: new Date().toISOString().slice(0, 10), gun: new Date().getDate(), saat: new Date().getHours(),
+  bolumler: [
+    { key: 'bugun', baslik: 'Bugün', bosMetin: 'Bugün için bekleyen iş yok', satirlar: [
+      { id: 'tb', kaynak: 'e-Tebligat', metin: '2 yeni e-Tebligat geldi', alt: 'ÖZ ULU İNŞAAT +1 · toplam 43 okunmamış', sayi: 43, vurgu: 'kritik', href: '/panel/mukellefler/tx-1' },
+      { id: 'on', kaynak: 'Onay', metin: '3 AI kararı onayınızı bekliyor', alt: 'fatura / işletme sınıflandırması', sayi: 3, vurgu: 'uyari', href: '/panel/onay-kuyrugu' },
+      { id: 'gv-1', kaynak: 'Görev', metin: 'Vergi levhası yenile — GİTO GIDA', alt: 'bugün son gün', vurgu: 'uyari', href: '/panel/gorevler' },
+      { id: 'fn', kaynak: 'Fatura', metin: '37 yeni fatura düştü', alt: 'son 24 saat · Fatura Merkezi', sayi: 37, vurgu: 'normal', href: '/fatura-merkezi' },
+      { id: 'yb', kaynak: 'Belge', metin: '8 yeni belge yüklendi', alt: 'WhatsApp / portal / sürükle-bırak', sayi: 8, vurgu: 'normal', href: '/panel/evraklar' },
     ] },
-    { key: 'dun', baslik: 'Dünden Beri', bosMetin: 'Son 24 saatte yeni bir şey gelmedi', href: '/panel/bildirimler', satirlar: [
-      { id: 'dn-tebligat', metin: '2 okunmamış e-Tebligat (1 yeni)', alt: 'ÖZ ULU İNŞAAT · FAMCOFFEE', sayi: 2, vurgu: 'kritik', href: '/panel/mukellefler/tx-1' },
-      { id: 'dn-fatura', metin: '37 yeni fatura düştü', alt: '21 tanesi henüz işlenmedi', sayi: 21, sayiEtiket: 'işlenmedi', vurgu: 'uyari', href: '/fatura-merkezi' },
-      { id: 'dn-belge', metin: '5 yeni belge yüklendi', alt: 'WhatsApp / portal / sürükle-bırak', sayi: 5, vurgu: 'normal', href: '/panel/evraklar' },
-      { id: 'dn-ajan', metin: '1 ajan hatası', alt: 'Luca çekim 1', sayi: 1, vurgu: 'uyari', href: '/panel/ajanlar' },
+    { key: 'geciken', baslik: 'Geciken', bosMetin: 'Süresi geçmiş iş yok', satirlar: [
+      { id: 'by-1', kaynak: 'Beyanname', metin: 'KDV1 — SABRİ AKSOY', alt: "GİB'de hatalı · yeniden gönderilmeli", vurgu: 'kritik', href: '/panel/beyannameler' },
+      { id: 'gv-2', kaynak: 'Görev', metin: 'SGK işe giriş bildirimi — ÖZ ULU', alt: '3 gün gecikti', sayi: 3, sayiEtiket: 'gün', vurgu: 'kritik', href: '/panel/gorevler' },
+      { id: 'bl-1', kaynak: 'Belge', metin: 'Vekaletname — FAMCOFFEE', alt: '12 gün önce süresi doldu', sayi: 12, sayiEtiket: 'gün', vurgu: 'kritik', href: '/panel/mukellefler/tx-7' },
+      { id: 'tk-1', kaynak: 'Mükellef', metin: 'AYŞEGÜL ARSLAN', alt: '12 gündür evrak işlenmeyi bekliyor', sayi: 12, sayiEtiket: 'gün', vurgu: 'kritik', href: '/panel/mukellefler/tx-2' },
+      { id: 'tk-2', kaynak: 'Mükellef', metin: 'MERT REKLAM AJANSI', alt: '8 gündür KDV kontrol bekliyor', sayi: 8, sayiEtiket: 'gün', vurgu: 'uyari', href: '/panel/mukellefler/tx-3' },
+      { id: 'ev-1', kaynak: 'Mükellef', metin: 'İNCİ SEBZE VE MEYVE SANAYİ TİCARET LTD ŞTİ', alt: '9. ay evrakı gelmedi · 18 gün', sayi: 18, sayiEtiket: 'gün', vurgu: 'uyari', href: '/panel/mukellefler/tx-8' },
+      { id: 'ev-2', kaynak: 'Mükellef', metin: 'YORGUN NAKLİYAT', alt: '9. ay evrakı gelmedi · 18 gün', sayi: 18, sayiEtiket: 'gün', vurgu: 'uyari', href: '/panel/mukellefler/tx-9' },
+      { id: 'gv-3', kaynak: 'Görev', metin: 'Mizan kontrolü Ağustos', alt: '6 gün gecikti', sayi: 6, sayiEtiket: 'gün', vurgu: 'kritik', href: '/panel/gorevler' },
     ] },
-    { key: 'takilan', baslik: 'Takılan Mükellefler', bosMetin: 'Uzun süredir bekleyen mükellef yok', toplam: 6, href: '/panel/is-yuku', satirlar: [
-      { id: 'tk-1', metin: 'AYŞEGÜL ARSLAN', alt: '12 gündür evrak işlenmeyi bekliyor', sayi: 12, sayiEtiket: 'gün', vurgu: 'kritik', href: '/panel/mukellefler/tx-2' },
-      { id: 'tk-2', metin: 'MERT REKLAM AJANSI', alt: '8 gündür KDV kontrol bekliyor', sayi: 8, sayiEtiket: 'gün', vurgu: 'uyari', href: '/panel/mukellefler/tx-3' },
-      { id: 'tk-3', metin: 'ERDOĞAN BALÇIK', alt: '6 gündür beyanname bekliyor', sayi: 6, sayiEtiket: 'gün', vurgu: 'uyari', href: '/panel/mukellefler/tx-4' },
-    ] },
-    { key: 'tahsilat', baslik: 'Tahsilat', bosMetin: 'Açık bakiye yok', ozet: '58 mükellef · 1.747.094 TL', toplam: 58, href: '/panel/cari-kasa', satirlar: [
-      { id: 'th-1', metin: 'KAYATAN MİMARLIK İNŞAAT SANAYİ TİCARET LİMİTED ŞİRKETİ', alt: 'açık bakiye', sayi: 113000, sayiEtiket: 'TL', vurgu: 'uyari', href: '/panel/cari-kasa?mukellef=tx-5' },
-      { id: 'th-2', metin: 'GİTO GIDA', alt: 'açık bakiye', sayi: 48500, sayiEtiket: 'TL', vurgu: 'normal', href: '/panel/cari-kasa?mukellef=tx-6' },
-      { id: 'th-3', metin: 'FAMCOFFEE', alt: 'açık bakiye', sayi: 27300, sayiEtiket: 'TL', vurgu: 'normal', href: '/panel/cari-kasa?mukellef=tx-7' },
+    { key: 'dikkat', baslik: 'Dikkat', bosMetin: 'Dikkat gerektiren bir şey yok', satirlar: [
+      { id: 'fy', kaynak: 'Fatura', metin: '412 işlenmemiş fatura birikti', alt: 'NMS LOJİSTİK 61 · GİTO GIDA 44 · YGS PLASTİK 37', sayi: 412, vurgu: 'uyari', href: '/fatura-merkezi' },
+      { id: 'bl-2', kaynak: 'Belge', metin: 'İmza sirküleri — KAYATAN MİMARLIK', alt: '5 gün sonra doluyor', sayi: 5, sayiEtiket: 'gün', vurgu: 'uyari', href: '/panel/mukellefler/tx-5' },
+      { id: 'aj', kaynak: 'Ajan', metin: '1 ajan hatası (son 24 saat)', alt: 'Luca çekim 1', sayi: 1, vurgu: 'uyari', href: '/panel/ajanlar' },
+      { id: 'th-1', kaynak: 'Tahsilat', metin: 'KAYATAN MİMARLIK İNŞAAT SANAYİ TİCARET LİMİTED ŞİRKETİ', alt: 'açık bakiye · toplam 58 mükellef, 1.747.094 TL', sayi: 113000, sayiEtiket: 'TL', vurgu: 'uyari', href: '/panel/cari-kasa?mukellef=tx-5' },
+      { id: 'th-2', kaynak: 'Tahsilat', metin: 'YGS PLASTİK GIDA EMLAK', alt: 'açık bakiye', sayi: 109000, sayiEtiket: 'TL', vurgu: 'uyari', href: '/panel/cari-kasa?mukellef=tx-6' },
+      { id: 'th-3', kaynak: 'Tahsilat', metin: 'NMS LOJİSTİK', alt: 'açık bakiye', sayi: 93500, sayiEtiket: 'TL', vurgu: 'uyari', href: '/panel/cari-kasa?mukellef=tx-10' },
     ] },
   ],
   uretimZamani: new Date(Date.now() - 4 * 60000).toISOString(), onbellekten: true,

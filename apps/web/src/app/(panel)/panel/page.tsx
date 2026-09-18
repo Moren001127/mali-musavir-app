@@ -64,6 +64,13 @@ const BEYAN_TONE = {
   headBg: 'rgba(244,239,229,0.035)',
 };
 
+/** Selam hitabı: ofis sahibi "Muzaffer Bey" (hafıza kuralı); diğer kullanıcılar yalnız ad (unvan/cinsiyet bilinmiyor). */
+function selamHitabi(user: any): string | undefined {
+  const ad = displayUserName(user);
+  if (!ad) return undefined;
+  return /^muzaffer@/i.test(String(user?.email || '')) ? `${ad} Bey` : ad;
+}
+
 function displayUserName(user: any): string | undefined {
   const first = String(user?.firstName || '').trim();
   if (first && !/^admin$/i.test(first)) return first.replace(/\b(Bey|Hanım|Hanim|Bay|Bayan)\b/gi, '').trim().split(/\s+/)[0] || undefined;
@@ -1951,7 +1958,7 @@ export default function DashboardPage() {
           sağ 1/3 "Başvuru Sayıları" (kur, TÜFE, gecikme zammı, asgari ücret, Resmî Gazete).
           Eski AI brifing + sayaç tekrarı kaldırıldı — bkz. components/dashboard/BugunListesi.tsx */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-        <div className="xl:col-span-2 min-w-0"><BugunListesi userName={displayUserName(meUser)} /></div>
+        <div className="xl:col-span-2 min-w-0"><BugunListesi hitap={selamHitabi(meUser)} /></div>
         <div className="min-w-0"><GundemKart /></div>
       </div>
 
