@@ -22,6 +22,7 @@ import { MizanModule } from './mizan/mizan.module';
 import { EarsivModule } from './earsiv/earsiv.module';
 import { MorenAiModule } from './moren-ai/moren-ai.module';
 import { GundemModule } from './gundem/gundem.module';
+import { BugunModule } from './bugun/bugun.module';
 import { CalisanModule } from './calisan/calisan.module';
 import { WhatsAppModule } from './whatsapp/whatsapp.module';
 import { VendorMemoryModule } from './vendor-memory/vendor-memory.module';
@@ -87,6 +88,7 @@ import { InvoiceOverdueCron } from './schedule/invoice-overdue.cron';
     EarsivModule,
     MorenAiModule,
     GundemModule,
+    BugunModule,
     CalisanModule,
     WhatsAppModule,
     VendorMemoryModule,

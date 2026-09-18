@@ -574,7 +574,10 @@ async function isle(req, res) {
   if (yol === '/agent/health-summary')
     return jsonGonder(res, 200, { generatedAt: new Date().toISOString(), agents: [], hourlyActivity: [], totals: { activeJobs: 0, pendingLucaJobs: 0, runningLucaJobs: 0, doneToday: 0, failedToday: 0 } });
   // Gösterge paneli (/panel) — girişten sonra oraya düşer; boş ama geçerli yanıtlar
-  if (yol === '/agent/events' || yol === '/taxpayers/workflow/queue' || yol === '/gundem') return jsonGonder(res, 200, []);
+  if (yol === '/agent/events' || yol === '/taxpayers/workflow/queue') return jsonGonder(res, 200, []);
+  // Gösterge paneli üst alanı: "Bugünün İş Listesi" (/bugun) + "Başvuru Sayıları" (/gundem) — görsel doğrulama verisi
+  if (yol === '/bugun') return jsonGonder(res, 200, BUGUN_SAHTE());
+  if (yol === '/gundem') return jsonGonder(res, 200, GUNDEM_SAHTE());
   if (yol === '/agent/stats' || yol === '/agent/status' || yol === '/moren-ai/brifing' || yol.startsWith('/beyanname-takip/ozet')) return jsonGonder(res, 200, {});
   if (yol === '/taxpayers') return jsonGonder(res, 200, [...MUKELLEFLER, ...edefterMukellefler(), ...ekipMukellefler()]);
 
@@ -1013,4 +1016,70 @@ const sunucu = http.createServer((req, res) => {
 
 sunucu.listen(PORT, () => {
   console.log(`[mock] Sahte API hazır: http://localhost:${PORT}${ON_EK}  (görev ${GOREVLER.length}, mükellef ${MUKELLEFLER.length}, kullanıcı ${KULLANICILAR.length})`);
+});
+
+// ---- Gösterge paneli üst alanı sahte verisi ----
+const BUGUN_SAHTE = () => ({
+  tarih: new Date().toISOString().slice(0, 10), gun: new Date().getDate(),
+  odak: 'Önce: KDV1 · 28 Eylül Pazartesi — 10 gün · 38 / 52 verildi',
+  odakHref: '/panel/beyannameler',
+  gruplar: [
+    { key: 'son-tarih', baslik: 'Son Tarihler', bosMetin: '', href: '/panel/beyannameler', satirlar: [
+      { id: 'st-BILDIRGE', metin: 'SGK Bildirge · 23 Eylül Çarşamba', alt: '5 gün · 40 / 47 verildi', sayi: 7, sayiEtiket: 'kaldı', vurgu: 'normal', href: '/panel/beyannameler' },
+      { id: 'st-DAMGA', metin: 'Damga · 25 Eylül Cuma', alt: '7 gün · 3 / 6 verildi', sayi: 3, sayiEtiket: 'kaldı', vurgu: 'normal', href: '/panel/beyannameler' },
+      { id: 'st-MUHSGK', metin: 'MUHSGK · 26 Eylül Cumartesi', alt: '8 gün · 41 / 47 verildi · 1 hatalı', sayi: 6, sayiEtiket: 'kaldı', vurgu: 'normal', href: '/panel/beyannameler' },
+      { id: 'st-KDV1', metin: 'KDV1 · 28 Eylül Pazartesi', alt: '10 gün · 38 / 52 verildi', sayi: 14, sayiEtiket: 'kaldı', vurgu: 'normal', href: '/panel/beyannameler' },
+      { id: 'st-KDV2', metin: 'KDV2 · 28 Eylül Pazartesi', alt: '4 / 4 tamamlandı', sayi: 0, sayiEtiket: 'kaldı', vurgu: 'tamam', href: '/panel/beyannameler' },
+    ] },
+    { key: 'gorev', baslik: 'Görevler', bosMetin: 'Bugün ve geciken görev yok', ozet: '3 bugün · 12 geciken', toplam: 15, href: '/panel/gorevler', satirlar: [
+      { id: 'gv-1', metin: 'Vergi levhası yenile — GİTO GIDA', alt: 'bugün', sayi: null, vurgu: 'uyari', href: '/panel/gorevler' },
+      { id: 'gv-2', metin: 'SGK işe giriş bildirimi — ÖZ ULU', alt: '3 gün gecikti', sayi: 3, sayiEtiket: 'gün', vurgu: 'kritik', href: '/panel/gorevler' },
+      { id: 'gv-3', metin: 'Mizan kontrolü Ağustos', alt: '6 gün gecikti', sayi: 6, sayiEtiket: 'gün', vurgu: 'kritik', href: '/panel/gorevler' },
+      { id: 'gv-4', metin: 'Kira kontratı damga — KAYATAN MİMARLIK', alt: '9 gün gecikti', sayi: 9, sayiEtiket: 'gün', vurgu: 'kritik', href: '/panel/gorevler' },
+    ] },
+    { key: 'dun', baslik: 'Dünden Beri', bosMetin: 'Son 24 saatte yeni bir şey gelmedi', href: '/panel/bildirimler', satirlar: [
+      { id: 'dn-tebligat', metin: '2 okunmamış e-Tebligat (1 yeni)', alt: 'ÖZ ULU İNŞAAT · FAMCOFFEE', sayi: 2, vurgu: 'kritik', href: '/panel/mukellefler/tx-1' },
+      { id: 'dn-fatura', metin: '37 yeni fatura düştü', alt: '21 tanesi henüz işlenmedi', sayi: 21, sayiEtiket: 'işlenmedi', vurgu: 'uyari', href: '/fatura-merkezi' },
+      { id: 'dn-belge', metin: '5 yeni belge yüklendi', alt: 'WhatsApp / portal / sürükle-bırak', sayi: 5, vurgu: 'normal', href: '/panel/evraklar' },
+      { id: 'dn-ajan', metin: '1 ajan hatası', alt: 'Luca çekim 1', sayi: 1, vurgu: 'uyari', href: '/panel/ajanlar' },
+    ] },
+    { key: 'takilan', baslik: 'Takılan Mükellefler', bosMetin: 'Uzun süredir bekleyen mükellef yok', toplam: 6, href: '/panel/is-yuku', satirlar: [
+      { id: 'tk-1', metin: 'AYŞEGÜL ARSLAN', alt: '12 gündür evrak işlenmeyi bekliyor', sayi: 12, sayiEtiket: 'gün', vurgu: 'kritik', href: '/panel/mukellefler/tx-2' },
+      { id: 'tk-2', metin: 'MERT REKLAM AJANSI', alt: '8 gündür KDV kontrol bekliyor', sayi: 8, sayiEtiket: 'gün', vurgu: 'uyari', href: '/panel/mukellefler/tx-3' },
+      { id: 'tk-3', metin: 'ERDOĞAN BALÇIK', alt: '6 gündür beyanname bekliyor', sayi: 6, sayiEtiket: 'gün', vurgu: 'uyari', href: '/panel/mukellefler/tx-4' },
+    ] },
+    { key: 'tahsilat', baslik: 'Tahsilat', bosMetin: 'Açık bakiye yok', ozet: '58 mükellef · 1.747.094 TL', toplam: 58, href: '/panel/cari-kasa', satirlar: [
+      { id: 'th-1', metin: 'KAYATAN MİMARLIK İNŞAAT SANAYİ TİCARET LİMİTED ŞİRKETİ', alt: 'açık bakiye', sayi: 113000, sayiEtiket: 'TL', vurgu: 'uyari', href: '/panel/cari-kasa?mukellef=tx-5' },
+      { id: 'th-2', metin: 'GİTO GIDA', alt: 'açık bakiye', sayi: 48500, sayiEtiket: 'TL', vurgu: 'normal', href: '/panel/cari-kasa?mukellef=tx-6' },
+      { id: 'th-3', metin: 'FAMCOFFEE', alt: 'açık bakiye', sayi: 27300, sayiEtiket: 'TL', vurgu: 'normal', href: '/panel/cari-kasa?mukellef=tx-7' },
+    ] },
+  ],
+  uretimZamani: new Date(Date.now() - 4 * 60000).toISOString(), onbellekten: true,
+});
+const GUNDEM_SAHTE = () => ({
+  tarih: new Date().toISOString().slice(0, 10), kurTarihi: '18.09.2026',
+  kurlar: [
+    { kod: 'USD', isim: 'Dolar', alis: 48.6, satis: 48.6749, degisimYuzde: 0.02 },
+    { kod: 'EUR', isim: 'Euro', alis: 55.8, satis: 55.8552, degisimYuzde: -0.55 },
+    { kod: 'GBP', isim: 'Sterlin', alis: 65.2, satis: 65.2961, degisimYuzde: -0.55 },
+  ],
+  piyasa: [
+    { kod: 'BİST 100', isim: 'Borsa İstanbul', deger: 13284, birim: '', degisimYuzde: -6.68, ondalik: 0 },
+    { kod: 'GRAM ALTIN', isim: 'Gram altın', deger: 6872.57, birim: 'TL', degisimYuzde: 1.03, ondalik: 2 },
+  ],
+  enflasyon: { donem: 'Ağustos 2026', aylik: 1.84, yillik: 31.51, kiraArtisTavani: 31.79, yilbasindan: 20.1, kaynakUrl: 'https://data.tuik.gov.tr/' },
+  sabitler: [
+    { kod: 'GECIKME_ZAMMI', etiket: 'Gecikme zammı', deger: '%3,70', alt: 'aylık', gecerlilik: "13.11.2025'ten itibaren", kaynakUrl: 'https://www.gib.gov.tr/' },
+    { kod: 'TECIL_FAIZI', etiket: 'Tecil faizi', deger: '%39', alt: 'yıllık', gecerlilik: "13.11.2025'ten itibaren", kaynakUrl: 'https://www.gib.gov.tr/' },
+    { kod: 'YENIDEN_DEGERLEME', etiket: 'Yeniden değerleme', deger: '%25,49', alt: '2025 oranı · 2026 hadlerinde', gecerlilik: '2026', kaynakUrl: 'https://www.gib.gov.tr/' },
+    { kod: 'ASGARI_UCRET_BRUT', etiket: 'Asgari ücret', deger: '33.030,00 TL', alt: 'brüt · net 28.075,50 TL', gecerlilik: '2026', kaynakUrl: 'https://www.csgb.gov.tr/' },
+    { kod: 'SGK_TAVAN', etiket: 'SGK prim tavanı', deger: '297.270,00 TL', alt: 'aylık · brütün 9 katı', gecerlilik: '2026', kaynakUrl: 'https://www.sgk.gov.tr/' },
+    { kod: 'KIDEM_TAVANI', etiket: 'Kıdem tazminatı tavanı', deger: '73.729,87 TL', alt: 'yıllık', gecerlilik: '01.07.2026 – 31.12.2026', kaynakUrl: 'https://www.csgb.gov.tr/' },
+    { kod: 'YEMEK_ISTISNASI', etiket: 'Yemek istisnası', deger: '300,00 TL', alt: 'günlük · kart KDV dâhil 330 TL', gecerlilik: '2026', kaynakUrl: 'https://www.gib.gov.tr/' },
+  ],
+  mevzuat: [
+    { baslik: 'KDV Genel Uygulama Tebliğinde Değişiklik Yapılmasına Dair Tebliğ (Seri No: 56)', url: 'https://www.resmigazete.gov.tr/', neden: 'Tevkifat oranları ve iade usulü değişiyor; tevkifatlı mükelleflerde uygulama etkilenir.', onem: 'yuksek' },
+  ],
+  mevzuatToplam: 15, mevzuatHazirlaniyor: false, uyarilar: [],
+  uretimZamani: new Date().toISOString(), onbellekten: true,
 });

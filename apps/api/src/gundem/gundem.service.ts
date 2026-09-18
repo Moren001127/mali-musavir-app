@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { claudeTextViaMax } from '../common/max-inference';
+import { BASVURU_SAYILARI, type BasvuruSayisi } from './basvuru-sayilari';
 
 /**
  * GÜNDEM — mali müşavirin "bugün bilmesi gereken" dış bilgileri.
@@ -57,6 +58,7 @@ export type GundemData = {
   kurlar: GundemKur[];
   piyasa: GundemPiyasa[];
   enflasyon: GundemEnflasyon | null;
+  sabitler: BasvuruSayisi[];  // başvuru sayıları (gecikme zammı, asgari ücret...) — bkz. basvuru-sayilari.ts
   mevzuat: GundemMevzuat[];
   mevzuatToplam: number;      // Resmî Gazete'de taranan madde sayısı
   mevzuatHazirlaniyor: boolean; // true iken Resmî Gazete taraması hâlâ sürüyor
@@ -153,6 +155,7 @@ export class GundemService {
       kurlar,
       piyasa,
       enflasyon,
+      sabitler: BASVURU_SAYILARI,
       mevzuat: [],
       mevzuatToplam: 0,
       mevzuatHazirlaniyor: true,

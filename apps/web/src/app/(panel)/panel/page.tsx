@@ -37,7 +37,7 @@ import { ReactNode, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useMe } from '@/hooks/useAuth';
 import { KritikUyariStatCard } from '@/components/dashboard/KritikUyariStatCard';
-import { BrifingKart } from '@/components/dashboard/BrifingKart';
+import { BugunListesi } from '@/components/dashboard/BugunListesi';
 import { GundemKart } from '@/components/dashboard/GundemKart';
 import { BuHaftaTakvim } from '@/components/dashboard/BuHaftaTakvim';
 
@@ -1909,7 +1909,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* v1.36.81: AI sabah brifingi — günün özetini 2-3 cümlede anlatır */}
+      {/* Sayaç kartları */}
       <div className="grid grid-cols-1 gap-2.5 pb-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           title="Aktif Mükellef"
@@ -1947,12 +1947,15 @@ export default function DashboardPage() {
         <KritikUyariStatCard />
       </div>
 
-      <BrifingKart userName={displayUserName(meUser)} />
+      {/* Üst alan: sol 2/3 "Bugünün İş Listesi" (isimli, tıklanabilir satırlar),
+          sağ 1/3 "Başvuru Sayıları" (kur, TÜFE, gecikme zammı, asgari ücret, Resmî Gazete).
+          Eski AI brifing + sayaç tekrarı kaldırıldı — bkz. components/dashboard/BugunListesi.tsx */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+        <div className="xl:col-span-2 min-w-0"><BugunListesi userName={displayUserName(meUser)} /></div>
+        <div className="min-w-0"><GundemKart /></div>
+      </div>
 
-      {/* Günün Gündemi — dış dünya: Resmî Gazete (AI süzgeçli) + TCMB kuru */}
-      <GundemKart />
-
-      <DashboardSectionBridge from="Brifing" to="Beyanname Takibi" tone="mint" />
+      <DashboardSectionBridge from="Bugünün İş Listesi" to="Beyanname Takibi" tone="mint" />
 
       <div
         className="rounded-2xl overflow-hidden"
