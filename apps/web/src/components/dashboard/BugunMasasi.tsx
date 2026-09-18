@@ -48,6 +48,14 @@ function bas(ad: string) {
   const k = ad.replace(/[^\p{L}\s]/gu, ' ').split(/\s+/).filter(Boolean);
   return (k.length >= 2 ? k[0][0] + k[1][0] : (k[0] || '?').slice(0, 2)).toLocaleUpperCase('tr-TR');
 }
+/** Şirket tipi/sektör dolgu kelimeleri atılır, en çok 3 kelime: "YILMAZ GÖKTAŞ İNŞAAT VE GIDA SANAYİ TİCARET LİMİTED ŞİRKETİ" → "YILMAZ GÖKTAŞ İNŞAAT" */
+const DOLGU = new Set(['SANAYİ', 'SANAYI', 'SAN', 'SAN.', 'TİCARET', 'TICARET', 'TİC', 'TİC.', 'TIC', 'TIC.', 'LİMİTED', 'LIMITED', 'LTD', 'LTD.', 'ŞİRKETİ', 'SIRKETI', 'ŞTİ', 'ŞTİ.', 'STİ', 'STI', 'ANONİM', 'ANONIM', 'A.Ş.', 'A.Ş', 'A.S.', 'VE', 'DIŞ', 'İÇ', 'PAZARLAMA', 'PAZ.', 'DAĞITIM', 'DAGITIM', 'HİZMETLERİ', 'HIZMETLERI', 'HİZ.', 'ORGANİZASYON', 'ORGANIZASYON']);
+function kisaUnvan(ad: string, kelime = 3): string {
+  const k = String(ad).split(/\s+/).filter((x) => x && !DOLGU.has(x.toLocaleUpperCase('tr-TR')));
+  const secim = (k.length ? k : String(ad).split(/\s+/)).slice(0, kelime).join(' ');
+  return secim.length > 30 ? secim.slice(0, 29) + '…' : secim;
+}
+const kirp = (m: string, n: number) => (m.length > n ? m.slice(0, n - 1) + '…' : m);
 /** "Vekaletname — FAMCOFFEE" → { konu: 'Vekaletname', ad: 'FAMCOFFEE' } */
 function ayir(metin: string) {
   const i = metin.lastIndexOf(' — ');
@@ -74,20 +82,20 @@ function mukelleflereDagit(konular: Konu[]): { mukellefler: Mukellef[]; genel: K
       case 'Beyanname': return { metin: `${ayir(d ? d.metin : k.baslik).konu} GİB'de hatalı`, ton: 'acil', puan: 35 };
       case 'Mükellef': {
         if (/evrakı gelmedi/.test(k.baslik) || /bekleniyor/.test(alt)) return { metin: `evrak gelmedi · ${sayi}g`, ton: 'dikkat', puan: 12 };
-        const asama = /KDV kontrol/.test(alt) ? 'KDV kontrolde' : /beyanname/.test(alt) ? 'beyanname bekliyor' : 'evrak işlenmedi';
+        const asama = /KDV kontrol/.test(alt) ? 'KDV kontrol' : /beyanname/.test(alt) ? 'beyanname' : 'evrak işlenmedi';
         return { metin: `${sayi}g takılı · ${asama}`, ton: (sayi || 0) >= 10 ? 'acil' : 'dikkat', puan: 10 + (sayi || 0) };
       }
       case 'Belge': {
         const konu = ayir(d ? d.metin : k.baslik).konu || 'belge';
-        if (/doldu/.test(alt)) return { metin: `${konu} süresi doldu`, ton: 'acil', puan: 30 };
-        if (/doluyor/.test(alt)) return { metin: `${konu} ${sayi}g sonra doluyor`, ton: 'dikkat', puan: 6 };
-        return { metin: konu ? `yeni: ${konu}` : 'yeni belge geldi', ton: 'bilgi', puan: 2 };
+        if (/doldu/.test(alt)) return { metin: `${kirp(konu, 16)} doldu`, ton: 'acil', puan: 30 };
+        if (/doluyor/.test(alt)) return { metin: `${kirp(konu, 14)} ${sayi}g sonra doluyor`, ton: 'dikkat', puan: 6 };
+        return { metin: konu ? `yeni: ${kirp(konu, 16)}` : 'yeni belge', ton: 'bilgi', puan: 2 };
       }
-      case 'Tahsilat': return { metin: `${tlKisa(sayi || 0)} TL açık bakiye`, ton: 'dikkat', puan: Math.min(15, Math.round((sayi || 0) / 10000)) };
+      case 'Tahsilat': return { metin: `${tlKisa(sayi || 0)} TL açık`, ton: 'dikkat', puan: Math.min(15, Math.round((sayi || 0) / 10000)) };
       case 'Fatura': return /yeni/.test(alt) || k.bolum === 'bugun' ? { metin: `${sayi} yeni fatura`, ton: 'bilgi', puan: 2 } : { metin: `${sayi} fatura işlenmedi`, ton: 'bekleme', puan: Math.min(12, Math.round((sayi || 0) / 50)) };
       case 'Görev': {
         const konu = ayir(d ? d.metin : k.baslik).konu || 'görev';
-        return /gecikti/.test(alt) ? { metin: `${konu} · ${sayi}g gecikti`, ton: 'acil', puan: 8 + Math.min(10, (sayi || 0) / 10) } : { metin: `${konu} · bugün`, ton: 'dikkat', puan: 15 };
+        return /gecikti/.test(alt) ? { metin: `${kirp(konu, 18)} · ${sayi}g gecikti`, ton: 'acil', puan: 8 + Math.min(10, (sayi || 0) / 10) } : { metin: `${kirp(konu, 18)} · bugün`, ton: 'dikkat', puan: 15 };
       }
       default: return { metin: k.baslik, ton: 'bilgi', puan: 1 };
     }
@@ -178,27 +186,27 @@ function MukellefKarti({ m }: { m: Mukellef }) {
   return (
     <Link
       href={m.href}
-      className="group relative block rounded-xl p-3.5 transition-all duration-300 hover:-translate-y-[2px]"
+      className="group relative block rounded-xl px-3 py-2.5 transition-all duration-300 hover:-translate-y-[2px]"
       style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.028), rgba(255,255,255,0.012))', border: '1px solid rgba(255,255,255,0.075)', boxShadow: '0 10px 26px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.03)' }}
       onMouseEnter={(e) => { e.currentTarget.style.boxShadow = `0 14px 34px rgba(0,0,0,0.3), 0 0 0 1px ${halo}`; }}
       onMouseLeave={(e) => { e.currentTarget.style.boxShadow = '0 10px 26px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.03)'; }}
     >
       <span className="absolute top-0 left-4 right-4 h-px" style={{ background: grad, opacity: 0.6 }} />
-      <div className="flex items-start gap-3">
-        <span className="relative shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-[12px] font-black tracking-wide" style={{ background: grad, color: '#0f0d0b', boxShadow: `0 0 18px ${halo}` }}>
+      <div className="flex items-start gap-2.5">
+        <span className="relative shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-[10.5px] font-black tracking-wide" style={{ background: grad, color: '#0f0d0b', boxShadow: `0 0 14px ${halo}` }}>
           {bas(m.ad)}
           {enUst === 'acil' && <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full" style={{ background: P.acil, boxShadow: `0 0 8px ${P.acil}`, border: '2px solid #0a0f0e' }} />}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block text-[13px] font-semibold leading-[1.25] line-clamp-2" style={{ color: 'rgba(250,250,249,0.92)' }} title={m.ad}>{m.ad}</span>
-          <span className="mt-2 flex flex-wrap gap-1.5">
+          <span className="block truncate text-[12.5px] font-semibold leading-tight" style={{ color: 'rgba(250,250,249,0.92)' }} title={m.ad}>{kisaUnvan(m.ad)}</span>
+          <span className="mt-1.5 flex flex-wrap gap-1">
             {gorunen.map((r, i) => (
-              <span key={i} className="inline-flex items-center rounded-full px-2 py-[2px] text-[10.5px] font-semibold leading-tight" style={{ background: T[r.ton].bg, border: `1px solid ${T[r.ton].border}`, color: T[r.ton].color }}>{r.metin}</span>
+              <span key={i} className="inline-flex items-center max-w-full rounded-full px-1.5 py-[1px] text-[10px] font-semibold leading-tight whitespace-nowrap overflow-hidden text-ellipsis" title={r.metin} style={{ background: T[r.ton].bg, border: `1px solid ${T[r.ton].border}`, color: T[r.ton].color }}>{r.metin}</span>
             ))}
-            {m.rozetler.length > 4 && <span className="inline-flex items-center rounded-full px-2 py-[2px] text-[10.5px] font-semibold" style={{ color: 'rgba(250,250,249,0.5)', border: '1px solid rgba(255,255,255,0.08)' }}>+{m.rozetler.length - 4}</span>}
+            {m.rozetler.length > 4 && <span className="inline-flex items-center rounded-full px-1.5 py-[1px] text-[10px] font-semibold" style={{ color: 'rgba(250,250,249,0.5)', border: '1px solid rgba(255,255,255,0.08)' }}>+{m.rozetler.length - 4}</span>}
           </span>
         </span>
-        <ArrowUpRight size={14} className="shrink-0 opacity-30 transition group-hover:opacity-90" style={{ color: P.b }} />
+        <ArrowUpRight size={12} className="shrink-0 opacity-30 transition group-hover:opacity-90" style={{ color: P.b }} />
       </div>
     </Link>
   );
@@ -268,7 +276,7 @@ export function BugunMasasi({ hitap }: { hitap?: string }) {
                         {ilk.map((d, i) => <div key={d.id} title={`${d.metin} · ${(d.sayi || 0).toLocaleString('tr-TR')} TL`} style={{ width: `${((d.sayi || 0) / toplam) * 100}%`, background: tonlar[i] }} />)}
                         <div style={{ width: `${digerPay * 100}%`, background: 'rgba(255,255,255,0.12)' }} />
                       </div>
-                      <div className="mt-1.5 text-[10.5px] truncate" style={{ color: 'rgba(250,250,249,0.55)' }}>{ilk.slice(0, 3).map((d) => `${d.metin.split(' ').slice(0, 2).join(' ')} ${tlKisa(d.sayi || 0)}`).join(' · ')}</div>
+                      <div className="mt-1.5 text-[10.5px] truncate" style={{ color: 'rgba(250,250,249,0.55)' }}>{ilk.slice(0, 3).map((d) => `${kisaUnvan(d.metin, 2)} ${tlKisa(d.sayi || 0)}`).join(' · ')}</div>
                     </>
                   );
                 })()}
@@ -282,7 +290,7 @@ export function BugunMasasi({ hitap }: { hitap?: string }) {
             <span className="text-[11px]" style={{ color: 'rgba(250,250,249,0.45)' }}>{mukellefler.length} mükellef · aciliyet sırasıyla</span>
           </div>
           {mukellefler.length ? (
-            <div className="px-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
+            <div className="px-6 grid gap-2.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))' }}>
               {gorunen.map((m) => <MukellefKarti key={m.id} m={m} />)}
             </div>
           ) : (

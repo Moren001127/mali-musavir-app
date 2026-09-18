@@ -8,7 +8,7 @@ const { chromium } = require(path.join(__dirname, '..', '..', '..', 'node_module
 const CIKIS = process.argv[2] || path.join(__dirname, '..', '..', '..', '_previews', 'panel-bugun');
 const TASARIM = 'b'; // Karar 2026-09-18: B (Mükellef Masası) + nane; A liste yedek bileşen olarak duruyor
 const TEMA = process.env.TEMA || 'nane';      // nane | gece | bakir
-const ON_EK = TEMA === 'nane' ? TASARIM : `${TASARIM}-${TEMA}`;
+const ON_EK = (TEMA === 'nane' ? TASARIM : `${TASARIM}-${TEMA}`) + (process.env.MENU_ACIK ? '-menu' : '');
 const PORT = process.env.SAHTE_WEB_PORT || '3005';
 const KOK = `http://localhost:${PORT}`;
 fs.mkdirSync(CIKIS, { recursive: true });
@@ -30,8 +30,10 @@ async function giris(pg) {
   pg.on('console', (m) => { if (m.type() === 'error' && !/404|ERR_CONNECTION/.test(m.text())) hatalar.push(m.text().slice(0, 240)); });
   pg.on('pageerror', (e) => hatalar.push('PAGEERROR ' + String(e).slice(0, 240)));
   await giris(pg);
-  const daralt = pg.getByRole('button', { name: 'Sol menuyu daralt' });
-  if (await daralt.count()) { await daralt.first().click(); await pg.waitForTimeout(600); }
+  if (!process.env.MENU_ACIK) {
+    const daralt = pg.getByRole('button', { name: 'Sol menuyu daralt' });
+    if (await daralt.count()) { await daralt.first().click(); await pg.waitForTimeout(600); }
+  }
 
   // Üst alan: iki kartı kapsayan ızgara
   const alan = pg.locator('main .grid.xl\\:grid-cols-3').first();
