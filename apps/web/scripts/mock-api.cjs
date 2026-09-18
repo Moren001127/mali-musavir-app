@@ -1021,16 +1021,9 @@ sunucu.listen(PORT, () => {
 // ---- Gösterge paneli üst alanı sahte verisi ----
 const BUGUN_SAHTE = () => ({
   tarih: new Date().toISOString().slice(0, 10), gun: new Date().getDate(),
-  odak: 'Önce: KDV1 · 28 Eylül Pazartesi — 10 gün · 38 / 52 verildi',
-  odakHref: '/panel/beyannameler',
+  odak: 'Önce: 2 okunmamış e-Tebligat (1 yeni) — ÖZ ULU İNŞAAT',
+  odakHref: '/panel/mukellefler/tx-1',
   gruplar: [
-    { key: 'son-tarih', baslik: 'Son Tarihler', bosMetin: '', href: '/panel/beyannameler', satirlar: [
-      { id: 'st-BILDIRGE', metin: 'SGK Bildirge · 23 Eylül Çarşamba', alt: '5 gün · 40 / 47 verildi', sayi: 7, sayiEtiket: 'kaldı', vurgu: 'normal', href: '/panel/beyannameler' },
-      { id: 'st-DAMGA', metin: 'Damga · 25 Eylül Cuma', alt: '7 gün · 3 / 6 verildi', sayi: 3, sayiEtiket: 'kaldı', vurgu: 'normal', href: '/panel/beyannameler' },
-      { id: 'st-MUHSGK', metin: 'MUHSGK · 26 Eylül Cumartesi', alt: '8 gün · 41 / 47 verildi · 1 hatalı', sayi: 6, sayiEtiket: 'kaldı', vurgu: 'normal', href: '/panel/beyannameler' },
-      { id: 'st-KDV1', metin: 'KDV1 · 28 Eylül Pazartesi', alt: '10 gün · 38 / 52 verildi', sayi: 14, sayiEtiket: 'kaldı', vurgu: 'normal', href: '/panel/beyannameler' },
-      { id: 'st-KDV2', metin: 'KDV2 · 28 Eylül Pazartesi', alt: '4 / 4 tamamlandı', sayi: 0, sayiEtiket: 'kaldı', vurgu: 'tamam', href: '/panel/beyannameler' },
-    ] },
     { key: 'gorev', baslik: 'Görevler', bosMetin: 'Bugün ve geciken görev yok', ozet: '3 bugün · 12 geciken', toplam: 15, href: '/panel/gorevler', satirlar: [
       { id: 'gv-1', metin: 'Vergi levhası yenile — GİTO GIDA', alt: 'bugün', sayi: null, vurgu: 'uyari', href: '/panel/gorevler' },
       { id: 'gv-2', metin: 'SGK işe giriş bildirimi — ÖZ ULU', alt: '3 gün gecikti', sayi: 3, sayiEtiket: 'gün', vurgu: 'kritik', href: '/panel/gorevler' },

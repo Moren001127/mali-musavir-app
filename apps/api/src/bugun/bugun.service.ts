@@ -1,7 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { BeyannameTakipService } from '../beyanname-takip/beyanname-takip.service';
-import { calculateBeyannameDeadline } from '../schedule/beyanname-deadline.util';
 import { hesaplaCariBakiyeler } from '../common/cari-bakiye';
 
 /**
@@ -10,7 +8,7 @@ import { hesaplaCariBakiyeler } from '../common/cari-bakiye';
  * Eski "AI brifing" 20+ veriyi tek cümleye sıkıştırıyordu (bilgi kaybı + 30 dk
  * önbellek bayatlığı). Bu servis aynı verileri AI'sız, İSİMLİ ve TIKLANABİLİR
  * satırlar hâlinde döner; her satır bir aksiyondur:
- *   - Son tarihler   : bu ay verilecek beyannameler, kaç mükellef kaldı
+ *   (Son tarihler grubu 2026-09-18'de kaldırıldı — alttaki 'Bu Hafta Takvim' zaten gösteriyor.)
  *   - Takılan        : uzun süredir aynı aşamada bekleyen mükellefler
  *   - Tahsilat       : en yüksek açık bakiyeler
  *   - Görevler       : bugün + geciken
@@ -32,7 +30,7 @@ export type BugunSatir = {
 };
 
 export type BugunGrup = {
-  key: 'son-tarih' | 'takilan' | 'tahsilat' | 'gorev' | 'dun';
+  key: 'takilan' | 'tahsilat' | 'gorev' | 'dun';
   baslik: string;
   satirlar: BugunSatir[];
   toplam?: number;        // listelenenden fazlası varsa (+N)
@@ -51,16 +49,6 @@ export type BugunResponse = {
   onbellekten: boolean;
 };
 
-const BEYAN_ETIKET: Record<string, string> = {
-  KURUMLAR: 'Kurumlar', GELIR: 'Gelir', KDV1: 'KDV1', KDV2: 'KDV2', KDV4: 'KDV4', KDV9015: 'KDV9015',
-  DAMGA: 'Damga', MUHSGK: 'MUHSGK', MUHSGK2: 'MUHSGK2', GGECICI: 'Gelir Geçici', KGECICI: 'Kurum Geçici',
-  POSET: 'Poşet', BILDIRGE: 'SGK Bildirge', EDEFTER: 'e-Defter', OTV1: 'ÖTV1', OTV3A: 'ÖTV3A', OTV3B: 'ÖTV3B',
-  OTV4: 'ÖTV4', KONAKLAMA: 'Konaklama', OIV: 'ÖİV', GMSI: 'GMSİ', TURIZM: 'Turizm Payı',
-};
-
-const TR_SABIT_TATIL = new Set(['01-01', '04-23', '05-01', '05-19', '07-15', '08-30', '10-29']);
-const AY_ADI = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
-const GUN_ADI = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
 const CACHE_TTL_MS = 3 * 60 * 1000;
 
 function trBugun(): { year: number; month: number; day: number; key: string } {
@@ -70,17 +58,6 @@ function trBugun(): { year: number; month: number; day: number; key: string } {
   return { year, month, day, key: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}` };
 }
 function utcNoon(y: number, m: number, d: number) { return new Date(Date.UTC(y, m - 1, d, 12)); }
-function diffDays(a: Date, b: Date) {
-  return Math.round((Date.UTC(b.getUTCFullYear(), b.getUTCMonth(), b.getUTCDate()) - Date.UTC(a.getUTCFullYear(), a.getUTCMonth(), a.getUTCDate())) / 86400000);
-}
-function isGunu(d: Date) {
-  const key = `${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
-  const g = d.getUTCDay();
-  return !(g === 0 || g === 6 || TR_SABIT_TATIL.has(key));
-}
-/** Hafta sonu / sabit tatile denk gelen son tarih izleyen ilk iş gününe kayar. */
-function isGununeKaydir(d: Date) { const x = new Date(d); while (!isGunu(x)) x.setUTCDate(x.getUTCDate() + 1); return x; }
-function tarihMetni(d: Date) { return `${d.getUTCDate()} ${AY_ADI[d.getUTCMonth()]} ${GUN_ADI[d.getUTCDay()]}`; }
 function adi(t: any): string {
   return String(t?.companyName || `${t?.firstName ?? ''} ${t?.lastName ?? ''}`.trim() || '—');
 }
@@ -93,7 +70,6 @@ export class BugunService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly beyan: BeyannameTakipService,
   ) {}
 
   async getBugun(tenantId: string, force = false): Promise<BugunResponse> {
@@ -124,15 +100,14 @@ export class BugunService {
     const adById = new Map<string, string>(taxpayers.map((t) => [t.id, adi(t)]));
     const ids = taxpayers.map((t) => t.id);
 
-    const [sonTarih, takilan, tahsilat, gorev, dunGrubu] = await Promise.all([
-      this.sonTarihler(tenantId, year, month, bugun).catch((e) => { this.logger.warn(`son tarih: ${e?.message}`); return this.bosGrup('son-tarih'); }),
+    const [takilan, tahsilat, gorev, dunGrubu] = await Promise.all([
       this.takilanlar(tenantId, taxpayers, year, month, day, now, firstDay).catch((e) => { this.logger.warn(`takılan: ${e?.message}`); return this.bosGrup('takilan'); }),
       this.tahsilat(tenantId, ids, adById).catch((e) => { this.logger.warn(`tahsilat: ${e?.message}`); return this.bosGrup('tahsilat'); }),
       this.gorevler(tenantId, bugun, adById).catch((e) => { this.logger.warn(`görev: ${e?.message}`); return this.bosGrup('gorev'); }),
       this.dundenBeri(tenantId, dun, adById).catch((e) => { this.logger.warn(`dün: ${e?.message}`); return this.bosGrup('dun'); }),
     ]);
 
-    const gruplar = [sonTarih, takilan, tahsilat, gorev, dunGrubu];
+    const gruplar = [takilan, tahsilat, gorev, dunGrubu];
     const odak = this.odakSec(gruplar, day);
 
     return {
@@ -146,7 +121,6 @@ export class BugunService {
 
   private bosGrup(key: BugunGrup['key']): BugunGrup {
     const tanim: Record<BugunGrup['key'], { baslik: string; bos: string; href: string }> = {
-      'son-tarih': { baslik: 'Son Tarihler', bos: 'Önümüzdeki 14 günde açık beyanname yok', href: '/panel/beyannameler' },
       takilan:     { baslik: 'Takılan Mükellefler', bos: 'Uzun süredir bekleyen mükellef yok', href: '/panel/is-yuku' },
       tahsilat:    { baslik: 'Tahsilat', bos: 'Açık bakiye yok', href: '/panel/cari-kasa' },
       gorev:       { baslik: 'Görevler', bos: 'Bugün ve geciken görev yok', href: '/panel/gorevler' },
@@ -154,41 +128,6 @@ export class BugunService {
     };
     const t = tanim[key];
     return { key, baslik: t.baslik, satirlar: [], bosMetin: t.bos, href: t.href };
-  }
-
-  // ---------------- SON TARİHLER ----------------
-  private async sonTarihler(tenantId: string, year: number, month: number, bugun: Date): Promise<BugunGrup> {
-    const g = this.bosGrup('son-tarih');
-    const donem = `${year}-${String(month).padStart(2, '0')}`;
-    const ozet = await this.beyan.listDonemOzet(tenantId, donem, 'VERILME');
-    const satirlar: Array<BugunSatir & { gunFark: number }> = [];
-    for (const r of ozet.rows as any[]) {
-      if (!r.toplam) continue;
-      const kalan = (r.kalan || 0) + (r.bekleyen || 0) + (r.hatali || 0);
-      const ham = calculateBeyannameDeadline(r.beyanTipi, r.vergiDonem);
-      if (!ham) continue;
-      // Yerel 23:59 (+03) → takvim günü; hafta sonu/tatil kayması uygulanır
-      const trGun = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Istanbul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(ham);
-      const [y, m, d] = trGun.split('-').map(Number);
-      const tarih = isGununeKaydir(utcNoon(y, m, d));
-      const gunFark = diffDays(bugun, tarih);
-      if (gunFark > 14 || gunFark < -3) continue;
-      if (kalan === 0 && gunFark < 0) continue;
-      const etiket = BEYAN_ETIKET[r.beyanTipi] || r.beyanTipi;
-      const nezaman = gunFark === 0 ? 'BUGÜN' : gunFark === 1 ? 'yarın' : gunFark < 0 ? `${-gunFark} gün geçti` : `${gunFark} gün`;
-      satirlar.push({
-        id: `st-${r.beyanTipi}`,
-        metin: `${etiket} · ${tarihMetni(tarih)}`,
-        alt: kalan === 0 ? `${r.onaylanan} / ${r.toplam} tamamlandı` : `${nezaman} · ${r.onaylanan} / ${r.toplam} verildi${r.hatali ? ` · ${r.hatali} hatalı` : ''}`,
-        sayi: kalan, sayiEtiket: 'kaldı',
-        vurgu: kalan === 0 ? 'tamam' : gunFark <= 0 ? 'kritik' : gunFark <= 3 ? 'uyari' : 'normal',
-        href: '/panel/beyannameler',
-        gunFark,
-      });
-    }
-    satirlar.sort((a, b) => a.gunFark - b.gunFark || (b.sayi || 0) - (a.sayi || 0));
-    g.satirlar = satirlar.map(({ gunFark: _g, ...s }) => s);
-    return g;
   }
 
   // ---------------- TAKILAN MÜKELLEFLER ----------------
@@ -328,16 +267,12 @@ export class BugunService {
   // ---------------- ODAK (tek satır) ----------------
   private odakSec(gruplar: BugunGrup[], day: number): { metin: string; href?: string } | null {
     const by = (k: BugunGrup['key']) => gruplar.find((g) => g.key === k)!;
-    const st = by('son-tarih').satirlar.find((s) => s.vurgu === 'kritik' || s.vurgu === 'uyari');
-    if (st) return { metin: `Önce: ${st.metin} — ${st.alt}`, href: st.href };
     const teb = by('dun').satirlar.find((s) => s.id === 'dn-tebligat');
     if (teb) return { metin: `Önce: ${teb.metin} — ${(teb.alt || '').split(' · ')[0]}`, href: teb.href };
     const tk = by('takilan').satirlar[0];
     if (tk && day > 12) return { metin: `Önce: ${tk.metin} ${tk.alt}`, href: tk.href };
     const gv = by('gorev').satirlar.find((s) => s.vurgu === 'kritik');
     if (gv) return { metin: `Önce: ${gv.metin} — ${gv.alt}`, href: gv.href };
-    const st2 = by('son-tarih').satirlar.find((s) => s.vurgu === 'normal');
-    if (st2) return { metin: `Sırada: ${st2.metin} — ${st2.alt}`, href: st2.href };
     const th = by('tahsilat').satirlar[0];
     if (th) return { metin: `Tahsilat: ${th.metin} ${tl(th.sayi || 0)} açık`, href: th.href };
     return { metin: 'Gün sakin — açık iş yok.' };

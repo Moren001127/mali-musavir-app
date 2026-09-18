@@ -16,7 +16,7 @@ import { api } from '@/lib/api';
 
 type Vurgu = 'kritik' | 'uyari' | 'normal' | 'tamam';
 type Satir = { id: string; metin: string; alt?: string; sayi?: number | null; sayiEtiket?: string; vurgu: Vurgu; href?: string };
-type Grup = { key: 'son-tarih' | 'takilan' | 'tahsilat' | 'gorev' | 'dun'; baslik: string; satirlar: Satir[]; toplam?: number; ozet?: string; bosMetin: string; href?: string };
+type Grup = { key: 'takilan' | 'tahsilat' | 'gorev' | 'dun'; baslik: string; satirlar: Satir[]; toplam?: number; ozet?: string; bosMetin: string; href?: string };
 type Bugun = { tarih: string; gun: number; odak: string | null; odakHref?: string; gruplar: Grup[]; uretimZamani: string; onbellekten: boolean };
 
 const MINT = '#8fd7bd';
@@ -103,8 +103,9 @@ export function BugunListesi({ userName }: { userName?: string }) {
   };
 
   const grup = (k: Grup['key']) => data?.gruplar.find((g) => g.key === k);
-  const sol = [grup('son-tarih'), grup('gorev')].filter(Boolean) as Grup[];
-  const sag = [grup('dun'), grup('takilan'), grup('tahsilat')].filter(Boolean) as Grup[];
+  // Son tarihler grubu yok: alttaki "Bu Hafta Takvim" zaten gösteriyor (Muzaffer Bey, 2026-09-18)
+  const sol = [grup('dun'), grup('gorev')].filter(Boolean) as Grup[];
+  const sag = [grup('takilan'), grup('tahsilat')].filter(Boolean) as Grup[];
 
   return (
     <div
