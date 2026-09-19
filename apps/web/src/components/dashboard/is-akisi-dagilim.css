@@ -1,0 +1,50 @@
+.workflow-distribution {
+  --distribution-bg: #151818;
+  --distribution-band: #1d2928;
+  --distribution-text: #edf3f2;
+  --distribution-muted: #aabbb8;
+  --distribution-line: #344341;
+  --distribution-track: #222e2c;
+  overflow: hidden;
+  border: 1px solid var(--distribution-line);
+  border-radius: 18px;
+  background: var(--distribution-bg);
+  color: var(--distribution-text);
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+html[data-theme='D'] .workflow-distribution {
+  --distribution-bg: #fff;
+  --distribution-band: #edf5f2;
+  --distribution-text: #293e46;
+  --distribution-muted: #5d7079;
+  --distribution-line: #d5e0df;
+  --distribution-track: #f0f4f5;
+}
+.workflow-distribution__header { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 20px 24px; background: var(--distribution-band); border-bottom: 1px solid var(--distribution-line); }
+.workflow-distribution__header h2 { margin: 5px 0; font-size: 20px; font-weight: 700; color: var(--distribution-text); }
+.workflow-distribution__header p { margin: 0; font-size: 12px; color: var(--distribution-muted); }
+.workflow-distribution__eyebrow { font-weight: 600; letter-spacing: .03em; }
+.workflow-distribution__total { display: flex; align-items: baseline; gap: 8px; white-space: nowrap; }
+.workflow-distribution__total strong { font-size: 32px; font-weight: 750; font-variant-numeric: tabular-nums; }
+.workflow-distribution__total span { font-size: 12px; color: var(--distribution-muted); }
+.workflow-distribution__figure { margin: 0; padding: 18px 24px; }
+.workflow-distribution__axis, .workflow-distribution__rows li { display: grid; grid-template-columns: 140px minmax(0, 1fr) 105px; align-items: center; gap: 20px; }
+.workflow-distribution__axis { padding-bottom: 8px; font-size: 10px; color: var(--distribution-muted); }
+.workflow-distribution__axis > :last-child { text-align: right; }
+.workflow-distribution__rows { margin: 0; padding: 0; list-style: none; }
+.workflow-distribution__rows li { min-height: 42px; border-bottom: 1px solid var(--distribution-line); }
+.workflow-distribution__rows li:last-child { border-bottom: 0; }
+.workflow-distribution__label { font-size: 12px; font-weight: 600; }
+.workflow-distribution__track { display: block; height: 16px; overflow: hidden; border-radius: 3px; background: repeating-linear-gradient(90deg, transparent 0, transparent calc(25% - 1px), var(--distribution-line) calc(25% - 1px), var(--distribution-line) 25%), var(--distribution-track); }
+.workflow-distribution__bar { display: block; height: 100%; background: var(--stage-color); border-radius: 3px; }
+.workflow-distribution__value { display: flex; justify-content: flex-end; align-items: baseline; gap: 12px; font-variant-numeric: tabular-nums; }
+.workflow-distribution__value strong { font-size: 15px; }
+.workflow-distribution__value > span { min-width: 45px; text-align: right; font-size: 11px; color: var(--distribution-muted); }
+.workflow-distribution__figure figcaption { margin-top: 12px; color: var(--distribution-muted); font-size: 11px; }
+.workflow-distribution__message { margin: 0; padding: 32px 24px; color: var(--distribution-muted); font-size: 13px; }
+@media (max-width: 640px) {
+  .workflow-distribution__header { align-items: flex-start; flex-direction: column; gap: 12px; padding: 18px; }
+  .workflow-distribution__figure { padding: 16px 18px; }
+  .workflow-distribution__axis, .workflow-distribution__rows li { grid-template-columns: 106px minmax(0, 1fr) 82px; gap: 8px; }
+  .workflow-distribution__value { gap: 5px; }
+}

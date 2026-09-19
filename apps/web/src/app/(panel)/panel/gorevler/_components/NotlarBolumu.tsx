@@ -19,7 +19,7 @@ export function NotlarBolumu({ notlar, eylemler, acikId, basliksiz }: { notlar: 
   const sirali = [...notlar].sort((a, b) => (!!b.pinned !== !!a.pinned ? (b.pinned ? 1 : -1) : (b.updatedAt || '').localeCompare(a.updatedAt || '')));
 
   return (
-    <Kart renk={NOT_RENK} serit>
+    <Kart renk={NOT_RENK} dolguYok className="gorev-notlar">
       {!basliksiz && (
         <div className="flex items-center gap-2 px-4 py-3" style={portalStyle({ borderBottom: `1px solid ${KENAR}` })}>
           <StickyNote size={14} style={portalStyle({ color: NOT_RENK })} />
@@ -41,7 +41,7 @@ export function NotlarBolumu({ notlar, eylemler, acikId, basliksiz }: { notlar: 
           {sirali.map((n, i) => {
             const genis = !!acik[n.id];
             return (
-              <div key={n.id} style={portalStyle({ borderTop: i === 0 ? undefined : `1px solid ${KENAR}`, background: acikId === n.id ? 'rgba(125,211,252,0.06)' : n.pinned ? `${NOT_RENK}0a` : undefined })}>
+              <div key={n.id} data-not-secili={acikId === n.id} data-not-sabit={!!n.pinned} style={portalStyle({ borderTop: i === 0 ? undefined : `1px solid ${KENAR}`, background: acikId === n.id ? 'rgba(125,211,252,0.06)' : n.pinned ? `${NOT_RENK}0a` : undefined })}>
                 <div className="flex items-start gap-2 px-3 py-2.5">
                   <button
                     type="button"

@@ -68,7 +68,7 @@ export function BulgularSekmesi(p: BulgularProps) {
       <KapsamPaneli ozet={kontrolOzeti} katalog={katalog} bulguSiddeti={bulguSiddeti} />
 
       {/* Filtre satırı: arama + şiddet + durum, hepsi bir arada */}
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="ed-filters flex flex-wrap items-center gap-2">
         <div className="h-9 rounded-lg px-3 flex items-center gap-2 flex-1 min-w-[240px]" style={portalStyle({ background: PANEL, border: `1px solid ${BORDER}`, color: 'rgba(250,250,249,.75)' })}>
           <Search size={14} />
           <input value={p.findingSearch} onChange={(e) => p.setFindingSearch(e.target.value)} placeholder="Bulgu, hesap kodu, fiş veya satır ara..." className="bg-transparent outline-none text-[13px] w-full" style={portalStyle({ color: TEXT })} />
@@ -77,7 +77,7 @@ export function BulgularSekmesi(p: BulgularProps) {
           {([['ERROR', 'Hata', stats.error, ERR], ['WARN', 'Uyarı', stats.warn, WARN], ['INFO', 'Bilgi', stats.info, INFO]] as const).map(([k, ad, n, renk]) => {
             const on = p.severityFilter === k;
             return (
-              <button key={k} onClick={() => p.setSeverityFilter(on ? 'ALL' : k)} className="px-2.5 rounded-md text-[11.5px] font-semibold inline-flex items-center gap-1.5 tabular-nums" style={portalStyle({ background: on ? `${renk}22` : 'transparent', color: on ? renk : 'rgba(250,250,249,.7)' })}>
+              <button key={k} data-ed-severity={ad} aria-pressed={on} onClick={() => p.setSeverityFilter(on ? 'ALL' : k)} className="px-2.5 rounded-md text-[11.5px] font-semibold inline-flex items-center gap-1.5 tabular-nums" style={portalStyle({ background: on ? `${renk}22` : 'transparent', color: on ? renk : 'rgba(250,250,249,.7)' })}>
                 <span className="w-[7px] h-[7px] rounded-full" style={portalStyle({ background: renk })} />{ad} {n}
               </button>
             );
@@ -87,7 +87,7 @@ export function BulgularSekmesi(p: BulgularProps) {
           {([['OPEN', 'Açık', stats.open], ['RESOLVED', 'Çözüldü', stats.resolved], ['IGNORED', 'Görmezden', stats.ignored], ['ALL', 'Tümü', stats.total]] as const).map(([k, ad, n]) => {
             const on = p.statusFilter === k;
             return (
-              <button key={k} onClick={() => p.setStatusFilter(k)} className="px-2.5 rounded-md text-[11.5px] font-semibold tabular-nums" style={portalStyle({ background: on ? NAVY_SOFT : 'transparent', color: on ? NAVY : 'rgba(250,250,249,.7)' })}>
+              <button key={k} data-ed-status={k} aria-pressed={on} onClick={() => p.setStatusFilter(k)} className="px-2.5 rounded-md text-[11.5px] font-semibold tabular-nums" style={portalStyle({ background: on ? NAVY_SOFT : 'transparent', color: on ? NAVY : 'rgba(250,250,249,.7)' })}>
                 {ad} <span style={portalStyle({ opacity: .7 })}>{n}</span>
               </button>
             );

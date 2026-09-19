@@ -42,9 +42,9 @@ export function KapsamPaneli({ ozet, katalog, bulguSiddeti }: {
   };
 
   return (
-    <div className="rounded-2xl overflow-hidden relative" style={portalStyle({ background: PANEL, border: `1px solid ${BORDER}` })}>
+    <div className="ed-scope rounded-2xl overflow-hidden relative" style={portalStyle({ background: PANEL, border: `1px solid ${BORDER}` })}>
       <div className="absolute inset-x-0 top-0 h-px" style={portalStyle({ background: `linear-gradient(90deg, transparent, ${OK}66, transparent)` })} />
-      <button onClick={() => setAcik((v) => !v)} className="w-full flex flex-wrap items-center gap-x-4 gap-y-1.5 px-4 py-3 text-left">
+      <button aria-expanded={acik} onClick={() => setAcik((v) => !v)} className="w-full flex flex-wrap items-center gap-x-4 gap-y-1.5 px-4 py-3 text-left">
         <span className="inline-flex items-center gap-2 text-[12.5px] font-bold" style={portalStyle({ color: TEXT })}>
           <ListChecks size={15} style={portalStyle({ color: OK })} /> Denetim kapsamı
           <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md tabular-nums" style={portalStyle({ background: 'rgba(92,191,138,.12)', color: OK })}>{o.calisti} / {o.kural} kontrol çalıştı</span>

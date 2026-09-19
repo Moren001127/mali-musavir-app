@@ -99,12 +99,12 @@ export function AkilliGiris({
   };
 
   return (
-    <section
+    <section data-gorev-giris
       className="relative overflow-hidden rounded-2xl"
       // Giriş kutusu AYRI ton (Muzaffer Bey: "o kutunun renk tonunu farklı yap"): sıcak altın-kahve zemin + altın kenar
       style={portalStyle({ background: 'linear-gradient(180deg, rgba(212,184,118,0.14), rgba(212,184,118,0.06))', border: '1px solid rgba(212,184,118,0.34)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05)' })}
     >
-      <div className="p-3.5 sm:p-4">
+      <div className="p-3">
         {/* Giriş satırı */}
         <div className="flex items-center gap-2 rounded-xl px-3" style={portalStyle({ background: 'rgba(0,0,0,0.28)', border: `1px solid ${dolu ? `${GOLD}55` : 'rgba(255,255,255,0.10)'}` })}>
           <Sparkles size={16} className="flex-shrink-0" style={portalStyle({ color: GOLD })} />
@@ -135,7 +135,7 @@ export function AkilliGiris({
             onClick={ekle}
             disabled={!baslik || gonderiliyor}
             title={tur === 'NOT' ? 'Not olarak kaydet (Enter)' : 'Görev ekle (Enter)'}
-            className="inline-flex h-8 flex-shrink-0 items-center gap-1.5 rounded-lg px-3 text-[12.5px] font-bold transition-[transform,filter] hover:-translate-y-px hover:brightness-110 disabled:opacity-40 disabled:hover:translate-y-0"
+            className="gorev-ekle inline-flex h-8 flex-shrink-0 items-center gap-1.5 rounded-lg px-3 text-[12.5px] font-bold transition-[transform,filter] hover:-translate-y-px hover:brightness-110 disabled:opacity-40 disabled:hover:translate-y-0"
             style={portalStyle({ background: `linear-gradient(135deg, ${tur === 'NOT' ? NOT_RENK : GOLD}, ${tur === 'NOT' ? '#d97706' : GOLD_SOFT})`, color: '#0f0d0b' })}
           >
             {gonderiliyor ? <Loader2 size={13} className="animate-spin" /> : tur === 'NOT' ? <StickyNote size={13} /> : <Plus size={13} />}

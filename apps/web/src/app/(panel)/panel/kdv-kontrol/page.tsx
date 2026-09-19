@@ -1038,7 +1038,7 @@ export default function KdvKontrolPage() {
             Vergi & Beyanname
           </span>
         </div>
-        <div className="flex flex-wrap items-center justify-between gap-4">
+        <div data-kdv-title-layout className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex min-w-0 items-center gap-3.5">
             <span
               data-kdv-heading-icon className="grid shrink-0 place-items-center rounded-xl"
@@ -1234,7 +1234,7 @@ export default function KdvKontrolPage() {
 
         {/* AKSİYON BUTONLARI (4 adım — OCR otomatik). Manuel "Luca Excel Yükle" kaldırıldı
             (kullanıcı 2026-08-06): Luca verisi artık "Luca'dan Çek" ile otomatik çekiliyor. */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mt-5 pt-5 border-t" style={portalStyle({ borderColor: 'rgba(255,255,255,0.05)' })}>
+        <div data-kdv-action-grid className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mt-5 pt-5 border-t" style={portalStyle({ borderColor: 'rgba(255,255,255,0.05)' })}>
           {/* Luca'dan Çek (otomatik agent) */}
           <ActionBtn
             icon={Download}

@@ -222,7 +222,7 @@ export default function MukellefListesiPage() {
               <Users size={24} style={portalStyle({ color: '#1a1410' })} />
             </span>
             <div className="min-w-0">
-              <h1 style={portalStyle({ fontFamily: 'Fraunces, Georgia, serif', fontSize: 30, fontWeight: 600, color: TEXT, letterSpacing: '-.03em', lineHeight: 1.05 })}>Mükellef Listesi</h1>
+              <h1 style={portalStyle({ fontFamily: 'Inter, Manrope, system-ui, sans-serif', fontSize: 30, fontWeight: 600, color: TEXT, letterSpacing: '-.03em', lineHeight: 1.05 })}>Mükellef Listesi</h1>
               <p className="mt-1.5 text-[13px] font-semibold" style={portalStyle({ color: 'rgba(250,250,249,0.48)' })}>
                 {counts.active} aktif, {counts.inactive} pasif, toplam {counts.total} kayıt
               </p>
@@ -460,7 +460,7 @@ function CredentialInsightDialog({ card, onClose }: { card: PortalCredentialInsi
                   >
                     <div className="font-black tabular-nums" style={portalStyle({ color: FAINT })}>{index + 1}</div>
                     <div className="min-w-0 pr-3">
-                      <div className="truncate font-black" style={portalStyle({ color: TEXT })}>{item.name}</div>
+                      <div className="liste-firma-adi truncate text-[16px] font-semibold" style={portalStyle({ color: TEXT, fontFamily: 'Inter, Manrope, system-ui, sans-serif' })}>{item.name}</div>
                       <div className="mt-0.5 truncate text-[11px]" style={portalStyle({ color: FAINT })}>{item.taxOffice || '-'}</div>
                     </div>
                     <div className="font-semibold tabular-nums" style={portalStyle({ color: MUTED })}>{item.taxNumber || '-'}</div>
@@ -519,7 +519,7 @@ function TaxpayerCard({
       <div className="min-w-0 py-0.5">
         <div className="flex min-w-0 items-start gap-2">
           <Link href={`/panel/mukellefler/${taxpayer.id}`} className="min-w-0 flex-1">
-            <h2 className="truncate text-[18px] font-black leading-tight transition group-hover:text-[#d4b876]" style={portalStyle({ color: TEXT, fontFamily: 'Inter, Manrope, system-ui, sans-serif', letterSpacing: 0 })}>{name}</h2>
+            <h2 className="liste-firma-adi truncate text-[16px] font-semibold leading-tight" style={portalStyle({ color: TEXT, fontFamily: 'Inter, Manrope, system-ui, sans-serif', letterSpacing: 0 })}>{name}</h2>
           </Link>
           <span
             className="shrink-0 rounded-[5px] px-2 py-1 text-[10.5px] font-black"
@@ -624,7 +624,7 @@ function HattatPresenceIcon({ active, kind, title }: { active: boolean; kind: Ha
     <span
       title={`${title}: ${active ? 'tanımlı' : 'eksik'}`}
       aria-label={`${title}: ${active ? 'tanımlı' : 'eksik'}`}
-      className="inline-flex h-[34px] min-w-[38px] items-center justify-center rounded-[6px] px-2"
+      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px]"
       style={portalStyle({
         background: active ? 'rgba(0,166,90,0.12)' : 'rgba(231,76,60,0.10)',
         border: `1px solid ${active ? 'rgba(0,166,90,0.34)' : 'rgba(231,76,60,0.30)'}`,
@@ -633,7 +633,7 @@ function HattatPresenceIcon({ active, kind, title }: { active: boolean; kind: Ha
       })}
     >
       {kind === 'gib' && <GibMark color={color} />}
-      {kind === 'sgk' && <span className="font-serif text-[10.5px] font-black leading-none">SGK</span>}
+      {kind === 'sgk' && <span className="inline-flex h-4 w-4 items-center justify-center font-sans text-[8px] font-bold leading-none">SGK</span>}
       {kind === 'mail' && <EnvelopeMark color={color} />}
       {kind === 'phone' && <Smartphone size={16} strokeWidth={2.55} />}
     </span>
@@ -642,7 +642,7 @@ function HattatPresenceIcon({ active, kind, title }: { active: boolean; kind: Ha
 
 function GibMark({ color }: { color: string }) {
   return (
-    <svg viewBox="0 0 100 100" width="22" height="22" aria-hidden="true">
+    <svg viewBox="0 0 100 100" width="16" height="16" aria-hidden="true">
       <path
         d="M53.8 8.8C32.7 23.6 21.7 45.2 23.5 72.7c.5 7.1 2.1 13.4 4.4 18.5H48C38 64.6 40.8 35.2 64.8 8.8h-11Z"
         fill={color}
@@ -658,7 +658,7 @@ function GibMark({ color }: { color: string }) {
 
 function EnvelopeMark({ color }: { color: string }) {
   return (
-    <svg viewBox="0 0 32 24" width="22" height="18" aria-hidden="true">
+    <svg viewBox="0 0 32 24" width="16" height="16" aria-hidden="true">
       <path
         d="M3.4 4.1h25.2v2.1L16 14.1 3.4 6.2V4.1Zm0 4.6 9.1 5.7-9.1 6.1V8.7Zm25.2 0v11.8l-9.1-6.1 9.1-5.7Zm-15 6.6 2.4 1.5 2.4-1.5 9.2 6.2H4.4l9.2-6.2Z"
         fill={color}

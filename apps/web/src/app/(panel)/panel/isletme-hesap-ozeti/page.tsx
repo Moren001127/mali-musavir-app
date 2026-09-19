@@ -1306,7 +1306,7 @@ function KarsilastirmaTablosu({
                 })}
               >
                 {/* Dönem başlığı */}
-                <div
+                <div data-report-period
                   style={portalStyle({
                     color: c ? GOLD : 'rgba(250,250,249,0.4)',
                     fontFamily: 'Fraunces, serif',
@@ -1849,6 +1849,7 @@ function BlockCard({
   const c = accentColors[accent];
   return (
     <div
+      data-report-section
       className={`overflow-hidden relative ${attached ? 'rounded-b-2xl' : 'rounded-2xl'}`}
       style={portalStyle({
         background: TABLE_SURFACE,
@@ -1943,6 +1944,8 @@ function Row({
 
   return (
     <tr
+      data-report-row={manuel ? 'manual' : hl ? 'final' : calc || bold ? 'total' : 'detail'}
+      data-report-metric={ratios ? label : undefined}
       style={portalStyle({ background: rowBg, transition: 'background-color 120ms' })}
       onMouseEnter={(e) => {
         (e.currentTarget as HTMLTableRowElement).style.background = portalPaint('rgba(212,184,118,0.03)', 'background');
@@ -2036,6 +2039,7 @@ function Row({
                   {c}
                 </span>
                 <span
+                  data-report-ratio={isRatioNeg ? 'negative' : 'positive'}
                   className="inline-block tabular-nums"
                   style={portalStyle({
                     color: rColor!,

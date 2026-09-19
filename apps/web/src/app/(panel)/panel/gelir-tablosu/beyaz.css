@@ -2,3 +2,28 @@
 /* Rapor tutarlarının kâr/zarar renklerine dokunmadan yalnız yüzey ve ayırıcılar. */
 html[data-theme="D"] [data-gelir-report] table { border-color: #cbd6de !important; }
 html[data-theme="D"] [data-gelir-report] table :is(td,th) { border-color: #d5dfe6 !important; }
+
+/* Belirgin rapor çizgileri; hesap ve tutar renkleri korunur. */
+html[data-theme="D"] [data-gelir-report] table { border: 1px solid #aebfc7 !important; background: #fff !important; }
+html[data-theme="D"] [data-gelir-report] table :is(td, th) { border-bottom: 1px solid #ccd7dc !important; border-color: #ccd7dc !important; }
+html[data-theme="D"] [data-gelir-report] table :is(td, th) + :is(td, th) { border-left: 1px solid #ccd7dc !important; }
+html[data-theme="D"] [data-gelir-report] thead :is(th, td) { background: #edf3f5 !important; color: #334d59 !important; border-bottom-color: #aebfc7 !important; }
+html[data-theme="D"] [data-gelir-report] [data-report-row="detail"] { background: #fff !important; }
+html[data-theme="D"] [data-gelir-report] [data-report-row="detail"]:nth-child(even) { background: #f8fafb !important; }
+html[data-theme="D"] [data-gelir-report] [data-report-row="group"] { background: #edf3f5 !important; }
+html[data-theme="D"] [data-gelir-report] [data-report-row="total"] { background: #eef4f3 !important; }
+html[data-theme="D"] [data-gelir-report] [data-report-row="final"] { background: #e7eff4 !important; }
+html[data-theme="D"] [data-gelir-report] [data-report-row="total"] > td { border-top: 2px solid #a7bebc !important; font-weight: 700; }
+html[data-theme="D"] [data-gelir-report] [data-report-row="final"] > td { border-top: 2px solid #8fa7b5 !important; border-bottom: 2px solid #8fa7b5 !important; font-weight: 700; }
+html[data-theme="D"] [data-gelir-report] [data-report-row="manual"] { background: #f0f5fc !important; }
+html[data-theme="D"] [data-gelir-report] [data-report-ratio]:nth-child(6n + 1) { background: #edf6f2 !important; border-color: #b7d5c9 !important; }
+html[data-theme="D"] [data-gelir-report] [data-report-ratio]:nth-child(6n + 2) { background: #edf3fb !important; border-color: #bdcfe4 !important; }
+html[data-theme="D"] [data-gelir-report] [data-report-ratio]:nth-child(6n + 3) { background: #f3eff9 !important; border-color: #d1c4e2 !important; }
+html[data-theme="D"] [data-gelir-report] [data-report-ratio]:nth-child(6n + 4) { background: #fff5e9 !important; border-color: #e6cead !important; }
+html[data-theme="D"] [data-gelir-report] [data-report-ratio]:nth-child(6n + 5) { background: #ecf6f6 !important; border-color: #b6d4d5 !important; }
+html[data-theme="D"] [data-gelir-report] [data-report-ratio]:nth-child(6n + 6) { background: #faf0f3 !important; border-color: #e2c5cf !important; }
+html[data-theme="D"] [data-gelir-report] [data-report-ratio] > :first-child { color: #3d505b !important; }
+html[data-theme="D"] [data-gelir-report] [data-report-ratio] > :last-child { color: #586974 !important; }
+html[data-theme="D"] [data-gelir-report] [data-report-ratio="neutral"] > :nth-child(2) { color: #65517e !important; }
+
+html[data-theme="D"] [data-gelir-report] [data-report-percent] { background: #e7f4ec !important; color: #205c3b !important; border-color: #b6d6c2 !important; text-shadow: none !important; }

@@ -39,6 +39,7 @@ import { ReactNode, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { KritikUyariStatCard } from '@/components/dashboard/KritikUyariStatCard';
 import { BuHaftaTakvim } from '@/components/dashboard/BuHaftaTakvim';
+import { IsAkisiDagilim } from '@/components/dashboard/IsAkisiDagilim';
 
 const GOLD = '#d4b876';
 const TRACK_BLUE = '#7dd3fc';
@@ -1654,9 +1655,9 @@ export default function DashboardPage() {
   }, [agentStatuses]);
 
   // v1.36.80: Aktif İş Yükü — gerçek workflow queue count'u (KONTROL/İŞLEME/BEYAN bekleyenler toplamı)
-  const { data: workflowData } = useQuery<{ counts?: { evrak: number; yukleme: number; islenme: number; kontrol: number; beyanname: number; tamam: number }; total?: number }>({
+  const { data: workflowData } = useQuery<{ queueUnavailable?: boolean; donem?: string; counts?: { evrak: number; yukleme: number; islenme: number; kontrol: number; beyanname: number; tamam: number }; total?: number }>({
     queryKey: ['dashboard-workflow-queue'],
-    queryFn: () => api.get('/taxpayers/workflow/queue').then((r) => r.data).catch(() => ({ counts: { evrak: 0, yukleme: 0, islenme: 0, kontrol: 0, beyanname: 0, tamam: 0 }, total: 0 })),
+    queryFn: () => api.get('/taxpayers/workflow/queue').then((r) => r.data).catch(() => ({ queueUnavailable: true, counts: { evrak: 0, yukleme: 0, islenme: 0, kontrol: 0, beyanname: 0, tamam: 0 }, total: 0 })),
     refetchInterval: 60_000,
   });
   const aktifIsYuku =
@@ -1939,6 +1940,12 @@ export default function DashboardPage() {
         {/* Kritik Uyarı — tıklanabilir kart, detayı altta açılır panel */}
         <KritikUyariStatCard />
       </div>
+
+      <IsAkisiDagilim
+        counts={workflowData?.queueUnavailable ? undefined : workflowData?.counts}
+        period={workflowData?.donem}
+        loading={!workflowData}
+      />
 
       <div
         data-dashboard-surface className="rounded-2xl overflow-hidden"

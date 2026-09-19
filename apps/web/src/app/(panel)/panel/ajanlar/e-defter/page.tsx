@@ -1,4 +1,5 @@
 'use client';
+import './edefter-white.css';
 import '@/app/(panel)/panel/ajanlar/_components/operations-white.css';
 
 import { portalStyle, portalPaint } from '@/lib/portal-theme';
@@ -112,7 +113,7 @@ function TaxpayerSelect({ taxpayers, value, onChange }: { taxpayers: Taxpayer[];
         <ChevronDown size={15} className="absolute right-3 transition-transform" style={portalStyle({ color: MUTED, transform: open ? 'rotate(180deg)' : 'none' })} />
       </button>
       {open && rect && typeof document !== 'undefined' && createPortal(
-        <div ref={panelRef} className="rounded-xl overflow-hidden" style={portalStyle({ position: 'fixed', left: rect.left, top: rect.top, width: rect.width, zIndex: 9999, background: '#16161b', border: `1px solid ${BORDER_STRONG}`, boxShadow: '0 18px 44px rgba(0,0,0,.55)' })}>
+        <div data-edefter-control="secici" ref={panelRef} className="rounded-xl overflow-hidden" style={portalStyle({ position: 'fixed', left: rect.left, top: rect.top, width: rect.width, zIndex: 9999, background: '#16161b', border: `1px solid ${BORDER_STRONG}`, boxShadow: '0 18px 44px rgba(0,0,0,.55)' })}>
           <div className="p-2" style={portalStyle({ borderBottom: `1px solid ${BORDER}` })}>
             <div className="h-9 rounded-lg px-2.5 flex items-center gap-2 w-full" style={portalStyle({ background: 'rgba(255,255,255,.05)', border: `1px solid ${BORDER}` })}>
               <Search size={13} style={portalStyle({ color: MUTED2 })} />
@@ -752,7 +753,7 @@ export default function EDefterAgentPage() {
   });
 
   return (
-    <div data-ops-page="ajanlar" className="space-y-4">
+    <div data-edefter-control data-ops-page="ajanlar" className="space-y-4">
       {/* ════════ BAŞLIK KARTI — kimlik + eylemler + tek satır hap rozetler + seçiciler ════════ */}
       <Kart className="ops-module-card" renk={NAVY} serit>
         <div className="px-5 pt-4 pb-4 flex flex-wrap items-start gap-4">
@@ -800,7 +801,7 @@ export default function EDefterAgentPage() {
         </div>
 
         {/* Seçici bandı — etiketli, hizalı kontroller */}
-        <div className="px-5 py-3.5 flex flex-wrap items-end gap-x-4 gap-y-3" style={portalStyle({ background: 'rgba(0,0,0,.24)', borderTop: `1px solid ${BORDER}` })}>
+        <div className="ed-period px-5 py-3.5 flex flex-wrap items-end gap-x-4 gap-y-3" style={portalStyle({ background: 'rgba(0,0,0,.24)', borderTop: `1px solid ${BORDER}` })}>
           <label className="flex flex-col gap-1.5 flex-1 min-w-[260px]">
             <span className="text-[9px] uppercase tracking-[.16em] font-bold" style={portalStyle({ color: MUTED2 })}>Mükellef <span style={portalStyle({ color: NAVY })}>· {taxpayers.length} bilanço</span></span>
             <TaxpayerSelect taxpayers={taxpayers} value={taxpayerId} onChange={(id) => { setTaxpayerId(id); setSelectedSessionId(null); }} />
@@ -817,7 +818,7 @@ export default function EDefterAgentPage() {
               {(['GECICI', 'AYLIK', 'YILLIK'] as PeriodMode[]).map((mode) => {
                 const on = periodMode === mode;
                 return (
-                  <button key={mode} onClick={() => { setPeriodMode(mode); setSelectedSessionId(null); }} className="px-4 rounded-lg text-[13px] font-semibold transition-all" style={portalStyle({ background: on ? 'linear-gradient(135deg,#3b82f6,#2563eb)' : 'transparent', color: on ? '#fff' : 'rgba(250,250,249,.6)', boxShadow: on ? '0 4px 12px rgba(59,130,246,.4)' : 'none' })}>
+                  <button key={mode} aria-pressed={on} onClick={() => { setPeriodMode(mode); setSelectedSessionId(null); }} className="px-4 rounded-lg text-[13px] font-semibold transition-all" style={portalStyle({ background: on ? 'linear-gradient(135deg,#3b82f6,#2563eb)' : 'transparent', color: on ? '#fff' : 'rgba(250,250,249,.6)', boxShadow: on ? '0 4px 12px rgba(59,130,246,.4)' : 'none' })}>
                     {mode === 'GECICI' ? 'Geçici' : mode === 'AYLIK' ? 'Aylık' : 'Yıllık'}
                   </button>
                 );
@@ -831,7 +832,7 @@ export default function EDefterAgentPage() {
                 {[1, 2, 3, 4].map((q) => {
                   const on = quarter === q;
                   return (
-                    <button key={q} onClick={() => { setQuarter(q); setSelectedSessionId(null); }} className="w-11 rounded-lg text-[13px] font-semibold transition-all" style={portalStyle({ background: on ? 'linear-gradient(135deg,#3b82f6,#2563eb)' : 'transparent', color: on ? '#fff' : 'rgba(250,250,249,.65)', boxShadow: on ? '0 4px 12px rgba(59,130,246,.4)' : 'none' })}>
+                    <button key={q} aria-pressed={on} onClick={() => { setQuarter(q); setSelectedSessionId(null); }} className="w-11 rounded-lg text-[13px] font-semibold transition-all" style={portalStyle({ background: on ? 'linear-gradient(135deg,#3b82f6,#2563eb)' : 'transparent', color: on ? '#fff' : 'rgba(250,250,249,.65)', boxShadow: on ? '0 4px 12px rgba(59,130,246,.4)' : 'none' })}>
                       {q}
                     </button>
                   );
@@ -866,7 +867,7 @@ export default function EDefterAgentPage() {
       </Kart>
 
       {/* ════════ KAHRAMAN KART — denetim özeti (tek kart: skor · şiddet · durum) ════════ */}
-      <section className="rounded-2xl" style={portalStyle(kahramanKartStili(hasData ? scoreColor : NAVY))}>
+      <section className="ed-summary rounded-2xl" style={portalStyle(kahramanKartStili(hasData ? scoreColor : NAVY))}>
         <div className="px-5 py-4 flex flex-wrap items-center gap-x-8 gap-y-4">
           <div className="flex items-center gap-4 min-w-[250px]">
             <Gauge score={score} color={scoreColor} hasData={hasData} />
@@ -1178,7 +1179,7 @@ function Metric({ label, value, color, active, lead, onClick }: { label: string;
 
 function LegendItem({ color, label, value, active, onClick }: { color: string; label: string; value: number; active: boolean; onClick: () => void }) {
   return (
-    <button onClick={onClick} className="flex items-center gap-2.5 rounded-lg px-1.5 py-1 transition-all" style={portalStyle({ background: active ? `${color}1a` : 'transparent', outline: active ? `1px solid ${color}55` : 'none' })}>
+    <button data-ed-severity={label} aria-pressed={active} onClick={onClick} className="ed-counter flex items-center gap-2.5 rounded-lg px-1.5 py-1 transition-all" style={portalStyle({ background: active ? `${color}1a` : 'transparent', outline: active ? `1px solid ${color}55` : 'none' })}>
       <span className="w-2.5 h-2.5 rounded-sm" style={portalStyle({ background: color })} />
       <span className="flex flex-col items-start leading-none">
         <span className="text-[19px] font-bold tabular-nums" style={portalStyle({ color })}>{value}</span>
@@ -1190,7 +1191,7 @@ function LegendItem({ color, label, value, active, onClick }: { color: string; l
 
 function BigStat({ label, value, color }: { label: string; value: number; color: string }) {
   return (
-    <div data-portal-kpi className="rounded-xl p-3" style={portalStyle({ '--kpi-tone': portalStyle({color}).color, background: PANEL, border: `1px solid ${BORDER}` } as React.CSSProperties)}>
+    <div data-ed-stat={label} data-portal-kpi className="rounded-xl p-3" style={portalStyle({ '--kpi-tone': portalStyle({color}).color, background: PANEL, border: `1px solid ${BORDER}` } as React.CSSProperties)}>
       <div className="text-[9px] uppercase tracking-[.18em] mb-1" style={portalStyle({ color: MUTED2 })}>{label}</div>
       <div className="text-2xl font-bold tabular-nums leading-none" style={portalStyle({ color })}>{value}</div>
     </div>
@@ -1202,6 +1203,8 @@ function HapSekme({ active, onClick, icon: Icon, label, badge }: { active: boole
   return (
     <button
       onClick={onClick}
+      aria-pressed={active}
+      data-ed-tab={label}
       className="h-9 px-3.5 rounded-full inline-flex items-center gap-2 text-[12.5px] font-semibold transition-[transform,filter] duration-150 hover:-translate-y-px"
       style={portalStyle(active
         ? { background: `linear-gradient(135deg, ${NAVY}, ${NAVY}bb)`, color: '#0b1218', border: '1px solid transparent', boxShadow: '0 6px 16px rgba(91,141,239,.30)' }
@@ -1398,7 +1401,7 @@ function KurallarTab() {
       <div className="space-y-3">
         {[...byGroup.entries()].map(([grupAd, kurallar]) => (
           <div key={grupAd} className="rounded-xl overflow-hidden" style={portalStyle({ background: PANEL, border: `1px solid ${BORDER}` })}>
-            <div className="px-4 py-2.5" style={portalStyle({ background: PANEL_HOVER, borderBottom: `1px solid ${BORDER}` })}>
+            <div className="ed-rule-heading px-4 py-2.5" style={portalStyle({ background: PANEL_HOVER, borderBottom: `1px solid ${BORDER}` })}>
               <span className="text-xs font-bold uppercase tracking-wider" style={portalStyle({ color: 'rgba(250,250,249,.85)' })}>{grupAd}</span>
               <span className="text-xs tabular-nums ml-2" style={portalStyle({ color: MUTED })}>{kurallar.length}</span>
             </div>

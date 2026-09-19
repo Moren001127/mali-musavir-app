@@ -131,9 +131,9 @@ export function BulguTablosu(p: BulguTablosuProps) {
         const acik = !kapaliAlanlar[a.alan];
         const hesapli = Boolean(hesapliMi.get(a.alan));
         return (
-          <div key={a.alan} className="rounded-xl overflow-hidden" style={portalStyle({ border: `1px solid ${KENAR}`, background: 'rgba(255,255,255,.02)' })}>
+          <div key={a.alan} className="ed-findings rounded-xl overflow-hidden" style={portalStyle({ border: `1px solid ${KENAR}`, background: 'rgba(255,255,255,.02)' })}>
             {/* Alan başlığı — lacivert aile, şiddete göre boyanmaz */}
-            <button onClick={() => setKapaliAlanlar((st) => ({ ...st, [a.alan]: acik }))} className="w-full flex items-center gap-2.5 px-3.5 py-3 text-left" style={portalStyle({ background: ALAN_ZEMIN, borderLeft: '3px solid rgba(91,141,239,.75)', borderBottom: `1px solid ${KENAR}` })}>
+            <button className="ed-area-heading w-full flex items-center gap-2.5 px-3.5 py-3 text-left" aria-expanded={acik} onClick={() => setKapaliAlanlar((st) => ({ ...st, [a.alan]: acik }))} style={portalStyle({ background: ALAN_ZEMIN, borderLeft: '3px solid rgba(91,141,239,.75)', borderBottom: `1px solid ${KENAR}` })}>
               <span className="text-[16px] w-5 text-center">{ALAN_IKON[a.alan] || '•'}</span>
               <span className="text-[14px] font-bold" style={portalStyle({ color: TEXT })}>{a.alan}</span>
               <span className="text-[11px] tabular-nums px-2 py-0.5 rounded-md" style={portalStyle({ background: 'rgba(255,255,255,.07)', color: 'rgba(250,250,249,.78)' })}>{a.kurallar.length} kural · {a.toplam} bulgu</span>
@@ -172,7 +172,7 @@ export function BulguTablosu(p: BulguTablosuProps) {
                     return (
                       <Fragment key={k.kod}>
                         {/* Kural başlığı satırı — nötr zemin; şiddet yalnız rozette */}
-                        <tr style={portalStyle({ background: KURAL_ZEMIN })}>
+                        <tr className="ed-rule-row" style={portalStyle({ background: KURAL_ZEMIN })}>
                           <td colSpan={sutun} style={portalStyle({ ...HUCRE, padding: '9px 12px' })}>
                             <div className="flex items-center gap-2">
                               <button onClick={() => setKapaliKurallar((st) => ({ ...st, [k.kod]: !daraltildi }))} className="flex items-center gap-2 min-w-0 flex-1 text-left" title={daraltildi ? 'Satırları göster' : 'Satırları gizle'}>

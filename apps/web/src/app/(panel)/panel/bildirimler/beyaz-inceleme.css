@@ -10,7 +10,7 @@ html[data-theme="D"] [data-inceleme="bildirimler"] {
   --portal-shadow: rgba(35, 49, 59, .06);
 }
 html[data-theme="D"] [data-inceleme="bildirimler"] [data-inceleme-baslik] {
-  background: linear-gradient(115deg, var(--inceleme-pastel), #fff 78%) !important;
+  background: linear-gradient(115deg, #eaf4f3 0%, #f7fafb 55%, #f1edf7 100%) !important;
   border-color: #cbd5de !important;
   box-shadow: 0 3px 12px #24313b08 !important;
 }
@@ -31,3 +31,22 @@ html[data-theme="D"] [data-inceleme="bildirimler"] [data-inceleme-yuzey] select 
 /* Bildirim satırının okunmamış/kritik zeminini ve sol şeridini değiştirmez. */
 html[data-theme="D"] [data-inceleme="bildirimler"] article { border-bottom-color: #d7e0e6 !important; }
 
+/* Sade başlık, düzenli filtreler ve gün bantları. */
+[data-inceleme="bildirimler"] .bildirim-ust-etiket { display: none; }
+[data-inceleme="bildirimler"] [data-inceleme-baslik] h1 { font-family: inherit !important; font-size: 26px !important; line-height: 1.2 !important; }
+[data-inceleme="bildirimler"] :is([data-inceleme-baslik], [data-inceleme-yuzey]) { border-radius: 14px; }
+[data-inceleme="bildirimler"] .bildirim-filtreler :is(input, select, [data-bildirim-sekme]),
+[data-inceleme="bildirimler"] [data-bildirim-eylem] { border-radius: 8px !important; }
+[data-inceleme="bildirimler"] .bildirim-filtreler > .inline-flex { border-radius: 10px; }
+[data-inceleme="bildirimler"] :is(button, input, select, article):focus-visible { outline: 2px solid var(--portal-teal-ink, #50aaa7); outline-offset: 2px; }
+html[data-theme="D"] [data-inceleme="bildirimler"] [data-inceleme-yuzey] { background: #fff !important; border-color: #d0dde1 !important; box-shadow: none !important; }
+html[data-theme="D"] [data-inceleme="bildirimler"] [data-inceleme-baslik] > .h-px { height: 2px; background: linear-gradient(90deg, #216c70, #86b8b6 48%, #927ba7) !important; }
+html[data-theme="D"] [data-inceleme="bildirimler"] .bildirim-filtreler { background: #eaf4f3 !important; }
+html[data-theme="D"] [data-inceleme="bildirimler"] .bildirim-gun { background: #f2f5f8; border-block: 1px solid #dce4e7; }
+html[data-theme="D"] [data-inceleme="bildirimler"] [data-bildirim-eylem="vurgulu"],
+html[data-theme="D"] [data-inceleme="bildirimler"] [data-bildirim-sekme]:not([data-bildirim-sekme="kritik"])[aria-pressed="true"] { background: #dceeed !important; border-color: #9dc5c4 !important; color: #216c70 !important; }
+html[data-theme="D"] [data-inceleme="bildirimler"] [data-bildirim-sekme]:not([data-bildirim-sekme="kritik"])[aria-pressed="true"] span { color: inherit !important; }
+@media (max-width: 640px) {
+  [data-inceleme="bildirimler"] .bildirim-filtreler > .inline-flex { width: 100%; justify-content: space-between; }
+  [data-inceleme="bildirimler"] article { gap: 8px; padding-inline: 12px; }
+}

@@ -336,14 +336,14 @@ export default function GorevlerPage() {
           className="absolute inset-x-0 top-0 h-1"
           style={portalStyle({ background: 'linear-gradient(90deg, #8b7649, #b8a06f, #d4b876, #e7cf95, #d4b876, #b8a06f)' })}
         />
-        <div className="mb-3 flex items-center gap-2.5">
+        <div className="gorev-ust-etiket mb-3 flex items-center gap-2.5">
           <span className="h-px w-[26px]" style={portalStyle({ background: GOLD })} />
           <span className="text-[10px] font-bold uppercase tracking-[.18em]" style={portalStyle({ color: GOLD_SOFT })}>Ofis Takip</span>
         </div>
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex min-w-0 items-center gap-3.5">
             <span
-              className="grid shrink-0 place-items-center rounded-xl"
+              className="gorev-baslik-ikon grid shrink-0 place-items-center rounded-xl"
               style={portalStyle({
                 width: 46,
                 height: 46,
@@ -364,7 +364,7 @@ export default function GorevlerPage() {
           </div>
           <button
             onClick={() => setDetay({ id: null, taslak: { taxpayerId: suzgec.mukellefId || undefined } })}
-            className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-[10px] px-4 text-[12.5px] font-bold transition-all"
+            className="gorev-yeni inline-flex h-10 shrink-0 items-center gap-1.5 rounded-[10px] px-4 text-[12.5px] font-bold transition-all"
             style={portalStyle({ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_SOFT})`, color: '#0f0d0b', boxShadow: '0 10px 24px rgba(212,184,118,0.16)' })}
           >
             <Plus size={14} /> Yeni Görev
@@ -379,7 +379,7 @@ export default function GorevlerPage() {
       <AkilliGiris mukellefler={mukellefler} varsayilanMukellefId={suzgec.mukellefId || undefined} onEkle={hizliEkle} />
 
       {/* Görünüm sekmeleri + süzgeçler — ayrı ton (Muzaffer Bey: "Ajanda/Kanban başlıklarının arka planı farklı olsun, ayırt edici") */}
-      <div className="rounded-xl px-3 py-2" style={portalStyle({ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.11)' })}>
+      <div className="gorev-filtre-yuzey rounded-xl px-3 py-2" style={portalStyle({ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.11)' })}>
         <AracCubugu gorunum={gorunum} onGorunum={setGorunum} suzgec={suzgec} onSuzgec={setSuzgec} mukellefler={mukellefler} />
       </div>
 

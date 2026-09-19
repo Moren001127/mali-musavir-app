@@ -32,7 +32,7 @@ const HUCRE_BASLIK: CSSProperties = { ...HUCRE, padding: '7px 10px', fontSize: 1
 // altın tonlu dolu zemin (tablo başlığıyla aynı aile), altın büyük harf yazı, altın üst/alt çizgi, iç sütun çizgisi yok.
 const GRUP_ZEMIN = 'rgba(212,184,118,0.13)';
 const GRUP_CIZGI = '1px solid rgba(212,184,118,0.45)';
-const GRUP_BOSLUK = 18; // px — gruplar arası nefes payı
+const GRUP_BOSLUK = 8; // px — gruplar arası nefes payı
 const SUTUN = 6;
 
 export interface GorevTablosuProps {
@@ -56,7 +56,7 @@ export interface GorevTablosuProps {
 export function GorevTablosu({ gruplar, secili, onSec, onGrupSec, eylemler, acikId, basliksiz, bos }: GorevTablosuProps) {
   const dolu = gruplar.filter((g) => g.satirlar.length > 0);
   return (
-    <div className="overflow-x-auto rounded-xl" style={portalStyle({ border: `1px solid ${KENAR_NOTR}`, background: 'rgba(255,255,255,0.02)' })}>
+    <div className="gorev-tablo-cerceve overflow-x-auto rounded-xl" style={portalStyle({ border: `1px solid ${KENAR_NOTR}`, background: 'rgba(255,255,255,0.02)' })}>
       <table data-inceleme-tablo className="w-full" style={portalStyle({ borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: 760 })}>
         <colgroup>
           <col style={portalStyle({ width: 36 })} />
@@ -175,7 +175,7 @@ export function GorevSatiri({
   const arka = secili ? 'rgba(212,184,118,0.09)' : acik ? 'rgba(212,184,118,0.05)' : 'transparent';
 
   return (
-    <tr style={portalStyle({ background: arka, boxShadow: acik ? `inset 3px 0 0 ${GOLD}` : undefined })} className="transition-colors hover:bg-white/[0.03]">
+    <tr aria-selected={secili} data-gorev-acik={!!acik} style={portalStyle({ background: arka, boxShadow: acik ? `inset 3px 0 0 ${GOLD}` : undefined })} className="transition-colors hover:bg-white/[0.03]">
       <td style={portalStyle({ ...HUCRE, padding: '8px 4px', textAlign: 'center' })}>
         <input type="checkbox" checked={secili} onChange={(e) => onSec(e.target.checked)} title="Seç" className="h-3.5 w-3.5 cursor-pointer" style={portalStyle({ accentColor: GOLD })} />
       </td>

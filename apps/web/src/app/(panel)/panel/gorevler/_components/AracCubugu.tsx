@@ -46,9 +46,9 @@ export function AracCubugu({
   const suzgecVar = !!(suzgec.kategori || suzgec.oncelik || suzgec.kaynak || suzgec.mukellefId || suzgec.arama);
 
   return (
-    <div className="flex min-w-0 flex-wrap items-center gap-2">
+    <div className="gorev-araclar flex min-w-0 flex-wrap items-center gap-2">
       {/* Görünüm sekmeleri */}
-      <div className="inline-flex flex-shrink-0 items-center rounded-full p-[3px]" style={portalStyle({ background: 'rgba(0,0,0,0.32)', border: '1px solid rgba(255,255,255,0.08)' })} role="tablist">
+      <div className="gorev-gorunumler inline-flex flex-shrink-0 items-center rounded-full p-[3px]" style={portalStyle({ background: 'rgba(0,0,0,0.32)', border: '1px solid rgba(255,255,255,0.08)' })} role="tablist">
         {GORUNUMLER.map((g) => {
           const Ikon = g.ikon;
           const aktif = gorunum === g.key;
@@ -69,7 +69,7 @@ export function AracCubugu({
         })}
       </div>
 
-      <span className="mx-0.5 hidden h-4 w-px flex-shrink-0 sm:block" style={portalStyle({ background: 'rgba(255,255,255,0.12)' })} />
+      <span aria-hidden="true" className="gorev-filtre-ayrac mx-0.5 hidden h-4 w-px flex-shrink-0 sm:block" style={portalStyle({ background: 'rgba(255,255,255,0.12)' })} />
 
       {/* Kategori */}
       <HapMenu ikon={<Tag size={11} />} etiket={suzgec.kategori ? kategoriEtiketi(suzgec.kategori) : 'Kategori'} aktif={!!suzgec.kategori} renk={suzgec.kategori ? kategoriRengi(suzgec.kategori) : GOLD} title="Kategoriye göre süz">
@@ -134,7 +134,7 @@ export function AracCubugu({
       </HapMenu>
 
       {/* Arama */}
-      <div className="relative min-w-[160px] flex-1 sm:max-w-[280px]">
+      <div className="gorev-arama relative min-w-[160px] flex-1">
         <Search size={13} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" style={portalStyle({ color: IKINCIL })} />
         <input
           type="search"
@@ -174,6 +174,7 @@ function HapMenu({ ikon, etiket, aktif, renk, title, genislik = 230, children }:
           type="button"
           onClick={ac}
           title={title}
+          data-gorev-filtre={aktif ? "aktif" : "normal"}
           aria-expanded={acik}
           className="inline-flex max-w-[220px] flex-shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-[11.5px] font-semibold transition-[transform,filter] hover:-translate-y-px hover:brightness-125"
           style={portalStyle(aktif ? { background: `${renk}18`, border: `1px solid ${renk}66`, color: renk } : { background: 'transparent', border: `1px solid rgba(255,255,255,${acik ? '0.24' : '0.12'})`, color: acik ? METIN : IKINCIL })}

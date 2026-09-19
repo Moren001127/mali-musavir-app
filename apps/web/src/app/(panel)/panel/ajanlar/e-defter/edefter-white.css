@@ -1,0 +1,122 @@
+/* Yalnız e-Defter: D renkleri; A temasının mevcut görünümü korunur. */
+html[data-theme='D'] [data-edefter-control] {
+  --portal-ink: #243746;
+  --portal-secondary: #455d6b;
+  --portal-muted: #5e7280;
+  --portal-line: #cbd8df;
+  --ed-ink: #245e70;
+  --ed-wash: #edf5f7;
+  --ed-line: #bfd4dd;
+}
+html[data-theme='D'] [data-edefter-control] :is(.ops-module-card, .ed-summary, .ed-scope, .ed-findings) {
+  background: #fff !important;
+  border: 1px solid #cbd8df !important;
+  box-shadow: none !important;
+}
+html[data-theme='D'] [data-edefter-control] .ed-period {
+  background: #f3f7fa !important;
+  border-color: #cbd8df !important;
+}
+html[data-theme='D'] [data-edefter-control] .ed-period [aria-pressed] {
+  box-shadow: none !important;
+}
+html[data-theme='D'] [data-edefter-control] .ed-period [aria-pressed='true'] {
+  background: #e3eff3 !important;
+  color: #245e70 !important;
+  box-shadow: inset 0 0 0 1px #7fa9b8 !important;
+}
+html[data-theme='D'] [data-edefter-control] :is(.ed-scope > button, .ed-area-heading) {
+  background: #edf5f4 !important;
+  border-color: #bdd6d1 !important;
+  color: #285e59 !important;
+}
+html[data-theme='D'] [data-edefter-control] .ed-area-heading > span:nth-child(2) {
+  color: #285e59 !important;
+}
+html[data-theme='D'] [data-edefter-control] :is(.ed-rule-heading, .ed-rule-row) {
+  background: #f4f0f7 !important;
+  color: #644f77 !important;
+  border-color: #d8cde2 !important;
+}
+html[data-theme='D'] [data-edefter-control] .ed-rule-heading > span:first-child {
+  color: #644f77 !important;
+}
+html[data-theme='D'] [data-edefter-control] .ed-filters {
+  padding: 12px;
+  border: 1px solid #cbd8df;
+  border-radius: 10px;
+  background: #f7f9fb;
+}
+html[data-theme='D'] [data-edefter-control] .ed-filters > div {
+  border-color: #cbd8df !important;
+  background: #fff !important;
+  max-width: 100%;
+}
+html[data-theme='D'] [data-edefter-control] [data-ed-severity='Hata'] {
+  --ed-ink: #a2445b; --ed-wash: #fbf0f3; --ed-line: #e7c5cf;
+}
+html[data-theme='D'] [data-edefter-control] [data-ed-severity='Uyarı'] {
+  --ed-ink: #88601f; --ed-wash: #fbf5e9; --ed-line: #e5d5b3;
+}
+html[data-theme='D'] [data-edefter-control] [data-ed-status='RESOLVED'] {
+  --ed-ink: #316f50; --ed-wash: #edf6f0; --ed-line: #c4ddce;
+}
+html[data-theme='D'] [data-edefter-control] [data-ed-status='IGNORED'] {
+  --ed-ink: #635574; --ed-wash: #f3f0f7; --ed-line: #d6ccdf;
+}
+html[data-theme='D'] [data-edefter-control] :is([data-ed-severity], [data-ed-status], [data-ed-tab]) {
+  background: var(--ed-wash) !important;
+  color: var(--ed-ink) !important;
+  box-shadow: inset 0 0 0 1px var(--ed-line) !important;
+  outline: none !important;
+}
+html[data-theme='D'] [data-edefter-control] :is([data-ed-severity], [data-ed-status], [data-ed-tab])[aria-pressed='true'] {
+  box-shadow: inset 0 0 0 2px var(--ed-ink) !important;
+  font-weight: 700;
+}
+html[data-theme='D'] [data-edefter-control] .ed-counter {
+  padding: 8px 12px;
+  min-width: 86px;
+}
+html[data-theme='D'] [data-edefter-control] .ed-counter > span:last-child > span {
+  color: var(--ed-ink) !important;
+}
+html[data-theme='D'] [data-edefter-control] [data-ed-tab] {
+  border-radius: 9px;
+  border-color: transparent !important;
+}
+html[data-theme='D'] [data-edefter-control] :is([data-ed-tab='Mizan Denetimi'], [data-ed-tab='Kontrol Kuralları']) {
+  --ed-ink: #69517e; --ed-wash: #f5f1f8; --ed-line: #d9cde3;
+}
+html[data-theme='D'] [data-edefter-control] [data-ed-tab] > span {
+  background: #fff !important;
+  color: var(--ed-ink) !important;
+}
+html[data-theme='D'] [data-edefter-control] [data-ed-stat] {
+  --kpi-tone: #245e70 !important;
+  background: #edf5f7 !important;
+  border-color: #bfd4dd !important;
+}
+html[data-theme='D'] [data-edefter-control] [data-ed-stat='Mizan Bulgusu'] {
+  --kpi-tone: #69517e !important;
+  background: #f5f1f8 !important;
+  border-color: #d9cde3 !important;
+}
+html[data-theme='D'] [data-edefter-control] [data-ed-stat] > div {
+  color: var(--kpi-tone) !important;
+}
+html[data-theme='D'] [data-edefter-control] :is(button, input, select, a):focus-visible {
+  outline: 2px solid #287b76 !important;
+  outline-offset: 3px;
+}
+@media (max-width: 640px) {
+  html[data-theme='D'] [data-edefter-control] .ed-filters > div {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 36px;
+    min-width: 0;
+  }
+  html[data-theme='D'] [data-edefter-control] .ed-filters button {
+    min-height: 32px;
+  }
+}

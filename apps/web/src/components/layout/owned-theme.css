@@ -141,7 +141,7 @@ html[data-theme='D'] [data-moren-auth-features] > :nth-child(3) {
 /* Yalnız masaüstü sol menü: yazılar tok, çerçeveler sade.
    Önemli kurallar mevcut satır içi ve fare olaylarındaki renkleri de karşılar. */
 html[data-theme='D'] [data-moren-sidebar] {
-  --moren-owned-nav-background: linear-gradient(180deg, #102e5c 0%, #116873 100%);
+  --moren-owned-nav-background: linear-gradient(168deg, #0e2a58 0%, #123a74 46%, #0d7d73 122%);
   --moren-owned-line: rgba(222, 238, 244, 0.1);
   --moren-owned-primary-line: rgba(222, 238, 244, 0.12);
   border-right-color: rgba(222, 238, 244, 0.12) !important;
@@ -149,7 +149,7 @@ html[data-theme='D'] [data-moren-sidebar] {
 }
 
 html[data-theme='D'] [data-moren-sidebar][data-collapsed='false'] {
-  width: 256px !important;
+  width: 240px !important;
 }
 
 html[data-theme='D'] [data-moren-sidebar] * {
@@ -232,7 +232,7 @@ html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-wordmark] {
 
 html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-brand-name] {
   font-family: 'Kaushan Script', cursive;
-  font-size: 68px;
+  font-size: 56px;
   font-weight: 400;
   line-height: 1.05;
   letter-spacing: 0.3px;
@@ -241,7 +241,7 @@ html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-brand-name] {
 html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-brand-subtitle] {
   margin-top: 4px;
   font-family: 'Kaushan Script', cursive;
-  font-size: 20px;
+  font-size: 18px;
   font-style: normal;
   font-weight: 400;
   line-height: 1.15;
@@ -256,3 +256,5 @@ html[data-theme='D'] [data-moren-sidebar][data-collapsed='true'] [data-moren-sid
 html[data-theme='D'] [data-moren-sidebar][data-collapsed='true'] [data-moren-sidebar-brand-subtitle] {
   display: none;
 }
+
+html[data-theme='D'] [data-moren-sidebar][data-collapsed='false'] [data-moren-sidebar-brand] > a { height: 108px; }

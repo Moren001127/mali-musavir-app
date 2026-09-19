@@ -7,8 +7,8 @@ html[data-theme="D"] {
   --surface-2: #f1f4f4;
   --surface-3: #e9eef0;
   --card-bg: #fff;
-  --border: #dce3e6;
-  --border-soft: #e9edef;
+  --border: #c3cfd6;
+  --border-soft: #dbe2e7;
   --border-hover: #a3bbb8;
   --accent: #087f78;
   --accent-soft: #116c67;
@@ -29,7 +29,7 @@ html[data-theme="D"] {
   --portal-surface: #fff;
   --portal-raised: #f0f3f4;
   --portal-wash: #f7f8fa;
-  --portal-line: #dce3e6;
+  --portal-line: #c3cfd6;
   --portal-shadow: rgba(28,46,53,.07);
   --portal-overlay: rgba(24,38,46,.42);
   --portal-slate-ink: #52616b;
@@ -100,13 +100,12 @@ html[data-theme="D"] [data-panel-main] table thead th {
   border-bottom: 1px solid #c3d0d9;
   font-weight: 700;
 }
-html[data-theme="D"] [data-panel-main] table tbody td { border-bottom: 1px solid #dfe6eb; }
+html[data-theme="D"] [data-panel-main] table tbody td { border-bottom: 1px solid #cbd5dd; }
 html[data-theme="D"] [data-panel-main] table tbody tr:last-child td { border-bottom: 0; }
 html[data-theme="D"] [data-panel-main] table tbody tr:nth-child(even):not(:hover):not([aria-selected="true"]) { background-color: #f7f9fb; }
 html[data-theme="D"] [data-portal-page-header] {
-  background: linear-gradient(115deg,#edf2f5,#fff 75%) !important;
-  border-color: #cfdbe2 !important;
-  box-shadow: 0 4px 16px #24313b08 !important;
+  border-color: #becbd3 !important;
+  box-shadow: 0 5px 18px #24313b0b !important;
 }
 html[data-theme="D"] ::selection { background: #c9e9df; color: #173f38; }
 html[data-theme="D"] [data-sonner-toaster] { --normal-bg: #fff; --normal-text: #24313b; --normal-border: #dce3e6; }
@@ -119,7 +118,8 @@ html[data-theme="D"] [data-portal-kpi] {
   background: linear-gradient(115deg, color-mix(in srgb,var(--kpi-tone,#087f78) 18%,white), color-mix(in srgb,var(--kpi-tone,#087f78) 5%,white)) !important;
   box-shadow: 0 4px 12px rgba(35,55,65,.08) !important;
 }
-html[data-theme="D"] [data-portal-kpi] :where(p,span,div,svg) { color: color-mix(in srgb,var(--kpi-tone,#087f78) 75%,#24313b) !important; }
+html[data-theme="D"] [data-portal-kpi] :where(p,span,div) { color: var(--portal-secondary) !important; }
+html[data-theme="D"] [data-portal-kpi] :where(.tabular-nums, svg) { color: color-mix(in srgb,var(--kpi-tone,#087f78) 75%,#24313b) !important; }
 html[data-theme="D"] [data-portal-kpi] button { background: #ffffffb3 !important; color: var(--kpi-tone,#087f78) !important; }
 html[data-theme="D"] [data-portal-card] { background: #fff !important; }
 html[data-theme="D"] [data-portal-soft-counter] {

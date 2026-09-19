@@ -1201,7 +1201,7 @@ export default function GelirTablosuPage() {
                 // Alt hesap satırı (sub kodu)
                 if (row.sub) {
                   return (
-                    <tr key={idx} style={portalStyle({ borderTop: `1px solid ${GRID_LINE}`, background: ACCOUNT_ROW_BG })}>
+                    <tr data-report-row="detail" key={idx} style={portalStyle({ borderTop: `1px solid ${GRID_LINE}`, background: ACCOUNT_ROW_BG })}>
                       <td className="px-3 py-2 text-[13px]" style={portalStyle({ color: '#d8c17f', textAlign: 'left', fontWeight: 700, fontFamily: REPORT_FONT, fontVariantNumeric: 'tabular-nums', borderRight: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${CELL_LINE}` })}>{row.sub}</td>
                       <td className="px-3 py-2 text-[13px]" style={portalStyle({ color: 'rgba(250,250,249,0.82)', fontWeight: 500, paddingLeft: 8, borderRight: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${CELL_LINE}` })}>
                         {row.subLabel}
@@ -1270,6 +1270,7 @@ export default function GelirTablosuPage() {
                 const labelFont = REPORT_FONT;
                 return (
                   <tr
+                    data-report-row={row.final ? 'final' : row.total ? 'total' : row.group ? 'group' : 'detail'}
                     key={idx}
                     style={portalStyle({
                       background: rowBg,
@@ -1322,6 +1323,7 @@ export default function GelirTablosuPage() {
                           <AmountText value={hasData ? v! : null} color={amountColor} emphasis={!!mainAmount} final={!!row.final} />
                           {showOranBadge && (
                             <div
+                              data-report-percent
                               className="inline-flex items-center justify-center mt-1 rounded-md px-2 py-[3px]"
                               style={portalStyle({
                                 color: RATIO_COLOR,
@@ -1637,7 +1639,7 @@ export default function GelirTablosuPage() {
                   { key: 'oncekiDonemOdenen', label: 'Önceki Dönem Ödenen Geçici Vergi', manual: 'oncekiOdenen' as const, negSign: true },
                   { key: 'odenecekGeciciVergi', label: 'ÖDENECEK GEÇİCİ VERGİ', bold: true, color: GOLD, bg: 'linear-gradient(135deg, rgba(184,160,111,0.10), rgba(184,160,111,0.03))', big: true },
                 ].map((row: any, ri) => (
-                  <tr key={ri} style={portalStyle({ borderTop: `1px solid ${GRID_LINE}`, background: row.bg || ACCOUNT_ROW_BG })}>
+                  <tr data-report-row={row.big ? 'final' : row.bold ? 'total' : 'detail'} key={ri} style={portalStyle({ borderTop: `1px solid ${GRID_LINE}`, background: row.bg || ACCOUNT_ROW_BG })}>
                     <td className="px-3 py-2.5" style={portalStyle({ color: row.color || 'rgba(250,250,249,0.7)', fontWeight: row.bold ? 700 : 400, fontSize: row.big ? 14 : 13, borderBottom: `1px solid ${GRID_LINE}` })}>
                       <span className="inline-flex items-center gap-2">
                         {row.label}
@@ -2464,7 +2466,7 @@ function getSubAccountAmount(gt: any, kod: string): number {
 function RatioCard({ label, value, formula, tone }: { label: string; value: string; formula: string; tone: 'good' | 'neutral' | 'warn' | 'bad' }) {
   const color = tone === 'good' ? '#22c55e' : tone === 'warn' ? '#f59e0b' : tone === 'bad' ? '#f43f5e' : GOLD;
   return (
-    <div className="rounded-xl border p-4" style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)', minWidth: 0 })}>
+    <div data-report-ratio={tone} className="rounded-xl border p-4" style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)', minWidth: 0 })}>
       <div className="text-[11px] font-semibold mb-1.5" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>{label}</div>
       <div
         className="font-mono text-[24px] font-bold"

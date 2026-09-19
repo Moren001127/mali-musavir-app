@@ -129,7 +129,7 @@ export default function BildirimlerPage() {
         <div className="h-px w-full" style={portalStyle({ background: `linear-gradient(90deg, ${ALTIN}99, ${ALTIN}22 45%, transparent)` })} />
         <div className="flex flex-wrap items-end justify-between gap-4 px-5 py-4">
           <div className="min-w-0">
-            <div className="mb-2 flex items-center gap-2.5">
+            <div className="bildirim-ust-etiket mb-2 flex items-center gap-2.5">
               <span className="h-px w-8" style={portalStyle({ background: ALTIN })} />
               <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[.18em]" style={portalStyle({ color: '#c8ad73' })}>
                 <Bell size={11} /> Bildirimler
@@ -138,7 +138,7 @@ export default function BildirimlerPage() {
             <h1 style={portalStyle({ fontFamily: 'Fraunces, serif', fontSize: 28, fontWeight: 650, color: METIN, lineHeight: 1.05 })}>Bildirimler</h1>
             <p className="mt-1.5 text-[13px]" style={portalStyle({ color: IKINCIL })}>{ozet}</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Dugme aktif={tercihAcik} onClick={() => setTercihAcik((v) => !v)} ikon={<SlidersHorizontal size={14} />}>Tercihler</Dugme>
             {okunmamis.length > 0 && (
               <Dugme birincil onClick={() => tumunuOkundu.mutate()} disabled={tumunuOkundu.isPending}
@@ -156,7 +156,7 @@ export default function BildirimlerPage() {
       {/* Liste kartı */}
       <section data-inceleme-yuzey className="overflow-hidden rounded-2xl" style={portalStyle({ background: KART_ZEMIN, border: `1px solid ${KENAR}`, boxShadow: KART_GOLGE })}>
         {/* Süzgeç satırı */}
-        <div className="flex flex-wrap items-center gap-2 border-b px-4 py-3" style={portalStyle({ borderColor: KENAR })}>
+        <div className="bildirim-filtreler flex flex-wrap items-center gap-2 border-b px-4 py-3" style={portalStyle({ borderColor: KENAR })}>
           <div className="inline-flex items-center gap-1 rounded-full p-0.5" style={portalStyle({ background: ZEMIN, border: `1px solid ${KENAR}` })}>
             {([
               ['tumu', 'Tümü', liste.length],
@@ -166,7 +166,7 @@ export default function BildirimlerPage() {
               const secili = sekme === deger;
               const renk = deger === 'kritik' ? KIRMIZI : ALTIN;
               return (
-                <button key={deger} type="button" onClick={() => setSekme(deger)}
+                <button aria-pressed={secili} data-bildirim-sekme={deger} key={deger} type="button" onClick={() => setSekme(deger)}
                   className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[12px] font-semibold transition"
                   style={portalStyle({ background: secili ? `${renk}1f` : 'transparent', color: secili ? renk : IKINCIL, border: `1px solid ${secili ? `${renk}55` : 'transparent'}` })}>
                   {etiket}
@@ -178,7 +178,7 @@ export default function BildirimlerPage() {
 
           <div className="relative min-w-[200px] flex-1">
             <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" style={portalStyle({ color: SONUK })} />
-            <input value={arama} onChange={(e) => setArama(e.target.value)} placeholder="Bildirimlerde ara"
+            <input aria-label="Bildirimlerde ara" value={arama} onChange={(e) => setArama(e.target.value)} placeholder="Bildirimlerde ara"
               className="h-9 w-full rounded-full border pl-9 pr-8 text-[13px] outline-none"
               style={portalStyle({ background: ZEMIN, borderColor: KENAR, color: METIN, padding: '0 32px 0 36px', borderRadius: 9999, fontSize: 13 })} />
             {arama && (
@@ -207,7 +207,7 @@ export default function BildirimlerPage() {
             <Loader2 size={15} className="animate-spin" /> Yükleniyor…
           </div>
         ) : gruplar.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-2 py-14 text-center">
+          <div className="flex flex-col items-center justify-center gap-2 py-8 text-center">
             <span className="flex h-11 w-11 items-center justify-center rounded-full" style={portalStyle({ background: `${ALTIN}14`, color: ALTIN })}><Bell size={18} /></span>
             <span className="text-[13px]" style={portalStyle({ color: IKINCIL })}>
               {sekme === 'okunmamis' ? 'Okunmamış bildirim yok.' : sekme === 'kritik' ? 'Kritik bildirim yok.' : arama || turSuzgec ? 'Bu süzgeçle bildirim bulunamadı.' : 'Henüz bildirim yok.'}
@@ -216,7 +216,7 @@ export default function BildirimlerPage() {
         ) : (
           gruplar.map((g) => (
             <div key={g.ad}>
-              <div className="flex items-center gap-3 px-4 pb-1 pt-3">
+              <div className="bildirim-gun flex items-center gap-3 px-4 py-2">
                 <span className="text-[10.5px] font-bold uppercase tracking-[.14em]" style={portalStyle({ color: SONUK })}>{g.ad}</span>
                 <span className="h-px flex-1" style={portalStyle({ background: KENAR })} />
                 <span className="text-[10.5px] tabular-nums" style={portalStyle({ color: SONUK })}>{g.satirlar.reduce((a, s) => a + s.uyeler.length, 0)}</span>
@@ -242,7 +242,7 @@ function Dugme({ children, ikon, onClick, birincil = false, aktif = false, disab
 }) {
   const vurgulu = birincil || aktif;
   return (
-    <button type="button" onClick={onClick} disabled={disabled}
+    <button data-bildirim-eylem={vurgulu ? "vurgulu" : "normal"} type="button" onClick={onClick} disabled={disabled}
       className="inline-flex h-9 items-center gap-2 rounded-full px-4 text-[12.5px] font-semibold transition hover:brightness-125 disabled:opacity-50"
       style={portalStyle({
         background: vurgulu ? `${ALTIN}1a` : ZEMIN,
@@ -327,7 +327,7 @@ function BildirimSatiri({ satir, onAc, onOkundu }: { satir: Satir; onAc: () => v
         {okunmamis && (
           <button type="button" title="Okundu işaretle" aria-label="Okundu işaretle"
             onClick={(e) => { e.stopPropagation(); onOkundu(); }}
-            className="mt-0.5 flex h-6 w-6 items-center justify-center rounded-full opacity-0 transition group-hover:opacity-100"
+            className="mt-0.5 flex h-6 w-6 items-center justify-center rounded-full opacity-100 transition"
             style={portalStyle({ background: `${t.renk}1a`, color: t.renk, border: `1px solid ${t.renk}44` })}>
             <Check size={12} />
           </button>

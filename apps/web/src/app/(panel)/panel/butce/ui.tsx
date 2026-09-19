@@ -53,7 +53,7 @@ export function Kutu({
         style={portalStyle({ background: `linear-gradient(90deg, transparent, ${renk}66, transparent)` })}
       />
       {baslik && (
-        <header data-portal-band className="flex items-start justify-between gap-3 px-5 pt-4 pb-3" style={{ '--band-tone': renk } as React.CSSProperties}>
+        <header data-portal-band className="flex items-start justify-between gap-3 px-5 pt-4 pb-3" style={{ '--band-tone': portalStyle({ color: renk }).color } as React.CSSProperties}>
           <div>
             <h3 className="text-[13px] font-semibold tracking-wide" style={portalStyle({ color: TEXT })}>
               {baslik}
