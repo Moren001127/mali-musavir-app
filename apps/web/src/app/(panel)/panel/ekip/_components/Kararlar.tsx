@@ -5,7 +5,8 @@ import { Check, Loader2, MessageSquareReply, Send, XCircle } from 'lucide-react'
 import { istekKapat, onayla, reddet, type AcikKalem, type EkipOnay, type Vaka } from '@/lib/ekip';
 import type { Adim, Kosu, KosularApi } from './kosular';
 import { OnayTeyit, hedefMetni } from './OnayBekleyenler';
-import { Alinti, Avatar, Bos, CARD_BORDER, Dugme, GOLD, KIRMIZI, Kutu, MUTED, OK, ROW_SEP, Rozet, TEXT } from './Tema';
+import { Alinti, Avatar, CARD_BORDER, Dugme, GOLD, KIRMIZI, MUTED, OK, ROW_SEP, TEXT } from './Tema';
+import { SADE_AYRAC } from './GenelBakis';
 import { ajanKisaltma, ajanTamAd, aracAdi, kalanSure } from './ortak';
 
 /* ─────────────────────────── açık kalem (onay / karar / istek) ─────────────────────────── */
@@ -235,6 +236,7 @@ export function SizdenBeklenenKutu({
   onCevapla,
   calisiyor,
   yukleniyor,
+  hata,
   className = '',
 }: {
   kalemler: BekleyenKalem[];
@@ -245,17 +247,23 @@ export function SizdenBeklenenKutu({
   onCevapla: (vaka: Vaka, metin: string) => void;
   calisiyor: boolean;
   yukleniyor: boolean;
+  hata?: unknown;
   className?: string;
 }) {
   const onayHaritasi = useMemo(() => new Map(onaylar.map((o) => [o.previewId, o])), [onaylar]);
   return (
-    <Kutu baslik="Sizden beklenen" aciklama="Portal, WhatsApp ve sesten gelen tüm kararlar" renk={GOLD} className={className} sag={kalemler.length ? <Rozet metin={`${kalemler.length} bekliyor`} /> : <Rozet metin="bekleyen yok" renk={OK} />}>
+    <section aria-label="Sizden beklenen" className={`mt-3.5 ${className}`}>
+      {!!hata && <p role="alert" className="mb-2 text-[12px]" style={{ color: KIRMIZI }}>Kararlar yenilenemedi. {hata instanceof Error ? hata.message : 'Lütfen yeniden deneyin.'}</p>}
+      {kalemler.length > 0 && <div className="mb-3 flex items-center justify-between border-t pt-3 text-[11px]" style={{ color: GOLD, borderColor: SADE_AYRAC }}><span>Sizden beklenen</span><span>{kalemler.length} bekliyor</span></div>}
       {yukleniyor && !kalemler.length ? (
         <div className="py-4 text-[12px]" style={{ color: MUTED }}>
           Yükleniyor…
         </div>
       ) : !kalemler.length ? (
-        <Bos metin="Şu an sizi bekleyen onay ya da istek yok." />
+        <div className="flex items-center gap-2.5 text-[12.5px]" style={{ color: MUTED }}>
+          {!hata && <Check size={18} className="rounded-full p-0.5" style={{ color: OK, background: `${OK}1f`, border: `1px solid ${OK}4d` }} />}
+          {hata ? 'Bekleyen karar bilgisi alınamadı.' : 'Sizden beklenen karar yok.'}
+        </div>
       ) : (
         <div className="-mt-3">
           {kalemler.map(({ vaka, kalem, ajanId }) => (
@@ -274,6 +282,6 @@ export function SizdenBeklenenKutu({
           ))}
         </div>
       )}
-    </Kutu>
+    </section>
   );
 }

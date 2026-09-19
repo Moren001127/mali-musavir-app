@@ -8,7 +8,7 @@ import { SORGU, useKosular, type Kosu } from './kosular';
 import { Baslik, type EkipSekme } from './Baslik';
 import { GorevKarti, type KomutTaslak } from './GorevKarti';
 import { SizdenBeklenenKutu, bekleyenKalemler } from './Kararlar';
-import { BugunKutu, SuAnKutu, onerileriCikar } from './GenelBakis';
+import { AkisKutu, KadroSeridi, onerileriCikar } from './GenelBakis';
 import { IsPaneli } from './IsPaneli';
 import { IsGecmisi } from './IsGecmisi';
 import { DonemPanosu } from './DonemPanosu';
@@ -308,6 +308,7 @@ export function EkipEkrani() {
     <div className="flex min-w-0 flex-col gap-4 pb-10">
       <Baslik
         durum={durumS.data}
+        pano={panoS.data}
         ozet={panoOzet}
         ajanSayisi={ajanlar.length}
         kararSayisi={kararSayisi}
@@ -328,18 +329,17 @@ export function EkipEkrani() {
         </div>
       )}
 
-      {/* Genel bakış: sütunlar aynı boyda — sağ sütun uzayınca soldaki "Sizden beklenen" alta kadar esner (Muzaffer Bey: "aşağıda boşluk olmuş") */}
+      {/* Genel bakış: görev ve karar tek kart; sağda tek akış, altta kadro. */}
       {sekme === 'genel' && (
-        <div className="grid min-w-0 items-stretch gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
-          <div className="flex min-w-0 flex-col gap-4">
-            <GorevKarti ref={komutRef} ajanlar={ajanlar} mukellefler={mukellefler} komutTaslak={komutTaslak} kosular={kosular} odakNonce={odakNonce} escNonce={escNonce} maxBagli={durumS.data?.maxBagli} koordinatorNotu={koordinatorNotu} />
-            <SizdenBeklenenKutu className="flex-1" kalemler={bekleyenler} onaylar={onaylar} ajanAd={ajanAd} mukellefAd={mukellefAd} onBitti={tazele} onCevapla={vakayaCevapla} calisiyor={!!kosular.aktifKosu} yukleniyor={genelS.isLoading && !genelS.data} />
+        <>
+          <div className="grid min-w-0 items-start gap-[18px] xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+            <GorevKarti ref={komutRef} ajanlar={ajanlar} mukellefler={mukellefler} komutTaslak={komutTaslak} kosular={kosular} odakNonce={odakNonce} escNonce={escNonce} maxBagli={durumS.data?.maxBagli} koordinatorNotu={koordinatorNotu}>
+              <SizdenBeklenenKutu kalemler={bekleyenler} onaylar={onaylar} ajanAd={ajanAd} mukellefAd={mukellefAd} onBitti={tazele} onCevapla={vakayaCevapla} calisiyor={!!kosular.aktifKosu} yukleniyor={genelS.isLoading && !genelS.data} hata={genelS.error} />
+            </GorevKarti>
+            <AkisKutu kosu={sonKosu} vakalar={genelVakalar} oneriler={oneriler} ajanAd={ajanAd} mukellefAd={mukellefAd} onIzle={isiAc} onDurdur={(h) => void durdur(h)} onSec={isiAc} onTumu={() => setSekme('isler')} onTaslak={taslakVer} onPano={() => setSekme('pano')} yukleniyor={genelS.isLoading && !genelS.data} hata={genelS.error} panoYukleniyor={panoS.isLoading && !panoS.data} panoHata={panoS.error} />
           </div>
-          <div className="flex min-w-0 flex-col gap-4">
-            <SuAnKutu kosu={sonKosu} vakalar={genelVakalar} ajanAd={ajanAd} mukellefAd={mukellefAd} onIzle={isiAc} onDurdur={(h) => void durdur(h)} />
-            <BugunKutu className="flex-1" vakalar={genelVakalar} oneriler={oneriler} ajanAd={ajanAd} onSec={isiAc} onTumu={() => setSekme('isler')} onTaslak={taslakVer} onPano={() => setSekme('pano')} />
-          </div>
-        </div>
+          <KadroSeridi ajanlar={ajanlar} kosular={kosular.kosular} yukleniyor={kadroS.isLoading} onKadro={() => setSekme('kadro')} />
+        </>
       )}
 
       {sekme === 'isler' && (

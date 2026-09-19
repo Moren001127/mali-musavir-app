@@ -9,11 +9,39 @@ import type { KomutTaslak } from './GorevKarti';
 import { DURDURULDU_METNI, type Adim, type Kosu, type KosularApi } from './kosular';
 import { OnayTeyit } from './OnayBekleyenler';
 import { AcikKalemKarti, YerelOnay } from './Kararlar';
-import { Avatar, Bos, CARD_BORDER, Dugme, GOLD, IcKutu, Ilerleme, KIRMIZI, Kutu, MAVI, MOR, MUTED, OK, ROW_SEP, Rozet, TEXT, TURUNCU } from './Tema';
+import { Avatar, Bos, CARD_BORDER, Dugme, GOLD, Ilerleme, KIRMIZI, MAVI, MOR, MUTED, OK, ROW_SEP, Rozet, TEXT, TURUNCU } from './Tema';
 import { adimAciklamasi, ajanKisaAd, ajanKisaltma, ajanTamAd, aracAdi, cevapAyristir, gorevSadelestir, kaynakEtiketi, konuKisalt, raporBolumleri, saatKisa, sayacMetni, sureKisa, yokMu, type RaporBolumu } from './ortak';
 
 /** Adım metinlerinde panelin mükellefi tekrar yazılmasın diye adimAciklamasi'ne geçen bağlam. */
 type AdimSecenek = { mukellefId?: string | null; mukellefAd?: string | null };
+
+/** Ortak temaya dokunmadan İşler panelinin sade dış yüzeyi. */
+function IsKarti({ baslik, aciklama, sag, children }: { baslik: ReactNode; aciklama: ReactNode; sag: ReactNode; children: ReactNode }) {
+  return (
+    <section aria-label="İş ayrıntıları" className="relative min-w-0 rounded-[18px] px-4 pb-5 pt-[18px] sm:px-6"
+      style={{ background: 'rgba(255,255,255,0.018)', border: '1px solid rgba(255,255,255,0.065)', boxShadow: '0 18px 44px rgba(0,0,0,0.24)' }}>
+      <span aria-hidden="true" className="pointer-events-none absolute inset-x-6 top-0 h-px" style={{ background: `linear-gradient(90deg, transparent, ${GOLD}73, transparent)` }} />
+      <header className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1 basis-[240px]">
+          <h3 className="break-words text-[14px] font-semibold" style={{ color: TEXT }}>{baslik}</h3>
+          <div className="mt-1 text-[11.5px] leading-relaxed" style={{ color: MUTED }}>{aciklama}</div>
+        </div>
+        {sag}
+      </header>
+      {children}
+    </section>
+  );
+}
+
+/** Rapor bölümleri kutu yerine ince bir ayırıcıyla okunur. */
+function RaporBolum({ baslik, renk = MUTED, className = '', children }: { baslik?: ReactNode; renk?: string; className?: string; children: ReactNode }) {
+  return (
+    <section className={`min-w-0 py-3 ${className}`} style={{ borderTop: `1px solid ${ROW_SEP}` }}>
+      {baslik && <h5 className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-[0.16em]" style={{ color: renk }}>{baslik}</h5>}
+      {children}
+    </section>
+  );
+}
 
 /* ─────────────────────────── aşamalar ─────────────────────────── */
 
@@ -74,7 +102,7 @@ function ZamanSatiri({ saat, kisaltma, ton, baslik, alt, sonuc, devir, nabiz, ch
         {children}
       </span>
       {sonuc !== undefined && (
-        <span className="hidden min-w-0 pt-1 text-right text-[11.5px] md:block" style={{ color: MUTED }}>
+        <span className="col-start-3 min-w-0 pt-1 text-[11.5px] md:col-start-auto md:text-right" style={{ color: MUTED }}>
           {sonuc}
         </span>
       )}
@@ -202,7 +230,7 @@ function PersonelAdimi({ adim, ajanAd, mukellefAd, acikVarsayilan, onRapor, sece
         </div>
       )}
       {acik && (
-        <div className="mt-2 flex flex-col gap-1 rounded-xl px-3 py-2" style={{ background: 'rgba(255,255,255,0.02)', border: `1px solid ${CARD_BORDER}` }}>
+        <div className="mt-2 flex flex-col gap-2 py-2 pl-3" style={{ borderLeft: `1px solid ${ROW_SEP}` }}>
           {!data && (
             <span className="inline-flex items-center gap-1.5 text-[11.5px]" style={{ color: MUTED }}>
               <Loader2 size={11} className="animate-spin" /> adımlar yükleniyor
@@ -268,7 +296,7 @@ function BulguTablosu({ satirlar }: { satirlar: string[] }) {
   let no = 0;
   const th = 'px-3 py-2 text-left text-[10.5px] font-semibold uppercase tracking-[0.08em]';
   return (
-    <div className="overflow-auto rounded-xl" style={{ border: `1px solid ${CARD_BORDER}` }}>
+    <div className="overflow-x-auto [scrollbar-width:thin]">
       <table className="w-full min-w-[420px]" style={{ borderCollapse: 'collapse' }}>
         <thead>
           <tr>
@@ -317,7 +345,7 @@ const BOLUM_BASLIK: Partial<Record<RaporBolumu['anahtar'], string>> = { yaptigim
 
 /**
  * Rapor görünümü: Bulgular → tablo; Emin olmadığı / Sizden istenen / Onayınızı bekleyen → altın vurgulu satır;
- * Yaptığı iş / Baktığı kaynaklar / Kime döndü / Devir → iki sütun iç kutu. Bölümsüz rapor → düz metin.
+ * Yaptığı iş / Baktığı kaynaklar / Kime döndü / Devir → ince çizgilerle ayrılan bölümler. Bölümsüz rapor → düz metin.
  */
 export function RaporGorunumu({ rapor, kompakt = false }: { rapor: string; kompakt?: boolean }) {
   const bolumler = useMemo(() => raporBolumleri(rapor), [rapor]);
@@ -336,11 +364,11 @@ export function RaporGorunumu({ rapor, kompakt = false }: { rapor: string; kompa
     );
   }
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex min-w-0 flex-col">
       {ayrinti.length > 0 && (
-        <div className="grid gap-3 md:grid-cols-2">
+        <div className="grid gap-x-5 md:grid-cols-2">
           {ayrinti.map((b) => (
-            <IcKutu key={b.anahtar} baslik={BOLUM_BASLIK[b.anahtar] || b.baslik}>
+            <RaporBolum key={b.anahtar} baslik={BOLUM_BASLIK[b.anahtar] || b.baslik} className={b.anahtar === 'yaptigim' ? 'md:col-span-2' : ''}>
               <ul className="flex flex-col gap-1 text-[12.5px] leading-relaxed" style={{ color: TEXT }}>
                 {b.satirlar.map((s, i) => (
                   <li key={i} className="whitespace-pre-wrap">
@@ -348,33 +376,33 @@ export function RaporGorunumu({ rapor, kompakt = false }: { rapor: string; kompa
                   </li>
                 ))}
               </ul>
-            </IcKutu>
+            </RaporBolum>
           ))}
         </div>
       )}
       {dolu(bulgular) && (
-        <IcKutu baslik="Bulgular" style={{ padding: 0, background: 'transparent', border: 'none' }}>
+        <RaporBolum baslik="Bulgular">
           <BulguTablosu satirlar={bulgular!.satirlar} />
-        </IcKutu>
+        </RaporBolum>
       )}
       {bulgular && !dolu(bulgular) && (
-        <IcKutu baslik="Bulgular">
+        <RaporBolum baslik="Bulgular">
           <span className="text-[12.5px]" style={{ color: MUTED }}>
             Bulgu yok.
           </span>
-        </IcKutu>
+        </RaporBolum>
       )}
       {diger && (
-        <IcKutu>
+        <RaporBolum>
           <div className="whitespace-pre-wrap text-[12.8px] leading-relaxed" style={{ color: TEXT }}>
             {diger.satirlar.join('\n')}
           </div>
-        </IcKutu>
+        </RaporBolum>
       )}
       {vurgulu.map((b) => (
-        <div key={b.anahtar} className="rounded-xl px-3 py-2.5 text-[12.5px] leading-relaxed" style={{ background: `${GOLD}0d`, border: `1px solid ${GOLD}40`, color: TEXT }}>
-          <b style={{ color: GOLD }}>{b.baslik}:</b> {b.satirlar.join(' · ')}
-        </div>
+        <RaporBolum key={b.anahtar} baslik={b.baslik} renk={GOLD}>
+          <p className="whitespace-pre-wrap text-[12.5px] leading-relaxed" style={{ color: TEXT }}>{b.satirlar.join(' · ')}</p>
+        </RaporBolum>
       ))}
     </div>
   );
@@ -615,7 +643,6 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
   const baslikMetni = sabahOzetiMi ? (calisiyor ? 'Sabah özeti üretiliyor' : 'Sabah özeti') : mukellef ? `${mukellef} — ${konu}` : konu || 'İş';
   const adimToplam = yerelAdimlar.length + personelAdimlari.length + bildirimAdimlari.length;
   const adimlarGoster = adimlarAcik ?? calisiyor;
-  const kutuRengi = hata ? KIRMIZI : kararBekliyor ? GOLD : calisiyor ? MAVI : bitti ? OK : MUTED;
   const durumRenk = hata ? KIRMIZI : kararBekliyor ? GOLD : calisiyor ? MAVI : bitti ? OK : MUTED;
 
   const durumSatiri = (
@@ -633,10 +660,9 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
   );
 
   return (
-    <Kutu
+    <IsKarti
       baslik={<span className="text-[14px]" title={baslikMetni}>{baslikMetni}</span>}
       aciklama={durumSatiri}
-      renk={kutuRengi}
       sag={
         <span className="flex flex-shrink-0 flex-wrap items-center justify-end gap-1.5">
           {calisiyor && !sabahOzetiMi && (
@@ -687,7 +713,7 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
 
         {/* Kararınız */}
         {(acikKalemler.length > 0 || yerelOnaylar.length > 0 || sorular.length > 0) && (
-          <section>
+          <section className="pt-3" style={{ borderTop: `1px solid ${ROW_SEP}` }}>
             <h4 className="mb-1 text-[10.5px] font-semibold uppercase tracking-[0.08em]" style={{ color: GOLD }}>
               Kararınız · {acikKalemler.length + yerelOnaylar.length + (sorular.length ? 1 : 0)}
             </h4>
@@ -741,17 +767,17 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
               </span>
             </div>
             {calisiyor && !raporMetni && kosu?.cevap && (
-              <IcKutu>
+              <RaporBolum>
                 <div className="max-h-[260px] overflow-y-auto whitespace-pre-wrap text-[12.8px] leading-relaxed" style={{ color: MUTED }}>
                   {kosu.cevap}
                 </div>
-              </IcKutu>
+              </RaporBolum>
             )}
             {raporMetni && (
               <>
                 <RaporGorunumu rapor={ayrisik?.rapor || raporMetni} />
                 {sonBitenPersonel && koordinatorRaporu && (
-                  <details className="mt-2 rounded-xl px-3 py-2" style={{ background: 'rgba(255,255,255,0.02)', border: `1px solid ${CARD_BORDER}` }}>
+                  <details className="mt-2 py-3" style={{ borderTop: `1px solid ${ROW_SEP}` }}>
                     <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: MUTED }}>
                       Koordinatör’ün notu
                     </summary>
@@ -764,7 +790,7 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
             )}
             {!raporMetni && !calisiyor && !hata && <Bos metin="Rapor yok." />}
             {kuruListesi.length > 0 && (
-              <IcKutu baslik={<span className="inline-flex items-center gap-1.5"><FlaskConical size={11} /> Kuru test — yapılacaktı ({kuruListesi.length})</span>} renk={TURUNCU} className="mt-3">
+              <RaporBolum baslik={<span className="inline-flex items-center gap-1.5"><FlaskConical size={11} /> Kuru test — yapılacaktı ({kuruListesi.length})</span>} renk={TURUNCU} className="mt-3">
                 <ul className="flex flex-col gap-1 text-[12.5px]" style={{ color: TEXT }}>
                   {kuruListesi.map((t, i) => {
                     const { baslik, ayrinti } = adimAciklamasi(t.name, t.args, mukellefAd, ajanAd, secenek);
@@ -779,7 +805,7 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
                     );
                   })}
                 </ul>
-              </IcKutu>
+              </RaporBolum>
             )}
             {ogrenilen.length > 0 && (
               <div className="mt-3 flex flex-wrap items-center gap-1.5">
@@ -808,8 +834,8 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
         )}
 
         {/* Adımlar */}
-        <section>
-          <button type="button" onClick={() => setAdimlarAcik(!adimlarGoster)} className="mb-1 flex w-full items-center justify-between text-left">
+        <section className="pt-3" style={{ borderTop: `1px solid ${ROW_SEP}` }}>
+          <button type="button" aria-expanded={adimlarGoster} onClick={() => setAdimlarAcik(!adimlarGoster)} className="mb-1 flex w-full items-center justify-between text-left">
             <h4 className="text-[10.5px] font-semibold uppercase tracking-[0.08em]" style={{ color: MUTED }}>
               Adımlar · {adimToplam}
             </h4>
@@ -854,6 +880,6 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
           </section>
         )}
       </div>
-    </Kutu>
+    </IsKarti>
   );
 }
