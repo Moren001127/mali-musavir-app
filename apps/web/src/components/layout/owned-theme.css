@@ -138,7 +138,7 @@ html[data-theme='D'] [data-moren-auth-features] > :nth-child(3) {
   --moren-owned-primary-line: var(--moren-owned-amber-line);
 }
 
-/* Yalnız masaüstü sol menü: yazılar tok, çerçeveler sade.
+/* Yalnız masaüstü sol menü: yazılar tok, çerçevesiz görünüm.
    Önemli kurallar mevcut satır içi ve fare olaylarındaki renkleri de karşılar. */
 html[data-theme='D'] [data-moren-sidebar] {
   --moren-owned-nav-background: linear-gradient(168deg, #0e2a58 0%, #123a74 46%, #0d7d73 122%);
@@ -164,7 +164,7 @@ html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-decoration] {
 html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-panel],
 html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-group] {
   background: rgba(255,255,255,.035) !important;
-  border-color: rgba(255,255,255,.42) !important;
+  border-color: transparent !important;
 }
 
 html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-group] p {
@@ -173,7 +173,7 @@ html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-group] p {
 
 html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-icon] {
   background: rgba(255,255,255,.06) !important;
-  border-color: rgba(255,255,255,.25) !important;
+  border-color: transparent !important;
 }
 
 html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-item] {
@@ -181,21 +181,21 @@ html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-item] {
   font-size: 14px;
   color: #f4f8fc !important;
   background: rgba(255,255,255,.04) !important;
-  border-color: rgba(255,255,255,.52) !important;
+  border-color: transparent !important;
 }
 
 html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-item]:hover,
 html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-item]:focus-visible {
   color: #ffffff !important;
   background: rgba(255, 255, 255, 0.07) !important;
-  border-color: rgba(255,255,255,.72) !important;
+  border-color: transparent !important;
 }
 
 html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-active='true'] {
   font-weight: 750 !important;
   color: #ffffff !important;
   background: rgba(255, 255, 255, 0.13) !important;
-  border-color: rgba(255,255,255,.85) !important;
+  border-color: transparent !important;
 }
 
 html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-active='true'] svg {
@@ -258,3 +258,8 @@ html[data-theme='D'] [data-moren-sidebar][data-collapsed='true'] [data-moren-sid
 }
 
 html[data-theme='D'] [data-moren-sidebar][data-collapsed='false'] [data-moren-sidebar-brand] > a { height: 108px; }
+
+html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-item]:focus-visible {
+  outline: 2px solid #9ce3d8;
+  outline-offset: -2px;
+}
