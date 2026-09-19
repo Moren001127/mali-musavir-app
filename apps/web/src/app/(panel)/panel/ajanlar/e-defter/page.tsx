@@ -756,7 +756,7 @@ export default function EDefterAgentPage() {
     <div data-edefter-control data-ops-page="ajanlar" className="space-y-4">
       {/* ════════ BAŞLIK KARTI — kimlik + eylemler + tek satır hap rozetler + seçiciler ════════ */}
       <Kart className="ops-module-card" renk={NAVY} serit>
-        <div className="px-5 pt-4 pb-4 flex flex-wrap items-start gap-4">
+        <div data-portal-page-header className="px-5 pt-4 pb-4 flex flex-wrap items-start gap-4">
           <div className="flex items-center gap-3.5 flex-1 min-w-[320px]">
             <span className="grid h-12 w-12 place-items-center rounded-2xl shrink-0" style={portalStyle(ikonStili(NAVY))}>
               <BookOpen size={22} />

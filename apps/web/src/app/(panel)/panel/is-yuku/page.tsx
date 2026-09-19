@@ -124,7 +124,7 @@ export default function IsYukuPage() {
 
   return (
     <div className="is-yuku space-y-6 max-w-7xl">
-      <header
+      <header data-portal-page-header
         className="akis-baslik relative overflow-hidden rounded-[18px] border px-5 py-3"
         style={portalStyle({
           background:

@@ -1240,7 +1240,7 @@ function KarsilastirmaTablosu({
   }, []);
 
   return (
-    <div>
+    <div data-report-sections>
       {/* v1.36.26: Dönem Aksiyonları + KAR/ZARAR ÖZETİ tek bağlı blok — boşluk yok */}
       {/* v1.36.71: Tablo ekranı boydan boya kaplamasın — dönem sayısına göre ölçeklenen
           genişlik sınırı + ortala. Bar/tablolar/aksiyonlar aynı sarmalın içinde olduğu
@@ -1849,7 +1849,7 @@ function BlockCard({
   const c = accentColors[accent];
   return (
     <div
-      data-report-section
+      data-report-section={accent}
       className={`overflow-hidden relative ${attached ? 'rounded-b-2xl' : 'rounded-2xl'}`}
       style={portalStyle({
         background: TABLE_SURFACE,
@@ -1872,6 +1872,7 @@ function BlockCard({
       )}
       {!hideHeader && (
         <div
+          data-report-section-heading
           className="flex items-center gap-3 px-5 py-3"
           style={portalStyle({
             background: attached ? TABLE_SECTION_BG : c.headerBg,
@@ -1944,7 +1945,7 @@ function Row({
 
   return (
     <tr
-      data-report-row={manuel ? 'manual' : hl ? 'final' : calc || bold ? 'total' : 'detail'}
+      data-report-row={manuel ? 'manual' : hl ? 'final' : calc && bold ? 'total' : 'detail'}
       data-report-metric={ratios ? label : undefined}
       style={portalStyle({ background: rowBg, transition: 'background-color 120ms' })}
       onMouseEnter={(e) => {

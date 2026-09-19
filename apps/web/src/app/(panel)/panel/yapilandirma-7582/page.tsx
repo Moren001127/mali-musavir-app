@@ -192,7 +192,7 @@ export default function Yapilandirma7582Page() {
       {/* Başlık — üst renk şeridi + radial parıltı + degrade ikon kutusu */}
       <div style={portalStyle({ ...kutu, padding: 0, overflow: 'hidden', marginBottom: 14 })}>
         <div style={portalStyle({ height: 3, background: `linear-gradient(90deg, ${GOLD}, #8b7649, transparent)` })} />
-        <div
+        <div data-portal-page-header
           style={portalStyle({
             padding: 18,
             background:
@@ -207,7 +207,7 @@ export default function Yapilandirma7582Page() {
             <Scale size={22} />
           </div>
           <div>
-            <div style={portalStyle({ fontSize: 18, fontWeight: 700 })}>7582 Tecil ve Taksitlendirme</div>
+            <h1 style={portalStyle({ fontSize: 18, fontWeight: 700 })}>7582 Tecil ve Taksitlendirme</h1>
             <div style={portalStyle({ fontSize: 12, color: '#9c937f' })}>
               Seri:B Sıra No:20 · yıllık %29 tecil faizi · son başvuru <b style={portalStyle({ color: GOLD })}>31.08.2026</b>
             </div>

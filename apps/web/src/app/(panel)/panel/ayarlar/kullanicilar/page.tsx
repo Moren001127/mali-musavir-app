@@ -46,7 +46,7 @@ export default function KullanicilarPage() {
 
   return (
     <div data-ops-page="ayarlar" className="p-6 space-y-5">
-      <div className="flex items-center justify-between">
+      <div data-portal-page-header className="flex flex-wrap items-center justify-between gap-4 p-5">
         <div className="flex items-center gap-3">
           <Link href="/panel/ayarlar" className="p-2 rounded-lg hover:bg-stone-800/40 text-stone-400 hover:text-stone-200 transition">
             <ArrowLeft size={18} />

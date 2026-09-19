@@ -329,7 +329,7 @@ export default function MukelleflerPage() {
 
   return (
     <div className="aylik-takip space-y-3 max-w-none">
-      <header
+      <header data-portal-page-header
         className="aylik-takip-baslik relative overflow-hidden rounded-[18px] border px-5 py-4"
         style={portalStyle({
           background:

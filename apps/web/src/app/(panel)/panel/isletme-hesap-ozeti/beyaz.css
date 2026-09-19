@@ -1,25 +1,28 @@
-/* Yalnız bu modülün D teması; A temasını ve çıktı şablonlarını etkilemez. */
-html[data-theme="D"] [data-isletme-band] { background: linear-gradient(115deg,#eaf2f0,#f5f8fa) !important; border-color: #cbd6de !important; }
-html[data-theme="D"] [data-isletme-report] table :is(td,th) { border-color: #d5dfe6 !important; }
-
-/* Belirgin rapor çizgileri; hesap ve tutar renkleri korunur. */
-html[data-theme="D"] [data-isletme-report] table { border: 1px solid #aebfc7 !important; background: #fff !important; }
-html[data-theme="D"] [data-isletme-report] table :is(td, th) { border-bottom: 1px solid #ccd7dc !important; border-color: #ccd7dc !important; }
-html[data-theme="D"] [data-isletme-report] table :is(td, th) + :is(td, th) { border-left: 1px solid #ccd7dc !important; }
-html[data-theme="D"] [data-isletme-report] thead :is(th, td) { background: #edf3f5 !important; color: #334d59 !important; border-bottom-color: #aebfc7 !important; }
-html[data-theme="D"] [data-isletme-report] [data-report-row="detail"] { background: #fff !important; }
-html[data-theme="D"] [data-isletme-report] [data-report-row="detail"]:nth-child(even) { background: #f8fafb !important; }
-html[data-theme="D"] [data-isletme-report] [data-report-row="group"] { background: #edf3f5 !important; }
-html[data-theme="D"] [data-isletme-report] [data-report-row="total"] { background: #eef4f3 !important; }
-html[data-theme="D"] [data-isletme-report] [data-report-row="final"] { background: #e7eff4 !important; }
-html[data-theme="D"] [data-isletme-report] [data-report-row="total"] > td { border-top: 2px solid #a7bebc !important; font-weight: 700; }
-html[data-theme="D"] [data-isletme-report] [data-report-row="final"] > td { border-top: 2px solid #8fa7b5 !important; border-bottom: 2px solid #8fa7b5 !important; font-weight: 700; }
-html[data-theme="D"] [data-isletme-report] [data-report-row="manual"] { background: #f0f5fc !important; }
-html[data-theme="D"] [data-isletme-report] [data-report-section] { border-color: #aebfc7 !important; box-shadow: none !important; }
-html[data-theme="D"] [data-isletme-report] [data-report-section] > div:first-of-type { background: #edf3f5 !important; }
+/* Yalnız işletme hesap özeti D görünümü; hesaplar ve A teması korunur. */
+html[data-theme="D"] [data-isletme-report] [data-report-sections] > [data-report-section] { margin-top: 24px; }
+html[data-theme="D"] [data-isletme-report] [data-isletme-band] { background: #f5f9f8 !important; border-color: #c8d4d9 !important; }
+html[data-theme="D"] [data-isletme-report] [data-report-section] { background: #fff !important; border-color: #c8d4d9 !important; box-shadow: none !important; }
+html[data-theme="D"] [data-isletme-report] [data-report-section] > span { display: none; }
+html[data-theme="D"] [data-isletme-report] table { border: 0 !important; background: #fff !important; border-collapse: collapse !important; }
+html[data-theme="D"] [data-isletme-report] table :is(td, th) { border: 1px solid #d5dfe3 !important; }
+html[data-theme="D"] [data-isletme-report] table tr > :first-child { border-left: 0 !important; }
+html[data-theme="D"] [data-isletme-report] table tr > :last-child { border-right: 0 !important; }
+html[data-theme="D"] [data-isletme-report] table tr:last-child > td { border-bottom: 0 !important; }
+html[data-theme="D"] [data-isletme-report] [data-report-row] { background: #fff !important; }
+html[data-theme="D"] [data-isletme-report] [data-report-row="detail"]:nth-child(even),
+html[data-theme="D"] [data-isletme-report] [data-report-row="manual"]:nth-child(even) { background: #fafbfc !important; }
+html[data-theme="D"] [data-isletme-report] [data-report-row="total"] { background: #f1f7f4 !important; }
+html[data-theme="D"] [data-isletme-report] [data-report-row="final"] { background: #edf5f3 !important; }
+html[data-theme="D"] [data-isletme-report] [data-report-row="total"] > td,
+html[data-theme="D"] [data-isletme-report] [data-report-row="final"] > td { border-top-color: #b7cdc5 !important; }
+html[data-theme="D"] [data-isletme-report] [data-report-section-heading] { background: #f7f8fa !important; border-bottom: 1px solid #d5dfe3 !important; }
+html[data-theme="D"] [data-isletme-report] [data-report-section="amber"] [data-report-section-heading] { background: #f6f8f1 !important; }
+html[data-theme="D"] [data-isletme-report] [data-report-section="indigo"] [data-report-section-heading] { background: #f4f3f9 !important; }
+html[data-theme="D"] [data-isletme-report] [data-report-section="amber"] [data-report-section-heading] :is(h2, span) { color: #536742 !important; }
+html[data-theme="D"] [data-isletme-report] [data-report-section="indigo"] [data-report-section-heading] :is(h2, span) { color: #645780 !important; }
+html[data-theme="D"] [data-isletme-report] [data-report-section-heading] > span { background: transparent !important; border: 0 !important; box-shadow: none !important; }
 html[data-theme="D"] [data-isletme-report] [data-report-metric]:nth-child(4n + 1) [data-report-ratio="positive"] { background: #edf6f2 !important; border-color: #b7d5c9 !important; color: #286653 !important; }
 html[data-theme="D"] [data-isletme-report] [data-report-metric]:nth-child(4n + 2) [data-report-ratio="positive"] { background: #edf3fb !important; border-color: #bdcfe4 !important; color: #345f8b !important; }
 html[data-theme="D"] [data-isletme-report] [data-report-metric]:nth-child(4n + 3) [data-report-ratio="positive"] { background: #f3eff9 !important; border-color: #d1c4e2 !important; color: #69508a !important; }
 html[data-theme="D"] [data-isletme-report] [data-report-metric]:nth-child(4n + 4) [data-report-ratio="positive"] { background: #ecf6f6 !important; border-color: #b6d4d5 !important; color: #216c70 !important; }
-
 html[data-theme="D"] [data-isletme-report] [data-report-period] { font-family: inherit !important; }

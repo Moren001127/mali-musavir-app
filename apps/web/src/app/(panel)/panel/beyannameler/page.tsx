@@ -526,7 +526,7 @@ function BeyannamelerIcerik() {
   return (
     <div className="max-w-[1500px] space-y-4">
       {/* ===================== KOMUT KONSOLU ===================== */}
-      <section
+      <section data-portal-page-header
         className="relative overflow-hidden rounded-2xl"
         style={portalStyle({
           background: 'linear-gradient(135deg, rgba(17,22,28,0.96), rgba(10,12,16,0.99))',
@@ -1107,7 +1107,7 @@ function LegacyBeyannamelerPage() {
   return (
     <div className="space-y-5 max-w-7xl">
       {/* HEADER */}
-      <div className="flex items-end justify-between pb-5 flex-wrap gap-3" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.05)' })}>
+      <div data-portal-page-header className="flex items-end justify-between p-5 flex-wrap gap-3" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.05)' })}>
         <div>
           <div className="flex items-center gap-2.5 mb-2">
             <span className="w-[26px] h-px" style={portalStyle({ background: GOLD })} />

@@ -82,7 +82,7 @@ export default function ButcePage() {
   return (
     <div className="space-y-4 pb-10">
       {/* Başlık */}
-      <header className="relative overflow-hidden rounded-2xl px-5 py-4"
+      <header data-portal-page-header className="relative overflow-hidden rounded-2xl px-5 py-4"
         style={portalStyle({
           background: 'linear-gradient(140deg, rgba(230,200,120,0.09), rgba(255,255,255,0.01) 58%)',
           border: `1px solid ${CARD_BORDER}`,

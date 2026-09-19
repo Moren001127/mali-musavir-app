@@ -471,7 +471,7 @@ export default function DuyurularPage() {
       )}
 
       {/* BAŞLIK — kompakt, imza şeridi */}
-      <header className="relative mb-3 shrink-0 overflow-hidden rounded-2xl border px-5 py-3" style={portalStyle({
+      <header data-portal-page-header className="relative mb-3 shrink-0 overflow-hidden rounded-2xl border px-5 py-3" style={portalStyle({
         borderColor: LINE,
         background: 'radial-gradient(120% 230% at 0% 0%, rgba(217,160,108,0.16), transparent 52%), #0f0d0b',
       })}>

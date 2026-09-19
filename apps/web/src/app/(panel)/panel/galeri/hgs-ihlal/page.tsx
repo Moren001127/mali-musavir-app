@@ -155,7 +155,7 @@ export default function HgsIhlalPage() {
   return (
     <div className="space-y-4 max-w-7xl pb-12">
       {/* ═══ BAŞLIK (camgöbeği / gece mavisi) ═══ */}
-      <header
+      <header data-portal-page-header
         className="relative overflow-hidden rounded-2xl border p-5"
         style={portalStyle({
           borderColor: 'rgba(255,255,255,0.08)',

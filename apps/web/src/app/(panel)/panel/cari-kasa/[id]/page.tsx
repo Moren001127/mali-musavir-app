@@ -100,7 +100,7 @@ export default function CariKasaPage() {
 
   return (
     <div className="p-6 space-y-4" style={portalStyle({ fontFamily: SANS })}>
-      <div className="flex items-center justify-between">
+      <div data-portal-page-header className="flex flex-wrap items-center justify-between gap-4 p-5">
         <div>
           <div className="text-[10.5px] font-bold uppercase tracking-[.14em] mb-1" style={portalStyle({ color: 'rgba(212,184,118,0.7)' })}>
             Finansal Takip · Cari

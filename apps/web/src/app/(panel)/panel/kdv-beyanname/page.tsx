@@ -361,7 +361,7 @@ export default function KdvBeyannamePage() {
   return (
     <div className="px-1 py-2 space-y-3">
       {/* Header */}
-      <header
+      <header data-portal-page-header
         className="relative overflow-hidden rounded-[18px] border px-5 py-4"
         style={portalStyle({
           background: `radial-gradient(circle at 12% 0%, ${TEAL}2e, transparent 34%), radial-gradient(circle at 84% 8%, rgba(240,183,85,0.20), transparent 42%), linear-gradient(160deg, rgba(13,31,29,0.96) 0%, #0f0d0b 74%)`,

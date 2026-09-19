@@ -604,7 +604,7 @@ export default function MesajlarPage() {
         style={portalStyle({ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)' })}
       >
         {/* Üst başlık + arama */}
-        <div data-inceleme-baslik className="px-4 py-3 flex items-center gap-2.5" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.06)' })}>
+        <div data-inceleme-baslik-kompakt className="px-4 py-3 flex items-center gap-2.5" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.06)' })}>
           <MessageCircle size={20} style={portalStyle({ color: GOLD })} />
           <h1 className="text-[17px] font-semibold flex-1 truncate" style={portalStyle({ color: '#fafaf9' })}>WhatsApp Mesajlar</h1>
           <span className="text-[13px] tabular-nums" style={portalStyle({ color: 'rgba(250,250,249,0.62)' })}>

@@ -132,3 +132,42 @@ html[data-theme="D"] [data-portal-band] { background: linear-gradient(110deg, co
 html[data-theme="D"] :is(.btn-primary,.btn-gold)[class~="text-white"],
 html[data-theme="D"] :is(.btn-primary,.btn-gold) [class~="text-white"],
 html[data-theme="D"] :is([style*="--portal-blue-surface,"],[style*="--portal-teal-surface,"],[style*="--portal-green-surface,"],[style*="--portal-rose-surface,"],[style*="--portal-plum-surface,"],[style*="--portal-copper-surface,"],[style*="--portal-amber-surface,"])[class~="text-white"] { color: #fff; }
+
+/* Modül başlıkları: ortak yüzey ve ince şerit; içerik/eylemler kendi yerinde kalır. */
+html[data-theme="D"] body [data-panel-main] :is([data-portal-page-header], [data-ops-header], [data-inceleme-baslik], [data-review-heading], .ekip-heading):has(h1) {
+  position: relative;
+  isolation: isolate;
+  background: linear-gradient(115deg, #eee6d4 0%, #faf9f5 45%, #e6eff0 100%) !important;
+  border: 1px solid #c8cec9 !important;
+  border-radius: 18px;
+  box-shadow: 0 5px 18px #24313b08 !important;
+}
+html[data-theme="D"] body [data-panel-main] :is([data-portal-page-header], [data-ops-header], [data-inceleme-baslik], [data-review-heading], .ekip-heading):has(h1)::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 4px;
+  border-radius: 18px 18px 0 0;
+  background: linear-gradient(90deg, #af8b43, #d2bb83 35%, #7eaaa4 72%, #b7c9cf);
+  z-index: 1;
+  pointer-events: none;
+}
+html[data-theme="D"] body [data-panel-main] :is([data-portal-page-header], [data-ops-header], [data-inceleme-baslik], [data-review-heading], .ekip-heading):has(h1) > .absolute.inset-x-0.top-0 {
+  background: linear-gradient(90deg, #af8b43, #d2bb83 35%, #7eaaa4 72%, #b7c9cf) !important;
+}
+html[data-theme="D"] body [data-panel-main] :is([data-portal-page-header], [data-ops-header], [data-inceleme-baslik], [data-review-heading], .ekip-heading) h1 {
+  color: #283c42 !important;
+  font-size: clamp(24px, 2.1vw, 30px) !important;
+  font-weight: 700 !important;
+  line-height: 1.2 !important;
+  white-space: normal !important;
+}
+html[data-theme="D"] body [data-panel-main] :is([data-portal-page-header], [data-ops-header], [data-inceleme-baslik], [data-review-heading], .ekip-heading):has(h1) p {
+  color: #57656a !important;
+  line-height: 1.55;
+}
+html[data-theme="D"] body [data-panel-main] [data-inceleme="evraklar"] > [data-inceleme-baslik] { padding: 24px; }
+html[data-theme="D"] body [data-panel-main] [data-portal-page-header] { gap: 16px; }
+@media (max-width: 640px) {
+  html[data-theme="D"] body [data-panel-main] [data-portal-page-header] { flex-wrap: wrap; }
+}

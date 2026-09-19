@@ -163,7 +163,7 @@ export default function BotKalitePage() {
   return (
     <div className="space-y-5">
       {/* Başlık */}
-      <header
+      <header data-portal-page-header
         className="relative overflow-hidden rounded-[18px] border px-5 py-5"
         style={portalStyle({
           background: 'radial-gradient(120% 140% at 0% 0%, rgba(20,184,166,0.13), transparent 46%), radial-gradient(120% 140% at 100% 0%, rgba(45,212,191,0.08), transparent 48%), #0f0d0b',

@@ -62,12 +62,12 @@ export default function YeniKdvKontrolPage() {
 
   return (
     <div className="space-y-5 max-w-xl">
-      <div className="flex items-center gap-3">
+      <div data-portal-page-header className="flex items-center gap-3">
         <Link href="/panel/kdv-kontrol" className="p-2 rounded-lg hover:bg-gray-100">
           <ArrowLeft size={18} className="text-gray-500" />
         </Link>
         <div>
-          <h2 className="text-xl font-bold text-gray-900">Yeni KDV / İşletme Kontrolü</h2>
+          <h1 className="text-xl font-bold text-gray-900">Yeni KDV / İşletme Kontrolü</h1>
           <p className="text-sm text-gray-500">Mükellef, dönem ve kontrol türü seçin</p>
         </div>
       </div>

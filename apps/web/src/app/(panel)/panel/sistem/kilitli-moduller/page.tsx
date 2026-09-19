@@ -98,7 +98,7 @@ export default function KilitliModullerPage() {
   return (
     <div className="space-y-6">
       {/* === BAŞLIK (AI Maliyet imzası — gül-kırmızı kilit teması) === */}
-      <header
+      <header data-portal-page-header
         className="relative overflow-hidden rounded-2xl border p-5"
         style={portalStyle({
           borderColor: 'rgba(255,255,255,0.08)',

@@ -35,7 +35,7 @@ html[data-theme='D'] [data-dashboard-kpi] {
   --dashboard-kpi-start: #70420e;
   --dashboard-kpi-end: #94651c;
   --dashboard-kpi-edge: #b18545;
-  background: linear-gradient(115deg, color-mix(in srgb,var(--dashboard-kpi-end) 22%,white), color-mix(in srgb,var(--dashboard-kpi-end) 5%,white)) !important;
+  background: linear-gradient(115deg, color-mix(in srgb,var(--dashboard-kpi-end) 36%,white), color-mix(in srgb,var(--dashboard-kpi-end) 16%,white)) !important;
   border-color: var(--dashboard-kpi-edge) !important;
   box-shadow: 0 5px 16px rgba(36, 49, 59, 0.08) !important;
   color: var(--dashboard-kpi-start) !important;
