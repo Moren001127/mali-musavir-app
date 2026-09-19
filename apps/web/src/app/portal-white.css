@@ -116,11 +116,11 @@ html[data-theme="D"] .section-pillbar::-webkit-scrollbar-thumb { background: lin
 html[data-theme="D"] [data-portal-kpi] {
   border-radius: 20px;
   border-color: color-mix(in srgb, var(--kpi-tone, #087f78) 25%, white) !important;
-  background: linear-gradient(115deg, color-mix(in srgb,var(--kpi-tone,#087f78) 88%,#24313b), var(--kpi-tone,#087f78) 60%, color-mix(in srgb,var(--kpi-tone,#087f78) 35%,white)) !important;
+  background: linear-gradient(115deg, color-mix(in srgb,var(--kpi-tone,#087f78) 18%,white), color-mix(in srgb,var(--kpi-tone,#087f78) 5%,white)) !important;
   box-shadow: 0 4px 12px rgba(35,55,65,.08) !important;
 }
-html[data-theme="D"] [data-portal-kpi] :where(p,span,div,svg) { color: #fff !important; }
-html[data-theme="D"] [data-portal-kpi] button { background: rgba(20,30,40,.18) !important; color: #fff !important; }
+html[data-theme="D"] [data-portal-kpi] :where(p,span,div,svg) { color: color-mix(in srgb,var(--kpi-tone,#087f78) 75%,#24313b) !important; }
+html[data-theme="D"] [data-portal-kpi] button { background: #ffffffb3 !important; color: var(--kpi-tone,#087f78) !important; }
 html[data-theme="D"] [data-portal-card] { background: #fff !important; }
 html[data-theme="D"] [data-portal-soft-counter] {
   background: linear-gradient(135deg, color-mix(in srgb,var(--counter-tone) 14%,white), #fff) !important;

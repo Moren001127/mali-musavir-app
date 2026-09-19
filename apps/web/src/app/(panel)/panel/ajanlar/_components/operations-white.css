@@ -1,0 +1,105 @@
+/* Yalnız işaretli ayarlar ve otomasyon modüllerinde D görünümü.
+   Ortak tema, diğer sayfalar ve A görünümü bu kurallardan etkilenmez. */
+html[data-theme='D'] [data-ops-page] {
+  --ops-accent: #305ea2;
+  --portal-ink: #243746;
+  --portal-secondary: #425466;
+  --portal-muted: #536575;
+  --portal-line: #cdd9e1;
+  --portal-surface: #ffffff;
+  --portal-raised: #f2f6f8;
+  --portal-wash: #f8fafb;
+  --portal-copper-wash: #fffaf6;
+  --portal-amber-wash: #fffaf0;
+  color: var(--portal-ink);
+}
+
+html[data-theme='D'] [data-ops-page='ayarlar'],
+html[data-theme='D'] [data-ops-page='luca-operator'],
+html[data-theme='D'] [data-ops-page='luca'],
+html[data-theme='D'] [data-ops-page='mihsap'] { --ops-accent: #087f78; }
+html[data-theme='D'] [data-ops-page='otomasyonlar'],
+html[data-theme='D'] [data-ops-page='profiller'] { --ops-accent: #75509c; }
+html[data-theme='D'] [data-ops-page='ajan-saglik'] { --ops-accent: #227744; }
+
+html[data-theme='D'] [data-ops-page] [data-ops-header] {
+  background: linear-gradient(115deg, color-mix(in srgb, var(--ops-accent) 8%, white), #fff 75%) !important;
+  border-color: #cdd9e1 !important;
+  box-shadow: 0 4px 14px rgba(36, 55, 70, 0.05) !important;
+}
+html[data-theme='D'] [data-ops-page] [data-ops-header] h1 {
+  color: #243746 !important;
+}
+html[data-theme='D'] [data-ops-page] [data-ops-header-decoration] { opacity: 0 !important; }
+
+html[data-theme='D'] [data-ops-page] [data-ops-card],
+html[data-theme='D'] [data-ops-page] .ops-module-card {
+  background: #fff !important;
+}
+html[data-theme='D'] [data-ops-page] a[data-ops-card]:hover,
+html[data-theme='D'] [data-ops-page] [data-ops-card='interactive']:hover {
+  background: #f6fafb !important;
+}
+
+html[data-theme='D'] [data-ops-page] [data-ops-stat] {
+  background: linear-gradient(115deg, color-mix(in srgb, var(--ops-tone, var(--ops-accent)) 13%, white), #fff) !important;
+  border-color: color-mix(in srgb, var(--ops-tone, var(--ops-accent)) 30%, white) !important;
+}
+html[data-theme='D'] [data-ops-page] [data-ops-stat] [data-ops-value] {
+  color: var(--ops-tone, var(--ops-accent)) !important;
+}
+html[data-theme='D'] [data-ops-page] [data-ops-stat] [data-ops-label] {
+  color: color-mix(in srgb, var(--ops-tone, var(--ops-accent)) 70%, #243746) !important;
+}
+html[data-theme='D'] [data-ops-page] [data-ops-stat][data-ops-selected='true'] {
+  background: color-mix(in srgb, var(--ops-tone, var(--ops-accent)) 18%, white) !important;
+  border-color: var(--ops-tone, var(--ops-accent)) !important;
+}
+
+/* Eski sınıflardaki saydam beyaz açıklamalar, açık zeminde okunur kalır. */
+html[data-theme='D'] [data-ops-page] [class*='text-white/'] { color: #536575; }
+html[data-theme='D'] [data-ops-page] [class*='placeholder:text-white/']::placeholder { color: #66798a; }
+
+/* Profil ve e-Defter'in eski saydam sınıfları: açık yüzeyde net ayrım. */
+html[data-theme='D'] [data-ops-page] :is(
+  [class~='border-white/[.12]'], [class~='border-white/[0.06]'],
+  [class~='border-white/[0.07]'], [class~='border-white/[0.08]'],
+  [class~='border-white/[0.09]']
+) { border-color: #d6e0e7; }
+html[data-theme='D'] [data-ops-page] :is(
+  [class~='bg-white/[0.025]'], [class~='bg-white/[0.02]'],
+  [class~='bg-white/[0.03]'], [class~='bg-black/10'], [class~='bg-black/15']
+) { background-color: #fff; }
+html[data-theme='D'] [data-ops-page] :is(
+  [class~='bg-white/[.07]'], [class~='bg-white/[0.035]'],
+  [class~='bg-white/[0.04]'], [class~='bg-black/20']
+) { background-color: #f3f7f9; }
+html[data-theme='D'] [data-ops-page] :is(
+  [class~='hover:bg-white/[0.02]'], [class~='hover:bg-white/[0.03]'],
+  [class~='hover:bg-white/[0.06]'], [class~='hover:bg-white/[.06]'],
+  [class~='hover:bg-white/[.14]'], [class~='hover:bg-white/[.035]'],
+  [class~='hover:bg-black/10']
+):hover { background-color: #edf3f6; }
+
+html[data-theme='D'] [data-ops-page] [data-ops-table] {
+  border-color: #c4d2dc;
+  background: #fff;
+}
+html[data-theme='D'] [data-panel-main] [data-ops-page] [data-ops-table] th {
+  background: #edf3f6 !important;
+  color: #354c5d !important;
+  border-color: #c4d2dc !important;
+}
+html[data-theme='D'] [data-ops-page] [data-ops-table] td { border-color: #d7e1e8 !important; }
+
+/* Skor halkalarının dolu kısmı pastel zemin üzerinde ayırt edilsin.
+   Dilim oranı, hesap ve gösterilen değer aynı kalır. */
+html[data-theme='D'] [data-ops-page] [data-ops-gauge] {
+  --portal-blue-wash: var(--portal-blue-ink);
+  --portal-plum-wash: var(--portal-plum-ink);
+  --portal-green-wash: var(--portal-green-ink);
+  --portal-rose-wash: var(--portal-rose-ink);
+  --portal-copper-wash: var(--portal-copper-ink);
+  --portal-amber-wash: var(--portal-amber-ink);
+  --portal-wash: #e3eaf0;
+}

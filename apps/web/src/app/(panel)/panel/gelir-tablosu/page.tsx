@@ -1,4 +1,5 @@
 'use client';
+import './beyaz.css';
 import { portalStyle } from '@/lib/portal-theme';
 
 import React, { useState, useMemo, useEffect } from 'react';
@@ -919,9 +920,9 @@ export default function GelirTablosuPage() {
   };
 
   return (
-    <div className="financial-report-readable space-y-3 max-w-7xl">
+    <div data-gelir-report className="financial-report-readable space-y-3 max-w-7xl">
       {/* Header — Fiş Yazdırma imzası: kart + üst renk şeridi + radial parıltı + degrade ikon kutusu */}
-      <div
+      <div data-portal-page-header
         className="relative overflow-hidden rounded-2xl border p-5"
         style={portalStyle({
           borderColor: 'rgba(255,255,255,0.06)',

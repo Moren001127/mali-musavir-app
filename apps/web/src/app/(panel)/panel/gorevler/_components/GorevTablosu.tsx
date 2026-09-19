@@ -57,7 +57,7 @@ export function GorevTablosu({ gruplar, secili, onSec, onGrupSec, eylemler, acik
   const dolu = gruplar.filter((g) => g.satirlar.length > 0);
   return (
     <div className="overflow-x-auto rounded-xl" style={portalStyle({ border: `1px solid ${KENAR_NOTR}`, background: 'rgba(255,255,255,0.02)' })}>
-      <table className="w-full" style={portalStyle({ borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: 760 })}>
+      <table data-inceleme-tablo className="w-full" style={portalStyle({ borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: 760 })}>
         <colgroup>
           <col style={portalStyle({ width: 36 })} />
           <col />
@@ -97,7 +97,7 @@ export function GorevTablosu({ gruplar, secili, onSec, onGrupSec, eylemler, acik
                   </tr>
                 )}
                 {!basliksiz && (
-                  <tr style={portalStyle({ background: GRUP_ZEMIN })}>
+                  <tr data-inceleme-grup style={portalStyle({ background: GRUP_ZEMIN })}>
                     <td style={portalStyle({ ...HUCRE, borderTop: GRUP_CIZGI, borderBottom: GRUP_CIZGI, borderRight: 'none', borderLeft: `4px solid ${g.renk}`, padding: '10px 4px', textAlign: 'center' })}>
                       {gorevIdleri.length > 0 && (
                         <input

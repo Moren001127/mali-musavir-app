@@ -1,4 +1,5 @@
 'use client';
+import './beyaz-inceleme.css';
 import { portalStyle } from '@/lib/portal-theme';
 
 import { useState } from 'react';
@@ -40,8 +41,8 @@ export default function MukellefErisimPage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-5 pb-12">
-      <header className="relative overflow-hidden rounded-2xl border p-5" style={portalStyle({ borderColor: 'rgba(255,255,255,0.08)', background: 'radial-gradient(120% 140% at 0% 0%, rgba(212,184,118,0.16), transparent 45%), #0f0d0b' })}>
+    <div data-inceleme="mukellef-erisim" className="mx-auto max-w-4xl space-y-5 pb-12">
+      <header data-inceleme-baslik className="relative overflow-hidden rounded-2xl border p-5" style={portalStyle({ borderColor: 'rgba(255,255,255,0.08)', background: 'radial-gradient(120% 140% at 0% 0%, rgba(212,184,118,0.16), transparent 45%), #0f0d0b' })}>
         <div className="absolute inset-x-0 top-0 h-1" style={portalStyle({ background: `linear-gradient(90deg, ${GOLD}, #b8863a)` })} />
         <div className="flex items-center gap-2.5">
           <span className="grid h-10 w-10 place-items-center rounded-xl" style={portalStyle({ background: `linear-gradient(135deg, ${GOLD}, #8b7649)` })}>
@@ -100,7 +101,7 @@ function ErisimSatiri({ taxpayer, open, onToggle }: { taxpayer: Taxpayer; open: 
   const enabled = !!status?.portalEnabled;
 
   return (
-    <div className="rounded-xl overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)' })}>
+    <div data-inceleme-yuzey data-inceleme-acik={open} className="rounded-xl overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)' })}>
       <button type="button" onClick={onToggle} className="flex w-full items-center justify-between p-3.5 text-left">
         <div className="flex items-center gap-2.5 min-w-0">
           <span className="text-[14px] font-semibold truncate" style={portalStyle({ color: '#fafaf9' })}>{tpName(taxpayer)}</span>

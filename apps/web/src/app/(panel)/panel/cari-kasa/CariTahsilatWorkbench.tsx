@@ -331,7 +331,7 @@ export function CariTahsilatWorkspace({ onSelect }: { onSelect: (id: string) => 
     <div className="min-h-screen" style={portalStyle({ background: BG, fontFamily: SANS, color: TEXT })}>
       <div className="mx-auto max-w-[1240px] px-6 sm:px-10 py-8">
         {/* ===== BAŞLIK — portal dili: gradyan zemin + radial parıltı ===== */}
-        <header
+        <header data-portal-page-header
           className="relative overflow-hidden rounded-2xl px-5 py-4"
           style={portalStyle({
             background: 'linear-gradient(140deg, rgba(230,200,120,0.09), rgba(255,255,255,0.01) 58%)',

@@ -1,4 +1,5 @@
 'use client';
+import './module-white.css';
 import { portalStyle, portalPaint } from '@/lib/portal-theme';
 
 
@@ -455,9 +456,9 @@ ${isPdf
   });
 
   return (
-    <div className="space-y-4">
+    <div data-module-review="faturalar" className="space-y-4">
       {/* Header — Fiş Yazdırma imzası: kart + üst renk şeridi + radial parıltı + degrade ikon kutusu */}
-      <div
+      <div data-review-heading
         className="relative overflow-hidden rounded-2xl border p-5"
         style={portalStyle({
           borderColor: 'rgba(255,255,255,0.06)',
@@ -1082,7 +1083,7 @@ function MihsapConnectionBadge({ session }: { session: any }) {
 
 function StatBox({ label, value, sub, color = '#087f78', icon: Icon }: any) {
   return (
-    <div data-portal-kpi
+    <div data-review-counter data-portal-kpi
       className="rounded-2xl p-4 border flex items-center gap-3"
       style={portalStyle({ ...({ '--kpi-tone': portalStyle({ color }).color } as CSSProperties), background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' })}
     >

@@ -1,4 +1,5 @@
 'use client';
+import './module-white.css';
 import { portalStyle, portalPaint } from '@/lib/portal-theme';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -657,9 +658,9 @@ export default function EarsivPage() {
   }, [totalsPerMode]);
 
   return (
-    <div className="space-y-5 max-w-7xl">
+    <div data-module-review="earsiv" className="space-y-5 max-w-7xl">
       {/* HEADER — Fiş Yazdırma imzası: kart + üst renk şeridi + radial parıltı + degrade ikon kutusu */}
-      <div
+      <div data-review-heading
         className="relative overflow-hidden rounded-2xl border p-5"
         style={portalStyle({
           borderColor: 'rgba(255,255,255,0.06)',
@@ -1232,7 +1233,7 @@ export default function EarsivPage() {
       )}
 
       {/* Tablo */}
-      <div className="rounded-lg overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' })}>
+      <div data-review-table className="rounded-lg overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' })}>
         {taxpayerIds.size === 0 ? (
           <div className="p-8 text-center text-sm" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>
             Önce mükellef seç…

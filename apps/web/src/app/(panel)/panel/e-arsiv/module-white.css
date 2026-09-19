@@ -1,0 +1,22 @@
+/* Bu modüle özgüdür. A teması, ölçüler, davranışlar ve durum renkleri korunur. */
+html[data-theme="D"] [data-module-review="earsiv"] {
+  --portal-ink: #2c3541;
+  --portal-secondary: #515d6d;
+  --portal-muted: #626d7c;
+  --portal-wash: #f8f9fb;
+  --portal-line: #d9dee7;
+}
+html[data-theme="D"] [data-module-review="earsiv"] [data-review-heading] {
+  background: linear-gradient(115deg, #eee8f4, #f8fafc 75%) !important;
+  border-color: #d4cadd !important;
+  box-shadow: 0 3px 12px rgba(49, 39, 63, .06) !important;
+}
+html[data-theme="D"] [data-module-review="earsiv"] [data-review-heading] :is(h1,h2,h3) { color: #513b63 !important; }
+html[data-theme="D"] [data-module-review="earsiv"] [data-review-heading] > .absolute { background: linear-gradient(90deg, #8b729e, #dcd0e5, #eef3f7) !important; }
+html[data-theme="D"] [data-module-review="earsiv"] [data-review-surface],
+html[data-theme="D"] [data-module-review="earsiv"] [data-review-table] { background: #fff !important; border-color: #b9b1c5 !important; box-shadow: 0 2px 8px rgba(49,39,63,.05) !important; }
+html[data-theme="D"] [data-module-review="earsiv"] table { background: #fff; box-shadow: 0 0 0 1px #b9b1c5; }
+html[data-theme="D"] [data-module-review="earsiv"] [data-review-table] table { box-shadow: none; }
+html[data-theme="D"] [data-module-review="earsiv"] table thead th { background: #f0ecf5 !important; color: #51465f !important; border-bottom-color: #cbc2d5 !important; }
+html[data-theme="D"] [data-module-review="earsiv"] table tbody td { box-shadow: inset 0 -1px #e4e5ec; }
+html[data-theme="D"] [data-module-review="earsiv"] table tbody tr:nth-child(even) { background-color: #fafbfc; }

@@ -95,7 +95,7 @@ export function HesaplarSekmesi({ kontrolOzeti, allFindings, onHesapSec, session
 
       <div className="rounded-xl overflow-hidden" style={portalStyle({ background: PANEL, border: `1px solid ${BORDER}` })}>
         <div className="overflow-x-auto max-h-[720px] overflow-y-auto">
-          <table className="w-full text-[12px]">
+          <table data-ops-table="true" className="w-full text-[12px]">
             <thead style={portalStyle({ background: 'rgba(0,0,0,.22)' })}>
               <tr style={portalStyle({ color: MUTED, borderBottom: `1px solid ${BORDER}` })}>
                 <th className="text-left py-2 px-3 font-semibold text-[10px] uppercase tracking-wider">Hesap</th>

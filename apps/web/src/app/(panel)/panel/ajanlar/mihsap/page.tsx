@@ -1,4 +1,6 @@
 'use client';
+import '@/app/(panel)/panel/ajanlar/_components/operations-white.css';
+
 import { portalStyle, portalPaint } from '@/lib/portal-theme';
 
 import { useState } from 'react';
@@ -325,9 +327,9 @@ export default function MihsapAgentPage() {
         : `${reportPeriodLabel} · ${selectedIds.length} mükellef`;
 
   return (
-    <div className="space-y-3.5 max-w-7xl">
+    <div data-ops-page="mihsap" className="space-y-3.5 max-w-7xl">
       {/* HEADER — Fiş Yazdırma imzası: kart + üst renk şeridi + degrade ikon kutusu (KPI sağda korunur) */}
-      <div
+      <div data-ops-header="true"
         className="relative overflow-hidden rounded-2xl border p-5"
         style={portalStyle({
           borderColor: 'rgba(255,255,255,0.06)',

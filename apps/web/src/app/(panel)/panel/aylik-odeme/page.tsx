@@ -1,4 +1,5 @@
 'use client';
+import './beyaz.css';
 import { portalStyle } from '@/lib/portal-theme';
 
 
@@ -237,7 +238,7 @@ export default function AylikOdemePage() {
   return (
     <div className="mx-auto max-w-6xl space-y-3 pb-12">
       {/* Başlık */}
-      <header
+      <header data-portal-page-header
         className="relative overflow-hidden rounded-[18px] border px-5 py-4"
         style={portalStyle({
           background: 'radial-gradient(120% 140% at 0% 0%, rgba(212,184,118,0.16), transparent 46%), radial-gradient(120% 140% at 100% 0%, rgba(139,118,73,0.12), transparent 48%), #0f0d0b',

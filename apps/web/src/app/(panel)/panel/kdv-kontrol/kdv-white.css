@@ -1,0 +1,145 @@
+/* Yalnız KDV ekranının D görünümü. Yerleşim, durumlar ve giriş kuralları korunur. */
+html[data-theme='D'] [data-kdv-page] [data-kdv-surface] {
+  background: #fff !important;
+  border-color: #cbd6de !important;
+  box-shadow: 0 3px 12px rgba(36, 49, 59, 0.04) !important;
+}
+
+html[data-theme='D'] [data-kdv-page] [data-kdv-band='teal'] {
+  background: linear-gradient(110deg, #eaf4f1, #f9fbfc) !important;
+  border-color: #cbded8 !important;
+  box-shadow: none !important;
+}
+
+html[data-theme='D'] [data-kdv-page] [data-kdv-band='plum'] {
+  background: linear-gradient(110deg, #f1edf5, #fafbfd) !important;
+  border-color: #d9d3e1 !important;
+}
+
+html[data-theme='D'] [data-kdv-page] [data-kdv-band='neutral'] {
+  background: #f3f6f8 !important;
+  border-color: #d6e0e5 !important;
+}
+
+html[data-theme='D'] [data-kdv-page] [data-kdv-band] :is(h1, h3) {
+  color: #263d48 !important;
+}
+
+html[data-theme='D'] [data-kdv-page] [data-kdv-heading-line] {
+  background: linear-gradient(90deg, #78aaa1, #c4d9d4, #eaf1f3) !important;
+}
+
+html[data-theme='D'] [data-kdv-page] [data-kdv-heading-icon] {
+  background: #dceee8 !important;
+  box-shadow: none !important;
+}
+
+html[data-theme='D'] [data-kdv-page] [data-kdv-heading-icon] svg {
+  color: #27675e !important;
+}
+
+/* İşlem alanında altın dekor yerine nötr yüzey; uyarı yazıları renklerini korur. */
+html[data-theme='D'] [data-kdv-page] [data-kdv-commands] {
+  --portal-amber-wash: #f2f5f7;
+  --portal-copper-wash: #f2f5f7;
+}
+
+html[data-theme='D'] [data-kdv-page] [data-kdv-action] {
+  background: #fff !important;
+  border-color: #cbd6de !important;
+  box-shadow: none !important;
+}
+
+html[data-theme='D'] [data-kdv-page] [data-kdv-action='primary'] {
+  background: #e8f3ef !important;
+  border-color: #9fc8bc !important;
+}
+
+html[data-theme='D'] [data-kdv-page] [data-kdv-action='done'] {
+  border-color: #aecfbd !important;
+}
+
+html[data-theme='D'] [data-kdv-page] [data-kdv-action] > div > p {
+  color: #283e49 !important;
+}
+
+html[data-theme='D'] [data-kdv-page] [data-kdv-action] > p {
+  color: #536672 !important;
+}
+
+html[data-theme='D'] [data-kdv-page] [data-kdv-action] > div > div {
+  background: #eef3f5 !important;
+  color: #396876 !important;
+}
+
+html[data-theme='D'] [data-kdv-page] [data-kdv-action='primary'] > div > div {
+  background: #d9ebe4 !important;
+  color: #266555 !important;
+}
+
+html[data-theme='D'] [data-kdv-page] [data-kdv-action]:hover:not(:disabled) {
+  background: #eff5f5 !important;
+  border-color: #82b2ac !important;
+}
+
+/* OCR: geniş zeminler beyaz; seçim ile belge durumları birbirinden ayrılır. */
+html[data-theme='D'] [data-kdv-page] [data-kdv-document-list] {
+  background: #fff !important;
+  border-color: #d5dfe5 !important;
+}
+
+html[data-theme='D'] [data-kdv-page] [data-kdv-document] {
+  background: #fff !important;
+  border-bottom-color: #e1e7eb !important;
+  border-left-color: transparent !important;
+}
+
+html[data-theme='D'] [data-kdv-page] [data-kdv-document='confirmed'] {
+  border-left-color: #98c8aa !important;
+}
+
+html[data-theme='D'] [data-kdv-page] [data-kdv-document='success'] {
+  border-left-color: #a1bcd9 !important;
+}
+
+html[data-theme='D'] [data-kdv-page] [data-kdv-document='active'] {
+  background: #edf5f3 !important;
+  border-left-color: #34867a !important;
+}
+
+html[data-theme='D'] [data-kdv-page] [data-kdv-document]:not([data-kdv-document='active']):hover {
+  background: #f6f8fa !important;
+}
+
+html[data-theme='D'] [data-kdv-page] :is([data-kdv-review-body], [data-kdv-fields]) {
+  background: #fff !important;
+}
+
+html[data-theme='D'] [data-kdv-page] [data-kdv-fields] {
+  --portal-copper-wash: #f5f7f9;
+  --portal-amber-wash: #f5f7f9;
+}
+
+/* Yalnız önizleme kabı: görsel, büyüteç ve tam ekran perdesi değişmez. */
+html[data-theme='D'] [data-kdv-page] [data-kdv-preview] {
+  background: #f8fafb !important;
+  border-color: #d0dce3 !important;
+}
+
+html[data-theme='D'] [data-kdv-page] [data-kdv-breakdown] {
+  background: #f8fafb !important;
+  border-color: #d3dee5 !important;
+}
+
+html[data-theme='D'] [data-kdv-page] [data-kdv-breakdown] > div:first-child {
+  border-bottom: 1px solid #e0e6ec;
+}
+
+/* Güven/eksik alan sınır renkleri aynen kalır; yalnız giriş zemini sadeleşir. */
+html[data-theme='D'] [data-kdv-page] [data-kdv-fields] input {
+  background: #fff !important;
+}
+
+html[data-theme='D'] [data-kdv-page] [data-kdv-fields] input[readonly] {
+  background: #f2f6f7 !important;
+}

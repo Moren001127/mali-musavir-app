@@ -1,8 +1,9 @@
 'use client';
+import './beyaz.css';
 import { portalStyle, portalPaint } from '@/lib/portal-theme';
 
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type CSSProperties } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -328,7 +329,7 @@ function Header({
   taskBusy: boolean;
 }) {
   return (
-    <div className="rounded-xl border p-5" style={portalStyle({ borderColor: LINE, background: CARD })}>
+    <div data-portal-page-header className="rounded-xl border p-5" style={portalStyle({ borderColor: LINE, background: CARD })}>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.18em]"
@@ -443,11 +444,12 @@ function StatusStrip({
         const isActive = active === p.key;
         const t = TONES[p.tone];
         return (
-          <button
+          <button data-portal-kpi data-banka-active={isActive || undefined}
             key={p.key}
             onClick={() => onPick(isActive ? 'tumu' : p.key)}
             className="flex items-center gap-3 rounded-xl border px-4 py-3 text-left transition"
             style={portalStyle({
+              ...({ '--kpi-tone': portalStyle({ color: t.fg }).color } as CSSProperties),
               borderColor: isActive ? t.bd : LINE,
               background: isActive ? t.bg : CARD,
             })}

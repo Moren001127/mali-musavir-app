@@ -1,4 +1,6 @@
 'use client';
+import '@/app/(panel)/panel/ajanlar/_components/operations-white.css';
+
 import { portalStyle } from '@/lib/portal-theme';
 
 
@@ -53,7 +55,7 @@ function AgentCard({ entry }: { entry: AgentHealthEntry }) {
       : 'rgba(148,163,184,0.10)';
 
   return (
-    <div
+    <div data-ops-card="true"
       className="rounded-xl p-4 flex flex-col gap-3"
       style={portalStyle({
         background: 'rgba(255,255,255,0.03)',
@@ -222,9 +224,9 @@ export default function AjanSaglikPage() {
   });
 
   return (
-    <div className="space-y-5">
+    <div data-ops-page="ajan-saglik" className="space-y-5">
       {/* === BAŞLIK (AI Maliyet imzası — yeşil nabız + kırmızı durum teması) === */}
-      <header
+      <header data-ops-header="true"
         className="relative overflow-hidden rounded-2xl border p-5"
         style={portalStyle({
           borderColor: 'rgba(255,255,255,0.08)',
@@ -329,17 +331,17 @@ export default function AjanSaglikPage() {
 
 function SummaryTile({ label, value, icon: Icon, color }: { label: string; value: number; icon: any; color: string }) {
   return (
-    <div
+    <div data-ops-stat="true"
       className="relative overflow-hidden rounded-2xl border p-4 flex flex-col"
-      style={portalStyle({ borderColor: `${color}40`, background: `linear-gradient(135deg, ${color}26, ${color}0a 58%, rgba(255,255,255,0.02))` })}
+      style={portalStyle({ '--ops-tone': portalStyle({ color: color }).color, borderColor: `${color}40`, background: `linear-gradient(135deg, ${color}26, ${color}0a 58%, rgba(255,255,255,0.02))` } as React.CSSProperties)}
     >
       <div className="flex items-center justify-between">
-        <span className="text-[10px] uppercase font-bold tracking-[.16em]" style={portalStyle({ color })}>{label}</span>
+        <span data-ops-label="true" className="text-[10px] uppercase font-bold tracking-[.16em]" style={portalStyle({ color })}>{label}</span>
         <span className="grid h-7 w-7 place-items-center rounded-lg" style={portalStyle({ background: `${color}22`, border: `1px solid ${color}40` })}>
           <Icon size={14} style={portalStyle({ color })} />
         </span>
       </div>
-      <div className="mt-3 text-[30px] font-semibold leading-none tabular-nums" style={portalStyle({ color: '#fafaf9' })}>
+      <div data-ops-value="true" className="mt-3 text-[30px] font-semibold leading-none tabular-nums" style={portalStyle({ color: '#fafaf9' })}>
         {value}
       </div>
     </div>

@@ -1,4 +1,5 @@
 'use client';
+import './beyaz-inceleme.css';
 import { portalStyle, portalPaint } from '@/lib/portal-theme';
 
 
@@ -100,9 +101,9 @@ export default function EvraklarPage() {
   const toggleType = (t: string) => setTypeFilter((prev) => prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]);
 
   return (
-    <div className="space-y-5 max-w-7xl">
+    <div data-inceleme="evraklar" className="space-y-5 max-w-7xl">
       {/* HEADER */}
-      <div className="flex items-end justify-between pb-5" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.05)' })}>
+      <div data-inceleme-baslik className="flex items-end justify-between pb-5" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.05)' })}>
         <div>
           <div className="flex items-center gap-2.5 mb-2">
             <span className="w-[26px] h-px" style={portalStyle({ background: GOLD })} />
@@ -121,7 +122,7 @@ export default function EvraklarPage() {
           { label: 'OCR Edilmiş', value: counts.total > 0 ? `${Math.round((counts.ocr / counts.total) * 100)}%` : '0%', sub: `${counts.ocr} belge`, icon: Bot },
           { label: 'Depolama', value: counts.totalSize > 0 ? fmtBytes(counts.totalSize) : '0 B', sub: 'kullanılan', icon: HardDrive },
         ].map(({ label, value, sub, icon: Icon }) => (
-          <div key={label} className="rounded-2xl p-5" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' })}>
+          <div data-inceleme-sayac={label} key={label} className="rounded-2xl p-5" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' })}>
             <div className="flex items-center justify-between mb-4">
               <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={portalStyle({ background: 'rgba(184,160,111,0.08)', border: '1px solid rgba(184,160,111,0.15)', color: GOLD })}><Icon size={17} /></div>
             </div>
@@ -161,7 +162,7 @@ export default function EvraklarPage() {
                   const Icon = getIcon(d.documentType || d.category);
                   const tag = getTypeTag(d.documentType || d.category);
                   return (
-                    <div key={d.id} className="p-4 rounded-2xl transition-all cursor-pointer"
+                    <div data-inceleme-belge key={d.id} className="p-4 rounded-2xl transition-all cursor-pointer"
                       style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' })}
                       onMouseEnter={(e) => { e.currentTarget.style.background = portalPaint('rgba(184,160,111,0.05)', 'background'); e.currentTarget.style.borderColor = portalPaint('rgba(184,160,111,0.2)', 'borderColor'); }}
                       onMouseLeave={(e) => { e.currentTarget.style.background = portalPaint('rgba(255,255,255,0.02)', 'background'); e.currentTarget.style.borderColor = portalPaint('rgba(255,255,255,0.05)', 'borderColor'); }}>

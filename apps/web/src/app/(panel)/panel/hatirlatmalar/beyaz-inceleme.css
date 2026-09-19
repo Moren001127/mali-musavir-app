@@ -1,0 +1,52 @@
+/* Yalnız hatirlatmalar modülünün D teması; yerleşim ve A renkleri korunur. */
+html[data-theme="D"] [data-inceleme="hatirlatmalar"] {
+  --inceleme-pastel: #e7f4ef;
+  --inceleme-vurgu: #2a6c59;
+  --portal-ink: #24313b;
+  --portal-secondary: #4b5c68;
+  --portal-muted: #5d6c77;
+  --portal-line: #cbd5de;
+  --portal-wash: #f8fafb;
+  --portal-shadow: rgba(35, 49, 59, .06);
+}
+html[data-theme="D"] [data-inceleme="hatirlatmalar"] [data-inceleme-baslik] {
+  background: linear-gradient(115deg, var(--inceleme-pastel), #fff 78%) !important;
+  border-color: #cbd5de !important;
+  box-shadow: 0 3px 12px #24313b08 !important;
+}
+html[data-theme="D"] [data-inceleme="hatirlatmalar"] [data-inceleme-baslik] > .absolute {
+  background: linear-gradient(90deg, var(--inceleme-vurgu), var(--inceleme-pastel)) !important;
+}
+html[data-theme="D"] [data-inceleme="hatirlatmalar"] [data-inceleme-baslik] h1 { color: #293b48 !important; }
+html[data-theme="D"] [data-inceleme="hatirlatmalar"] [data-inceleme-yuzey] {
+  background: #fff !important;
+  border-color: #c2ced8 !important;
+}
+html[data-theme="D"] [data-inceleme="hatirlatmalar"] [data-inceleme-yuzey] > .border-b { border-color: #cbd5de !important; }
+html[data-theme="D"] [data-inceleme="hatirlatmalar"] .divide-y > :not([hidden]) ~ :not([hidden]) { border-color: #d7e0e6 !important; }
+
+html[data-theme="D"] [data-inceleme="hatirlatmalar"] [data-inceleme-sayac] {
+  --sayac-yazi: #315d86;
+  --sayac-zemin: #e9f1fa;
+  --sayac-kenar: #adc5dd;
+  background: linear-gradient(125deg, var(--sayac-zemin), #fff) !important;
+  border-color: var(--sayac-kenar) !important;
+  color: var(--sayac-yazi) !important;
+}
+html[data-theme="D"] [data-inceleme="hatirlatmalar"] [data-inceleme-sayac] :is(div, p, span, svg) { color: var(--sayac-yazi) !important; }
+html[data-theme="D"] [data-inceleme="hatirlatmalar"] [data-inceleme-sayac] [class*="rounded"] { background: #ffffff9c !important; border-color: var(--sayac-kenar) !important; }
+html[data-theme="D"] [data-inceleme="hatirlatmalar"] [data-inceleme-sayac][aria-pressed="true"] { box-shadow: inset 0 0 0 1px var(--sayac-yazi); }
+
+
+html[data-theme="D"] [data-inceleme="hatirlatmalar"] [data-inceleme-sayac="green"] { --sayac-yazi: #286b49; --sayac-zemin: #eaf6ee; --sayac-kenar: #b1d5bf; }
+
+html[data-theme="D"] [data-inceleme="hatirlatmalar"] [data-inceleme-sayac="amber"] { --sayac-yazi: #895121; --sayac-zemin: #fff1e5; --sayac-kenar: #e2c0a2; }
+
+html[data-theme="D"] [data-inceleme="hatirlatmalar"] [data-inceleme-sayac="gold"] { --sayac-yazi: #1b6d6c; --sayac-zemin: #e7f5f2; --sayac-kenar: #acd6cf; }
+
+html[data-theme="D"] [data-inceleme="hatirlatmalar"] [data-inceleme-sayac="neutral"] { --sayac-yazi: #68478b; --sayac-zemin: #f1ebf8; --sayac-kenar: #c6b3db; }
+
+html[data-theme="D"] [data-inceleme="hatirlatmalar"] [data-inceleme-yuzey] > div[class*="py-4"] { background: linear-gradient(110deg, #eef5f4, #fff); border-bottom-color: #cbd9d6 !important; }
+html[data-theme="D"] [data-inceleme="hatirlatmalar"] [data-inceleme-yuzey] > div[class*="py-3"] { background: #f7faf9; border-bottom-color: #d3dedc !important; }
+html[data-theme="D"] [data-inceleme="hatirlatmalar"] [data-inceleme-yuzey] .overflow-auto > div { border-bottom-color: #d8e2df !important; }
+

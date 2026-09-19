@@ -1,4 +1,6 @@
 'use client';
+import '@/app/(panel)/panel/ajanlar/_components/operations-white.css';
+
 import { portalStyle } from '@/lib/portal-theme';
 
 
@@ -156,7 +158,7 @@ export default function OtomasyonDetayPage() {
 
   if (isLoading) {
     return (
-      <div className="mx-auto max-w-4xl px-4 py-12 text-center" style={portalStyle({ color: MUTED })}>
+      <div data-ops-page="otomasyonlar" className="mx-auto max-w-4xl px-4 py-12 text-center" style={portalStyle({ color: MUTED })}>
         <Loader2 className="mx-auto h-6 w-6 animate-spin" />
         <div className="mt-2 text-[13px]">Yükleniyor…</div>
       </div>
@@ -165,7 +167,7 @@ export default function OtomasyonDetayPage() {
 
   if (error || !auto) {
     return (
-      <div className="mx-auto max-w-4xl px-4 py-8" style={portalStyle({ color: TEXT })}>
+      <div data-ops-page="otomasyonlar" className="mx-auto max-w-4xl px-4 py-8" style={portalStyle({ color: TEXT })}>
         <button
           onClick={() => router.push('/panel/otomasyonlar')}
           className="mb-4 inline-flex items-center gap-1 text-[13px]"
@@ -185,9 +187,9 @@ export default function OtomasyonDetayPage() {
   const canHardDelete = auto.status === 'DRAFT' && auto.totalRuns === 0;
 
   return (
-    <div className="mx-auto max-w-6xl space-y-5 pb-16" style={portalStyle({ color: TEXT })}>
+    <div data-ops-page="otomasyonlar" className="mx-auto max-w-6xl space-y-5 pb-16" style={portalStyle({ color: TEXT })}>
       {/* ── Başlık ── */}
-      <header
+      <header data-ops-header="true"
         className="relative overflow-hidden rounded-2xl border p-5"
         style={portalStyle({
           borderColor: LINE,
@@ -493,7 +495,7 @@ function HistoryTab({ runs, onSelect }: { runs: AutomationRun[]; onSelect: (id: 
   }
   return (
     <div className="overflow-hidden rounded-xl border" style={portalStyle({ borderColor: LINE, background: CARD })}>
-      <table className="w-full text-[13px]">
+      <table data-ops-table="true" className="w-full text-[13px]">
         <thead style={portalStyle({ background: CARD2 })}>
           <tr style={portalStyle({ color: MUTED })} className="text-left text-[11px] uppercase tracking-wider">
             <th className="px-4 py-2.5 font-medium">Başlangıç</th>
@@ -678,12 +680,12 @@ function ActionBtn({
 
 function Stat({ color, icon, label, value }: { color: string; icon: React.ReactNode; label: string; value: string }) {
   return (
-    <div className="rounded-xl border p-3" style={portalStyle({ borderColor: LINE, background: CARD })}>
-      <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider" style={portalStyle({ color: MUTED })}>
+    <div data-ops-stat="true" className="rounded-xl border p-3" style={portalStyle({ '--ops-tone': portalStyle({ color: color }).color, borderColor: LINE, background: CARD } as React.CSSProperties)}>
+      <div data-ops-label="true" className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider" style={portalStyle({ color: MUTED })}>
         <span style={portalStyle({ color })}>{icon}</span>
         {label}
       </div>
-      <div className="mt-1 text-[18px] font-semibold" style={portalStyle({ color: TEXT })}>{value}</div>
+      <div data-ops-value="true" className="mt-1 text-[18px] font-semibold" style={portalStyle({ color: TEXT })}>{value}</div>
     </div>
   );
 }

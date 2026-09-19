@@ -41,7 +41,7 @@ export function SekmeBasligi({ title, text, children }: { title: string; text?: 
 /** Gerçek tablo sarmalı: kenarlıklı, yatay kaydırma kendi içinde, isteğe bağlı azami yükseklik. */
 export function TabloSarmal({ children, maxHeight, minWidth = 760 }: { children: React.ReactNode; maxHeight?: number; minWidth?: number }) {
   return (
-    <div className="overflow-auto" style={portalStyle({ border: `1px solid ${TABLO_CIZGI}`, borderRadius: 8, background: 'rgba(0,0,0,0.12)', maxHeight })}>
+    <div data-review-table className="overflow-auto" style={portalStyle({ border: `1px solid ${TABLO_CIZGI}`, borderRadius: 8, background: 'rgba(0,0,0,0.12)', maxHeight })}>
       <table className="w-full" style={portalStyle({ borderCollapse: 'collapse', minWidth })}>
         {children}
       </table>
@@ -64,7 +64,7 @@ export function Td({ children, right, center, muted, tabular, className = '', st
 /** Grup başlığı satırı (nötr): hafif zemin + büyük harf etiket + soluk sayı. Renk şeridi YOK. */
 export function GrupSatiri({ ad, sayi, colSpan, ek }: { ad: string; sayi?: number; renk?: string; colSpan: number; ek?: React.ReactNode }) {
   return (
-    <tr style={portalStyle({ background: GRUP_ZEMIN })}>
+    <tr data-review-group style={portalStyle({ background: GRUP_ZEMIN })}>
       <td colSpan={colSpan} style={portalStyle({ ...HUCRE, height: 38, borderTop: GRUP_CIZGI, borderBottom: GRUP_CIZGI })}>
         <div className="flex items-center gap-2.5">
           <span className="text-[12.5px] font-bold uppercase" style={portalStyle({ color: 'rgba(250,250,249,0.80)', letterSpacing: '.06em' })}>{ad}</span>

@@ -33,7 +33,7 @@ export function AccordionRow({
   id?: string;
 }) {
   return (
-    <section
+    <section data-review-surface
       id={id}
       className="relative overflow-hidden transition-colors duration-150"
       style={portalStyle({

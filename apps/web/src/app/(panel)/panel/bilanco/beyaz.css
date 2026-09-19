@@ -1,0 +1,4 @@
+/* Yalnız bu modülün D teması; A temasını ve çıktı şablonlarını etkilemez. */
+html[data-theme="D"] [data-bilanco-report] { background: #fff !important; border-color: #cbd6de !important; }
+html[data-theme="D"] [data-bilanco-band] { background: #edf2f6 !important; border-color: #cbd6de !important; }
+html[data-theme="D"] [data-bilanco-row] { background: #fff !important; border-color: #d9e2e8 !important; }

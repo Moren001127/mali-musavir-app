@@ -1,4 +1,5 @@
 'use client';
+import './beyaz-inceleme.css';
 import { portalStyle } from '@/lib/portal-theme';
 
 
@@ -321,8 +322,8 @@ export default function GorevlerPage() {
   };
 
   return (
-    <div className="space-y-3 max-w-none">
-      <header
+    <div data-inceleme="gorevler" className="space-y-3 max-w-none">
+      <header data-inceleme-baslik
         className="relative overflow-hidden rounded-[18px] border px-5 py-4"
         style={portalStyle({
           background:

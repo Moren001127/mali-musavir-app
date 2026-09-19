@@ -146,7 +146,7 @@ export function BulguTablosu(p: BulguTablosuProps) {
             </button>
 
             {acik && (
-              <table className="w-full" style={portalStyle({ borderCollapse: 'collapse', tableLayout: 'fixed' })}>
+              <table data-ops-table="true" className="w-full" style={portalStyle({ borderCollapse: 'collapse', tableLayout: 'fixed' })}>
                 <colgroup>
                   {hesapli && <col style={portalStyle({ width: 250 })} />}
                   <col />

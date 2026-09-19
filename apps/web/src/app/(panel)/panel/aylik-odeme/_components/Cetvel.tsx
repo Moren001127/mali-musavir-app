@@ -104,7 +104,7 @@ export function Cetvel({ r, ozet, gonderilenKanal, ornekGonderiliyor, pdfIniyor,
 
       {/* Tablo — table-fixed + colgroup: uzun ödeme adı tutarı dışarı taşımasın */}
       <div className="overflow-x-auto" style={portalStyle({ borderTop: `1px solid ${KENAR_NOTR}` })}>
-        <table className="w-full" style={portalStyle({ borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: 720 })}>
+        <table data-aylik-cetvel className="w-full" style={portalStyle({ borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: 720 })}>
           <colgroup>
             <col />
             <col style={portalStyle({ width: 122 })} />

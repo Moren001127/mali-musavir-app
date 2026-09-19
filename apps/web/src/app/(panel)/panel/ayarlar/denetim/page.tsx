@@ -1,4 +1,6 @@
 'use client';
+import '@/app/(panel)/panel/ajanlar/_components/operations-white.css';
+
 import { portalStyle } from '@/lib/portal-theme';
 
 
@@ -76,9 +78,9 @@ export default function DenetimPage() {
   }
 
   return (
-    <div className="space-y-5 max-w-7xl">
+    <div data-ops-page="ayarlar" className="space-y-5 max-w-7xl">
       {/* === BAŞLIK (AI Maliyet imzası — kehribar-amber teması) === */}
-      <header
+      <header data-ops-header="true"
         className="relative overflow-hidden rounded-2xl border p-5"
         style={portalStyle({
           borderColor: 'rgba(255,255,255,0.08)',
@@ -119,7 +121,7 @@ export default function DenetimPage() {
       </header>
 
       {/* Mini bar chart — son 30 gün */}
-      <div
+      <div data-ops-card="true"
         className="rounded-2xl border p-5"
         style={portalStyle({
           background: 'linear-gradient(135deg, rgba(251,191,36,0.07), rgba(245,158,11,0.03) 60%, rgba(255,255,255,0.02))',
@@ -168,7 +170,7 @@ export default function DenetimPage() {
       </div>
 
       {/* Filtre barı */}
-      <div
+      <div data-ops-card="true"
         className="rounded-2xl border p-4"
         style={portalStyle({
           background: 'linear-gradient(135deg, rgba(251,191,36,0.05), rgba(255,255,255,0.02) 55%)',
@@ -401,7 +403,7 @@ export default function DenetimPage() {
             Bu kriterlerde kayıt bulunamadı.
           </div>
         ) : (
-          <table className="w-full text-sm">
+          <table data-ops-table="true" className="w-full text-sm">
             <thead>
               <tr style={portalStyle({ background: 'rgba(251,191,36,0.06)' })}>
                 <th className="px-3 py-2.5 text-left text-[11px] uppercase tracking-wider" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>

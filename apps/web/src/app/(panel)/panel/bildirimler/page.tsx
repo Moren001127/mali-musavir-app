@@ -1,4 +1,5 @@
 'use client';
+import './beyaz-inceleme.css';
 import { portalStyle, portalPaint } from '@/lib/portal-theme';
 
 
@@ -122,9 +123,9 @@ export default function BildirimlerPage() {
     : `${okunmamis.length} okunmamış${kritikOkunmamis.length ? ` · ${kritikOkunmamis.length} kritik` : ''} · son ${liste.length} kayıt`;
 
   return (
-    <div className="max-w-none space-y-4">
+    <div data-inceleme="bildirimler" className="max-w-none space-y-4">
       {/* Başlık şeridi */}
-      <section className="overflow-hidden rounded-2xl" style={portalStyle({ background: BASLIK_ZEMIN, border: `1px solid ${KENAR}`, boxShadow: KART_GOLGE })}>
+      <section data-inceleme-baslik className="overflow-hidden rounded-2xl" style={portalStyle({ background: BASLIK_ZEMIN, border: `1px solid ${KENAR}`, boxShadow: KART_GOLGE })}>
         <div className="h-px w-full" style={portalStyle({ background: `linear-gradient(90deg, ${ALTIN}99, ${ALTIN}22 45%, transparent)` })} />
         <div className="flex flex-wrap items-end justify-between gap-4 px-5 py-4">
           <div className="min-w-0">
@@ -153,7 +154,7 @@ export default function BildirimlerPage() {
       </section>
 
       {/* Liste kartı */}
-      <section className="overflow-hidden rounded-2xl" style={portalStyle({ background: KART_ZEMIN, border: `1px solid ${KENAR}`, boxShadow: KART_GOLGE })}>
+      <section data-inceleme-yuzey className="overflow-hidden rounded-2xl" style={portalStyle({ background: KART_ZEMIN, border: `1px solid ${KENAR}`, boxShadow: KART_GOLGE })}>
         {/* Süzgeç satırı */}
         <div className="flex flex-wrap items-center gap-2 border-b px-4 py-3" style={portalStyle({ borderColor: KENAR })}>
           <div className="inline-flex items-center gap-1 rounded-full p-0.5" style={portalStyle({ background: ZEMIN, border: `1px solid ${KENAR}` })}>

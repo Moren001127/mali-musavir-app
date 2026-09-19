@@ -83,7 +83,7 @@ function ViewHeader({ icon: Icon, title, subtitle, actions }: {
   // Portal dili: gradyan zemin + köşede radial parıltı. Dört görünüm de bu
   // başlığı kullandığı için tek değişiklik hepsini birden dönüştürür.
   return (
-    <header
+    <header data-portal-page-header
       className="relative overflow-hidden rounded-2xl px-5 py-4"
       style={portalStyle({
         background: 'linear-gradient(140deg, rgba(230,200,120,0.08), rgba(255,255,255,0.01) 58%)',

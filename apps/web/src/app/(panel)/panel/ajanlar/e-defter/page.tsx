@@ -1,4 +1,6 @@
 'use client';
+import '@/app/(panel)/panel/ajanlar/_components/operations-white.css';
+
 import { portalStyle, portalPaint } from '@/lib/portal-theme';
 
 
@@ -750,9 +752,9 @@ export default function EDefterAgentPage() {
   });
 
   return (
-    <div className="space-y-4">
+    <div data-ops-page="ajanlar" className="space-y-4">
       {/* ════════ BAŞLIK KARTI — kimlik + eylemler + tek satır hap rozetler + seçiciler ════════ */}
-      <Kart renk={NAVY} serit>
+      <Kart className="ops-module-card" renk={NAVY} serit>
         <div className="px-5 pt-4 pb-4 flex flex-wrap items-start gap-4">
           <div className="flex items-center gap-3.5 flex-1 min-w-[320px]">
             <span className="grid h-12 w-12 place-items-center rounded-2xl shrink-0" style={portalStyle(ikonStili(NAVY))}>
@@ -916,7 +918,7 @@ export default function EDefterAgentPage() {
         <HapSekme active={activeTab === 'GECMIS'} onClick={() => setActiveTab('GECMIS')} icon={History} label="Geçmiş Kontroller" badge={periodSessions.length} />
       </div>
 
-      <Kart renk={NAVY} className="p-4">
+      <Kart renk={NAVY} className="p-4 ops-module-card">
       {/* ════════ TAB: BULGULAR (alan → kural → satır; derli toplu) ════════ */}
       {activeTab === 'BULGULAR' && (
         <BulgularSekmesi
@@ -1067,7 +1069,7 @@ export default function EDefterAgentPage() {
                       </span>
                       {dengesiz && (<span className="text-[10px] font-bold px-2 py-0.5 rounded" style={portalStyle({ background: 'rgba(226,112,111,.18)', color: ERR })}>DENGESİZ {fmtTRY(fark)}</span>)}
                     </div>
-                    <table className="w-full text-xs">
+                    <table data-ops-table="true" className="w-full text-xs">
                       <tbody>
                         {g.lines.map((line: any, idx: number) => (
                           <tr key={line.id} ref={focusedFinding?.rowIndex && Number(focusedFinding.rowIndex) === Number(line.rowIndex) ? focusedLineRef : undefined} style={portalStyle({ borderBottom: idx < g.lines.length - 1 ? `1px solid ${BORDER}` : undefined, color: 'rgba(250,250,249,.82)', background: focusedFinding?.rowIndex && Number(focusedFinding.rowIndex) === Number(line.rowIndex) ? NAVY_SOFT : 'transparent' })}>
@@ -1107,7 +1109,7 @@ export default function EDefterAgentPage() {
             </div>
           ) : (
             <div className="rounded-xl border overflow-hidden" style={portalStyle({ background: PANEL, borderColor: BORDER })}>
-              <table className="w-full text-sm">
+              <table data-ops-table="true" className="w-full text-sm">
                 <thead style={portalStyle({ background: 'rgba(0,0,0,.18)' })}>
                   <tr style={portalStyle({ color: MUTED, borderBottom: `1px solid ${BORDER}` })}>
                     <th className="text-left py-2.5 px-4 font-semibold text-xs uppercase tracking-wider">Versiyon</th>
@@ -1155,7 +1157,7 @@ function Gauge({ score, color, hasData }: { score: number | null; color: string;
   const p = hasData && score != null ? score : 0;
   const ring = hasData ? color : 'rgba(255,255,255,.16)';
   return (
-    <div className="relative shrink-0" style={portalStyle({ width: 92, height: 92, borderRadius: '50%', background: `conic-gradient(${ring} 0 ${p}%, rgba(255,255,255,.07) ${p}% 100%)` })}>
+    <div data-ops-gauge="true" className="relative shrink-0" style={portalStyle({ width: 92, height: 92, borderRadius: '50%', background: `conic-gradient(${ring} 0 ${p}%, rgba(255,255,255,.07) ${p}% 100%)` })}>
       <div className="absolute rounded-full" style={portalStyle({ inset: 9, background: '#0e1116' })} />
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         <div className="text-[27px] font-bold leading-none tabular-nums" style={portalStyle({ color: hasData ? TEXT : MUTED2 })}>{hasData && score != null ? score : '—'}</div>
@@ -1167,9 +1169,9 @@ function Gauge({ score, color, hasData }: { score: number | null; color: string;
 
 function Metric({ label, value, color, active, lead, onClick }: { label: string; value: number; color: string; active: boolean; lead?: boolean; onClick: () => void }) {
   return (
-    <button onClick={onClick} className="rounded-xl p-3 text-left transition-all" style={portalStyle({ border: `1px solid ${active ? 'rgba(91,141,239,.34)' : BORDER}`, background: active || lead ? LEAD_GRAD : 'rgba(255,255,255,.012)' })}>
-      <div className="text-[9px] uppercase tracking-[.16em] mb-1.5" style={portalStyle({ color: active || lead ? 'rgba(91,141,239,.9)' : MUTED2 })}>{label}</div>
-      <div className="text-[24px] font-bold tabular-nums leading-none" style={portalStyle({ color })}>{value}</div>
+    <button data-ops-stat="true" data-ops-selected={active ? 'true' : 'false'} onClick={onClick} className="rounded-xl p-3 text-left transition-all" style={portalStyle({ '--ops-tone': portalStyle({ color: color }).color, border: `1px solid ${active ? 'rgba(91,141,239,.34)' : BORDER}`, background: active || lead ? LEAD_GRAD : 'rgba(255,255,255,.012)' } as React.CSSProperties)}>
+      <div data-ops-label="true" className="text-[9px] uppercase tracking-[.16em] mb-1.5" style={portalStyle({ color: active || lead ? 'rgba(91,141,239,.9)' : MUTED2 })}>{label}</div>
+      <div data-ops-value="true" className="text-[24px] font-bold tabular-nums leading-none" style={portalStyle({ color })}>{value}</div>
     </button>
   );
 }

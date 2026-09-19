@@ -1,4 +1,5 @@
 'use client';
+import './module-white.css';
 import { portalStyle, portalPaint } from '@/lib/portal-theme';
 
 
@@ -719,9 +720,9 @@ export default function FisYazdirmaPage() {
 
   /* ── RENDER ── */
   return (
-    <div className="max-w-7xl space-y-3">
+    <div data-module-review="fis" className="max-w-7xl space-y-3">
       {/* HEADER — AI Maliyet imzası: üst renk şeridi + radial parıltı + degrade ikon kutusu */}
-      <div
+      <div data-review-heading
         className="relative overflow-hidden rounded-2xl border p-5"
         style={portalStyle({
           borderColor: 'rgba(255,255,255,0.06)',
@@ -1222,7 +1223,7 @@ export default function FisYazdirmaPage() {
               { label: 'Tarih Okundu',   value: scanResult.detected.length, color: '#34d399', bg: 'linear-gradient(135deg, rgba(52,211,153,0.1), transparent)',          border: 'rgba(52,211,153,0.22)' },
               { label: 'Teyit Bekliyor', value: scanResult.unread.length,   color: '#fafaf9', bg: 'rgba(255,255,255,0.022)',                                            border: 'rgba(255,255,255,0.06)' },
             ].map(({ label, value, color, bg, border }) => (
-              <div
+              <div data-review-counter={label}
                 key={label}
                 className="relative overflow-hidden rounded-2xl border p-5"
                 style={portalStyle({ background: bg, borderColor: border })}

@@ -232,7 +232,7 @@ export function LucaOperatorChat() {
   };
 
   return (
-    <div
+    <div data-ops-card="true"
       className="flex h-full flex-col overflow-hidden rounded-2xl"
       style={portalStyle({ background: 'rgba(15,13,9,0.85)', border: `1px solid ${ACCENT}26`, backdropFilter: 'blur(10px)' })}
     >

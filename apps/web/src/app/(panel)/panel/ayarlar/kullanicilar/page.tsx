@@ -1,4 +1,6 @@
 'use client';
+import '@/app/(panel)/panel/ajanlar/_components/operations-white.css';
+
 import { portalStyle } from '@/lib/portal-theme';
 
 
@@ -43,7 +45,7 @@ export default function KullanicilarPage() {
   });
 
   return (
-    <div className="p-6 space-y-5">
+    <div data-ops-page="ayarlar" className="p-6 space-y-5">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Link href="/panel/ayarlar" className="p-2 rounded-lg hover:bg-stone-800/40 text-stone-400 hover:text-stone-200 transition">
@@ -79,7 +81,7 @@ export default function KullanicilarPage() {
 
       {users.length > 0 && (
         <div className="rounded-xl overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' })}>
-          <table className="w-full text-[13px]" style={portalStyle({ color: 'rgba(250,250,249,0.85)' })}>
+          <table data-ops-table="true" className="w-full text-[13px]" style={portalStyle({ color: 'rgba(250,250,249,0.85)' })}>
             <thead style={portalStyle({ background: 'rgba(184,160,111,0.08)' })}>
               <tr className="text-left text-[10.5px] uppercase tracking-wider font-semibold" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>
                 <th className="px-4 py-3">Kullanıcı</th>

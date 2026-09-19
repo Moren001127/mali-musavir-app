@@ -35,10 +35,10 @@ html[data-theme='D'] [data-dashboard-kpi] {
   --dashboard-kpi-start: #70420e;
   --dashboard-kpi-end: #94651c;
   --dashboard-kpi-edge: #b18545;
-  background: linear-gradient(115deg, var(--dashboard-kpi-start), var(--dashboard-kpi-end) 55%, color-mix(in srgb,var(--dashboard-kpi-end) 35%,white)) !important;
+  background: linear-gradient(115deg, color-mix(in srgb,var(--dashboard-kpi-end) 22%,white), color-mix(in srgb,var(--dashboard-kpi-end) 5%,white)) !important;
   border-color: var(--dashboard-kpi-edge) !important;
   box-shadow: 0 5px 16px rgba(36, 49, 59, 0.08) !important;
-  color: #fff !important;
+  color: var(--dashboard-kpi-start) !important;
 }
 
 html[data-theme='D'] [data-dashboard-kpi='sage'] {
@@ -62,16 +62,16 @@ html[data-theme='D'] [data-dashboard-kpi='copper'] {
 }
 
 html[data-theme='D'] [data-dashboard-kpi] :is(p, span, div, svg) {
-  color: #fff !important;
+  color: var(--dashboard-kpi-start) !important;
 }
 
 html[data-theme='D'] :is([data-dashboard-kpi-icon], [data-dashboard-kpi-badge]) {
-  background: rgba(0, 0, 0, 0.08) !important;
-  border-color: rgba(255, 255, 255, 0.26) !important;
+  background: rgba(255, 255, 255, 0.6) !important;
+  border-color: color-mix(in srgb,var(--dashboard-kpi-start) 20%,white) !important;
 }
 
 html[data-theme='D'] [data-dashboard-kpi] .tabular-nums {
-  color: #fff !important;
+  color: var(--dashboard-kpi-start) !important;
 }
 
 html[data-theme='D'] [data-dashboard-kpi]:hover {
@@ -84,7 +84,7 @@ html[data-theme='D'] [data-dashboard-alert='issue'] {
 
 html[data-theme='D'] [data-dashboard-alert='issue'] > p:first-of-type,
 html[data-theme='D'] [data-dashboard-alert='issue'] svg {
-  color: #fff !important;
+  color: var(--dashboard-kpi-start) !important;
 }
 
 /* Mevcut olaylar korunur; eski koyu fare rengi D temasını geri boyayamaz. */
@@ -137,3 +137,22 @@ html[data-theme='D'] [data-dashboard-root] table thead th {
 html[data-theme='D'] [data-dashboard-root] table tbody td { border-bottom: 1px solid #e4e9ed; }
 html[data-theme='D'] [data-dashboard-root] table tbody tr:last-child td { border-bottom: 0; }
 html[data-theme='D'] [data-dashboard-root] table tbody tr:nth-child(even):not(:hover):not([aria-selected='true']) { background: #f8fafb; }
+
+html[data-theme='D'] [data-beyan-heading][data-dashboard-band] {
+  background: linear-gradient(110deg,#ddd0ed,#eee6f5 55%,#f8f5fb) !important;
+  border-top: 4px solid #80609e;
+  border-bottom-color: #c7b5d8 !important;
+  box-shadow: inset 0 1px 0 #ffffffb3;
+}
+html[data-theme='D'] [data-beyan-heading] h3 { font-size: 20px; font-weight: 750; color: #443252 !important; }
+html[data-theme='D'] [data-beyan-heading] p { color: #665771 !important; }
+html[data-theme='D'] [data-beyan-heading-icon] { background: linear-gradient(135deg,#65457f,#9674ad) !important; color: #fff !important; border-color: #8a6b9e !important; }
+html[data-theme='D'] [data-beyan-heading-icon] svg { color: #fff !important; }
+html[data-theme='D'] [data-beyan-mode='active'] { background: #fff !important; color: #684780 !important; border-color: #bca7cc !important; box-shadow: 0 2px 5px #49335c12; }
+html[data-theme='D'] [data-beyan-heading] select { background: #fff !important; border-color: #c3afd2 !important; }
+html[data-theme='D'] [data-beyan-query] { background: #70518b !important; color: #fff !important; border-color: #70518b !important; }
+html[data-theme='D'] [data-beyan-section] { padding: 7px 10px; background: linear-gradient(90deg,#f0eaf6,#faf8fc); border-left: 3px solid #997bab; border-bottom: 1px solid #e5dceb; border-radius: 4px; }
+html[data-theme='D'] [data-beyan-section] > div:first-child { color: #73518a !important; }
+html[data-theme='D'] [data-beyan-progress='pending'] { background: linear-gradient(90deg,#537cb3,#83a9d6) !important; }
+html[data-theme='D'] [data-beyan-progress='done'] { background: linear-gradient(90deg,#28845c,#65b891) !important; }
+html[data-theme='D'] [data-beyan-progress='error'] { background: linear-gradient(90deg,#bd4569,#df839f) !important; }

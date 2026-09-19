@@ -642,7 +642,6 @@ function TaxpayerRow({
   onNotesChange: (notes: string) => void;
 }) {
   const s = taxpayer.monthlyStatus;
-  const isCompany = taxpayer.type === 'TUZEL_KISI';
   const stage = deriveStage(s);
   const [notesDraft, setNotesDraft] = useState(s?.notes || '');
 
@@ -675,7 +674,7 @@ function TaxpayerRow({
       {/* Avatar — sağ üst köşede tamamlık göstergesi noktası */}
       <div className="flex justify-center">
         <div className="relative">
-          <div className="w-8 h-8 rounded-[9px] flex items-center justify-center text-[11.5px] font-bold" style={portalStyle({ background: 'rgba(184,160,111,0.075)', color: GOLD, border: '1px solid rgba(184,160,111,0.16)' })}>
+          <div className="aylik-takip-avatar w-8 h-8 rounded-[9px] flex items-center justify-center text-[11.5px] font-bold" style={portalStyle({ background: 'rgba(184,160,111,0.075)', color: GOLD, border: '1px solid rgba(184,160,111,0.16)' })}>
             {getInitials(taxpayer)}
           </div>
           {/* v1.36.76: Profil tamamlık dot — avatar'ın sağ üst köşesinde */}
@@ -691,7 +690,7 @@ function TaxpayerRow({
         </div>
       </div>
 
-      {/* Mükellef adı + alt bilgi — kart linki olarak */}
+      {/* Mükellef adı — kart bağlantısı; kimlik bilgileri arama ve dışa aktarmada korunur. */}
       <Link
         href={`/panel/mukellefler/${taxpayer.id}`}
         className="min-w-0 block transition-colors"
@@ -699,7 +698,7 @@ function TaxpayerRow({
       >
         <div className="flex items-center gap-2">
           <p
-            className="text-[13.5px] font-semibold truncate transition-colors hover:text-[#d4b876]"
+            className="aylik-takip-firma text-[13.5px] font-semibold truncate transition-colors hover:text-[#d4b876]"
             style={portalStyle({ color: '#fafaf9', letterSpacing: '-0.01em' })}
           >
             {getName(taxpayer)}
@@ -714,9 +713,6 @@ function TaxpayerRow({
             </span>
           )}
         </div>
-        <p className="text-[11.5px] mt-0.5 truncate" style={portalStyle({ color: 'rgba(250,250,249,0.46)', fontFamily: 'Manrope, Inter, system-ui, sans-serif' })}>
-          {taxpayer.taxNumber} · {taxpayer.taxOffice || '—'} · {isCompany ? 'Şirket' : 'Şahıs'}
-        </p>
       </Link>
 
       {/* Durum etiketi */}
@@ -790,13 +786,16 @@ function TaxpayerRow({
   );
 }
 
-function Check({ checked, onClick, title }: { checked: boolean; onClick: () => void; title: string }) {
+function Check({ checked, onClick, title, disabled = false }: { checked: boolean; onClick: () => void; title: string; disabled?: boolean }) {
   return (
     <button
       type="button"
       onClick={onClick}
       title={title}
-      className="inline-flex items-center justify-center transition-all hover:brightness-110"
+      aria-label={title}
+      aria-pressed={checked}
+      disabled={disabled}
+      className="aylik-takip-isaret inline-flex items-center justify-center transition-all hover:brightness-110"
       style={portalStyle({
         width: 22, height: 22, borderRadius: 7,
         border: checked ? '1px solid rgba(74,222,128,0.55)' : '1px solid rgba(255,255,255,0.12)',

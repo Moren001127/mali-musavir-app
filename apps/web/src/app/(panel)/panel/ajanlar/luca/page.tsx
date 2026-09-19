@@ -1,4 +1,6 @@
 'use client';
+import '@/app/(panel)/panel/ajanlar/_components/operations-white.css';
+
 import { portalStyle } from '@/lib/portal-theme';
 
 
@@ -112,9 +114,9 @@ export default function LucaSessionPage() {
   });
 
   return (
-    <div className="space-y-5 max-w-6xl">
+    <div data-ops-page="luca" className="space-y-5 max-w-6xl">
       {/* === BASLIK (AI Maliyet imzasi — camgobegi/teal + altin temasi) === */}
-      <header
+      <header data-ops-header="true"
         className="relative overflow-hidden rounded-2xl border p-5"
         style={portalStyle({
           borderColor: 'rgba(255,255,255,0.08)',
@@ -754,17 +756,17 @@ function StatusCard({
 }) {
   const color = tone === 'ok' ? '#4ade80' : '#fbbf24';
   return (
-    <div
+    <div data-ops-stat="true"
       className="relative overflow-hidden rounded-2xl border p-4"
-      style={portalStyle({ borderColor: `${color}40`, background: `linear-gradient(135deg, ${color}26, ${color}0a 58%, rgba(255,255,255,0.02))` })}
+      style={portalStyle({ '--ops-tone': portalStyle({ color: color }).color, borderColor: `${color}40`, background: `linear-gradient(135deg, ${color}26, ${color}0a 58%, rgba(255,255,255,0.02))` } as React.CSSProperties)}
     >
       <div className="flex items-center justify-between">
-        <span className="text-[11px] uppercase font-bold tracking-[.12em]" style={portalStyle({ color })}>{title}</span>
+        <span data-ops-label="true" className="text-[11px] uppercase font-bold tracking-[.12em]" style={portalStyle({ color })}>{title}</span>
         <span className="grid h-7 w-7 place-items-center rounded-lg" style={portalStyle({ background: `${color}22`, border: `1px solid ${color}40` })}>
           <Icon size={14} style={portalStyle({ color })} />
         </span>
       </div>
-      <div className="mt-3 text-sm font-semibold truncate" style={portalStyle({ color: '#fafaf9' })}>{value}</div>
+      <div data-ops-value="true" className="mt-3 text-sm font-semibold truncate" style={portalStyle({ color: '#fafaf9' })}>{value}</div>
       <div className="mt-1 text-xs truncate" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>{detail}</div>
     </div>
   );

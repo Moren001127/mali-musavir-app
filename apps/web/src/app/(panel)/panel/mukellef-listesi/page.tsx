@@ -1,4 +1,5 @@
 'use client';
+import './module-white.css';
 import { portalStyle } from '@/lib/portal-theme';
 
 
@@ -194,8 +195,8 @@ export default function MukellefListesiPage() {
   }, [taxpayers, statusFilter, typeFilter, letter]);
 
   return (
-    <div className="max-w-none space-y-4">
-      <header
+    <div data-module-review="liste" className="max-w-none space-y-4">
+      <header data-review-heading
         className="relative overflow-hidden rounded-[18px] border px-5 py-4"
         style={portalStyle({
           background:
@@ -383,7 +384,7 @@ function CredentialInsightStrip({
 function InsightButton({ card, onClick }: { card: PortalCredentialInsightCard; onClick: () => void }) {
   const blue = card.tone === 'blue';
   return (
-    <button
+    <button data-review-counter={blue ? "blue" : "amber"}
       type="button"
       onClick={onClick}
       className="flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-[5px] px-3 text-[11.5px] font-bold transition hover:brightness-110"
@@ -442,8 +443,8 @@ function CredentialInsightDialog({ card, onClose }: { card: PortalCredentialInsi
               Bu grupta mükellef yok.
             </div>
           ) : (
-            <div className="overflow-hidden rounded-[8px]" style={portalStyle({ border: '1px solid rgba(255,255,255,0.08)' })}>
-              <div className="grid grid-cols-[56px_minmax(220px,1fr)_170px_minmax(180px,1fr)] px-4 py-3 text-[10.5px] font-black uppercase tracking-[0.12em]" style={portalStyle({ background: 'rgba(255,255,255,0.04)', color: FAINT })}>
+            <div data-review-table className="overflow-hidden rounded-[8px]" style={portalStyle({ border: '1px solid rgba(255,255,255,0.08)' })}>
+              <div data-review-heading className="grid grid-cols-[56px_minmax(220px,1fr)_170px_minmax(180px,1fr)] px-4 py-3 text-[10.5px] font-black uppercase tracking-[0.12em]" style={portalStyle({ background: 'rgba(255,255,255,0.04)', color: FAINT })}>
                 <div>No</div>
                 <div>Mükellef</div>
                 <div>VKN/TC</div>
@@ -497,7 +498,7 @@ function TaxpayerCard({
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
 
   return (
-    <article
+    <article data-review-surface
       className="group grid gap-3 rounded-[8px] p-3 transition md:grid-cols-[74px_minmax(0,1fr)_96px]"
       style={portalStyle({
         background: 'linear-gradient(180deg, rgba(18,18,17,0.98), rgba(10,10,10,0.98))',

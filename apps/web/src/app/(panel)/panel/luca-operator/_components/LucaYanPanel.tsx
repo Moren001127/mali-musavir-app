@@ -97,7 +97,7 @@ export function LucaYanPanel() {
   const kurallar = durum?.kurallar || [];
 
   return (
-    <aside
+    <aside data-ops-card="true"
       className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl"
       style={portalStyle({
         background: 'linear-gradient(180deg, rgba(24,20,12,0.72), rgba(10,9,7,0.72))',

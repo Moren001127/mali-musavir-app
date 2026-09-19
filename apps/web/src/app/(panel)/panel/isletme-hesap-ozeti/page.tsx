@@ -1,4 +1,5 @@
 'use client';
+import './beyaz.css';
 import { portalStyle, portalPaint } from '@/lib/portal-theme';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -553,9 +554,9 @@ export default function IsletmeHesapOzetiPage() {
   const activeLucaJobIds = Object.values(lucaJobs).filter(Boolean).map((job: any) => job.jobId);
 
   return (
-    <div className="financial-report-readable space-y-4">
+    <div data-isletme-report className="financial-report-readable space-y-4">
       {/* Header — Fiş Yazdırma imzası: kart + üst renk şeridi + radial parıltı + degrade ikon kutusu */}
-      <div
+      <div data-portal-page-header
         className="relative overflow-hidden rounded-2xl border p-5"
         style={portalStyle({
           borderColor: 'rgba(255,255,255,0.06)',
@@ -1249,7 +1250,7 @@ function KarsilastirmaTablosu({
         style={portalStyle({ maxWidth: Math.min(1120, 320 + tersDonemler.length * 200), margin: '0 auto' })}
       >
       {/* Üst dönem barı — tablonun sütun genişlikleriyle birebir hizalı */}
-      <div
+      <div data-isletme-band
         className="rounded-t-xl overflow-hidden"
         style={portalStyle({
           background: TABLE_HEADER_BG,

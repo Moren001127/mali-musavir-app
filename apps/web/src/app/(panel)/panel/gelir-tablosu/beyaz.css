@@ -1,0 +1,4 @@
+/* Yalnız bu modülün D teması; A temasını ve çıktı şablonlarını etkilemez. */
+/* Rapor tutarlarının kâr/zarar renklerine dokunmadan yalnız yüzey ve ayırıcılar. */
+html[data-theme="D"] [data-gelir-report] table { border-color: #cbd6de !important; }
+html[data-theme="D"] [data-gelir-report] table :is(td,th) { border-color: #d5dfe6 !important; }

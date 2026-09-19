@@ -1,4 +1,5 @@
 'use client';
+import './module-white.css';
 
 import { Suspense, useCallback, useMemo } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
@@ -100,7 +101,7 @@ function GenelSorgularIcerik() {
   });
 
   return (
-    <div className="mx-auto w-full max-w-[1280px]">
+    <div data-module-review="sorgu" className="mx-auto w-full max-w-[1280px]">
       <PageHeader
         title="Genel Sorgulamalar"
         subtitle="Dijital Vergi Dairesi'nden mükellef başına yapılan sorguların sonuçları — vergi borcu, e-haciz, yoklama/denetim, POS, gelen e-arşiv."

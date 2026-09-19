@@ -1,4 +1,5 @@
 'use client';
+import './module-white.css';
 import { portalStyle } from '@/lib/portal-theme';
 
 
@@ -194,8 +195,8 @@ export default function YeniMukellefPage() {
   const taxMaxLength = form.type === 'TUZEL_KISI' ? 10 : 11;
 
   return (
-    <div className="mx-auto max-w-[1260px] space-y-4 px-1">
-      <header className="flex flex-wrap items-center justify-between gap-3">
+    <div data-module-review="yeni" className="mx-auto max-w-[1260px] space-y-4 px-1">
+      <header data-review-heading className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <Link
             href="/panel/mukellef-listesi"
@@ -403,7 +404,7 @@ export default function YeniMukellefPage() {
 
 function Section({ icon: Icon, title, children }: { icon: LucideIcon; title: string; children: ReactNode }) {
   return (
-    <section className="rounded-[8px] p-4" style={portalStyle({ background: CARD, border: `1px solid ${LINE}`, boxShadow: '0 12px 30px rgba(0,0,0,0.14)' })}>
+    <section data-review-surface className="rounded-[8px] p-4" style={portalStyle({ background: CARD, border: `1px solid ${LINE}`, boxShadow: '0 12px 30px rgba(0,0,0,0.14)' })}>
       <div className="mb-4 flex items-center gap-2.5">
         <span className="inline-flex h-9 w-9 items-center justify-center rounded-[7px]" style={portalStyle({ background: 'rgba(212,184,118,0.10)', border: '1px solid rgba(212,184,118,0.22)', color: GOLD })}>
           <Icon size={17} />
@@ -523,7 +524,7 @@ function PreviewCard({ form }: { form: FormState }) {
   const hasEmail = form.emails.some((email) => email.trim());
 
   return (
-    <section className="rounded-[8px] p-4" style={portalStyle({ background: CARD, border: `1px solid ${LINE}`, boxShadow: '0 12px 30px rgba(0,0,0,0.14)' })}>
+    <section data-review-surface className="rounded-[8px] p-4" style={portalStyle({ background: CARD, border: `1px solid ${LINE}`, boxShadow: '0 12px 30px rgba(0,0,0,0.14)' })}>
       <div className="flex h-[170px] items-center justify-center rounded-[7px]" style={portalStyle({ background: 'rgba(79,134,201,0.24)', border: '1px solid rgba(79,134,201,0.22)' })}>
         <div className="flex h-20 w-20 items-center justify-center rounded-full text-[25px] font-black" style={portalStyle({ background: 'rgba(255,255,255,0.16)', color: TEXT })}>
           {initials(name)}

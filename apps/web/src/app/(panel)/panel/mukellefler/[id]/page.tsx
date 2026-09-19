@@ -1,4 +1,5 @@
 'use client';
+import './module-white.css';
 import { portalStyle } from '@/lib/portal-theme';
 
 
@@ -222,7 +223,7 @@ export default function MukellefDetayPage() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="mx-auto max-w-[1500px] space-y-3 px-1" style={portalStyle({ fontFamily: CARD_FONT })}>
+    <form data-module-review="kart" onSubmit={handleSubmit} className="mx-auto max-w-[1500px] space-y-3 px-1" style={portalStyle({ fontFamily: CARD_FONT })}>
       <KartBasligi
         isNew={isNew}
         currentName={currentName}
@@ -248,7 +249,7 @@ export default function MukellefDetayPage() {
 
       {!isNew && <KisayolIcerik vkn={form.taxNumber} onKisayol={handleKisayolClick} />}
 
-      <section className="overflow-hidden" style={portalStyle(kartZemin())}>
+      <section data-review-surface className="overflow-hidden" style={portalStyle(kartZemin())}>
         <SekmeCubugu tabs={visibleTabs} activeTab={activeTab} onChange={setActiveTab} />
 
         <div className="p-4 sm:p-5">

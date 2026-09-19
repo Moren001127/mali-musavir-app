@@ -1,4 +1,5 @@
 'use client';
+import './beyaz-inceleme.css';
 import { portalStyle } from '@/lib/portal-theme';
 
 
@@ -595,14 +596,15 @@ export default function MesajlarPage() {
 
 
   return (
-    <div className="flex h-[calc(100vh-164px)] lg:h-[calc(100vh-88px)] w-full gap-3 max-w-[2200px]">
+    <div data-inceleme="mesajlar" className="flex h-[calc(100vh-164px)] lg:h-[calc(100vh-88px)] w-full gap-3 max-w-[2200px]">
       {/* SOL: KONUŞMA LİSTESİ */}
       <div
+        data-inceleme-yuzey
         className="w-[340px] xl:w-[400px] 2xl:w-[440px] flex-shrink-0 rounded-2xl flex flex-col overflow-hidden"
         style={portalStyle({ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)' })}
       >
         {/* Üst başlık + arama */}
-        <div className="px-4 py-3 flex items-center gap-2.5" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.06)' })}>
+        <div data-inceleme-baslik className="px-4 py-3 flex items-center gap-2.5" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.06)' })}>
           <MessageCircle size={20} style={portalStyle({ color: GOLD })} />
           <h1 className="text-[17px] font-semibold flex-1 truncate" style={portalStyle({ color: '#fafaf9' })}>WhatsApp Mesajlar</h1>
           <span className="text-[13px] tabular-nums" style={portalStyle({ color: 'rgba(250,250,249,0.62)' })}>
@@ -653,6 +655,7 @@ export default function MesajlarPage() {
                   key={id}
                   type="button"
                   onClick={() => setSelectedId(id)}
+                  data-inceleme-secili={isSelected}
                   className="w-full px-4 py-3 text-left flex items-start gap-3 transition-colors"
                   style={portalStyle({
                     background: isSelected ? 'rgba(212,184,118,0.08)' : 'transparent',
@@ -697,6 +700,7 @@ export default function MesajlarPage() {
 
       {/* SAĞ: SOHBET */}
       <div
+        data-inceleme-yuzey
         className="flex-1 rounded-2xl flex flex-col overflow-hidden min-w-0"
         style={portalStyle({ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)' })}
       >
@@ -712,7 +716,7 @@ export default function MesajlarPage() {
         ) : (
           <>
             {/* Sohbet başlık */}
-            <div className="px-6 py-3 flex items-center gap-3.5" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.02)' })}>
+            <div data-inceleme-baslik className="px-6 py-3 flex items-center gap-3.5" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.02)' })}>
               <button type="button" onClick={() => setShowProfilePanel(true)} className="rounded-full" title="Kişi bilgisi">
                 <WhatsAppAvatar name={chatData?.taxpayer?.kisiAdi || chatData?.taxpayer?.name} url={chatData?.taxpayer?.avatarUrl} active={isLivePresence(chatData?.presence)} />
               </button>
@@ -789,6 +793,7 @@ export default function MesajlarPage() {
             {/* Mesaj listesi */}
             <div
               ref={scrollRef}
+              data-inceleme-sohbet
               className="flex-1 overflow-y-auto px-6 py-4 space-y-2"
               style={portalStyle({
                 backgroundColor: '#0b141a',
@@ -827,6 +832,7 @@ export default function MesajlarPage() {
                       )}
                       <div className={`flex ${incoming ? 'justify-start' : 'justify-end'}`}>
                       <div
+                        data-inceleme-mesaj={incoming ? 'gelen' : 'giden'}
                         className="max-w-[min(76%,780px)] px-3.5 py-2.5 rounded-[10px] text-[15px] leading-[1.55]"
                         style={portalStyle({
                           background: incoming ? '#1f2c33' : '#114a3a',
@@ -889,7 +895,7 @@ export default function MesajlarPage() {
             </div>
 
             {/* Alt input */}
-            <div className="px-5 py-3.5" style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.015)' })}>
+            <div data-inceleme-yazi className="px-5 py-3.5" style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.015)' })}>
               {freeFormAvailable ? (
                 <>
                 {qrDurumBilindi && !qrConnected && (

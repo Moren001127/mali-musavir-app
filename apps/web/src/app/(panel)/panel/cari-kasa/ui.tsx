@@ -1,4 +1,5 @@
 'use client';
+import './beyaz.css';
 import { portalStyle } from '@/lib/portal-theme';
 
 
@@ -119,11 +120,12 @@ export function SayacKutusu({
 }) {
   const tiklanabilir = Boolean(onClick);
   return (
-    <button
+    <button data-portal-kpi data-cari-active={aktif || undefined}
       onClick={onClick}
       disabled={!tiklanabilir}
       className="relative overflow-hidden rounded-2xl px-4 py-3.5 text-left transition disabled:cursor-default"
       style={portalStyle({
+        ...({ '--kpi-tone': portalStyle({ color: renk }).color } as React.CSSProperties),
         background: aktif
           ? `linear-gradient(140deg, ${renk}24, rgba(255,255,255,0.01) 62%)`
           : CARD_BG,

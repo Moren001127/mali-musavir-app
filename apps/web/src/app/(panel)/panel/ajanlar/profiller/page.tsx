@@ -1,4 +1,6 @@
 'use client';
+import '@/app/(panel)/panel/ajanlar/_components/operations-white.css';
+
 import { portalStyle } from '@/lib/portal-theme';
 
 
@@ -374,8 +376,8 @@ export default function ProfillerPage() {
   const selectedScore = profileScore(profile);
 
   return (
-    <div className="flex max-w-[1680px] flex-col gap-5 xl:h-full xl:min-h-0">
-      <section className="relative shrink-0 overflow-hidden rounded-xl border border-white/[0.06] bg-[#0f0d0b]">
+    <div data-ops-page="profiller" className="flex max-w-[1680px] flex-col gap-5 xl:h-full xl:min-h-0">
+      <section data-ops-header="true" className="relative shrink-0 overflow-hidden rounded-xl border border-white/[0.06] bg-[#0f0d0b]">
         <div className="h-[3px] w-full" style={portalStyle({ background: 'linear-gradient(90deg,#8b7cf0,#a78bfa 35%,#6d5fd1 60%,#8b7cf0)' })} />
         <div className="pointer-events-none absolute inset-0" style={portalStyle({ background: 'radial-gradient(420px 130px at 20% -70%, rgba(139,124,240,.16), transparent 70%)' })} />
         <div className="relative flex flex-wrap items-center justify-between gap-3 px-5 py-3">
@@ -851,19 +853,19 @@ function FilterStat({
 }) {
   const color = tone === 'green' ? '#9fe3bf' : tone === 'amber' ? '#ecc987' : '#c4b5fd';
   return (
-    <button
+    <button data-ops-stat="true" data-ops-selected={active ? 'true' : 'false'}
       type="button"
       onClick={onClick}
       className="relative min-w-[84px] rounded-xl border px-3.5 py-2 text-left transition"
-      style={portalStyle({
+      style={portalStyle({ '--ops-tone': portalStyle({ color: color }).color,
         borderColor: active ? 'rgba(139,124,240,.55)' : 'rgba(255,255,255,.07)',
         background: active
           ? 'linear-gradient(160deg, rgba(139,124,240,.18), rgba(139,124,240,.05))'
           : 'rgba(255,255,255,.025)',
-      })}
+      } as React.CSSProperties)}
     >
-      <div className="text-[9px] font-bold uppercase tracking-[.12em] text-white/35">{label}</div>
-      <div className="mt-0.5 text-[18px] font-bold leading-tight" style={portalStyle({ color })}>{value}</div>
+      <div data-ops-label="true" className="text-[9px] font-bold uppercase tracking-[.12em] text-white/35">{label}</div>
+      <div data-ops-value="true" className="mt-0.5 text-[18px] font-bold leading-tight" style={portalStyle({ color })}>{value}</div>
       {active && <span className="absolute inset-x-3 -bottom-px h-0.5 rounded bg-[#8b7cf0]" />}
     </button>
   );
@@ -872,7 +874,7 @@ function FilterStat({
 function ScoreRing({ value }: { value: number }) {
   const ring = value >= 70 ? '#8b7cf0' : value >= 35 ? '#d4a85f' : 'rgba(255,255,255,.28)';
   return (
-    <div
+    <div data-ops-gauge="true"
       className="relative flex h-[54px] w-[54px] flex-none items-center justify-center rounded-full"
       style={portalStyle({ background: `conic-gradient(${ring} ${value * 3.6}deg, rgba(255,255,255,.08) 0)` })}
     >
@@ -1063,7 +1065,7 @@ function Panel({
 }) {
   const gridClass = columns === 1 ? 'grid-cols-1' : columns === 2 ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1 lg:grid-cols-3';
   return (
-    <section className="rounded-xl border border-white/[0.06] bg-black/10">
+    <section data-ops-card="true" className="rounded-xl border border-white/[0.06] bg-black/10">
       <div className="flex items-center gap-2 border-b border-white/[0.06] px-4 py-3 text-sm font-semibold uppercase tracking-[.12em] text-[#b3a4ef]">
         {icon}
         {title}

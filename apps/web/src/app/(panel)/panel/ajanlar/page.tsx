@@ -1,4 +1,6 @@
 'use client';
+import '@/app/(panel)/panel/ajanlar/_components/operations-white.css';
+
 import { portalStyle } from '@/lib/portal-theme';
 
 import Link from 'next/link';
@@ -116,9 +118,9 @@ export default function AjanlarDashboard() {
     statusMap.get(agent.id) || (agent.legacyRunner ? statusMap.get(agent.legacyRunner) : null);
 
   return (
-    <div className="space-y-5 max-w-7xl">
+    <div data-ops-page="ajanlar" className="space-y-5 max-w-7xl">
       {/* === BAŞLIK (AI Maliyet imzası — indigo/mavi teması) === */}
-      <header
+      <header data-ops-header="true"
         className="relative overflow-hidden rounded-2xl border p-5"
         style={portalStyle({
           borderColor: 'rgba(255,255,255,0.08)',
@@ -518,7 +520,7 @@ function AgentRegistryTile({ agent, statusInfo }: { agent: AgentDefinition; stat
   const modules = agent.modules?.slice(0, 3).join(' · ');
 
   return (
-    <Link
+    <Link data-ops-card="true"
       href={visual.href}
       className="group relative block rounded-xl p-5 border overflow-hidden transition-all hover:scale-[1.01] hover:shadow-lg"
       style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' })}
@@ -587,7 +589,7 @@ function AgentTile({ agent, statusInfo }: any) {
   const Icon = agent.icon;
   const calisiyor = statusInfo?.running === true;
   return (
-    <Link
+    <Link data-ops-card="true"
       href={agent.href}
       className="group relative block rounded-xl p-5 border overflow-hidden transition-all hover:scale-[1.01] hover:shadow-lg"
       style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' })}

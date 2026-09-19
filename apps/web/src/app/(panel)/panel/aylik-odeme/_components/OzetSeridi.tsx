@@ -2,7 +2,7 @@
 import { portalStyle } from '@/lib/portal-theme';
 
 
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { AlertTriangle, CalendarClock, CheckCircle2, Clock, Users } from 'lucide-react';
 import { kisaGun, kisaPara, trMoney, type ListeSuzgeci, type OdemeOzet } from '@/lib/aylik-odeme';
 import { GOLD, IKINCIL, KENAR_NOTR, KIRMIZI_YUMUSAK, METIN, SONUK } from './ortak';
@@ -19,15 +19,15 @@ export function OzetSeridi({ ozet, aktif, onSec, yeniKalem }: { ozet?: OdemeOzet
   const yeni = ozet ? (typeof ozet.yeniKalemToplam === 'number' ? ozet.yeniKalemToplam : yeniKalem) : undefined;
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-x-1 gap-y-1.5" role="group" aria-label="Ay özeti">
-      <Hap ikon={<Users size={12} />} secili={aktif === 'tumu'} onClick={() => onSec('tumu')} title="Tüm mükellefleri göster" sayi={ozet?.mukellef} yukleniyor={yukleniyor}>
+      <Hap ikon={<Users size={12} />} secili={aktif === 'tumu'} onClick={() => onSec('tumu')} title="Tüm mükellefleri göster" sayi={ozet?.mukellef} yukleniyor={yukleniyor} ton="#305ea2">
         mükellef
       </Hap>
       {/* Vergi/SGK/Geçici/Yıllık tutarları kaldırıldı (Muzaffer Bey 2026-09-14: "bunlara ne gerek var") */}
       <Ayrac />
-      <Hap ikon={<CheckCircle2 size={12} />} secili={aktif === 'gonderildi'} onClick={() => onSec(aktif === 'gonderildi' ? 'tumu' : 'gonderildi')} title="Cetveli gönderilmiş mükellefler" sayi={ozet?.gonderilen} yukleniyor={yukleniyor}>
+      <Hap ikon={<CheckCircle2 size={12} />} secili={aktif === 'gonderildi'} onClick={() => onSec(aktif === 'gonderildi' ? 'tumu' : 'gonderildi')} title="Cetveli gönderilmiş mükellefler" sayi={ozet?.gonderilen} yukleniyor={yukleniyor} ton="#227744">
         gönderildi
       </Hap>
-      <Hap ikon={<Clock size={12} />} secili={aktif === 'bekliyor'} onClick={() => onSec(aktif === 'bekliyor' ? 'tumu' : 'bekliyor')} title="Henüz gönderilmemiş mükellefler" sayi={ozet?.bekleyen} yukleniyor={yukleniyor}>
+      <Hap ikon={<Clock size={12} />} secili={aktif === 'bekliyor'} onClick={() => onSec(aktif === 'bekliyor' ? 'tumu' : 'bekliyor')} title="Henüz gönderilmemiş mükellefler" sayi={ozet?.bekleyen} yukleniyor={yukleniyor} ton="#75509c">
         bekliyor
       </Hap>
       <Hap ikon={<AlertTriangle size={12} />} secili={aktif === 'hata'} onClick={() => onSec(aktif === 'hata' ? 'tumu' : 'hata')} title="Gönderimi hata veren mükellefler" sayi={ozet?.hatali} yukleniyor={yukleniyor} renk={KIRMIZI_YUMUSAK}>
@@ -64,19 +64,19 @@ function Nokta() {
 }
 
 /** Tıklanabilir sayaç hapı — seçili: ince altın kenar (dolgu YOK); sayı > 0: nötr; hata: yumuşak kırmızı yazı; 0: soluk. */
-function Hap({ ikon, children, sayi, secili, onClick, title, yukleniyor, renk = GOLD }: { ikon: ReactNode; children: ReactNode; sayi?: number; secili: boolean; onClick: () => void; title: string; yukleniyor: boolean; renk?: string }) {
+function Hap({ ikon, children, sayi, secili, onClick, title, yukleniyor, renk = GOLD, ton = renk }: { ikon: ReactNode; children: ReactNode; sayi?: number; secili: boolean; onClick: () => void; title: string; yukleniyor: boolean; renk?: string; ton?: string }) {
   const var_ = (sayi ?? 0) > 0;
   return (
-    <button
+    <button data-aylik-counter
       type="button"
       onClick={onClick}
       aria-pressed={secili}
       title={title}
       className="inline-flex flex-shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2.5 py-1.5 text-[11.5px] font-semibold transition-[background-color,border-color,color,transform] duration-150 hover:-translate-y-px"
       style={
-        portalStyle(secili
+        portalStyle({ ...({ '--counter-tone': portalStyle({ color: ton }).color } as CSSProperties), ...(secili
           ? { background: 'rgba(255,255,255,0.05)', border: `1px solid ${GOLD}88`, color: METIN }
-          : { background: 'transparent', border: `1px solid ${KENAR_NOTR}`, color: var_ ? (renk === KIRMIZI_YUMUSAK ? renk : METIN) : IKINCIL })
+          : { background: 'transparent', border: `1px solid ${KENAR_NOTR}`, color: var_ ? (renk === KIRMIZI_YUMUSAK ? renk : METIN) : IKINCIL }) })
       }
     >
       {ikon}

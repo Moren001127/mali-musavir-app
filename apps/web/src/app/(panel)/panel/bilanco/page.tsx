@@ -1,4 +1,5 @@
 'use client';
+import './beyaz.css';
 import { portalStyle } from '@/lib/portal-theme';
 
 import React, { useState, type CSSProperties } from 'react';
@@ -158,7 +159,7 @@ export default function BilancoPage() {
   return (
     <div className="financial-report-readable space-y-3 max-w-7xl">
       {/* Header — Fiş Yazdırma imzası: kart + üst renk şeridi + radial parıltı + degrade ikon kutusu */}
-      <div
+      <div data-portal-page-header
         className="relative overflow-hidden rounded-2xl border p-5"
         style={portalStyle({
           borderColor: 'rgba(255,255,255,0.06)',
@@ -803,13 +804,13 @@ function BilancoColumn({
   gruplar: Array<{ label: string; kalemler: Array<{ grup: string; toplam: number; hesaplar: Array<{ kod: string; ad: string; tutar: number }> }> }>;
 }) {
   return (
-    <div className="rounded-xl overflow-hidden" style={portalStyle({
+    <div data-bilanco-report className="rounded-xl overflow-hidden" style={portalStyle({
       background: TABLE_BG,
       border: `1px solid ${GRID_LINE_STRONG}`,
       boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.05), 0 16px 34px rgba(0,0,0,0.24)',
       fontFamily: REPORT_FONT,
     })}>
-      <div className="flex items-center justify-between px-5 py-3.5 border-b" style={portalStyle({
+      <div data-bilanco-band className="flex items-center justify-between px-5 py-3.5 border-b" style={portalStyle({
         borderColor: GRID_LINE_STRONG,
         background: 'linear-gradient(180deg, rgba(184,160,111,0.13), rgba(184,160,111,0.045))',
       })}>
@@ -819,7 +820,7 @@ function BilancoColumn({
       <div>
         {gruplar.map((g, gi) => (
           <div key={gi}>
-            <div className="px-5 py-2.5 text-[11px] font-bold uppercase tracking-[.1em]" style={portalStyle({
+            <div data-bilanco-band className="px-5 py-2.5 text-[11px] font-bold uppercase tracking-[.1em]" style={portalStyle({
               color: '#f5efe3',
               background: 'rgba(184,160,111,0.13)',
               borderTop: gi === 0 ? 'none' : `1px solid ${GRID_LINE_STRONG}`,
@@ -829,7 +830,7 @@ function BilancoColumn({
             </div>
             {g.kalemler.filter((k: any) => k && k.toplam !== 0).map((k: any, ki: number) => (
               <React.Fragment key={ki}>
-                <div className="px-5 py-2.5 grid grid-cols-[1fr_auto] gap-3 text-[14px] items-center" style={portalStyle({
+                <div data-bilanco-row className="px-5 py-2.5 grid grid-cols-[1fr_auto] gap-3 text-[14px] items-center" style={portalStyle({
                   minHeight: 40,
                   borderTop: ki === 0 ? 'none' : `1px solid ${GRID_LINE}`,
                   background: ki % 2 === 0 ? 'rgba(255,255,255,0.018)' : 'rgba(0,0,0,0.16)',

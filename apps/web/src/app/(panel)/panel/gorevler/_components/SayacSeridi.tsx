@@ -28,6 +28,7 @@ export function SayacSeridi({ sayaclar, aktif, onSec }: { sayaclar?: AjandaSayac
         const var_ = (sayi ?? 0) > 0;
         return (
           <button
+            data-inceleme-sayac={h.key}
             key={h.key}
             type="button"
             onClick={() => onSec(h.key)}

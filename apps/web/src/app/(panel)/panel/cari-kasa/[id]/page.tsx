@@ -1,4 +1,5 @@
 'use client';
+import '../beyaz.css';
 import { portalStyle } from '@/lib/portal-theme';
 
 
@@ -250,7 +251,7 @@ function SummaryCard({ label, value, text, color, icon: Icon, highlight, big }: 
   big?: boolean;
 }) {
   return (
-    <div className="rounded-2xl p-4 border" style={portalStyle({ background: highlight ? 'rgba(156,70,86,0.08)' : 'rgba(255,255,255,0.02)', borderColor: highlight ? 'rgba(156,70,86,0.3)' : 'rgba(255,255,255,0.05)' })}>
+    <div data-portal-kpi className="rounded-2xl p-4 border" style={portalStyle({ ...({ '--kpi-tone': portalStyle({ color: color || '#305ea2' }).color } as React.CSSProperties), background: highlight ? 'rgba(156,70,86,0.08)' : 'rgba(255,255,255,0.02)', borderColor: highlight ? 'rgba(156,70,86,0.3)' : 'rgba(255,255,255,0.05)' })}>
       <div className="flex items-center gap-2 mb-2">
         {Icon && <Icon size={13} style={portalStyle({ color: color || 'rgba(250,250,249,0.5)' })} />}
         <div className="text-[10.5px] font-bold uppercase tracking-[.12em]" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>{label}</div>

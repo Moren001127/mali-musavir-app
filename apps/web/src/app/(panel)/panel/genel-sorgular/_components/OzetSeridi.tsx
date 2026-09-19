@@ -24,7 +24,7 @@ export function OzetSeridi({
         const renk = TUR_RENK[t];
         const secili = seciliTurler.includes(t);
         return (
-          <button
+          <button data-review-counter={t}
             key={t}
             type="button"
             onClick={() => onTur(t)}

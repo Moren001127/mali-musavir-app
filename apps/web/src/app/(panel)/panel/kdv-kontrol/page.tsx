@@ -1,4 +1,5 @@
 'use client';
+import './kdv-white.css';
 import { portalStyle, portalPaint } from '@/lib/portal-theme';
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
@@ -1017,9 +1018,9 @@ export default function KdvKontrolPage() {
 
   // ── RENDER ──────────────────────────────────────────
   return (
-    <div className="space-y-3 max-w-7xl">
+    <div data-kdv-page className="space-y-3 max-w-7xl">
       {/* HEADER */}
-      <header
+      <header data-kdv-band="teal"
         className="relative overflow-hidden rounded-[18px] border px-5 py-4"
         style={portalStyle({
           background: `radial-gradient(circle at 12% 0%, ${GOLD}2e, transparent 34%), radial-gradient(circle at 84% 8%, ${KDV_STEEL}26, transparent 40%), linear-gradient(160deg, rgba(28,23,17,0.96) 0%, #0f0d0b 72%)`,
@@ -1028,7 +1029,7 @@ export default function KdvKontrolPage() {
         })}
       >
         <div
-          className="absolute inset-x-0 top-0 h-1"
+          data-kdv-heading-line className="absolute inset-x-0 top-0 h-1"
           style={portalStyle({ background: `linear-gradient(90deg, #8b7649, ${GOLD_SOFT}, ${GOLD}, #e7cf95, ${KDV_STEEL}, ${GOLD})` })}
         />
         <div className="mb-3 flex items-center gap-2.5">
@@ -1040,7 +1041,7 @@ export default function KdvKontrolPage() {
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex min-w-0 items-center gap-3.5">
             <span
-              className="grid shrink-0 place-items-center rounded-xl"
+              data-kdv-heading-icon className="grid shrink-0 place-items-center rounded-xl"
               style={portalStyle({
                 width: 46,
                 height: 46,
@@ -1111,7 +1112,7 @@ export default function KdvKontrolPage() {
       )}
 
       {/* KOMUT BARI */}
-      <div className="rounded-xl border p-5" style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' })}>
+      <div data-kdv-surface data-kdv-commands className="rounded-xl border p-5" style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' })}>
         {/* SIRA: 1) Mükellef → 2) Defter/İşlem → 3) Dönem.
             Mükellef seçilmeden 2 ve 3 disabled (gri); aksiyonlar zaten "Önce mükellef seçin" der. */}
         <div className="flex items-start gap-4 flex-wrap">
@@ -1361,8 +1362,8 @@ export default function KdvKontrolPage() {
 
       {/* AKTİF SEANS SAYAÇLARI */}
       {activeSession && stats && (
-        <div className="rounded-2xl overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' })}>
-          <div className="flex items-center justify-between px-5 py-4" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.04)' })}>
+        <div data-kdv-surface className="rounded-2xl overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' })}>
+          <div data-kdv-band="plum" className="flex items-center justify-between px-5 py-4" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.04)' })}>
             <div className="flex items-center gap-2.5">
               <span className="w-[3px] h-4 rounded-sm" style={portalStyle({ background: GOLD })} />
               <h3 className="text-[13.5px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>
@@ -1550,8 +1551,8 @@ export default function KdvKontrolPage() {
 
       {/* v1.36.69: BELGE SERİ TAKİBİ UYARILARI — sadece satış (KDV_391 / ISLETME_GELIR) için */}
       {activeSession && Array.isArray((stats as any)?.seriUyarilari) && (stats as any).seriUyarilari.length > 0 && (
-        <div className="rounded-2xl overflow-hidden" style={portalStyle({ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.25)' })}>
-          <div className="flex items-center gap-2.5 px-5 py-4" style={portalStyle({ borderBottom: '1px solid rgba(245,158,11,0.15)' })}>
+        <div data-kdv-surface className="rounded-2xl overflow-hidden" style={portalStyle({ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.25)' })}>
+          <div data-kdv-band="neutral" className="flex items-center gap-2.5 px-5 py-4" style={portalStyle({ borderBottom: '1px solid rgba(245,158,11,0.15)' })}>
             <AlertTriangle size={14} style={portalStyle({ color: '#f59e0b' })} />
             <h3 className="text-[13.5px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>
               Belge Seri Takibi Uyarıları
@@ -1599,10 +1600,10 @@ export default function KdvKontrolPage() {
       {/* İçerik denetimi paneli — OCR teyit panelinin ALTINDA */}
       {activeSession && contentAuditRows.length > 0 && (
         <div
-          className="rounded-xl overflow-hidden"
+          data-kdv-surface className="rounded-xl overflow-hidden"
           style={portalStyle({ background: 'rgba(20,184,166,0.035)', border: '1px solid rgba(20,184,166,0.16)' })}
         >
-          <div className="flex flex-wrap items-center gap-2.5 px-4 py-3" style={portalStyle({ borderBottom: '1px solid rgba(20,184,166,0.10)' })}>
+          <div data-kdv-band="teal" className="flex flex-wrap items-center gap-2.5 px-4 py-3" style={portalStyle({ borderBottom: '1px solid rgba(20,184,166,0.10)' })}>
             <ShieldCheck size={14} style={portalStyle({ color: '#14b8a6' })} />
             <h3 className="text-[13px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>İçerik Denetimi</h3>
             <span className="text-[10.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.48)' })}>
@@ -2222,7 +2223,7 @@ function ActionBtn({
     <button
       onClick={onClick}
       disabled={disabled || loading}
-      className="rounded-xl border p-4 text-left transition disabled:opacity-40 disabled:cursor-not-allowed hover:brightness-110"
+      data-kdv-action={filled ? 'primary' : done ? 'done' : 'ready'} className="rounded-xl border p-4 text-left transition disabled:opacity-40 disabled:cursor-not-allowed hover:brightness-110"
       style={portalStyle({ background: bg, borderColor: border })}
     >
       <div className="flex items-center gap-3 mb-2">

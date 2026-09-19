@@ -89,7 +89,7 @@ export default function AgentControlCard() {
 
   if (status.loading) {
     return (
-      <div style={portalStyle(cardStyle)}>
+      <div data-ops-card="true" style={portalStyle(cardStyle)}>
         <div className="flex items-center gap-2 text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>
           <RefreshCw size={12} className="animate-spin" /> Extension kontrol ediliyor...
         </div>
@@ -99,7 +99,7 @@ export default function AgentControlCard() {
 
   if (!status.installed) {
     return (
-      <div style={portalStyle({ ...cardStyle, borderColor: 'rgba(245,158,11,0.25)' })}>
+      <div data-ops-card="true" style={portalStyle({ ...cardStyle, borderColor: 'rgba(245,158,11,0.25)' })}>
         <div className="flex items-start gap-3">
           <div className="flex items-center justify-center rounded-md w-9 h-9 shrink-0" style={portalStyle({ background: 'rgba(245,158,11,0.12)', color: '#fcd34d' })}>
             <AlertTriangle size={18} />
@@ -140,7 +140,7 @@ export default function AgentControlCard() {
   const guncellemeVar = installedVersion && latestRuntime && installedVersion !== latestRuntime;
 
   return (
-    <div style={portalStyle(cardStyle)}>
+    <div data-ops-card="true" style={portalStyle(cardStyle)}>
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2.5">
           <div className="flex items-center justify-center rounded-md w-8 h-8" style={portalStyle({ background: 'rgba(212,184,118,0.12)', color: '#d4b876' })}>

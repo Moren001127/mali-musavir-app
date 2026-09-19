@@ -1,4 +1,6 @@
 'use client';
+import '@/app/(panel)/panel/ajanlar/_components/operations-white.css';
+
 import { portalStyle } from '@/lib/portal-theme';
 
 
@@ -153,9 +155,9 @@ export default function OtomasyonlarPage() {
   const monthlyBudgetUsd = summary?.monthlyBudgetUsd ?? null;
 
   return (
-    <div className="mx-auto max-w-7xl space-y-5 pb-16" style={portalStyle({ color: TEXT })}>
+    <div data-ops-page="otomasyonlar" className="mx-auto max-w-7xl space-y-5 pb-16" style={portalStyle({ color: TEXT })}>
       {/* ── Başlık (radial + üst renk şeridi, yapışkan değil) ── */}
-      <header
+      <header data-ops-header="true"
         className="relative overflow-hidden rounded-2xl border p-5"
         style={portalStyle({
           borderColor: LINE,
@@ -383,7 +385,7 @@ function AutomationRow({
   const lastFail = auto.lastRunStatus === 'failure' || auto.lastRunStatus === 'partial';
 
   return (
-    <div
+    <div data-ops-card="interactive"
       onClick={() => onOpen(auto.id)}
       className="group cursor-pointer rounded-xl border p-3.5 transition-colors"
       style={portalStyle({ borderColor: LINE, background: CARD })}
@@ -490,12 +492,12 @@ function Stat({
   sub?: string;
 }) {
   return (
-    <div className="rounded-xl border p-3" style={portalStyle({ borderColor: LINE, background: CARD })}>
-      <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider" style={portalStyle({ color: MUTED })}>
+    <div data-ops-stat="true" className="rounded-xl border p-3" style={portalStyle({ '--ops-tone': portalStyle({ color: color }).color, borderColor: LINE, background: CARD } as React.CSSProperties)}>
+      <div data-ops-label="true" className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider" style={portalStyle({ color: MUTED })}>
         <span style={portalStyle({ color })}>{icon}</span>
         {label}
       </div>
-      <div className="mt-1 text-[20px] font-semibold" style={portalStyle({ color: TEXT })}>{value}</div>
+      <div data-ops-value="true" className="mt-1 text-[20px] font-semibold" style={portalStyle({ color: TEXT })}>{value}</div>
       {sub && <div className="text-[11px]" style={portalStyle({ color: MUTED })}>{sub}</div>}
     </div>
   );
@@ -506,18 +508,18 @@ function BudgetStat({ monthly, weekly, budget }: { monthly: number; weekly: numb
   const pct = budget && budget > 0 ? Math.min(100, Math.round((monthly / budget) * 100)) : null;
   const barColor = pct === null ? VIOLET : pct >= 90 ? RED : pct >= 70 ? AMBER : VIOLET;
   return (
-    <div className="rounded-xl border p-3" style={portalStyle({ borderColor: LINE, background: CARD })}>
+    <div data-ops-stat="true" className="rounded-xl border p-3" style={portalStyle({ '--ops-tone': portalStyle({ color: barColor }).color, borderColor: LINE, background: CARD } as React.CSSProperties)}>
       <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider" style={portalStyle({ color: MUTED })}>
         <span style={portalStyle({ color: VIOLET_SOFT })}><Wallet size={15} /></span>
         Bu ay maliyet
       </div>
-      <div className="mt-1 text-[20px] font-semibold" style={portalStyle({ color: VIOLET_SOFT })}>{usd(monthly)}</div>
+      <div data-ops-value="true" className="mt-1 text-[20px] font-semibold" style={portalStyle({ color: VIOLET_SOFT })}>{usd(monthly)}</div>
       {budget && budget > 0 ? (
         <>
           <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full" style={portalStyle({ background: 'rgba(255,255,255,0.08)' })}>
             <div className="h-full rounded-full" style={portalStyle({ width: `${pct}%`, background: barColor })} />
           </div>
-          <div className="mt-1 text-[11px]" style={portalStyle({ color: MUTED })}>
+          <div data-ops-value="true" className="mt-1 text-[11px]" style={portalStyle({ color: MUTED })}>
             {usd(monthly)} / {usd(budget)} bütçe (%{pct})
           </div>
         </>

@@ -1,4 +1,6 @@
 'use client';
+import '@/app/(panel)/panel/ajanlar/_components/operations-white.css';
+
 import { portalStyle, portalPaint } from '@/lib/portal-theme';
 
 
@@ -45,7 +47,7 @@ const RED = '#f87171';
 
 export default function AyarlarPage() {
   return (
-    <div className="mx-auto max-w-6xl space-y-5 pb-12">
+    <div data-ops-page="ayarlar" className="mx-auto max-w-6xl space-y-5 pb-12">
         <PageHeader />
         <SettingsGrid />
         <CollapsibleSection
@@ -77,7 +79,7 @@ export default function AyarlarPage() {
 
 function PageHeader() {
   return (
-    <header
+    <header data-ops-header="true"
       className="relative overflow-hidden rounded-2xl border p-5"
       style={portalStyle({
         borderColor: 'rgba(255,255,255,0.08)',
@@ -202,7 +204,7 @@ function SettingsTile({
   const idle = `linear-gradient(135deg, ${t.fg}1f, rgba(255,255,255,0.02)), ${CARD}`;
   const hover = `linear-gradient(135deg, ${t.fg}2e, rgba(255,255,255,0.03)), ${CARD_HOVER}`;
   return (
-    <Link
+    <Link data-ops-card="true"
       href={href}
       className="group relative overflow-hidden rounded-xl border p-4 transition"
       style={portalStyle({ borderColor: t.bd, background: idle })}
@@ -281,7 +283,7 @@ function CollapsibleSection({
   const t = TONES[tone] || TONES.gold;
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <section
+    <section data-ops-card="true"
       id={id}
       className="relative rounded-xl border overflow-hidden"
       style={portalStyle({ borderColor: t.bd, background: `linear-gradient(135deg, ${t.fg}14, rgba(255,255,255,0.015)), ${CARD}` })}

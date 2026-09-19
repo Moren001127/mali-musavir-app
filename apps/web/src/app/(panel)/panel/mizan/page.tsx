@@ -1,4 +1,5 @@
 'use client';
+import './beyaz.css';
 import { portalStyle, portalPaint } from '@/lib/portal-theme';
 
 import React, { useState, useMemo, useRef, useEffect, type CSSProperties } from 'react';
@@ -783,7 +784,7 @@ export default function MizanPage() {
   return (
     <div className="financial-report-readable space-y-3 max-w-7xl">
       {/* Header — Fiş Yazdırma imzası: kart + üst renk şeridi + radial parıltı + degrade ikon kutusu */}
-      <div
+      <div data-portal-page-header
         className="relative overflow-hidden rounded-2xl border p-5"
         style={portalStyle({
           borderColor: 'rgba(255,255,255,0.06)',
@@ -1720,14 +1721,14 @@ function MizanTable({
   }, [focusCell, ROWS]);
 
   return (
-    <div ref={tableRef} className="rounded-xl overflow-hidden" style={portalStyle({
+    <div data-mizan-report ref={tableRef} className="rounded-xl overflow-hidden" style={portalStyle({
       background: '#0a0907',
       border: '1px solid rgba(212,184,118,0.42)',
       boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.06), 0 18px 40px rgba(0,0,0,0.30)',
       fontFamily: REPORT_FONT,
     })}>
       {/* === ÜST BAŞLIK BLOĞU (Excel benzeri: MİZAN / Mükellef / Dönem) === */}
-      <div style={portalStyle({
+      <div data-mizan-band style={portalStyle({
         background: 'linear-gradient(180deg, rgba(184,160,111,0.12), rgba(184,160,111,0.04))',
         borderBottom: '1px solid rgba(212,184,118,0.46)',
         padding: '14px 24px',
@@ -1818,7 +1819,7 @@ function MizanTable({
               ];
 
               return (
-                <tr key={h.id} style={portalStyle({ background: rowBg })}>
+                <tr key={h.id} data-mizan-group={isUpper || undefined} style={portalStyle({ background: rowBg })}>
                   {cells.map((c, colIdx) => {
                     const focused = focusCell?.row === rowIdx && focusCell?.col === colIdx;
                     const isAmountCell = colIdx >= 2;

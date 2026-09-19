@@ -1,4 +1,6 @@
 'use client';
+import '@/app/(panel)/panel/ajanlar/_components/operations-white.css';
+
 import { portalStyle } from '@/lib/portal-theme';
 
 
@@ -75,8 +77,8 @@ type WhatsAppConfigShape = {
 
 export default function EntegrasyonlarPage() {
   return (
-    <div className="mx-auto max-w-6xl space-y-5 pb-12">
-      <header className="rounded-lg border bg-[#0f0d0b]/80 p-5" style={portalStyle({ borderColor: LINE })}>
+    <div data-ops-page="ayarlar" className="mx-auto max-w-6xl space-y-5 pb-12">
+      <header data-ops-header="true" className="rounded-lg border bg-[#0f0d0b]/80 p-5" style={portalStyle({ borderColor: LINE })}>
         <Link
           href="/panel/ayarlar"
           className="inline-flex items-center gap-1.5 text-[12px] font-medium"
@@ -174,7 +176,7 @@ function EmailCard() {
   });
 
   return (
-    <section className="rounded-lg border bg-[#0f0d0b]/80 p-5" style={portalStyle({ borderColor: LINE })}>
+    <section data-ops-card="true" className="rounded-lg border bg-[#0f0d0b]/80 p-5" style={portalStyle({ borderColor: LINE })}>
       <div className="flex items-start gap-3">
         <div
           className="flex h-11 w-11 items-center justify-center rounded-lg border"
@@ -392,7 +394,7 @@ function WhatsAppCard() {
   }, [connected, polling]);
 
   return (
-    <section className="rounded-lg border bg-[#0f0d0b]/80 p-5" style={portalStyle({ borderColor: LINE })}>
+    <section data-ops-card="true" className="rounded-lg border bg-[#0f0d0b]/80 p-5" style={portalStyle({ borderColor: LINE })}>
       <div className="flex items-start gap-3">
         <div
           className="flex h-11 w-11 items-center justify-center rounded-lg border"

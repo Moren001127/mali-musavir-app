@@ -1,0 +1,33 @@
+/* Yalnız bildirimler modülünün D teması; yerleşim ve A renkleri korunur. */
+html[data-theme="D"] [data-inceleme="bildirimler"] {
+  --inceleme-pastel: #eaf2fa;
+  --inceleme-vurgu: #3d6186;
+  --portal-ink: #24313b;
+  --portal-secondary: #4b5c68;
+  --portal-muted: #5d6c77;
+  --portal-line: #cbd5de;
+  --portal-wash: #f8fafb;
+  --portal-shadow: rgba(35, 49, 59, .06);
+}
+html[data-theme="D"] [data-inceleme="bildirimler"] [data-inceleme-baslik] {
+  background: linear-gradient(115deg, var(--inceleme-pastel), #fff 78%) !important;
+  border-color: #cbd5de !important;
+  box-shadow: 0 3px 12px #24313b08 !important;
+}
+html[data-theme="D"] [data-inceleme="bildirimler"] [data-inceleme-baslik] > .absolute {
+  background: linear-gradient(90deg, var(--inceleme-vurgu), var(--inceleme-pastel)) !important;
+}
+html[data-theme="D"] [data-inceleme="bildirimler"] [data-inceleme-baslik] h1 { color: #293b48 !important; }
+html[data-theme="D"] [data-inceleme="bildirimler"] [data-inceleme-yuzey] {
+  background: #fff !important;
+  border-color: #c2ced8 !important;
+}
+html[data-theme="D"] [data-inceleme="bildirimler"] [data-inceleme-yuzey] > .border-b { border-color: #cbd5de !important; }
+html[data-theme="D"] [data-inceleme="bildirimler"] .divide-y > :not([hidden]) ~ :not([hidden]) { border-color: #d7e0e6 !important; }
+
+html[data-theme="D"] [data-inceleme="bildirimler"] [data-inceleme-baslik] > .h-px { background: linear-gradient(90deg, #7393b5, #eaf2fa) !important; }
+html[data-theme="D"] [data-inceleme="bildirimler"] [data-inceleme-yuzey] > .border-b { background: #f3f6fa; }
+html[data-theme="D"] [data-inceleme="bildirimler"] [data-inceleme-yuzey] select { background-color: #fff !important; color: #405665 !important; }
+/* Bildirim satırının okunmamış/kritik zeminini ve sol şeridini değiştirmez. */
+html[data-theme="D"] [data-inceleme="bildirimler"] article { border-bottom-color: #d7e0e6 !important; }
+

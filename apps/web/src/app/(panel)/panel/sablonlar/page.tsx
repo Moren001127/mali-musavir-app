@@ -1,4 +1,5 @@
 'use client';
+import './beyaz-inceleme.css';
 import { portalStyle } from '@/lib/portal-theme';
 
 
@@ -370,9 +371,9 @@ export default function SablonlarPage() {
     : 'WHATSAPP';
 
   return (
-    <div className="mx-auto max-w-7xl space-y-5 pb-12">
+    <div data-inceleme="sablonlar" className="mx-auto max-w-7xl space-y-5 pb-12">
       {/* BAŞLIK — imza: radial + gökkuşağı şerit + degrade ikon */}
-      <header className="relative overflow-hidden rounded-2xl border p-5" style={portalStyle({
+      <header data-inceleme-baslik className="relative overflow-hidden rounded-2xl border p-5" style={portalStyle({
         borderColor: LINE,
         background: 'radial-gradient(120% 140% at 0% 0%, rgba(52,211,153,0.16), transparent 45%), radial-gradient(120% 140% at 100% 0%, rgba(34,211,238,0.14), transparent 45%), #0f0d0b',
       })}>
@@ -459,7 +460,7 @@ export default function SablonlarPage() {
             const c = catInfo(t.kategori);
             const isDrag = dragId === t.id;
             return (
-              <div key={t.id} onClick={() => openEditor(t)}
+              <div data-inceleme-sablon key={t.id} onClick={() => openEditor(t)}
                 draggable={dndEnabled}
                 onDragStart={() => dndEnabled && setDragId(t.id)}
                 onDragOver={(e) => { if (dndEnabled && dragId) e.preventDefault(); }}
@@ -594,7 +595,7 @@ function Drawer(p: DrawerProps) {
   return (
     <>
       <div className="fixed inset-0 z-40" style={portalStyle({ background: 'rgba(0,0,0,0.82)', backdropFilter: 'blur(6px)' })} onClick={p.onClose} />
-      <aside className="fixed inset-y-0 right-0 z-50 flex w-[min(960px,96vw)] overflow-hidden border-l shadow-2xl"
+      <aside data-inceleme-yuzey className="fixed inset-y-0 right-0 z-50 flex w-[min(960px,96vw)] overflow-hidden border-l shadow-2xl"
         style={portalStyle({ borderColor: LINE2, background: '#0f0d0b' })}>
         <span className="absolute inset-y-0 left-0 w-1" style={portalStyle({ background: 'linear-gradient(180deg,#34d399,#22d3ee)' })} />
 

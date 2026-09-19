@@ -124,9 +124,9 @@ export function SonucGrubu(p: SonucGrubuProps) {
   const earsiv = p.tur === 'GELEN_EARSIV';
 
   return (
-    <section className="mb-4 overflow-hidden rounded-xl" style={portalStyle({ border: `1px solid ${KENAR_NOTR}`, background: 'rgba(255,255,255,0.02)' })}>
+    <section data-review-table className="mb-4 overflow-hidden rounded-xl" style={portalStyle({ border: `1px solid ${KENAR_NOTR}`, background: 'rgba(255,255,255,0.02)' })}>
       {/* Grup bandı */}
-      <div className="flex flex-wrap items-center gap-2.5 px-3 py-2.5" style={portalStyle({ background: GRUP_ZEMIN, borderBottom: GRUP_CIZGI, borderLeft: `4px solid ${renk}` })}>
+      <div data-review-heading className="flex flex-wrap items-center gap-2.5 px-3 py-2.5" style={portalStyle({ background: GRUP_ZEMIN, borderBottom: GRUP_CIZGI, borderLeft: `4px solid ${renk}` })}>
         <span className="text-[12px] font-extrabold uppercase" style={portalStyle({ color: GOLD, letterSpacing: '.16em' })}>
           {SORGU_TURU_ADI[p.tur]}
         </span>

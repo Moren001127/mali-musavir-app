@@ -16,7 +16,8 @@ Fatura İşleme Merkezi ve alt adresleri eski A kapsamını kullanır.
 
 İlk sürüm `surum-beyaz-tema-2026-09-19`, kullanıcı düzeltmeleri ise
 `surum-beyaz-tema-duzeltme-2026-09-19` etiketiyle işaretlenir. Başvuru Sayıları
-alanının tamamen kaldırıldığı son sürüm `surum-beyaz-tema-alan-kaldirma-2026-09-19`.
+alanının tamamen kaldırıldığı, modül renklerinin sadeleştirildiği ve menü yazılarının
+güçlendirildiği son sürüm `surum-beyaz-tema-alan-kaldirma-2026-09-19`.
 Tüm tema
 çalışmasını koyu tema öncesine geri almak için, temiz çalışma alanında:
 
@@ -29,8 +30,9 @@ Sonraki değişikliklerle çakışma varsa bunları koruyarak çöz; `reset --ha
 zorla gönderim kullanma. Yayının başarılı olduğunu ve giriş ekranını doğrula.
 Bu işlem veritabanını, belgeleri veya operasyon kayıtlarını geri sarmaz.
 
-Yalnız son görsel düzeltmeler geri istenirse düzeltme etiketini tek başına geri
-al. Düzeltmeler kullanıcının isteğiyle brifing alanının kaldırılmasını, menüde
+Yalnız ilk beyaz tema sonrasındaki düzeltmeler geri istenirse
+`surum-beyaz-tema-2026-09-19..surum-beyaz-tema-alan-kaldirma-2026-09-19`
+aralığını geri al. Düzeltmeler kullanıcının isteğiyle brifing alanının kaldırılmasını, menüde
 Moren / Mali Müşavirlik yazı markasını ve daha belirgin sayaçları da içerir.
 
 Alternatif: `MOREN_PORTAL_THEME=A` ile web servisini **yeniden derleyip yayınla**.

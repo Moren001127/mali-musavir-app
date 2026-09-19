@@ -395,14 +395,14 @@ export function OcrReviewPanel({
   return (
     <div
       ref={rootRef}
-      className="rounded-2xl overflow-hidden scroll-mt-24"
+      data-kdv-ocr data-kdv-surface className="rounded-2xl overflow-hidden scroll-mt-24"
       style={portalStyle({
         background: 'rgba(245,158,11,0.04)',
         border: '1px solid rgba(245,158,11,0.22)',
       })}
     >
       <div
-        className="flex items-center justify-between px-5 py-4 flex-wrap gap-3"
+        data-kdv-band="plum" className="flex items-center justify-between px-5 py-4 flex-wrap gap-3"
         style={portalStyle({ borderBottom: '1px solid rgba(245,158,11,0.15)' })}
       >
         <div className="flex items-center gap-2.5">
@@ -544,7 +544,7 @@ export function OcrReviewPanel({
       <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] min-h-[460px]">
         {/* Sol: liste */}
         <div
-          className="overflow-y-auto max-h-[520px]"
+          data-kdv-document-list className="overflow-y-auto max-h-[520px]"
           style={portalStyle({ borderRight: '1px solid rgba(255,255,255,0.04)' })}
         >
           {pending.map((img) => {
@@ -567,7 +567,7 @@ export function OcrReviewPanel({
             return (
               <div
                 key={img.id}
-                data-ocr-id={img.id}
+                data-ocr-id={img.id} data-kdv-document={active ? 'active' : confirmed ? 'confirmed' : isSuccess ? 'success' : 'pending'}
                 className="w-full transition relative scroll-mt-24"
                 style={portalStyle({
                   background: active
@@ -664,7 +664,7 @@ export function OcrReviewPanel({
 
         {/* Sağ: detay */}
         {activeImg ? (
-          <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div data-kdv-review-body className="p-5 grid grid-cols-1 md:grid-cols-2 gap-5">
             {/* Fatura görseli — büyüteçli */}
             {previewError ? (
               <div className="flex flex-col items-center justify-center gap-3 rounded-xl" style={portalStyle({ minHeight: 320, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)' })}>
@@ -684,7 +684,7 @@ export function OcrReviewPanel({
             )}
 
             {/* Alan inputları */}
-            <div className="space-y-4">
+            <div data-kdv-fields className="space-y-4">
               <FieldInput
                 label="Belge / Fatura No"
                 placeholder="ABC2025000123"
@@ -1020,7 +1020,7 @@ function KdvBreakdownEditor({
   }
 
   return (
-    <div className="rounded-lg p-3" style={portalStyle({ background: 'rgba(184,160,111,0.04)', border: '1px solid rgba(184,160,111,0.18)' })}>
+    <div data-kdv-breakdown className="rounded-lg p-3" style={portalStyle({ background: 'rgba(184,160,111,0.04)', border: '1px solid rgba(184,160,111,0.18)' })}>
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <span className="text-[11px] font-bold uppercase tracking-wider" style={portalStyle({ color: GOLD })}>
@@ -1199,7 +1199,7 @@ function ZoomableImage({ src, alt }: { src: string | null; alt: string }) {
     <>
       <div
         ref={containerRef}
-        className="relative rounded-lg overflow-hidden flex items-center justify-center min-h-[260px] group cursor-zoom-in"
+        data-kdv-preview className="relative rounded-lg overflow-hidden flex items-center justify-center min-h-[260px] group cursor-zoom-in"
         style={portalStyle({
           background: 'rgba(0,0,0,0.3)',
           border: '1px solid rgba(255,255,255,0.05)',

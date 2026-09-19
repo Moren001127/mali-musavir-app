@@ -1,0 +1,4 @@
+/* Yalnız bu modülün D teması; A temasını ve çıktı şablonlarını etkilemez. */
+html[data-theme="D"] [data-mizan-report] { background: #fff !important; border-color: #cbd6de !important; }
+html[data-theme="D"] [data-mizan-band] { background: linear-gradient(115deg,#eaf0f7,#fff) !important; border-color: #cbd6de !important; }
+html[data-theme="D"] [data-panel-main] [data-mizan-group="true"] { background: #edf3f7 !important; }

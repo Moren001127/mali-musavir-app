@@ -1,0 +1,5 @@
+/* Yalnız bu modülün D teması; A temasını ve çıktı şablonlarını etkilemez. */
+html[data-theme="D"] [data-aylik-counter] { background: linear-gradient(115deg,color-mix(in srgb,var(--counter-tone) 14%,white),#fff) !important; border-color: color-mix(in srgb,var(--counter-tone) 30%,white) !important; color: var(--counter-tone) !important; }
+html[data-theme="D"] [data-aylik-counter][aria-pressed="true"] { outline: 2px solid var(--counter-tone); outline-offset: 1px; }
+html[data-theme="D"] [data-aylik-cetvel] tr[data-grup] { background: #eaf0f5 !important; }
+html[data-theme="D"] [data-aylik-cetvel] tr[data-grup] td { border-color: #cbd6de !important; }

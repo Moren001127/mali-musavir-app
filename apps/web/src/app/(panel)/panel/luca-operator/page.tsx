@@ -1,4 +1,6 @@
 
+
+import '@/app/(panel)/panel/ajanlar/_components/operations-white.css';
 import { portalStyle } from '@/lib/portal-theme';
 import { BotMessageSquare } from 'lucide-react';
 import { LucaOperatorChat } from './_components/LucaOperatorChat';
@@ -17,7 +19,7 @@ export const metadata = {
  */
 export default function LucaOperatorPage() {
   return (
-    <div className="flex h-full flex-col gap-3">
+    <div data-ops-page="luca-operator" className="flex h-full flex-col gap-3">
       {/* Üst renk şeridi */}
       <div
         className="h-1 w-full flex-shrink-0 rounded-full"
@@ -25,7 +27,7 @@ export default function LucaOperatorPage() {
       />
 
       {/* Başlık — tek satır, radial parıltı */}
-      <header
+      <header data-ops-header="true"
         className="relative flex-shrink-0 overflow-hidden rounded-2xl px-4 py-3"
         style={portalStyle({
           background: 'linear-gradient(135deg, rgba(24,20,12,0.92), rgba(8,7,5,0.92))',

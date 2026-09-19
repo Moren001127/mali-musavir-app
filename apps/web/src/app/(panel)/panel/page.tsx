@@ -383,10 +383,10 @@ function ToplubeyannamePanel() {
 
   return (
     <div>
-      <div data-dashboard-band="plum" className="px-5 py-4" style={portalStyle({ borderBottom: `1px solid ${BEYAN_TONE.border}` })}>
+      <div data-beyan-heading data-dashboard-band="plum" className="px-5 py-4" style={portalStyle({ borderBottom: `1px solid ${BEYAN_TONE.border}` })}>
         <div className="grid gap-3 xl:grid-cols-[minmax(300px,1fr)_auto] xl:items-center">
           <div className="flex min-w-0 items-center gap-2.5">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" style={portalStyle({ background: BEYAN_TONE.bg, border: `1px solid ${BEYAN_TONE.border}`, color: BEYAN_TONE.accentSoft })}>
+            <span data-beyan-heading-icon className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" style={portalStyle({ background: BEYAN_TONE.bg, border: `1px solid ${BEYAN_TONE.border}`, color: BEYAN_TONE.accentSoft })}>
               <FileCheck2 size={15} />
             </span>
             <div className="min-w-0">
@@ -402,6 +402,7 @@ function ToplubeyannamePanel() {
               ] as const).map(([value, label]) => (
                 <button
                   key={value}
+                  data-beyan-mode={donemTuru === value ? 'active' : 'inactive'}
                   type="button"
                   onClick={() => setDonemTuru(value)}
                   className="rounded-md px-2.5 py-1 text-[11.5px] font-semibold transition"
@@ -426,6 +427,7 @@ function ToplubeyannamePanel() {
               ))}
             </select>
             <button
+              data-beyan-query
               onClick={() => refetch()}
               className="inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-[12px] font-semibold transition-all"
               style={portalStyle({ background: 'rgba(140,200,255,0.09)', border: '1px solid rgba(140,200,255,0.22)', color: BEYAN_TONE.status })}
@@ -491,7 +493,7 @@ function BeyanCompactTable({
 }) {
   return (
     <div className={compact ? 'px-5 pb-4' : 'px-5 py-4'}>
-      <div className="mb-2.5 flex items-center justify-between gap-3">
+      <div data-beyan-section className="mb-2.5 flex items-center justify-between gap-3">
         <div className="text-[11px] font-bold uppercase tracking-[0.14em]" style={portalStyle({ color: BEYAN_TONE.accentSoft })}>
           {title}
         </div>
@@ -534,7 +536,7 @@ function YardimciBeyanGrid({
 }) {
   return (
     <div className="px-5 pb-4">
-      <div className="mb-2.5 flex items-center justify-between gap-3">
+      <div data-beyan-section className="mb-2.5 flex items-center justify-between gap-3">
         <div className="text-[11px] font-bold uppercase tracking-[0.14em]" style={portalStyle({ color: BEYAN_TONE.accentSoft })}>
           Bildirge ve E-Defter
         </div>
@@ -591,6 +593,7 @@ function YardimciBeyanCard({
             <div
               className="h-full rounded-full transition-all duration-500"
               style={portalStyle({ width: `${pct}%`, background: `linear-gradient(90deg, ${barColor}99, ${barColor})` })}
+              data-beyan-progress={row.hatali > 0 ? 'error' : done ? 'done' : 'pending'}
             />
           </div>
         </div>
@@ -677,6 +680,7 @@ function BeyanCompactRow({
             <div
               className="h-full rounded-full transition-all duration-500"
               style={portalStyle({ width: `${pct}%`, background: `linear-gradient(90deg, ${barColor}99, ${barColor})` })}
+              data-beyan-progress={row.hatali > 0 ? 'error' : done ? 'done' : 'pending'}
             />
           </div>
           <span

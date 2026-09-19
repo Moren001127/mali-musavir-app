@@ -1,0 +1,3 @@
+/* Yalnız bu modülün D teması; A temasını ve çıktı şablonlarını etkilemez. */
+/* Seçim, ortak pastel sayaç zemininin üzerinde de görünür kalır. */
+html[data-theme="D"] [data-cari-active="true"] { outline: 2px solid var(--kpi-tone); outline-offset: 2px; }

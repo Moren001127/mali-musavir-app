@@ -1,4 +1,5 @@
 'use client';
+import './beyaz-inceleme.css';
 import { portalStyle } from '@/lib/portal-theme';
 
 
@@ -142,9 +143,9 @@ export default function HatirlatmalarPage() {
   }, [evrakQuery.data, tahsilatQuery.data, tahsilatRows]);
 
   return (
-    <div className="space-y-5 max-w-7xl pb-12">
+    <div data-inceleme="hatirlatmalar" className="space-y-5 max-w-7xl pb-12">
       {/* === BASLIK (AI Maliyet imzasi — zumrut/teal temasi) === */}
-      <header
+      <header data-inceleme-baslik
         className="relative overflow-hidden rounded-2xl border p-5"
         style={portalStyle({
           borderColor: 'rgba(255,255,255,0.08)',
@@ -234,7 +235,7 @@ export default function HatirlatmalarPage() {
       )}
 
       <div className="grid grid-cols-1 xl:grid-cols-[0.85fr_1.15fr] gap-4">
-        <section className="rounded-2xl overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)' })}>
+        <section data-inceleme-yuzey className="rounded-2xl overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)' })}>
           <div className="px-5 py-4 flex items-start gap-3" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.06)' })}>
             <span className="w-10 h-10 rounded-xl inline-flex items-center justify-center" style={portalStyle({ background: 'linear-gradient(135deg, #d4b876, #b8863a)', boxShadow: '0 6px 16px rgba(212,184,118,0.30)' })}>
               <Settings size={17} style={portalStyle({ color: '#1a1410' })} />
@@ -254,7 +255,7 @@ export default function HatirlatmalarPage() {
           </div>
         </section>
 
-        <section className="rounded-2xl overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)' })}>
+        <section data-inceleme-yuzey className="rounded-2xl overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)' })}>
           <div className="px-5 py-4 flex items-start justify-between gap-3" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.06)' })}>
             <div className="flex items-start gap-3">
               <span className="w-10 h-10 rounded-xl inline-flex items-center justify-center" style={portalStyle({ background: 'linear-gradient(135deg, #10b981, #2dd4bf)', boxShadow: '0 6px 16px rgba(16,185,129,0.30)' })}>
@@ -348,6 +349,7 @@ function SummaryCard({ icon: Icon, label, value, sub, tone }: { icon: any; label
   const color = colors[tone];
   return (
     <div
+      data-inceleme-sayac={tone}
       className="relative overflow-hidden rounded-2xl border p-4"
       style={portalStyle({ borderColor: `${color}40`, background: `linear-gradient(135deg, ${color}26, ${color}0a 58%, rgba(255,255,255,0.02))` })}
     >
@@ -435,7 +437,7 @@ function ReminderPanel({
   controls?: React.ReactNode;
 }) {
   return (
-    <section className="relative rounded-2xl overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.025)', border: `1px solid ${accent}26` })}>
+    <section data-inceleme-yuzey className="relative rounded-2xl overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.025)', border: `1px solid ${accent}26` })}>
       <div className="absolute inset-x-0 top-0 h-[3px]" style={portalStyle({ background: `linear-gradient(90deg, ${accent}, ${accent}33)` })} />
       <div className="px-5 py-4 flex items-start justify-between gap-4" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.06)' })}>
         <div className="flex items-start gap-3">

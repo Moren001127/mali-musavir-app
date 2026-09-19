@@ -204,7 +204,7 @@ export function DetayPaneli({
   return createPortal(
     <>
       <div className="fixed inset-0 z-[940]" style={portalStyle({ background: 'rgba(0,0,0,0.45)' })} onClick={onKapat} aria-hidden="true" />
-      <aside
+      <aside data-inceleme="gorevler" data-inceleme-panel
         role="dialog"
         aria-modal="true"
         aria-label={yeni ? 'Yeni kayıt' : 'Kayıt detayı'}

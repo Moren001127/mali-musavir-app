@@ -59,7 +59,7 @@ export function KartBasligi({
 }) {
   const durumRenk = isTaxpayerActive ? GREEN : RED;
   return (
-    <header className="overflow-hidden" style={portalStyle(kartZemin())}>
+    <header data-review-heading className="overflow-hidden" style={portalStyle(kartZemin())}>
       <div className="flex flex-wrap items-center gap-3 px-4 py-3">
         <Link
           href="/panel/mukellef-listesi"

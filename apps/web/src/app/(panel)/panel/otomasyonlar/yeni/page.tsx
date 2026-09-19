@@ -1,4 +1,6 @@
 'use client';
+import '@/app/(panel)/panel/ajanlar/_components/operations-white.css';
+
 import { portalStyle } from '@/lib/portal-theme';
 
 
@@ -135,9 +137,9 @@ export default function YeniOtomasyonPage() {
   }, {});
 
   return (
-    <div className="mx-auto max-w-3xl space-y-5 px-4 pb-16" style={portalStyle({ color: TEXT })}>
+    <div data-ops-page="otomasyonlar" className="mx-auto max-w-3xl space-y-5 px-4 pb-16" style={portalStyle({ color: TEXT })}>
       {/* ── Başlık ── */}
-      <header
+      <header data-ops-header="true"
         className="relative overflow-hidden rounded-2xl border p-5"
         style={portalStyle({
           borderColor: LINE,

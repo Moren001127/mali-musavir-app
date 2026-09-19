@@ -1,0 +1,31 @@
+/* Yalnız sablonlar modülünün D teması; yerleşim ve A renkleri korunur. */
+html[data-theme="D"] [data-inceleme="sablonlar"] {
+  --inceleme-pastel: #eaf4f4;
+  --inceleme-vurgu: #386f73;
+  --portal-ink: #24313b;
+  --portal-secondary: #4b5c68;
+  --portal-muted: #5d6c77;
+  --portal-line: #cbd5de;
+  --portal-wash: #f8fafb;
+  --portal-shadow: rgba(35, 49, 59, .06);
+}
+html[data-theme="D"] [data-inceleme="sablonlar"] [data-inceleme-baslik] {
+  background: linear-gradient(115deg, var(--inceleme-pastel), #fff 78%) !important;
+  border-color: #cbd5de !important;
+  box-shadow: 0 3px 12px #24313b08 !important;
+}
+html[data-theme="D"] [data-inceleme="sablonlar"] [data-inceleme-baslik] > .absolute {
+  background: linear-gradient(90deg, var(--inceleme-vurgu), var(--inceleme-pastel)) !important;
+}
+html[data-theme="D"] [data-inceleme="sablonlar"] [data-inceleme-baslik] h1 { color: #293b48 !important; }
+html[data-theme="D"] [data-inceleme="sablonlar"] [data-inceleme-yuzey] {
+  background: #fff !important;
+  border-color: #c2ced8 !important;
+}
+html[data-theme="D"] [data-inceleme="sablonlar"] [data-inceleme-yuzey] > .border-b { border-color: #cbd5de !important; }
+html[data-theme="D"] [data-inceleme="sablonlar"] .divide-y > :not([hidden]) ~ :not([hidden]) { border-color: #d7e0e6 !important; }
+
+html[data-theme="D"] [data-inceleme="sablonlar"] [data-inceleme-sablon] { background: #fff !important; }
+html[data-theme="D"] [data-inceleme="sablonlar"] [data-inceleme-sablon]:hover { box-shadow: 0 5px 16px #2e596515 !important; }
+html[data-theme="D"] [data-inceleme="sablonlar"] [data-inceleme-yuzey] > .border-l { background: #f3f7f8 !important; border-color: #cbd9dd !important; }
+

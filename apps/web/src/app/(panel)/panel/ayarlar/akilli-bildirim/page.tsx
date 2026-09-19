@@ -1,4 +1,6 @@
 'use client';
+import '@/app/(panel)/panel/ajanlar/_components/operations-white.css';
+
 import { portalStyle } from '@/lib/portal-theme';
 
 
@@ -150,9 +152,9 @@ export default function AkilliBildirimPage() {
   const today = rapor?.today;
 
   return (
-    <div className="mx-auto max-w-6xl space-y-5 pb-12">
+    <div data-ops-page="ayarlar" className="mx-auto max-w-6xl space-y-5 pb-12">
       {/* Başlık */}
-      <header className="relative overflow-hidden rounded-2xl border p-6" style={portalStyle({ borderColor: CARD_BORDER, background: `radial-gradient(ellipse at top left, rgba(212,184,118,0.08), transparent 60%), ${CARD_BG}` })}>
+      <header data-ops-header="true" className="relative overflow-hidden rounded-2xl border p-6" style={portalStyle({ borderColor: CARD_BORDER, background: `radial-gradient(ellipse at top left, rgba(212,184,118,0.08), transparent 60%), ${CARD_BG}` })}>
         <Link href="/panel/ayarlar" className="mb-3 inline-flex items-center gap-1.5 text-[12px]" style={portalStyle({ color: MUTED })}>
           <ArrowLeft size={13} /> Ayarlar
         </Link>

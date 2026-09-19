@@ -1,0 +1,32 @@
+/* Yalnız mukellef-erisim modülünün D teması; yerleşim ve A renkleri korunur. */
+html[data-theme="D"] [data-inceleme="mukellef-erisim"] {
+  --inceleme-pastel: #eeedf8;
+  --inceleme-vurgu: #63538a;
+  --portal-ink: #24313b;
+  --portal-secondary: #4b5c68;
+  --portal-muted: #5d6c77;
+  --portal-line: #cbd5de;
+  --portal-wash: #f8fafb;
+  --portal-shadow: rgba(35, 49, 59, .06);
+}
+html[data-theme="D"] [data-inceleme="mukellef-erisim"] [data-inceleme-baslik] {
+  background: linear-gradient(115deg, var(--inceleme-pastel), #fff 78%) !important;
+  border-color: #cbd5de !important;
+  box-shadow: 0 3px 12px #24313b08 !important;
+}
+html[data-theme="D"] [data-inceleme="mukellef-erisim"] [data-inceleme-baslik] > .absolute {
+  background: linear-gradient(90deg, var(--inceleme-vurgu), var(--inceleme-pastel)) !important;
+}
+html[data-theme="D"] [data-inceleme="mukellef-erisim"] [data-inceleme-baslik] h1 { color: #293b48 !important; }
+html[data-theme="D"] [data-inceleme="mukellef-erisim"] [data-inceleme-yuzey] {
+  background: #fff !important;
+  border-color: #c2ced8 !important;
+}
+html[data-theme="D"] [data-inceleme="mukellef-erisim"] [data-inceleme-yuzey] > .border-b { border-color: #cbd5de !important; }
+html[data-theme="D"] [data-inceleme="mukellef-erisim"] .divide-y > :not([hidden]) ~ :not([hidden]) { border-color: #d7e0e6 !important; }
+
+html[data-theme="D"] [data-inceleme="mukellef-erisim"] [data-inceleme-yuzey] > button:hover { background: #f5f2fa; }
+html[data-theme="D"] [data-inceleme="mukellef-erisim"] [data-inceleme-acik="true"] { border-color: #b7a9cb !important; }
+html[data-theme="D"] [data-inceleme="mukellef-erisim"] [data-inceleme-acik="true"] > button { background: #f0ebf7; }
+html[data-theme="D"] [data-inceleme="mukellef-erisim"] [data-inceleme-yuzey] > .border-t { border-color: #d0c8dc !important; }
+

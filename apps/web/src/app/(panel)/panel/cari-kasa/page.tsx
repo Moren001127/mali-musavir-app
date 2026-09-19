@@ -1,4 +1,5 @@
 'use client';
+import './beyaz.css';
 import { portalStyle } from '@/lib/portal-theme';
 
 
@@ -299,9 +300,10 @@ function MetricCard({ label, value, text, valueColor, debt }: {
   debt?: boolean;
 }) {
   return (
-    <div
+    <div data-portal-kpi
       className="relative overflow-hidden rounded-xl px-3.5 py-2.5"
       style={portalStyle({
+        ...({ '--kpi-tone': portalStyle({ color: valueColor || (debt ? DEBT : '#305ea2') }).color } as React.CSSProperties),
         background: debt
           ? `linear-gradient(140deg, ${DEBT}12, rgba(255,255,255,0.012) 60%)`
           : CARD_BG,

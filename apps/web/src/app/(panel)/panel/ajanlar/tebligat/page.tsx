@@ -1,4 +1,6 @@
 'use client';
+import '@/app/(panel)/panel/ajanlar/_components/operations-white.css';
+
 import { portalStyle } from '@/lib/portal-theme';
 
 
@@ -7,9 +9,9 @@ import ETebligatModule from '@/components/portal-automation/ETebligatModule';
 
 export default function TebligatAutomationPage() {
   return (
-    <div className="space-y-4 max-w-7xl">
+    <div data-ops-page="ajanlar" className="space-y-4 max-w-7xl">
       {/* Header — Fiş Yazdırma imzası: kart + üst renk şeridi + radial parıltı + degrade ikon kutusu */}
-      <div
+      <div data-ops-header="true"
         className="relative overflow-hidden rounded-2xl border p-5"
         style={portalStyle({
           borderColor: 'rgba(255,255,255,0.06)',
