@@ -11,7 +11,7 @@ const PARTS = [
   { key: 'onaylanan', label: 'Onaylanan', color: '#299c78' },
   { key: 'bekleyen', label: 'Onay bekleyen', color: '#dfac49' },
   { key: 'hatali', label: 'Hatalı', color: '#d46b85' },
-  { key: 'kalan', label: 'Kalan', color: '#8495ab' },
+  { key: 'kalan', label: 'Kalan', color: '#bbc9dc' },
   { key: 'muaf', label: 'Muaf', color: '#c5ceda' },
 ] as const;
 
@@ -35,8 +35,9 @@ export function BeyanGrafigi({ rows, loading, error }: {
     .every(value => Number.isInteger(value) && value >= 0)
     && PARTS.reduce((sum, part) => sum + row[part.key], 0) === row.toplam);
   const max = Math.max(1, ...visible.map(row => row.toplam));
-  // İki aralık: küçük sayılarda kesirli adet etiketi oluşmaz.
-  const ceiling = Math.max(2, Math.ceil(max / 2) * 2);
+  // Tam sayılı, eşit dört aralık; veri üstünde etiket için boşluk kalır.
+  const step = max > 20 ? Math.ceil(max / 20) * 5 : Math.max(1, Math.ceil(max / 4));
+  const ceiling = step * 4;
   const unavailable = error || !valid;
   const selectedKey = hovered ?? focused;
   const selectedIndex = visible.findIndex(row => `${row.beyanTipi}-${row.vergiDonem}` === selectedKey);
@@ -61,7 +62,7 @@ export function BeyanGrafigi({ rows, loading, error }: {
         </div>
       ) : (
         <div className="ofis-beyan__plot">
-          <div className="ofis-beyan__scale" aria-hidden="true"><span>{ceiling}</span><span>{ceiling / 2}</span><span>0</span></div>
+          <div className="ofis-beyan__scale" aria-hidden="true">{[4,3,2,1,0].map((n,i)=><span key={n} style={{ top: `${9.677 + i * 20.1615}%` }}>{step*n}</span>)}</div>
           <div className="ofis-beyan__scroll" tabIndex={0} role="region" aria-label="Beyanname sütunları; diğer türler için yatay kaydırın">
             <div className="ofis-beyan__columns" style={{ '--beyan-columns': visible.length } as CSSProperties}>
               {visible.map((row, index) => {

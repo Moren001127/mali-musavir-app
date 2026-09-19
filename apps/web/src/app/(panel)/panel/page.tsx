@@ -1890,12 +1890,13 @@ export default function DashboardPage() {
       )}
 
       <div data-dashboard-intro className="flex flex-col gap-3 px-0 py-1 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <div className="mb-1.5 flex items-center gap-2.5"><span className="w-[26px] h-px" style={{ background: GOLD }} /><span className="text-[9.5px] uppercase font-bold tracking-[.18em]" style={portalStyle({ color: '#b8a06f' })}>Gösterge</span></div>
-          <h1 style={portalStyle({ fontFamily: 'Fraunces, serif', fontSize: 28, fontWeight: 650, color: '#fafaf9', letterSpacing: '-.02em' })}>Ofis Paneli</h1>
-          <p className="text-[12.5px] mt-1" style={portalStyle({ color: 'rgba(250,250,249,0.46)' })}>{new Date().toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })} · Mükellefler · Beyannameler · Ajanlar</p>
-        </div>
-        <div className="flex items-center gap-2">
+        <div className="dashboard-period-toolbar">
+          <h1 className="sr-only">Ofis Paneli</h1>
+          <select aria-label="Grafik dönem türü" value={panoramaDonemTuru} onChange={event => setPanoramaDonemTuru(event.target.value as DonemTuru)}>
+            <option value="VERILME">Verilme dönemi</option><option value="VERGI">Vergi dönemi</option>
+          </select>
+          <input aria-label="Grafik dönemi" type="month" value={panoramaDonem} onChange={event => { if (/^\d{4}-\d{2}$/.test(event.target.value)) setPanoramaDonem(event.target.value); }} />
+        </div>        <div className="flex items-center gap-2">
           <Link href="/panel/evraklar" data-dashboard-action className="inline-flex items-center gap-1.5 rounded-[10px] px-3.5 py-2 text-[12.5px] font-semibold transition-all" style={portalStyle({ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.75)' })}
             onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(184,160,111,0.08)'; e.currentTarget.style.borderColor = 'rgba(184,160,111,0.2)'; e.currentTarget.style.color = '#fafaf9'; }}
             onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = 'rgba(250,250,249,0.75)'; }}>

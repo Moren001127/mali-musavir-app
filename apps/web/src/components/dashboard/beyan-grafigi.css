@@ -60,3 +60,14 @@ html[data-theme='D'] .ofis-beyan__icon { background: #e8f5ef; color: #218368; }
 .ofis-beyan__columns { grid-template-rows: minmax(0, 1fr); }
 .ofis-beyan__column { min-height: 0; }
 .ofis-beyan__drawing svg { position: absolute; inset: 0; }
+
+/* Sütun genişliği kayıt sayısı azaldığında büyümez. */
+.ofis-beyan__drawing svg { width: min(100%, 76px); left: 50%; transform: translateX(-50%); }
+.ofis-beyan { padding: 18px 18px 12px; border-color: #e0e9f5; box-shadow: 0 5px 18px #264b8810; }
+.ofis-beyan__header h3 { font-size: 17px; }
+.ofis-beyan__header p { font-size: 11px; }
+.ofis-beyan__legend { margin: 14px 0 10px; gap: 6px 16px; }
+.ofis-beyan__legend i { width: 8px; height: 8px; border-radius: 50%; }
+.ofis-beyan__drawing { background: linear-gradient(#e9eef5,#e9eef5) 0 9.677%/100% 1px no-repeat,linear-gradient(#e9eef5,#e9eef5) 0 29.8385%/100% 1px no-repeat,linear-gradient(#e9eef5,#e9eef5) 0 50%/100% 1px no-repeat,linear-gradient(#e9eef5,#e9eef5) 0 70.1615%/100% 1px no-repeat,linear-gradient(#d9e2ee,#d9e2ee) 0 90.323%/100% 1px no-repeat; }
+.ofis-beyan__name { font-size: 11px; }
+.ofis-beyan__total { font-size: 12px; font-weight: 700; }

@@ -1,38 +1,40 @@
-.fatura-grafik-karti{min-height:145px;min-width:0;padding:14px 16px;border:1px solid var(--border,#dce4e7);border-radius:14px;background:var(--bg-card,#fff);color:var(--text,#243b45);font-family:inherit}
-.fatura-grafik-karti header,.fatura-grafik-karti .fgk-caption,.fatura-grafik-karti footer{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
-.fatura-grafik-karti h3{margin:0;font-size:14px;font-weight:600;font-family:inherit}
-.fatura-grafik-karti header span{font-size:11px}
-.fatura-grafik-karti header strong{font-size:20px;font-variant-numeric:tabular-nums}
-.fatura-grafik-karti .fgk-caption{margin-top:8px;font-size:11px}
-.fatura-grafik-karti .fgk-legend{display:inline-flex;gap:5px;align-items:center}
-.fatura-grafik-karti .fgk-legend i{width:7px;height:7px;border-radius:50%}
-.fatura-grafik-karti .fgk-blue{background:#4285df}.fatura-grafik-karti .fgk-purple{background:#9063ce}
-.fatura-grafik-karti .fgk-chart{display:block;width:100%;height:100px;overflow:visible}
-.fatura-grafik-karti .fgk-chart text{fill:currentColor;font-size:9px;opacity:.7}
-.fatura-grafik-karti .fgk-grid{fill:none;stroke:currentColor;stroke-opacity:.12}
-.fatura-grafik-karti .fgk-axis{font-size:10px;opacity:.7;text-align:right}
-.fatura-grafik-karti footer{border-top:1px solid var(--border,#dce4e7);margin-top:8px;padding-top:9px;font-size:11px}
-.fatura-grafik-karti footer b{margin-left:5px;font-variant-numeric:tabular-nums}
-.fatura-grafik-karti .fgk-state{min-height:100px;display:flex;align-items:center;justify-content:center;gap:10px;font-size:12px}
-.fatura-grafik-karti .fgk-notice{font-size:11px}
+.fatura-grafik-karti{--fg-text:#102447;--fg-muted:#63738d;display:flex;flex-direction:column;box-sizing:border-box;min-width:0;min-height:190px;padding:12px 15px;border:1px solid #e0e9f5;border-radius:16px;background:linear-gradient(135deg,#fff,#fcfdff);color:var(--fg-text);box-shadow:0 5px 18px #264b8810;overflow:hidden}
+.fatura-grafik-karti header{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.fgk-heading{display:flex;align-items:center;gap:9px;flex:1;min-width:0}
+.fgk-icon{display:grid;place-items:center;width:36px;height:36px;flex-shrink:0;background:#e4efff;color:#2764dc;border-radius:10px}
+.fgk-heading small{display:block;color:var(--fg-muted);font-size:8px;letter-spacing:.08em;line-height:1.3}
+.fatura-grafik-karti h3{margin:1px 0 0;font-family:inherit;font-size:17px;font-weight:750;line-height:1.2;color:var(--fg-text)}
+.fgk-total{white-space:nowrap;font-size:11px;color:var(--fg-muted)}
+.fgk-total strong{font-size:29px;line-height:1;font-weight:750;letter-spacing:-.04em;color:var(--fg-text);font-variant-numeric:tabular-nums}
+.fgk-link{display:grid;place-items:center;width:30px;height:30px;flex-shrink:0;border:1px solid #d5e2f6;background:#f7faff;border-radius:50%;color:#183c77;box-shadow:0 2px 6px #284a7810}
+.fgk-link:focus-visible{outline:2px solid #2563eb;outline-offset:2px}
+.fatura-grafik-karti .fgk-caption{display:flex;align-items:center;justify-content:space-between;gap:6px;margin:8px 0 3px;color:var(--fg-muted);font-size:9px}
+.fgk-legend{display:inline-flex;gap:5px;align-items:center;flex-shrink:0}
+.fgk-legend i{width:7px;height:7px;border-radius:50%}
+.fgk-blue{background:#2584ff}.fgk-purple{background:#a04dff}
+.fatura-grafik-karti .fgk-chart{display:block;width:100%;height:0;min-height:28px;flex:1;overflow:visible}
+.fgk-chart text{fill:var(--fg-muted);font-size:10px}
+.fgk-grid{fill:none;stroke:#dae4f1;stroke-dasharray:3 4;stroke-width:1}
+.fgk-axis{font-size:8px;line-height:11px;color:var(--fg-muted);text-align:right}
+.fatura-grafik-karti footer{display:flex;gap:8px;flex-shrink:0;border-top:1px solid #e6edf7;margin-top:6px;padding-top:8px}
+.fatura-grafik-karti footer>span{display:flex;align-items:center;flex:1;gap:7px;min-width:0}
+.fatura-grafik-karti footer>span+span{border-left:1px solid #e6edf7;padding-left:8px}
+.fatura-grafik-karti footer i{display:grid;place-items:center;width:28px;height:30px;flex-shrink:0;border-radius:8px;background:#e4f7ef;color:#078454}
+.fatura-grafik-karti footer>span:nth-child(2) i{background:#fff2dc;color:#bb790b}
+.fatura-grafik-karti footer>span:nth-child(3) i{background:#ffe8ec;color:#d34663}
+.fatura-grafik-karti footer b{display:block;font-size:17px;line-height:1.05;font-weight:750;color:var(--fg-text);font-variant-numeric:tabular-nums}
+.fatura-grafik-karti footer small{display:block;margin-top:3px;font-size:9px;color:var(--fg-muted)}
+.fgk-state{min-height:28px;flex:1;display:flex;align-items:center;justify-content:center;gap:8px;color:var(--fg-muted);font-size:11px;text-align:center}
+.fgk-notice{font-size:11px;margin:3px 0;color:var(--fg-muted)}
 .fatura-grafik-karti button{color:inherit;background:transparent;border:1px solid currentColor;border-radius:6px;padding:4px 8px;cursor:pointer}
-html[data-theme="D"] .fatura-grafik-karti{background:#fff;color:#243b45;border-color:#dce4e7}
-html[data-theme="D"] .fatura-grafik-karti footer{border-color:#e5ebee}
-.fatura-grafik-karti{display:flex;flex-direction:column;padding:9px 12px;min-height:145px;box-sizing:border-box;overflow:hidden}
-.fatura-grafik-karti header{flex-wrap:nowrap;gap:6px;flex-shrink:0}
-.fatura-grafik-karti h3{display:flex;align-items:center;gap:7px;flex:1;font-weight:700;color:#172d4d}
-.fatura-grafik-karti h3 svg{color:#3378d3}
-.fgk-link{display:grid;place-items:center;width:25px;height:25px;border:1px solid #d8e3f0;border-radius:50%;color:#345678}
-.fatura-grafik-karti .fgk-caption{font-size:9px;gap:3px;margin-top:4px;flex-wrap:nowrap}
-.fatura-grafik-karti .fgk-legend{flex-shrink:0}
-.fatura-grafik-karti .fgk-chart{height:0;min-height:35px;flex:1}
-.fatura-grafik-karti .fgk-axis{font-size:8px;line-height:11px}
-.fatura-grafik-karti footer{flex-wrap:nowrap;font-size:10px;gap:5px;margin-top:4px;padding-top:5px;flex-shrink:0}
-.fatura-grafik-karti footer span{flex:1;display:flex;align-items:center;justify-content:space-between;gap:3px}
-.fatura-grafik-karti footer span+span{border-left:1px solid #e2e8ef;padding-left:6px}
-.fatura-grafik-karti footer b{font-size:13px;margin:0;color:#178461}
-.fatura-grafik-karti footer span:nth-child(2) b{color:#ac721b}
-.fatura-grafik-karti footer span:nth-child(3) b{color:#c64e71}
-.fatura-grafik-karti .fgk-state{min-height:35px;flex:1;font-size:11px}
-html:not([data-theme='D']) .fatura-grafik-karti h3{color:#e7edf8}
+html:not([data-theme='D']) .fatura-grafik-karti{--fg-text:#e7edf8;--fg-muted:#abbad1;background:#172230;border-color:#354456}
 @media(max-width:1099px){.fatura-grafik-karti .fgk-chart{min-height:100px}}
+/* Dar yükseklikte de çizgi grafiğine ayrılan alan korunur. */
+.fatura-grafik-karti{padding:9px 12px}
+.fatura-grafik-karti header{min-height:32px}
+.fgk-icon{width:32px;height:32px}
+.fatura-grafik-karti .fgk-caption{margin:5px 0 2px;font-size:9px;line-height:12px}
+.fatura-grafik-karti footer{margin-top:4px;padding-top:5px}
+.fatura-grafik-karti footer i{width:26px;height:28px}
+.fatura-grafik-karti footer b{font-size:16px}
+.fatura-grafik-karti footer small{margin-top:2px;font-size:9px;line-height:11px}

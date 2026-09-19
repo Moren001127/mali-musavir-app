@@ -3,7 +3,7 @@ import { useId } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import Link from 'next/link';
-import { ArrowRight, FileText } from 'lucide-react';
+import { ArrowRight, FileText, Clock3, TriangleAlert, Files } from 'lucide-react';
 import './fatura-grafik-karti.css';
 type Row = { taxpayerId: string; pendingAlis: number; pendingSatis: number; postedToLuca: number; hasIssue: number };
 const n = (v: number) => Number.isFinite(v) && v >= 0 ? v : 0;
@@ -11,6 +11,7 @@ const fmt = (v: number) => v.toLocaleString('tr-TR');
 export function FaturaGrafikKarti({ period }: { period: string }) {
   const id = useId().replace(/:/g, '');
   const valid = /^\d{4}-(0[1-9]|1[0-2])$/.test(period);
+  const periodLabel = valid ? new Date(`${period}-01T12:00:00`).toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' }) : 'Dönem belirlenemedi';
   const q = useQuery<Row[]>({ queryKey: ['fm2', 'per-taxpayer', period], enabled: valid, queryFn: async () => {
     const { data } = await api.get('/fatura-muhasebelestirme/per-taxpayer-summary', { params: { period } });
     if (!Array.isArray(data)) throw new Error('Belge dağılımı alınamadı');
@@ -30,8 +31,8 @@ export function FaturaGrafikKarti({ period }: { period: string }) {
   const ready = valid && !q.isPending && !q.isError;
   const message = !valid ? 'Geçerli bir ay seçin.' : q.isPending ? 'Belgeler yükleniyor…' : q.isError ? 'Belge dağılımı alınamadı.' : !rows.length ? 'Bu dönemde mükellefe bağlı belge yok.' : '';
   return <section className="fatura-grafik-karti" aria-label="Fatura belge özeti">
-    <header><h3><FileText size={17} /> Fatura</h3><span title="Seçili dönemdeki tüm belgeler; mükellefsiz ve banka belgeleri dahil."><strong>{valid && summary.data && !summary.isError ? fmt(summary.data.total) : '—'}</strong> belge</span><Link href="/fatura-merkezi" aria-label="Fatura merkezini aç" className="fgk-link"><ArrowRight size={15} /></Link></header>
-    <div className="fgk-caption"><span>Mükellef bazında bekleyen belge</span><span className="fgk-legend"><i className="fgk-blue"/>Alış <i className="fgk-purple"/>Satış</span></div>
+    <header><div className="fgk-heading"><span className="fgk-icon"><FileText size={22} /></span><div><small>BELGE HAREKETLERİ</small><h3>Fatura</h3></div></div><span className="fgk-total" title="Seçili dönemdeki tüm belgeler; mükellefsiz ve banka belgeleri dahil."><strong>{valid && summary.data && !summary.isError ? fmt(summary.data.total) : '—'}</strong> belge</span><Link href="/fatura-merkezi" aria-label="Fatura merkezini aç" className="fgk-link"><ArrowRight size={18} /></Link></header>
+    <div className="fgk-caption"><span title="Seçilen verilme döneminin ilgili vergi ayındaki faturalar.">{periodLabel} · Fatura dönemi</span><span className="fgk-legend"><i className="fgk-blue"/>Alış <i className="fgk-purple"/>Satış</span></div>
     {summary.isError && <p role="status" className="fgk-notice">Toplam belge sayısı alınamadı.</p>}
     {message ? <div className="fgk-state" role="status">{message}{q.isError && <button type="button" onClick={()=>{void q.refetch();void summary.refetch();}}>Yeniden dene</button>}</div> : <>
       <svg className="fgk-chart" viewBox="0 0 600 108" preserveAspectRatio="none" role="img" aria-labelledby={`${id}-title`}>
@@ -47,9 +48,9 @@ export function FaturaGrafikKarti({ period }: { period: string }) {
       </svg><div className="fgk-axis">Mükellef sırası · {rows.length} kayıt · çoktan aza</div>
     </>}
     <footer aria-label="Mükellefe bağlı belgeler; sayaçlar çakışabilir">
-      <span title="Mükellefe bağlı Luca POSTED belgeleri; banka dahil.">Aktarıldı <b>{ready?fmt(totals.posted):'—'}</b></span>
-      <span title="Bekleyen alış ve satış; banka hariç.">Bekleyen <b>{ready?fmt(totals.pending):'—'}</b></span>
-      <span title="Doğrulaması INVALID veya INCOMPLETE olan belgeler; diğer sayaçlarla çakışabilir.">Sorunlu <b>{ready?fmt(totals.issue):'—'}</b></span>
+      <span title="Mükellefe bağlı Luca POSTED belgeleri; banka dahil."><i><Files size={17}/></i><span><b>{ready?fmt(totals.posted):'—'}</b><small>Aktarıldı</small></span></span>
+      <span title="Bekleyen alış ve satış; banka hariç."><i><Clock3 size={17}/></i><span><b>{ready?fmt(totals.pending):'—'}</b><small>Bekleyen</small></span></span>
+      <span title="Doğrulaması INVALID veya INCOMPLETE olan belgeler; diğer sayaçlarla çakışabilir."><i><TriangleAlert size={17}/></i><span><b>{ready?fmt(totals.issue):'—'}</b><small>Sorunlu</small></span></span>
     </footer>
   </section>;
 }
