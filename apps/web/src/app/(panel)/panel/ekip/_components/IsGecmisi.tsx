@@ -143,7 +143,7 @@ export function IsGecmisi({ akis, isLoading, error, sayaclar, suzgec, onSuzgec, 
                 type="button"
                 onClick={() => onSec(v)}
                 aria-current={secili}
-                title="İşi sağdaki panelde aç"
+                title="İşi aç"
                 className="flex w-full min-w-0 items-center gap-2.5 rounded-lg px-2 py-2.5 text-left transition hover:bg-white/[0.02] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
                 style={{
                   borderTop: i ? `1px solid ${ROW_SEP}` : undefined,

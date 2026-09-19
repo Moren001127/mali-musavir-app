@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import {
   ajanCalistirStream,
   getAkis,
@@ -104,13 +105,15 @@ export const SORGU = {
  * useKosular — ajan başına koşu haritası + SSE yönetimi (v2'de tek anahtar: 'koordinator').
  * - aktifKosu: herhangi bir bitmemiş koşu → tek aktif koşu kilidi (tek Max hesabı + Luca tek oturum).
  * - durdur: ÖNCE sunucuda iptal (POST /ekip/isler/:id/iptal → Agent SDK abort, iş failed), SONRA SSE'yi kapatır;
- *   ekranda "Durduruldu". isId henüz gelmediyse yalnız SSE kapanır → sunucu koşuyu ARTIK durdurmaz, arka planda sürer.
+ *   ekranda "Durduruldu". İş kimliği yoksa veya iptal reddedilirse izleme sürer.
  * - Akış (ekip-akis) koşu başlarken ve biterken tazelenir → koşu bitince satır adım kaydına dönüşür.
  */
 export function useKosular() {
   const qc = useQueryClient();
   const [kosular, setKosular] = useState<Map<string, Kosu>>(() => new Map());
   const abortlar = useRef<Map<string, AbortController>>(new Map());
+  const [bekleyenCevap, setBekleyenCevap] = useState<{ metin: string; vakaId: string; taxpayerId?: string; dryRun: boolean } | null>(null);
+  const gonderilenCevap = useRef<typeof bekleyenCevap>(null);
   /** durdur() render dışından güncel isId'yi okusun (state kapanışa takılmasın). */
   const kosularRef = useRef(kosular);
   kosularRef.current = kosular;
@@ -263,11 +266,16 @@ export function useKosular() {
       const ac = abortlar.current.get(ajanId);
       if (!ac) return;
       const isId = kosularRef.current.get(ajanId)?.isId;
-      guncelle(ajanId, (k) => ({ ...k, hata: DURDURULDU_METNI }));
-      if (isId) {
-        const r = await iptalEt(isId).catch(() => ({ ok: false as const, isId }));
-        if (!r.ok) console.warn('[ekip] sunucu iptali başarısız', isId, (r as any).error);
+      if (!isId) {
+        toast.info('İş başlatılıyor. Durdurmak için birkaç saniye sonra tekrar deneyin.');
+        return;
       }
+      const r = await iptalEt(isId).catch(() => ({ ok: false as const, isId }));
+      if (!r.ok) {
+        toast.error('İş durdurulamadı. İlerleme izlenmeye devam ediyor.');
+        return;
+      }
+      guncelle(ajanId, (k) => ({ ...k, hata: DURDURULDU_METNI }));
       try {
         ac.abort();
       } catch {
@@ -278,8 +286,32 @@ export function useKosular() {
   );
 
   const aktifKosu = useMemo(() => Array.from(kosular.values()).find((k) => !k.bitti) || null, [kosular]);
+  // Cevap seçili panelden bağımsızdır; listeye veya başka sekmeye geçince kaybolmaz.
+  useEffect(() => {
+    if (aktifKosu || !bekleyenCevap) return;
+    let kapandi = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const dene = async () => {
+      try {
+        const akis = await getAkis({ gun: 30, filtre: 'tumu', limit: 100, taxpayerId: bekleyenCevap.taxpayerId });
+        if (kapandi || gonderilenCevap.current === bekleyenCevap) return;
+        const hedef = akis.vakalar.find((v) => v.vakaId === bekleyenCevap.vakaId);
+        if (!hedef || hedef.adimlar.some((a) => a.tip === 'is' && (a.durum === 'running' || a.durum === 'pending')) || Array.from(kosularRef.current.values()).some((k) => !k.bitti)) {
+          timer = setTimeout(dene, 5000);
+          return;
+        }
+        gonderilenCevap.current = bekleyenCevap;
+        setBekleyenCevap(null);
+        void baslat('koordinator', { gorev: `Cevap: ${bekleyenCevap.metin}`, vakaId: bekleyenCevap.vakaId, taxpayerId: bekleyenCevap.taxpayerId, dryRun: bekleyenCevap.dryRun });
+      } catch {
+        if (!kapandi) timer = setTimeout(dene, 5000);
+      }
+    };
+    void dene();
+    return () => { kapandi = true; clearTimeout(timer); };
+  }, [aktifKosu, bekleyenCevap, baslat]);
 
-  return { kosular, baslat, durdur, ayarla, guncelle, kaldir, aktifKosu };
+  return { kosular, baslat, durdur, ayarla, guncelle, kaldir, aktifKosu, bekleyenCevap, setBekleyenCevap };
 }
 
 export type KosularApi = ReturnType<typeof useKosular>;

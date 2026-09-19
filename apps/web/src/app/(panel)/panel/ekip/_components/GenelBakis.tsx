@@ -253,7 +253,7 @@ function SuAnBolumu({
                 <GradyanAvatar kisaltma={ajanKisaltma(is.ajanId)} renk={MAVI} boyut={28} nabiz title={ajanTamAd(is.ajanId, ajanAd(is.ajanId))} />
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-[12.5px] font-semibold" style={{ color: TEXT }} title={`${is.mukellef} — ${is.konu}`}>
-                    {is.mukellef} — {is.konu}
+                    {konuKisalt(is.mukellef, 32)} — {is.konu}
                   </div>
                   <div className="truncate text-[11px]" style={{ color: MUTED }}>
                     {ajanKisaAd(is.ajanId, ajanAd(is.ajanId))} · <span className="tabular-nums" style={{ color: MAVI }}>{sayacMetni(Math.max(0, simdi - is.basladi))}</span> · {is.kuru ? 'kuru test' : <span style={{ color: KIRMIZI }}>canlı</span>}
@@ -265,7 +265,7 @@ function SuAnBolumu({
                 <Ilerleme yuzde={(is.asama.no / 4) * 100} />
                 <span className="tabular-nums">{is.asama.no}/4</span>
               </div>
-              <div className="mt-1.5 text-[12px] leading-relaxed" style={{ color: TEXT }}>
+              <div className="mt-1.5 truncate text-[12px] leading-relaxed" style={{ color: TEXT }} title={is.suAn}>
                 <b className="font-semibold" style={{ color: MAVI }}>
                   Şu an:
                 </b>{' '}
@@ -361,10 +361,10 @@ function BugunBolumu({
   panoYukleniyor?: boolean;
   panoHata?: unknown;
 }) {
-  const bitenler = useMemo(() => (vakalar || []).filter((v) => v.kutu === 'bitti' && bugunMu(v.guncellendi)).sort((a, b) => new Date(b.guncellendi).getTime() - new Date(a.guncellendi).getTime()).slice(0, 5), [vakalar]);
+  const bitenler = useMemo(() => (vakalar || []).filter((v) => v.kutu === 'bitti' && bugunMu(v.guncellendi)).sort((a, b) => new Date(b.guncellendi).getTime() - new Date(a.guncellendi).getTime()).slice(0, 3), [vakalar]);
   return (
     <>
-      <Bolum baslik="Bugün biten" sag={<AltinBaglanti onClick={onTumu}>Tümü →</AltinBaglanti>}>
+      <Bolum ilk baslik="Son işler" sag={<AltinBaglanti onClick={onTumu}>Tümü →</AltinBaglanti>}>
         {!bitenler.length ? (
           <div className="text-[12.5px]" style={{ color: MUTED }}>
             {yukleniyor ? 'İş akışı yükleniyor…' : hata ? 'Biten iş bilgisi alınamadı.' : 'Bugün henüz biten iş yok.'}
@@ -378,7 +378,7 @@ function BugunBolumu({
               const r = bitisRozeti(v);
               const sonIs = isAdimlari[isAdimlari.length - 1];
               const sure = sonIs?.baslangic && sonIs?.bitis ? sureKisa(new Date(sonIs.bitis).getTime() - new Date(sonIs.baslangic).getTime()) : '';
-              const ozet = sonIs?.raporOzet ? konuKisalt(sonIs.raporOzet, 70) : v.durum === 'hata' ? sonIs?.hata || 'yarım kaldı' : '';
+              const ozet = v.durum === 'hata' || sonIs?.hata ? 'İş tamamlanamadı. Ayrıntılar için açın.' : sonIs?.raporOzet ? konuKisalt(sonIs.raporOzet, 70) : '';
               return (
                 <button
                   key={v.vakaId}
@@ -390,8 +390,8 @@ function BugunBolumu({
                 >
                   <GradyanAvatar kisaltma={ajanKisaltma(ajanId)} renk={ajanRengi(ajanId)} boyut={28} title={ajanTamAd(ajanId, ajanAd(ajanId))} />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[12.5px] font-semibold" style={{ color: TEXT }}>
-                      {v.mukellef?.ad || (v.konu ? v.konu : 'Ofis geneli')}
+                    <span className="block truncate text-[12.5px] font-semibold" style={{ color: TEXT }} title={v.mukellef?.ad ? `${v.mukellef.ad} — ${v.konu}` : v.konu || 'Ofis geneli'}>
+                      {v.mukellef?.ad ? konuKisalt(v.mukellef.ad, 32) : v.konu || 'Ofis geneli'}
                       {v.mukellef?.ad ? ` — ${v.konu}` : ''}
                     </span>
                     <span className="block truncate text-[11px]" style={{ color: MUTED }}>
@@ -408,29 +408,29 @@ function BugunBolumu({
         )}
       </Bolum>
 
-      <Bolum baslik="Koordinatör öneriyor" sag={<AltinBaglanti onClick={onPano}>Dönem panosu →</AltinBaglanti>}>
+      <Bolum baslik="Öneriler" sag={<AltinBaglanti onClick={onPano}>Dönem panosu →</AltinBaglanti>}>
         {!oneriler.length ? (
           <div className="text-[12.5px]" style={{ color: MUTED }}>
             {panoYukleniyor ? 'Öneriler yükleniyor…' : panoHata ? 'Öneriler alınamadı.' : 'Panoya göre sırada bekleyen adım yok.'}
           </div>
         ) : (
           <div className="-mt-1 flex flex-col">
-            {oneriler.map((o, i) => {
+            {oneriler.slice(0, 2).map((o, i) => {
               const sablon = SABLONLAR.find((s) => s.id === o.sablonId);
               return (
                 <div key={o.taxpayerId} className="flex items-center gap-3 py-[9px]" style={i ? { borderTop: `1px solid ${SADE_AYRAC}` } : undefined}>
-                  <GradyanAvatar kisaltma={basHarfler(o.unvan)} renk={MAVI} boyut={28} title={o.unvan} />
+                  <span className="shrink-0 text-[10px] font-semibold" style={{ color: GOLD }} aria-hidden="true">{basHarfler(o.unvan)}</span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[12.5px] font-semibold" style={{ color: TEXT }}>
-                      {o.unvan} — {o.metin.toLocaleLowerCase('tr-TR')}
+                    <span className="block truncate text-[12.5px] font-semibold" style={{ color: TEXT }} title={o.unvan}>
+                      {konuKisalt(o.unvan, 32)}
                     </span>
-                    <span className="block truncate text-[11px]" style={{ color: MUTED }}>
-                      {o.neden}
+                    <span className="block truncate text-[11px]" style={{ color: MUTED }} title={`${o.metin} · ${o.neden}`}>
+                      {o.metin}
                     </span>
                   </span>
                   {sablon && (
                     <MetinDugme
-                      title={`Görev kutusunu ${o.unvan} ile doldurur (çalıştırmaz) → ${ajanTamAd(o.ajanId, ajanAd(o.ajanId))}`}
+                      title={`${o.unvan} için görev taslağı hazırla`}
                       onClick={() => onTaslak({ ajanId: o.ajanId, gorev: sablonDoldur(sablon.gorev, o.unvan, o.donem), taxpayerId: o.taxpayerId, dryRun: true, kaynak: 'oneri' })}
                     >
                       {oneriDugmeAdi(o)}
@@ -439,9 +439,6 @@ function BugunBolumu({
                 </div>
               );
             })}
-            <div className="pt-2 text-[10.5px]" style={{ color: SOLUK }}>
-              Düğme görev kutusunu o mükellefle doldurur; siz Çalıştır’a basarsınız (kuru test).
-            </div>
           </div>
         )}
       </Bolum>
@@ -452,8 +449,7 @@ function BugunBolumu({
 /* ─────────────────────────── Akış kartı ─────────────────────────── */
 
 /**
- * Genel bakış sağ sütunu — TEK kart, üç bölüm: Şu an · Bugün biten · Koordinatör öneriyor.
- * Şu an ve Bugün mantığı bölümlerde aynen duruyor; yalnız görünüm tek karta toplandı.
+ * Çalışan işler önceliklidir; çalışma sırasında son işler ve öneriler isteğe bağlı açılır.
  */
 export function AkisKutu({
   kosu,
@@ -490,11 +486,23 @@ export function AkisKutu({
   panoYukleniyor?: boolean;
   panoHata?: unknown;
 }) {
+  const calisanVar = !!(kosu && !kosu.bitti) || !!vakalar?.some((v) => v.kutu === 'suruyor');
+  const digerIsler = <BugunBolumu vakalar={vakalar} oneriler={oneriler} ajanAd={ajanAd} onSec={onSec} onTumu={onTumu} onTaslak={onTaslak} onPano={onPano} yukleniyor={yukleniyor} hata={hata} panoYukleniyor={panoYukleniyor} panoHata={panoHata} />;
+
   return (
     <SadeKart dolguYok className={`py-1 ${className}`}>
-      {!!hata && <p role="alert" className="px-6 py-3 text-[12px]" style={{ color: KIRMIZI }}>İş akışı yenilenemedi. {hata instanceof Error ? hata.message : 'Lütfen yeniden deneyin.'}</p>}
-      {yukleniyor ? <Bolum ilk baslik="Şu an"><p role="status" className="text-[12.5px]" style={{ color: MUTED }}>İş akışı yükleniyor…</p></Bolum> : <SuAnBolumu kosu={kosu} vakalar={vakalar} ajanAd={ajanAd} mukellefAd={mukellefAd} onIzle={onIzle} onDurdur={onDurdur} />}
-      <BugunBolumu vakalar={vakalar} oneriler={oneriler} ajanAd={ajanAd} onSec={onSec} onTumu={onTumu} onTaslak={onTaslak} onPano={onPano} yukleniyor={yukleniyor} hata={hata} panoYukleniyor={panoYukleniyor} panoHata={panoHata} />
+      {!!hata && <p role="alert" className="px-6 py-3 text-[12px]" style={{ color: KIRMIZI }}>İş akışı yenilenemedi. Lütfen yeniden deneyin.</p>}
+      {calisanVar ? (
+        <>
+          <SuAnBolumu kosu={kosu} vakalar={vakalar} ajanAd={ajanAd} mukellefAd={mukellefAd} onIzle={onIzle} onDurdur={onDurdur} />
+          <details style={{ borderTop: `1px solid ${SADE_AYRAC}` }}>
+            <summary className="cursor-pointer px-6 py-3 text-[12px] font-medium" style={{ color: GOLD }}>Son işler ve öneriler</summary>
+            {digerIsler}
+          </details>
+        </>
+      ) : yukleniyor ? (
+        <Bolum ilk baslik="İş akışı"><p role="status" className="text-[12.5px]" style={{ color: MUTED }}>İş akışı yükleniyor…</p></Bolum>
+      ) : digerIsler}
     </SadeKart>
   );
 }

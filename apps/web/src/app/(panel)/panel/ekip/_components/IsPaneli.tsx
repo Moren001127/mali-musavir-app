@@ -9,21 +9,22 @@ import type { KomutTaslak } from './GorevKarti';
 import { DURDURULDU_METNI, type Adim, type Kosu, type KosularApi } from './kosular';
 import { OnayTeyit } from './OnayBekleyenler';
 import { AcikKalemKarti, YerelOnay } from './Kararlar';
-import { Avatar, Bos, CARD_BORDER, Dugme, GOLD, Ilerleme, KIRMIZI, MAVI, MOR, MUTED, OK, ROW_SEP, Rozet, TEXT, TURUNCU } from './Tema';
+import { Avatar, Bos, CARD_BORDER, Dugme, GOLD, KIRMIZI, MAVI, MOR, MUTED, OK, ROW_SEP, Rozet, TEXT, TURUNCU } from './Tema';
 import { adimAciklamasi, ajanKisaAd, ajanKisaltma, ajanTamAd, aracAdi, cevapAyristir, gorevSadelestir, kaynakEtiketi, konuKisalt, raporBolumleri, saatKisa, sayacMetni, sureKisa, yokMu, type RaporBolumu } from './ortak';
 
 /** Adım metinlerinde panelin mükellefi tekrar yazılmasın diye adimAciklamasi'ne geçen bağlam. */
 type AdimSecenek = { mukellefId?: string | null; mukellefAd?: string | null };
 
 /** Ortak temaya dokunmadan İşler panelinin sade dış yüzeyi. */
-function IsKarti({ baslik, aciklama, sag, children }: { baslik: ReactNode; aciklama: ReactNode; sag: ReactNode; children: ReactNode }) {
+function IsKarti({ baslik, mukellef, aciklama, sag, children }: { baslik: ReactNode; mukellef?: string; aciklama: ReactNode; sag: ReactNode; children: ReactNode }) {
   return (
     <section aria-label="İş ayrıntıları" className="relative min-w-0 rounded-[18px] px-4 pb-5 pt-[18px] sm:px-6"
       style={{ background: 'rgba(255,255,255,0.018)', border: '1px solid rgba(255,255,255,0.065)', boxShadow: '0 18px 44px rgba(0,0,0,0.24)' }}>
       <span aria-hidden="true" className="pointer-events-none absolute inset-x-6 top-0 h-px" style={{ background: `linear-gradient(90deg, transparent, ${GOLD}73, transparent)` }} />
       <header className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1 basis-[240px]">
-          <h3 className="break-words text-[14px] font-semibold" style={{ color: TEXT }}>{baslik}</h3>
+          {mukellef && <div className="mb-1.5 truncate text-[12px]" title={mukellef} style={{ color: MUTED }}>{mukellef}</div>}
+          <h3 className="break-words text-[22px] font-semibold leading-snug sm:text-[26px]" style={{ color: TEXT }}>{baslik}</h3>
           <div className="mt-1 text-[11.5px] leading-relaxed" style={{ color: MUTED }}>{aciklama}</div>
         </div>
         {sag}
@@ -43,39 +44,22 @@ function RaporBolum({ baslik, renk = MUTED, className = '', children }: { baslik
   );
 }
 
-/* ─────────────────────────── aşamalar ─────────────────────────── */
-
-type Asama = { ad: string; durum: 'bitti' | 'aktif' | 'bekliyor' | 'hata' };
-
-/** Aşama listesi: Görev alındı → Bilgi toplandı → (Personelde) → Sonuç. */
-function asamalar(p: { basladi: boolean; aracVar: boolean; personelVar: boolean; personelBitti: boolean; bitti: boolean; hata: boolean }): Asama[] {
-  const liste: Asama[] = [];
-  liste.push({ ad: 'Görev alındı', durum: p.basladi ? 'bitti' : 'aktif' });
-  liste.push({ ad: 'Bilgi toplandı', durum: p.bitti || p.personelVar ? 'bitti' : p.aracVar ? 'aktif' : p.basladi ? 'aktif' : 'bekliyor' });
-  if (p.personelVar) liste.push({ ad: 'Personelde', durum: p.personelBitti ? 'bitti' : 'aktif' });
-  liste.push({ ad: 'Sonuç', durum: p.hata ? 'hata' : p.bitti && (!p.personelVar || p.personelBitti) ? 'bitti' : 'bekliyor' });
-  return liste;
+/** Sağlayıcı yanıtları ana görünümde sade Türkçe, özgün metin ayrıntılarda kalır. */
+function saglayiciOzeti(metin: string): string | null {
+  if (/quota|rate.?limit|usage.?limit|insufficient.credit|credit.balance|billing|too many requests|resource.exhausted|429|hit your (?:weekly |monthly |daily )?limit|(?:weekly|monthly|daily)[\s_-]+(?:usage[\s_-]+)?limit|limit reached/i.test(metin))
+    return 'Yapay zekâ hizmetinin kullanım sınırına ulaşıldı. Kullanım hakkı açıldığında yeniden deneyin.';
+  if (/overloaded|service.unavailable|529|503/i.test(metin))
+    return 'Yapay zekâ hizmeti şu anda yanıt veremiyor. Daha sonra yeniden deneyin.';
+  if (/unauthorized|authentication|invalid.api.key|401/i.test(metin))
+    return 'Yapay zekâ hizmetine erişilemiyor. Bağlantı bilgilerinin kontrol edilmesi gerekiyor.';
+  return null;
 }
 
-/** Aşama çizgisi: ✓ biten (yeşil) · ● süren (mavi) · ○ bekleyen · ✕ hata. */
-function AsamaCizgisi({ liste, zamanlar }: { liste: Asama[]; zamanlar: Array<string | undefined> }) {
-  return (
-    <div className="flex flex-wrap items-center gap-y-1 text-[11.5px]">
-      {liste.map((a, i) => {
-        const renk = a.durum === 'bitti' ? OK : a.durum === 'aktif' ? MAVI : a.durum === 'hata' ? KIRMIZI : MUTED;
-        return (
-          <span key={a.ad} className="inline-flex items-center">
-            {i > 0 && <span className="mx-2 h-px w-5" style={{ background: ROW_SEP }} />}
-            <span className="inline-flex items-center gap-1.5" style={{ color: a.durum === 'bekliyor' ? MUTED : renk, fontWeight: a.durum === 'aktif' ? 600 : 500 }} title={zamanlar[i] ? `${a.ad} · ${zamanlar[i]}` : a.ad}>
-              {a.durum === 'bitti' ? <Check size={11} /> : a.durum === 'hata' ? <X size={11} /> : <span className={`inline-block h-[7px] w-[7px] rounded-full ${a.durum === 'aktif' ? 'animate-pulse' : ''}`} style={{ background: a.durum === 'aktif' ? MAVI : 'transparent', border: `1px solid ${a.durum === 'aktif' ? MAVI : MUTED}` }} />}
-              {a.ad}
-            </span>
-          </span>
-        );
-      })}
-    </div>
-  );
+function hataOzeti(metin: string): string {
+  return saglayiciOzeti(metin) || 'İş tamamlanamadı. Hata kaydı ayrıntılarda; kontrol ettikten sonra yeniden deneyebilirsiniz.';
 }
+
+type BekleyenCevap = { metin: string; vakaId: string; taxpayerId?: string; dryRun: boolean };
 
 /* ─────────────────────────── zaman çizgisi ─────────────────────────── */
 
@@ -411,12 +395,11 @@ export function RaporGorunumu({ rapor, kompakt = false }: { rapor: string; kompa
 /* ─────────────────────────── cevap kutusu ─────────────────────────── */
 
 /** Cevap / talimat kutusu: koşu sürüyorsa kuyruğa alınır, bitince Koordinatör'e gider. */
-function CevapKutusu({ calisiyor, bekleyen, onGonder, onIptal }: { calisiyor: boolean; bekleyen: string | null; onGonder: (metin: string) => void; onIptal: () => void }) {
+function CevapKutusu({ calisiyor, bekleyen, onGonder, onIptal }: { calisiyor: boolean; bekleyen: string | null; onGonder: (metin: string) => boolean; onIptal: () => void }) {
   const [metin, setMetin] = useState('');
   const gonder = () => {
     if (!metin.trim()) return;
-    onGonder(metin.trim());
-    setMetin('');
+    if (onGonder(metin.trim())) setMetin('');
   };
   return (
     <div className="flex flex-col gap-2">
@@ -433,6 +416,7 @@ function CevapKutusu({ calisiyor, bekleyen, onGonder, onIptal }: { calisiyor: bo
       )}
       <div className="flex items-center gap-2">
         <input
+          aria-label="İş için not veya talimat"
           value={metin}
           onChange={(e) => setMetin(e.target.value)}
           onKeyDown={(e) => {
@@ -456,9 +440,8 @@ function CevapKutusu({ calisiyor, bekleyen, onGonder, onIptal }: { calisiyor: bo
 /* ─────────────────────────── ana panel ─────────────────────────── */
 
 /**
- * İş paneli — komut verilen (ya da listeden seçilen) işin tek kartta görünümü (Bütçe Kutu dili):
- *  başlık (mükellef — konu · durum satırı · Durdur/Tekrar/Kapat) → aşama çizgisi (+ilerleme, "Şu an") → Kararınız →
- *  Sonuç (yaptığı iş / bulgular / kaynaklar / kuru test) → Adımlar (zaman çizgisi; bitince katlı) → not/talimat kutusu.
+ * İş paneli: görev, gerçek durum, gereken karar ve sonuç ön planda.
+ * Teknik kayıtlar başlangıçta kapalı; alt iş sorguları kapalıyken de güncellenir.
  * Kaynak: yerel koşu (SSE, Koordinatör) ve/veya sunucu vakası (personel adımları, açık kalemler, geçmiş işler).
  */
 export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, onKapat }: { kosu?: Kosu; vaka?: Vaka; kosular: KosularApi; ajanAd: (id: string) => string; mukellefAd: (id?: string | null) => string | undefined; onTaslak: (t: Omit<KomutTaslak, 'nonce'>) => void; onKapat?: () => void }) {
@@ -468,7 +451,7 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
   const [durduruluyor, setDurduruluyor] = useState(false);
   const [gonderTeyit, setGonderTeyit] = useState(false);
   const [gonderMesgul, setGonderMesgul] = useState(false);
-  const [adimlarAcik, setAdimlarAcik] = useState<boolean | null>(null);
+  const [acikAyrintiId, setAcikAyrintiId] = useState<string | null>(null);
 
   const yerelCalisiyor = !!kosu && !kosu.bitti;
   const isAdimlari = (vaka?.adimlar || []).filter((a): a is VakaAdimIs => a.tip === 'is');
@@ -502,22 +485,24 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
         })
       : (kokIs?.result?.toolUses || []).map((t, i) => ({ tip: 'arac' as const, ad: t.name, args: t.args, zaman: kokIs?.startedAt ? new Date(kokIs.startedAt).getTime() + i : Date.now(), durum: 'bitti' as const }));
   const koordinatorRaporu = (kosu?.bitti && !yerelCevapBos ? kosu.cevap : '') || kokIs?.result?.rapor || kokAdim?.raporOzet || '';
-  const hata = kosu?.hata || kokIs?.hata || (kokAdim?.durum === 'failed' ? kokAdim.hata || 'Hata' : '');
 
   const [personelRaporlari, setPersonelRaporlari] = useState<Record<string, IsDosyasi>>({});
   const personelRaporAl = useCallback((isId: string, is: IsDosyasi) => setPersonelRaporlari((p) => (p[isId] === is ? p : { ...p, [isId]: is })), []);
   const sonBitenPersonel = [...personelAdimlari].reverse().find((a) => a.durum === 'done' || a.durum === 'failed');
   const sonucIsi: IsDosyasi | undefined = sonBitenPersonel ? personelRaporlari[sonBitenPersonel.isId] : undefined;
   const sonucRaporu = sonBitenPersonel ? sonucIsi?.result?.rapor || sonBitenPersonel.raporOzet || '' : koordinatorRaporu;
-  const raporMetni = sonucRaporu;
+  const hataliPersonel = personelAdimlari.find((a) => a.durum === 'failed' || personelRaporlari[a.isId]?.status === 'failed' || personelRaporlari[a.isId]?.hata);
+  const hata = kosu?.hata || kokIs?.hata
+    || (kokAdim?.durum === 'failed' ? kokAdim.hata || 'İş tamamlanamadı.' : '')
+    || (hataliPersonel ? hataliPersonel.hata || personelRaporlari[hataliPersonel.isId]?.hata || 'Alt iş tamamlanamadı.' : '')
+    || (vaka?.durum === 'hata' ? 'İş tamamlanamadı.' : '')
+    || (saglayiciOzeti(sonucRaporu) ? sonucRaporu : '');
+  const raporMetni = saglayiciOzeti(sonucRaporu) ? '' : sonucRaporu;
   const ayrisik = useMemo(() => (raporMetni ? cevapAyristir(raporMetni) : null), [raporMetni]);
   const ogrenilen = sonBitenPersonel ? sonucIsi?.result?.ogrenilen || [] : kosu?.bitti && !yerelCevapBos ? ayrisik?.ogrenilen || [] : kokIs?.result?.ogrenilen || [];
   const sorular = ayrisik?.sorular || [];
   const kuruListesi = sonBitenPersonel ? sonucIsi?.result?.kuruTestYapilacaktilar || [] : kokIs?.result?.kuruTestYapilacaktilar || [];
   const bitti = kosu ? kosu.bitti : !sunucuCalisiyor && !!kokAdim && kokAdim.durum !== 'running';
-  const personelVar = personelAdimlari.length > 0 || yerelAdimlar.some((a) => a.tip === 'arac' && a.ad === 'ekip_ajan_baslat');
-  const personelBitti = personelAdimlari.length > 0 && personelAdimlari.every((a) => a.durum === 'done' || a.durum === 'failed');
-
   const basladi = kosu?.basladi ?? (kokAdim?.baslangic ? new Date(kokAdim.baslangic).getTime() : vaka ? new Date(vaka.olusturuldu).getTime() : Date.now());
   const toplamSureMs = kosu?.durationMs ?? kokIs?.durationMs ?? (kokAdim?.baslangic && kokAdim?.bitis ? new Date(kokAdim.bitis).getTime() - new Date(kokAdim.baslangic).getTime() : null);
   const sonBitis = isAdimlari.map((a) => (a.bitis ? new Date(a.bitis).getTime() : 0)).reduce((m, t) => Math.max(m, t), 0);
@@ -532,7 +517,7 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
   const kaynak = kosu?.kaynak === 'sabahOzeti' ? { ad: 'sabah özeti', ikon: '' } : kaynakEtiketi(kokIs?.kaynak || null);
   const sabahOzetiMi = kosu?.kaynak === 'sabahOzeti';
   const durduruldu = hata === DURDURULDU_METNI;
-  const durumAd = hata ? (durduruldu ? 'Durduruldu' : 'Yarım kaldı') : calisiyor ? 'Sürüyor' : bitti ? 'Tamamlandı' : 'Bekliyor';
+  const durumAd = hata ? (durduruldu ? 'Durduruldu' : calisiyor ? 'Sorun var · çalışma sürüyor' : 'Yarım kaldı') : calisiyor ? 'Sürüyor' : bitti ? 'Tamamlandı' : 'Bekliyor';
 
   const tazele = () => {
     qc.invalidateQueries({ queryKey: ['ekip-akis'] });
@@ -552,7 +537,7 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
         if (kosan) {
           const r = await iptalEt(kosan.isId);
           if (r.ok) toast.success('Durduruldu', { description: 'İş "iptal edildi (Muzaffer Bey)" olarak kapandı.' });
-          else toast.error('Durdurulamadı', { description: r.error });
+          else toast.error('Durdurulamadı', { description: r.error ? hataOzeti(r.error) : 'İptal işlemi doğrulanamadı.' });
         }
       }
     } finally {
@@ -561,26 +546,33 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
     }
   };
 
-  const [bekleyenCevap, setBekleyenCevap] = useState<string | null>(null);
-  const cevapGonderSimdi = useCallback(
-    (metin: string) => {
-      const kuruMod = kosu ? kosu.dryRun : vaka ? vaka.kuru : true;
-      void kosular.baslat('koordinator', { gorev: `Cevap: ${metin}`, taxpayerId: vaka?.mukellef?.id || kosu?.taxpayerId || undefined, dryRun: kuruMod, vakaId: vaka?.vakaId || kosu?.vakaId || kosu?.isId });
-    },
-    [kosu, vaka, kosular],
-  );
+  const { bekleyenCevap, setBekleyenCevap } = kosular;
+  const cevapGonderSimdi = useCallback((cevap: BekleyenCevap) => {
+    void kosular.baslat('koordinator', { gorev: `Cevap: ${cevap.metin}`, taxpayerId: cevap.taxpayerId, dryRun: cevap.dryRun, vakaId: cevap.vakaId });
+  }, [kosular]);
   const cevapla = (metin: string) => {
-    if (kosular.aktifKosu) setBekleyenCevap(metin);
-    else cevapGonderSimdi(metin);
+    if (!kokIsId) {
+      toast.error('İş kaydı henüz oluşmadı. Kısa süre sonra tekrar gönderin.');
+      return false;
+    }
+    if (calisiyor && !kosular.aktifKosu) {
+      toast.error('İş sunucuda hâlâ çalışıyor. Cevabınız korunuyor; iş bitince gönderin.');
+      return false;
+    }
+    if (bekleyenCevap) {
+      toast.error('Sırada bir cevap var. Yeni cevap için önce onu gönderin veya iptal edin.');
+      return false;
+    }
+    const cevap: BekleyenCevap = { metin, vakaId: kokIsId, taxpayerId: vaka?.mukellef?.id || kosu?.taxpayerId || undefined, dryRun: kuru };
+    if (kosular.aktifKosu) setBekleyenCevap(cevap);
+    else cevapGonderSimdi(cevap);
+    return true;
   };
   const aktifKosuVar = !!kosular.aktifKosu;
   useEffect(() => {
-    if (!aktifKosuVar && bekleyenCevap) {
-      const m = bekleyenCevap;
-      setBekleyenCevap(null);
-      cevapGonderSimdi(m);
-    }
-  }, [aktifKosuVar, bekleyenCevap, cevapGonderSimdi]);
+    setCevapMetni('');
+    setGonderTeyit(false);
+  }, [kokIsId]);
   const tekrar = () => onTaslak({ gorev: kokIs?.gorev || kosu?.gorev || vaka?.konu || '', taxpayerId: vaka?.mukellef?.id || kosu?.taxpayerId, dryRun: true, kaynak: 'tekrar', vakaId: vaka?.vakaId || kosu?.vakaId });
 
   /** Sabah özeti → Muzaffer Bey'e GERÇEK WhatsApp (yeniden üretir ve gönderir). */
@@ -592,11 +584,13 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
     try {
       const r = await sabahOzetiUret({ gonder: true });
       kosular.ayarla('koordinator', { ajanId: 'koordinator', gorev: 'Sabah özeti (yeniden üretildi ve gönderildi)', dryRun: false, isId: r.isId, vakaId: r.isId, model: r.model, cevap: r.rapor || '', adimlar: (r.toolUses || []).map((t) => ({ tip: 'arac' as const, ad: t.name, args: t.args, zaman: Date.now(), durum: 'bitti' as const })), bitti: true, hata: r.hata, durationMs: r.durationMs ?? Date.now() - b, basladi: b, kaynak: 'sabahOzeti', gonderildi: r.gonderildi });
-      toast.success(`Sabah özeti ${r.gonderildi} numaraya gönderildi`);
+      if (r.hata) toast.error(hataOzeti(r.hata));
+      else if (r.gonderildi) toast.success(`Sabah özeti ${r.gonderildi} numaraya gönderildi`);
+      else toast.error('Sabah özeti hazırlandı ancak gönderim doğrulanamadı.');
     } catch (e: any) {
       const h = isZamanAsimi(e) ? 'Sürüyor — iş kayıtlarında görünecek' : e?.message || 'Gönderilemedi';
       kosular.guncelle('koordinator', (k) => ({ ...k, bitti: true, hata: h, durationMs: Date.now() - b }));
-      toast.error(h);
+      toast.error(isZamanAsimi(e) ? h : hataOzeti(h));
     } finally {
       setGonderMesgul(false);
       setGonderTeyit(false);
@@ -604,9 +598,6 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
     }
   };
 
-  const asamaListesi = asamalar({ basladi: !!kosu?.isId || !!kokAdim || (!!kosu && kosu.adimlar.length > 0), aracVar: yerelAdimlar.length > 0, personelVar, personelBitti, bitti, hata: !!hata });
-  const tamamlanan = asamaListesi.filter((a) => a.durum === 'bitti').length;
-  const yuzde = hata ? Math.round((tamamlanan / asamaListesi.length) * 100) : bitti && (!personelVar || personelBitti) ? 100 : Math.round(((tamamlanan + (calisiyor ? 0.5 : 0)) / asamaListesi.length) * 100);
   const calisanAdim = yerelAdimlar.find((a) => a.tip === 'arac' && a.durum === 'calisiyor');
   const calisanPersonel = personelAdimlari.find((a) => a.durum === 'running');
   // Personelin canlı adımı (PersonelAdimi'nin 8 sn'lik sorgusundan onRapor ile gelir): "Beyanname: Luca çekimi başlatıldı · 01:12"
@@ -617,51 +608,38 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
       ? `Koordinatör: ${adimAciklamasi(calisanAdim.ad, calisanAdim.args, mukellefAd, ajanAd, secenek).baslik}${calisanAdim.zaman ? ` · ${sayacMetni(simdi - calisanAdim.zaman)}` : ''}`
       : calisanPersonel
         ? sonCanliAdim
-          ? `${ajanKisaAd(calisanPersonel.ajanId, ajanAd(calisanPersonel.ajanId))}: ${adimAciklamasi(sonCanliAdim.ad, sonCanliAdim.args, mukellefAd, ajanAd, secenek).baslik}${sonCanliAdim.durum === 'suruyor' ? ` · ${sayacMetni(simdi - new Date(sonCanliAdim.basladi).getTime())}` : ' ✓ — sıradaki adıma geçiyor'}`
+          ? `${ajanKisaAd(calisanPersonel.ajanId, ajanAd(calisanPersonel.ajanId))}: ${adimAciklamasi(sonCanliAdim.ad, sonCanliAdim.args, mukellefAd, ajanAd, secenek).baslik}${sonCanliAdim.durum === 'suruyor' ? ` · ${sayacMetni(simdi - new Date(sonCanliAdim.basladi).getTime())}` : sonCanliAdim.durum === 'hata' ? ' · son adım tamamlanamadı' : ' · son kayıt'}`
           : `${ajanTamAd(calisanPersonel.ajanId, ajanAd(calisanPersonel.ajanId))} çalışıyor — ${gorevSadelestir(calisanPersonel.baslik, mukellef, 80)}`
         : kosu && !kosu.isId
           ? 'Koordinatör göreve başlıyor'
           : 'Koordinatör düşünüyor'
     : '';
-  const aracSayisi = yerelAdimlar.filter((a) => a.tip === 'arac').length;
-  const adimSayisi = aracSayisi + personelAdimlari.length;
-  const personelAdlari = Array.from(new Set(isAdimlari.map((a) => a.ajanId))).map((id) => ajanKisaAd(id, ajanAd(id)));
-  const asamaZamani = (i: number): string | undefined => {
-    if (i === 0) return saatKisa(basladi).slice(0, 5);
-    if (asamaListesi[i].ad === 'Personelde') return personelAdimlari[0]?.baslangic ? saatKisa(personelAdimlari[0].baslangic).slice(0, 5) : undefined;
-    if (asamaListesi[i].ad === 'Sonuç') return asamaListesi[i].durum === 'bitti' || asamaListesi[i].durum === 'hata' ? (sonBitis ? saatKisa(sonBitis).slice(0, 5) : toplamSureMs ? saatKisa(basladi + (toplamSureMs || 0)).slice(0, 5) : undefined) : undefined;
-    if (asamaListesi[i].ad === 'Bilgi toplandı') return yerelAdimlar[0]?.zaman ? saatKisa(yerelAdimlar[0].zaman).slice(0, 5) : undefined;
-    return undefined;
-  };
-
   const bildirimAdimlari = (vaka?.adimlar || []).filter((a): a is Exclude<VakaAdim, VakaAdimIs> => a.tip !== 'is' && !(a.tip === 'bildirim' && a.tur === 'bilgi' && /^İŞ ATAMASI/i.test(a.baslik)));
   const acikKalemler = vaka?.acikKalemler || [];
   const yerelOnaylar = kosu?.adimlar.filter((a) => a.tip === 'onay' && a.previewId && !a.sonuc) || [];
   // Kararlar kendi bölümünde; Sonuç bölümü yalnız rapor/kuru liste/öğrenilen ya da biten sabah özeti varsa
   const sonucVar = !!raporMetni || kuruListesi.length > 0 || ogrenilen.length > 0 || (sabahOzetiMi && !!kosu?.bitti) || (bitti && !hata && !sabahOzetiMi);
-  const kararBekliyor = acikKalemler.length > 0 || yerelOnaylar.length > 0;
-  const baslikMetni = sabahOzetiMi ? (calisiyor ? 'Sabah özeti üretiliyor' : 'Sabah özeti') : mukellef ? `${mukellef} — ${konu}` : konu || 'İş';
+  const kararBekliyor = acikKalemler.length > 0 || yerelOnaylar.length > 0 || sorular.length > 0;
+  const baslikMetni = sabahOzetiMi ? (calisiyor ? 'Sabah özeti üretiliyor' : 'Sabah özeti') : gorevSadelestir(vaka?.konu || kosu?.gorev || konu, mukellef, 72) || 'İş';
   const adimToplam = yerelAdimlar.length + personelAdimlari.length + bildirimAdimlari.length;
-  const adimlarGoster = adimlarAcik ?? calisiyor;
+  const ayrintiId = kokIsId || String(kosu?.basladi || 'is');
+  const adimlarGoster = acikAyrintiId === ayrintiId;
   const durumRenk = hata ? KIRMIZI : kararBekliyor ? GOLD : calisiyor ? MAVI : bitti ? OK : MUTED;
 
   const durumSatiri = (
     <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
       <b className="font-semibold" style={{ color: durumRenk }}>
-        {kararBekliyor && !calisiyor ? 'Kararınız bekleniyor' : durumAd}
+        {hata ? durumAd : kararBekliyor ? 'Cevabınız / onayınız bekleniyor' : durumAd}
       </b>
-      {calisiyor ? <span>· {calisanPersonel ? `${ajanKisaAd(calisanPersonel.ajanId, ajanAd(calisanPersonel.ajanId))} çalışıyor` : 'Koordinatör çalışıyor'}</span> : personelAdlari.length ? <span>· {personelAdlari.join(', ')}</span> : null}
       {sureMetni && <span className="tabular-nums">· {sureMetni}</span>}
-      <span>· {kuru ? 'kuru test' : <span style={{ color: KIRMIZI }}>canlı</span>}</span>
-      {kaynak.ad !== 'portal' && !sabahOzetiMi && <span>· {kaynak.ad}</span>}
-      <span className="tabular-nums">· {saatKisa(basladi).slice(0, 5)}</span>
-      {kosu?.model || kokIs?.model ? <span>· {String(kosu?.model || kokIs?.model).replace(/^claude-/, '')}</span> : null}
+      <span>· {kuru ? 'Deneme · işlem uygulanmaz' : 'Gerçek işlem'}</span>
     </span>
   );
 
   return (
     <IsKarti
-      baslik={<span className="text-[14px]" title={baslikMetni}>{baslikMetni}</span>}
+      baslik={<span title={vaka?.konu || kosu?.gorev || baslikMetni}>{baslikMetni}</span>}
+      mukellef={mukellef}
       aciklama={durumSatiri}
       sag={
         <span className="flex flex-shrink-0 flex-wrap items-center justify-end gap-1.5">
@@ -684,30 +662,17 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
       }
     >
       <div className="flex flex-col gap-4">
-        {/* Aşama çizgisi + ilerleme */}
-        <div className="flex flex-col gap-2.5">
-          <AsamaCizgisi liste={asamaListesi} zamanlar={asamaListesi.map((_, i) => asamaZamani(i))} />
-          {calisiyor && (
-            <>
-              <div className="flex items-center gap-2 text-[11px]" style={{ color: MUTED }}>
-                <span className="w-24 flex-shrink-0">{asamaListesi.find((a) => a.durum === 'aktif')?.ad || 'Sürüyor'}</span>
-                <Ilerleme yuzde={yuzde} />
-                <span className="tabular-nums">{tamamlanan}/{asamaListesi.length}</span>
-              </div>
-              <div className="rounded-lg px-3 py-2 text-[12px]" style={{ background: `${MAVI}0f`, border: `1px solid ${MAVI}2e`, color: TEXT }}>
-                <b className="font-semibold" style={{ color: MAVI }}>
-                  Şu an:
-                </b>{' '}
-                {suAnMetni}
-              </div>
-            </>
-          )}
-        </div>
+        {calisiyor && (
+          <div role="status" className="flex items-center gap-3 rounded-xl px-4 py-3 text-[14px]" style={{ background: `${GOLD}09`, border: `1px solid ${GOLD}25`, color: TEXT }}>
+            <Loader2 size={16} className="flex-shrink-0 animate-spin" style={{ color: GOLD }} />
+            <span>{saglayiciOzeti(suAnMetni) || suAnMetni}</span>
+          </div>
+        )}
 
         {hata && (
           <div className="flex items-start gap-2 rounded-xl px-3.5 py-2.5 text-[12.5px]" style={{ background: `${KIRMIZI}12`, border: `1px solid ${KIRMIZI}59`, color: TEXT }}>
             <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" style={{ color: KIRMIZI }} />
-            <span>{durduruldu ? 'Durduruldu — koşu sunucuda iptal edildi.' : hata}</span>
+            <span>{durduruldu ? 'İş durduruldu.' : hataOzeti(hata)}</span>
           </div>
         )}
 
@@ -715,7 +680,7 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
         {(acikKalemler.length > 0 || yerelOnaylar.length > 0 || sorular.length > 0) && (
           <section className="pt-3" style={{ borderTop: `1px solid ${ROW_SEP}` }}>
             <h4 className="mb-1 text-[10.5px] font-semibold uppercase tracking-[0.08em]" style={{ color: GOLD }}>
-              Kararınız · {acikKalemler.length + yerelOnaylar.length + (sorular.length ? 1 : 0)}
+              Sizden beklenen · {acikKalemler.length + yerelOnaylar.length + (sorular.length ? 1 : 0)}
             </h4>
             {acikKalemler.map((k) => (
               <AcikKalemKarti key={`${k.tip}-${k.id}`} kalem={k} onBitti={tazele} onCevapla={cevapla} calisiyor={calisiyor || aktifKosuVar} />
@@ -733,20 +698,20 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
                 ))}
                 <div className="mt-2.5 flex items-center gap-2">
                   <input
+                    aria-label="İş için cevabınız"
                     value={cevapMetni}
                     onChange={(e) => setCevapMetni(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && cevapMetni.trim()) {
                         e.preventDefault();
-                        cevapla(cevapMetni.trim());
-                        setCevapMetni('');
+                        if (cevapla(cevapMetni.trim())) setCevapMetni('');
                       }
                     }}
                     placeholder="Cevabınızı yazın…"
                     className="h-9 min-w-0 flex-1 rounded-[10px] px-3 text-[12.5px] outline-none"
                     style={{ background: 'rgba(255,255,255,0.03)', border: `1px solid ${CARD_BORDER}`, color: TEXT }}
                   />
-                  <Dugme tur="birincil" disabled={!cevapMetni.trim()} onClick={() => { cevapla(cevapMetni.trim()); setCevapMetni(''); }}>
+                  <Dugme tur="birincil" disabled={!cevapMetni.trim()} onClick={() => { if (cevapla(cevapMetni.trim())) setCevapMetni(''); }}>
                     <MessageSquareReply size={13} /> Cevapla
                   </Dugme>
                 </div>
@@ -769,7 +734,7 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
             {calisiyor && !raporMetni && kosu?.cevap && (
               <RaporBolum>
                 <div className="max-h-[260px] overflow-y-auto whitespace-pre-wrap text-[12.8px] leading-relaxed" style={{ color: MUTED }}>
-                  {kosu.cevap}
+                  {saglayiciOzeti(kosu.cevap) || kosu.cevap}
                 </div>
               </RaporBolum>
             )}
@@ -790,6 +755,8 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
             )}
             {!raporMetni && !calisiyor && !hata && <Bos metin="Rapor yok." />}
             {kuruListesi.length > 0 && (
+              <details className="mt-3">
+                <summary className="cursor-pointer text-[12px]" style={{ color: MUTED }}>Deneme ayrıntıları · {kuruListesi.length} işlem</summary>
               <RaporBolum baslik={<span className="inline-flex items-center gap-1.5"><FlaskConical size={11} /> Kuru test — yapılacaktı ({kuruListesi.length})</span>} renk={TURUNCU} className="mt-3">
                 <ul className="flex flex-col gap-1 text-[12.5px]" style={{ color: TEXT }}>
                   {kuruListesi.map((t, i) => {
@@ -806,6 +773,7 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
                   })}
                 </ul>
               </RaporBolum>
+              </details>
             )}
             {ogrenilen.length > 0 && (
               <div className="mt-3 flex flex-wrap items-center gap-1.5">
@@ -815,7 +783,7 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
                 ))}
               </div>
             )}
-            {sabahOzetiMi && kosu?.bitti && !kosu.hata && (
+            {sabahOzetiMi && kosu?.bitti && !hata && (
               <div className="mt-3 flex flex-col gap-2">
                 <div>
                   <Dugme tur="birincil" renk={OK} disabled={gonderMesgul || gonderTeyit || !!kosular.aktifKosu} onClick={() => setGonderTeyit(true)}>
@@ -827,7 +795,7 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
             )}
             {!acikKalemler.length && !yerelOnaylar.length && !sorular.length && bitti && !calisiyor && !hata && !sabahOzetiMi && (
               <div className="mt-3 flex items-center gap-2 text-[12px]" style={{ color: MUTED }}>
-                <Check size={12} style={{ color: OK }} /> Sizden bir şey beklemiyor. İsterseniz <b style={{ color: TEXT }}>Tekrar</b> ile aynı görevi yeniden verirsiniz ya da aşağıdan talimat yazarsınız.
+                <Check size={12} style={{ color: OK }} /> İş tamamlandı. Sizden beklenen başka bir işlem yok.
               </div>
             )}
           </section>
@@ -835,15 +803,20 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
 
         {/* Adımlar */}
         <section className="pt-3" style={{ borderTop: `1px solid ${ROW_SEP}` }}>
-          <button type="button" aria-expanded={adimlarGoster} onClick={() => setAdimlarAcik(!adimlarGoster)} className="mb-1 flex w-full items-center justify-between text-left">
+          <button type="button" aria-expanded={adimlarGoster} onClick={() => setAcikAyrintiId(adimlarGoster ? null : ayrintiId)} className="mb-1 flex w-full items-center justify-between text-left">
             <h4 className="text-[10.5px] font-semibold uppercase tracking-[0.08em]" style={{ color: MUTED }}>
-              Adımlar · {adimToplam}
+              Ayrıntılar · {adimToplam} kayıt
             </h4>
             <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTED }}>
               {adimlarGoster ? 'gizle' : 'göster'} <ChevronDown size={11} className="transition-transform" style={{ transform: adimlarGoster ? 'rotate(180deg)' : 'none' }} />
             </span>
           </button>
-          {adimlarGoster && (
+          <div hidden={!adimlarGoster}>
+            <div className="py-3 text-[12px]" style={{ color: MUTED }}>
+              Başlangıç: {saatKisa(basladi)} · Kaynak: {kaynak.ad}
+              {(kosu?.model || kokIs?.model) && <span> · Model: {kosu?.model || kokIs?.model}</span>}
+            </div>
+            {hata && <pre className="mb-3 whitespace-pre-wrap break-words text-[12px]" style={{ color: KIRMIZI }}>{hata}</pre>}
             <ol className="flex max-h-[520px] min-w-0 flex-col overflow-y-auto [scrollbar-width:thin]" style={{ borderTop: `1px solid ${ROW_SEP}` }}>
               {!yerelAdimlar.length && !personelAdimlari.length && !bildirimAdimlari.length && (
                 <li className="py-3 text-[12px]" style={{ color: MUTED }}>
@@ -854,7 +827,7 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
                 <YerelAdim key={`${a.zaman}-${i}`} adim={a} mukellefAd={mukellefAd} ajanAd={ajanAd} ajanId={kosu?.ajanId || kokAdim?.ajanId || 'koordinator'} secenek={secenek} simdi={simdi} />
               ))}
               {personelAdimlari.map((a) => (
-                <PersonelAdimi key={a.isId} adim={a} ajanAd={ajanAd} mukellefAd={mukellefAd} acikVarsayilan={a.durum === 'running'} onRapor={personelRaporAl} secenek={secenek} simdi={simdi} />
+                <PersonelAdimi key={a.isId} adim={a} ajanAd={ajanAd} mukellefAd={mukellefAd} onRapor={personelRaporAl} secenek={secenek} simdi={simdi} />
               ))}
               {bildirimAdimlari.map((a, i) =>
                 a.tip === 'onay' ? (
@@ -870,13 +843,13 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
                 ),
               )}
             </ol>
-          )}
+          </div>
         </section>
 
         {/* Not / talimat */}
         {!sabahOzetiMi && (
           <section style={{ borderTop: `1px solid ${ROW_SEP}`, paddingTop: 12 }}>
-            <CevapKutusu calisiyor={calisiyor || aktifKosuVar} bekleyen={bekleyenCevap} onGonder={cevapla} onIptal={() => setBekleyenCevap(null)} />
+            <CevapKutusu key={kokIsId || kosu?.basladi} calisiyor={calisiyor || aktifKosuVar} bekleyen={bekleyenCevap ? `${bekleyenCevap.vakaId === kokIsId ? "Bu iş" : "Önceki seçili iş"}: ${bekleyenCevap.metin}` : null} onGonder={cevapla} onIptal={() => setBekleyenCevap(null)} />
           </section>
         )}
       </div>

@@ -8,13 +8,13 @@ import { SORGU, useKosular, type Kosu } from './kosular';
 import { Baslik, type EkipSekme } from './Baslik';
 import { GorevKarti, type KomutTaslak } from './GorevKarti';
 import { SizdenBeklenenKutu, bekleyenKalemler } from './Kararlar';
-import { AkisKutu, KadroSeridi, onerileriCikar } from './GenelBakis';
+import { AkisKutu, onerileriCikar } from './GenelBakis';
 import { IsPaneli } from './IsPaneli';
 import { IsGecmisi } from './IsGecmisi';
 import { DonemPanosu } from './DonemPanosu';
 import { KadroKarti } from './KadroKarti';
 import { OmurgaYokBilgi } from './OmurgaYokBilgi';
-import { Bos, KIRMIZI, Kutu, MUTED, TEXT } from './Tema';
+import { Dugme, KIRMIZI, TEXT } from './Tema';
 import { DEPO, bugunMu, depoOku, depoYaz } from './ortak';
 
 const SUZGECLER: AkisFiltre[] = ['tumu', 'suruyor', 'onay', 'istek', 'bitti'];
@@ -29,12 +29,11 @@ export function kosuVakayaAitMi(kosu: Kosu, vaka: Vaka): boolean {
 }
 
 /**
- * EKİP EKRANI — Bütçe / Cari Kasa dili (Muzaffer Bey'in onayladığı taslak: _previews/ekip-v9, 2026-09-15).
- * Başlık kartı + 4 sayaç + altın sekmeler:
- *  Genel bakış : sol → Koordinatör'e görev ver · Sizden beklenen (onay/istek)   sağ → Şu an (çalışanlar) · Bugün (bitenler + öneriler)
- *  İşler       : sol → süzgeçli iş listesi   sağ → seçili işin paneli (aşamalar, karar, sonuç, adımlar, not)
+ * EKİP EKRANI — kompakt başlık, görev kutusu ve odaklı çalışma alanı.
+ *  Genel bakış : yeni görev, bekleyen kararlar ve kısa iş özeti.
+ *  İşler       : süzgeçli liste veya tam genişlikte seçili iş.
  *  Dönem panosu: mükellef × aşama tablosu (İşle / Kontrol et / Hazırla görev kutusunu doldurur)
- *  Kadro       : 12 personel kartı
+ *  Kadro       : etkin personel kartları
  * Koşu başlayınca ekran İşler sekmesine geçip paneli açar. Yapışkan öğe YOK; sayfa yatay kaymaz. Kuru/Canlı depoya yazılmaz.
  */
 export function EkipEkrani() {
@@ -237,9 +236,10 @@ export function EkipEkrani() {
     (vaka: Vaka, metin: string) => {
       if (kosular.aktifKosu) {
         toast.info('Koşu sürüyor', { description: 'Cevabınızı İşler sekmesindeki panelden "Bitince gönder" ile kuyruğa alabilirsiniz.' });
-        return;
+        return false;
       }
       void kosular.baslat('koordinator', { gorev: `Cevap: ${metin}`, taxpayerId: vaka.mukellef?.id || undefined, dryRun: vaka.kuru, vakaId: vaka.vakaId });
+      return true;
     },
     [kosular],
   );
@@ -322,6 +322,14 @@ export function EkipEkrani() {
         sabahOzetiMesgul={sabahUretiliyor || (!!kosular.aktifKosu && kosular.aktifKosu.kaynak === 'sabahOzeti')}
       />
 
+      {kosular.bekleyenCevap && (sekme !== 'isler' || !panelGoster) && (
+        <div role="status" className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-200/15 bg-amber-200/5 px-4 py-2 text-xs text-stone-300">
+          <span className="flex-1">Cevabınız ilgili işin tamamlanmasını bekliyor.</span>
+          <Dugme tur="sade" onClick={() => isiAc(kosular.bekleyenCevap!.vakaId)}>İşi aç</Dugme>
+          <Dugme tur="sade" onClick={() => kosular.setBekleyenCevap(null)}>Cevabı iptal et</Dugme>
+        </div>
+      )}
+
       {omurgaYok && <OmurgaYokBilgi />}
       {!!kadroS.error && !omurgaYok && (
         <div className="rounded-2xl px-4 py-3 text-[12.5px]" style={{ background: `${KIRMIZI}12`, border: `1px solid ${KIRMIZI}59`, color: TEXT }}>
@@ -338,12 +346,18 @@ export function EkipEkrani() {
             </GorevKarti>
             <AkisKutu kosu={sonKosu} vakalar={genelVakalar} oneriler={oneriler} ajanAd={ajanAd} mukellefAd={mukellefAd} onIzle={isiAc} onDurdur={(h) => void durdur(h)} onSec={isiAc} onTumu={() => setSekme('isler')} onTaslak={taslakVer} onPano={() => setSekme('pano')} yukleniyor={genelS.isLoading && !genelS.data} hata={genelS.error} panoYukleniyor={panoS.isLoading && !panoS.data} panoHata={panoS.error} />
           </div>
-          <KadroSeridi ajanlar={ajanlar} kosular={kosular.kosular} yukleniyor={kadroS.isLoading} onKadro={() => setSekme('kadro')} />
         </>
       )}
 
       {sekme === 'isler' && (
-        <div className="grid min-w-0 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)]">
+        <div className="flex min-w-0 flex-col gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            {panelGoster ? (
+              <Dugme tur="sade" onClick={() => setPanelKapali(true)}>← İş listesine dön</Dugme>
+            ) : <p className="text-sm text-stone-400">Görevlerinizi izleyin, incelemek için bir iş açın.</p>}
+            <Dugme tur="birincil" onClick={() => { setSekme('genel'); setOdakNonce(Date.now()); }}>+ Yeni görev</Dugme>
+          </div>
+          <div hidden={panelGoster}>
           <IsGecmisi
             akis={akisS.data}
             isLoading={akisS.isLoading}
@@ -363,6 +377,7 @@ export function EkipEkrani() {
               setPanelKapali(false);
             }}
           />
+          </div>
           <div ref={panelRef} className="min-w-0" style={{ scrollMarginTop: 16 }}>
             {panelGoster ? (
               <IsPaneli
@@ -377,11 +392,7 @@ export function EkipEkrani() {
                   if (panelKosu?.bitti) kosular.kaldir(panelKosu.ajanId);
                 }}
               />
-            ) : (
-              <Kutu baslik="İş paneli" aciklama="Soldan bir iş seçin; görev verdiğinizde ilerleme burada açılır" renk={MUTED}>
-                <Bos metin="Seçili iş yok. Aşamalar, personelin her adımı, sonuç ve sizden beklenen karar tek panelde görünür." />
-              </Kutu>
-            )}
+            ) : null}
           </div>
         </div>
       )}

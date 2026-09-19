@@ -7,9 +7,8 @@ import type { Ajan, MukellefOzet } from '@/lib/ekip';
 import { startListening, isSpeechSupported } from '../../luca-operator/_components/voice';
 import type { KosularApi } from './kosular';
 import { MukellefSecici } from './MukellefSecici';
-import { CARD_BORDER, Dugme, GOLD, KIRMIZI, Kbd, MUTED, OK, Rozet, TEXT, ipucuStil, koyuAlan } from './Tema';
-import { GradyanAvatar, SadeKart, SADE_AYRAC, koyuTon } from './GenelBakis';
-import { ajanKisaltma } from './ortak';
+import { CARD_BORDER, Dugme, GOLD, KIRMIZI, MUTED, TEXT, ipucuStil, koyuAlan } from './Tema';
+import { SadeKart, koyuTon } from './GenelBakis';
 
 const KOORDINATOR = 'koordinator';
 
@@ -43,8 +42,7 @@ export const GorevKarti = forwardRef<
     className?: string;
     children?: ReactNode;
   }
->(function GorevKarti({ ajanlar, mukellefler, komutTaslak, kosular, odakNonce, escNonce, maxBagli, koordinatorNotu, className = '', children }, ref) {
-  const ajan = ajanlar.find((a) => a.id === KOORDINATOR);
+>(function GorevKarti({ mukellefler, komutTaslak, kosular, odakNonce, escNonce, maxBagli, className = '', children }, ref) {
   const [gorev, setGorev] = useState('');
   const [taxpayerId, setTaxpayerId] = useState('');
   const [vakaId, setVakaId] = useState<string | undefined>(undefined);
@@ -111,8 +109,8 @@ export const GorevKarti = forwardRef<
           setListening(false);
         }
       },
-      onError: (err) => {
-        toast.error('Mikrofon başlatılamadı', { description: err });
+      onError: () => {
+        toast.error('Mikrofon başlatılamadı', { description: 'Mikrofon iznini kontrol edip yeniden deneyin.' });
         setListening(false);
         listenerRef.current = null;
       },
@@ -129,7 +127,7 @@ export const GorevKarti = forwardRef<
 
   return (
     <SadeKart
-      baslik="Koordinatör’e görev ver"
+      baslik="Yeni görev"
       renk={dryRun ? GOLD : KIRMIZI}
       sag={
         <span className="flex flex-wrap items-center justify-end gap-1.5">
@@ -141,7 +139,6 @@ export const GorevKarti = forwardRef<
               </button>
             </span>
           )}
-          {dryRun ? <Rozet metin="Kuru test" renk={OK} /> : <Rozet metin="Canlı — gerçek işlem" renk={KIRMIZI} />}
         </span>
       }
       style={{ scrollMarginTop: 16 }}
@@ -168,10 +165,10 @@ export const GorevKarti = forwardRef<
                 calistir();
               }
             }}
-            rows={3}
-            aria-label="Koordinatöre görev"
-            placeholder={listening ? 'Dinliyorum…' : 'Örn: Ömer Özen’in Ağustos 2026 KDV kontrolünü yap · Zeyrek Lojistik’in Ağustos faturalarını işle · Öz Ela’nın son tebligatları ne?'}
-            className="min-h-[96px] w-full resize-y bg-transparent px-4 py-3.5 pr-24 text-[14px] leading-relaxed outline-none"
+            rows={2}
+            aria-label="Görev"
+            placeholder={listening ? 'Dinliyorum…' : 'Örn: Bu ayın KDV kontrolünü yap.'}
+            className="min-h-[88px] w-full resize-y bg-transparent px-4 py-3.5 pr-24 text-[14px] leading-relaxed outline-none"
             style={{ color: TEXT }}
           />
           <button
@@ -190,7 +187,7 @@ export const GorevKarti = forwardRef<
             <span className="inline-flex h-9 min-w-0 basis-full sm:basis-[200px] flex-1 items-center gap-2 rounded-xl px-3 text-[12.5px]" style={koyuAlan}>
               <Users size={13} style={{ color: MUTED }} />
               <span className="min-w-0 flex-1">
-                <MukellefSecici sade yerTutucu="Mükellef seçin (boş = ofis geneli)" mukellefler={mukellefler} value={taxpayerId} onChange={setTaxpayerId} renk={GOLD} escNonce={escNonce} />
+                <MukellefSecici sade yerTutucu="Ofis geneli · mükellef seç" mukellefler={mukellefler} value={taxpayerId} onChange={setTaxpayerId} renk={GOLD} escNonce={escNonce} />
               </span>
             </span>
             <span className="inline-flex h-9 overflow-hidden rounded-xl" style={koyuAlan} role="radiogroup" aria-label="Çalışma modu">
@@ -237,12 +234,12 @@ export const GorevKarti = forwardRef<
                 type="button"
                 onClick={calistir}
                 disabled={!calistirabilir}
-                title={baskaCalisiyor ? 'Aynı anda tek koşu' : dryRun ? 'Kuru test koşusu (Enter)' : 'CANLI koşu'}
+                title={baskaCalisiyor ? 'Devam eden görevin bitmesini bekleyin' : dryRun ? 'Görevi deneme modunda başlat' : 'Gerçek işlemi başlat'}
                 className="inline-flex h-9 items-center gap-1.5 rounded-xl px-4 text-[12.5px] font-semibold transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
                 style={{ background: `linear-gradient(140deg, ${dryRun ? GOLD : KIRMIZI}, ${koyuTon(dryRun ? GOLD : KIRMIZI)})`, border: `1px solid ${dryRun ? GOLD : KIRMIZI}`, color: '#0b0b0d' }}
               >
                 {baskaCalisiyor ? <Loader2 size={13} className="animate-spin" /> : dryRun ? <Play size={13} /> : <AlertTriangle size={13} />}
-                {baskaCalisiyor ? 'Koşu sürüyor' : maxBagli === false ? 'Max bağlı değil' : dryRun ? 'Çalıştır' : 'Canlı çalıştır'}
+                {baskaCalisiyor ? 'Görev sürüyor' : maxBagli === false ? 'Bağlantı gerekli' : dryRun ? 'Başlat' : 'Canlı başlat'}
               </button>
             )}
           </div>
@@ -262,21 +259,9 @@ export const GorevKarti = forwardRef<
           </div>
         )}
 
-        <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1" style={ipucuStil}>
-          <span>{dryRun ? 'Kuru test: mükellefe mesaj gitmez, Luca’ya yazılmaz; yapılacaklar raporlanır' : 'Canlı: dışarı giden her mesaj yine onayınıza düşer · sayfa yenilenince kuru teste döner'}</span>
-          <span className="inline-flex items-center gap-1.5"><Kbd>Enter</Kbd> çalıştırır · <Kbd>⇧ Enter</Kbd> yeni satır · <Kbd>/</Kbd> kutuya odak</span>
-        </div>
-
-        {/* Koordinatör'ün tek cümlelik notu */}
-        <div className="mt-4 flex items-center gap-2.5 pt-3.5 text-[12.5px]" style={{ color: MUTED, borderTop: `1px solid ${SADE_AYRAC}` }}>
-          <GradyanAvatar kisaltma={ajanKisaltma(KOORDINATOR, ajan?.ad)} renk={GOLD} boyut={26} nabiz={buCalisiyor} />
-          <span className="min-w-0">
-            <b className="font-medium" style={{ color: TEXT }}>
-              {ajan?.ad || 'Koordinatör'}:
-            </b>{' '}
-            {koordinatorNotu}
-          </span>
-        </div>
+        <p className="mt-2.5" style={ipucuStil}>
+          {dryRun ? 'Kuru testte mesaj gönderilmez, kayıt değiştirilmez.' : 'Canlı mod: gerçek işlem yapılır; gönderimler onayınıza gelir.'}
+        </p>
         {children}
       </div>
     </SadeKart>

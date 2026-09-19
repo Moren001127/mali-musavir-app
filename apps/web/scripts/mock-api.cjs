@@ -561,6 +561,7 @@ async function isle(req, res) {
 
   // ── Panel kabuğu ──
   if (yol === '/notifications/unread-count') return jsonGonder(res, 200, 0);
+  if (yol === '/notifications/unread-summary') return jsonGonder(res, 200, { total: 0, critical: 0 });
   if (yol === '/notifications') return jsonGonder(res, 200, []);
   if (yol === '/system/health') return jsonGonder(res, 200, { summary: { critical: 0, warning: 0, ok: 4 }, checks: [] });
   if (yol === '/system/health/run-now') return jsonGonder(res, 200, { ok: true });

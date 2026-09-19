@@ -7,15 +7,15 @@ import { bugunMu, donemEtiketi, saatKisa } from './ortak';
 
 export type EkipSekme = 'genel' | 'isler' | 'pano' | 'kadro';
 
-/** Soluk etiket rengi — büyük harfli küçük başlıklar (onaylı sade taslak, _previews/ekip-sade). */
-const SOLUK = '#62626b';
+/** Koyu zeminde okunabilir, ikincil dönem etiketi. */
+const SOLUK = '#a49b88';
 /** Kart içi ince ayraç (sekme şeridinin üst çizgisi). */
 const AYRAC = 'rgba(255,255,255,0.055)';
 /** Şeritteki "evrak bekliyor" dilimi — nötr açık ton. */
 const BEKLIYOR = 'rgba(250,250,249,0.22)';
-/** Cam kart zemini: sol üstte altın, sağ üstte mavi parıltı + hafif dikey geçiş. */
+/** Koyu zemin üzerinde hafif altın ışık. */
 const KART_ZEMIN =
-  'radial-gradient(circle at 4% 0%, rgba(230,200,120,0.11), transparent 36%), radial-gradient(circle at 96% 10%, rgba(140,189,232,0.07), transparent 34%), linear-gradient(180deg, rgba(255,255,255,0.028), rgba(255,255,255,0.012))';
+  'radial-gradient(ellipse at 0% 0%, rgba(230,200,120,0.08), transparent 55%), linear-gradient(135deg, #191917, #111214)';
 
 /** 6px durum noktası; `parilti` açıkken hafif ışıma. */
 function Nokta({ renk, parilti }: { renk: string; parilti?: boolean }) {
@@ -25,7 +25,7 @@ function Nokta({ renk, parilti }: { renk: string; parilti?: boolean }) {
 /** Üst satırdaki düz metin durum: nokta + metin (kutu yok). */
 function Durum({ nokta, parilti, title, children }: { nokta: string; parilti?: boolean; title?: string; children: ReactNode }) {
   return (
-    <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-[12px]" style={{ color: MUTED }} title={title}>
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-[11px]" style={{ color: MUTED }} title={title}>
       <Nokta renk={nokta} parilti={parilti} />
       {children}
     </span>
@@ -119,32 +119,28 @@ function AsamaSeridi({ dilimler, toplam }: { dilimler: Dilim[]; toplam: number }
   );
 }
 
-/** Sade sayı: 22px rakam + altında büyük harfli aralıklı etiket; kutu yok. */
+/** Başlığı büyütmeyen, tek satırlık küçük özet. */
 function Sayi({ deger, etiket, renk = TEXT, not }: { deger: number; etiket: string; renk?: string; not?: string }) {
   return (
-    <div className="text-right">
-      <div className="text-[22px] font-semibold leading-none tabular-nums" style={{ color: renk }}>
+    <span className="inline-flex flex-wrap items-center gap-1.5 text-[11px]" style={{ color: MUTED }}>
+      <b className="font-medium tabular-nums" style={{ color: renk }}>
         {deger}
-      </div>
-      <div className="mt-1.5 text-[10.5px] font-bold tracking-[0.14em]" style={{ color: SOLUK }}>
-        {etiket}
-      </div>
+      </b>
+      {etiket}
       {not && (
-        <div className="mt-0.5 text-[10.5px]" style={{ color: KIRMIZI }}>
-          {not}
-        </div>
+        <span style={{ color: KIRMIZI }}>· {not}</span>
       )}
-    </div>
+    </span>
   );
 }
 
 /**
- * Sade sekmeler: ince üst çizgi üzerinde düz metin; seçili olan altın + altında 2px altın gradyan çizgi.
+ * Sade sekmeler: seçili bölümde hafif altın zemin ve ince çerçeve.
  * Erişilebilirlik: sarmalayıcı role="tablist", her sekme role="tab" + aria-selected; erişilebilir ad = metnin kendisi.
  */
 function SadeSekmeler<T extends string>({ sekmeler, secili, onSec }: { sekmeler: Array<{ id: T; etiket: string; rozet?: number | null }>; secili: T; onSec: (id: T) => void }) {
   return (
-    <nav role="tablist" aria-label="Ekip bölümleri" className="flex flex-wrap gap-1 px-2 sm:px-4" style={{ borderTop: `1px solid ${AYRAC}` }}>
+    <nav role="tablist" aria-label="Ekip bölümleri" className="flex flex-wrap gap-1 p-2 sm:px-4" style={{ borderTop: `1px solid ${AYRAC}`, background: 'rgba(0,0,0,0.12)' }}>
       {sekmeler.map((s) => {
         const aktif = s.id === secili;
         return (
@@ -154,8 +150,8 @@ function SadeSekmeler<T extends string>({ sekmeler, secili, onSec }: { sekmeler:
             role="tab"
             aria-selected={aktif}
             onClick={() => onSec(s.id)}
-            className={`relative flex items-center gap-2 whitespace-nowrap px-3 pb-[11px] pt-3 text-[12.5px] transition ${aktif ? 'font-medium' : 'hover:brightness-150'}`}
-            style={{ color: aktif ? GOLD : MUTED }}
+            className={`relative flex min-h-10 items-center gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-[12px] transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e6c878] ${aktif ? 'font-semibold' : 'hover:bg-white/[0.04] hover:text-white'}`}
+            style={{ color: aktif ? GOLD : MUTED, background: aktif ? 'rgba(230,200,120,0.09)' : undefined, boxShadow: aktif ? 'inset 0 0 0 1px rgba(230,200,120,0.16)' : undefined }}
           >
             {s.etiket}
             {!!s.rozet && (
@@ -163,7 +159,6 @@ function SadeSekmeler<T extends string>({ sekmeler, secili, onSec }: { sekmeler:
                 {s.rozet}
               </span>
             )}
-            {aktif && <span aria-hidden className="absolute bottom-0 left-3 right-3 h-[2px] rounded-[2px]" style={{ background: `linear-gradient(90deg, transparent, ${GOLD}, transparent)` }} />}
           </button>
         );
       })}
@@ -171,13 +166,7 @@ function SadeSekmeler<T extends string>({ sekmeler, secili, onSec }: { sekmeler:
   );
 }
 
-/**
- * Başlık bandı — onaylı SADE taslak (_previews/ekip-sade, 2026-09-19): TEK cam kart.
- *  1) Üst satır: "Ekip" + personel sayısı + tek cümle; sağda düz metin durumlar (dönem · Luca operatörü · Max · Sabah özeti düğmesi).
- *  2) Nabız: dönem aşama şeridi (evrak bekliyor · işleniyor · kontrol · hazır · verildi) + üç sade sayı (sizden beklenen · çalışan · bugün biten).
- *  3) Sade sekmeler (Genel bakış · İşler · Dönem panosu · Kadro).
- * Yapışkan öğe yok; dar ekranda satırlar sarar, yatay taşma olmaz.
- */
+/** Kompakt başlık ve sekmeler; ayrıntılı dönem özeti yalnızca panoda görünür. */
 export function Baslik({
   durum,
   ozet,
@@ -218,90 +207,51 @@ export function Baslik({
 
   return (
     <header
-      className="relative overflow-hidden rounded-[18px]"
-      style={{ background: KART_ZEMIN, border: `1px solid ${CARD_BORDER}`, boxShadow: '0 18px 44px rgba(0,0,0,0.24), inset 0 1px 0 rgba(255,255,255,0.035)' }}
+      className="relative overflow-hidden rounded-2xl"
+      style={{ background: KART_ZEMIN, border: '1px solid rgba(230,200,120,0.14)', boxShadow: '0 8px 24px rgba(0,0,0,0.16)' }}
     >
-      <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-px" style={{ background: 'linear-gradient(90deg, transparent, rgba(230,200,120,0.6), rgba(140,189,232,0.35), transparent)' }} />
+      <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-px" style={{ background: 'linear-gradient(90deg, transparent, rgba(230,200,120,0.4), transparent)' }} />
 
-      {/* 1) Üst satır: başlık + düz metin durumlar */}
-      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3 px-4 pb-3.5 pt-5 sm:px-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-5">
         <div className="min-w-0">
-          <h1 className="flex flex-wrap items-baseline gap-2.5 text-[22px] font-semibold leading-tight tracking-[-0.01em]" style={{ color: TEXT }}>
-            Ekip
-            <small className="text-[12px] font-medium" style={{ color: MUTED }}>
-              {ajanSayisi} personel
-            </small>
-          </h1>
-          <p className="mt-1 text-[12.5px]" style={{ color: MUTED }}>
-            Görev verin, ilerlemeyi izleyin, kararı siz verin.
-          </p>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <h1 className="text-[19px] font-semibold leading-tight tracking-tight" style={{ color: TEXT }}>Ekip</h1>
+            <span className="text-[11px]" style={{ color: MUTED }}>{ajanSayisi} personel</span>
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+            <Sayi deger={kararSayisi} etiket="karar bekliyor" renk={kararSayisi > 0 ? GOLD : TEXT} />
+            <Sayi deger={calisan} etiket="çalışan" />
+            <Sayi deger={bugunBiten} etiket="bugün biten" not={bugunYarim > 0 ? `${bugunYarim} yarım kaldı` : undefined} />
+          </div>
         </div>
-        <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1.5 pt-1.5">
-          {donemAd && (
-            <Durum nokta={GOLD} title={donemNotu}>
-              <b className="font-medium" style={{ color: TEXT }}>
-                {donemAd}
-              </b>
-              beyannameleri
-            </Durum>
-          )}
-          <Durum nokta={operatorAcik ? OK : MUTED} parilti={operatorAcik} title={durum?.operator?.cihaz ? `Cihaz: ${durum.operator.cihaz}` : undefined}>
-            Luca operatörü {operatorAcik ? 'açık' : 'kapalı'}
-          </Durum>
-          <Durum nokta={!durum ? MUTED : maxKopuk ? KIRMIZI : OK} parilti={!!durum && !maxKopuk}>
-            Max {!durum ? 'kontrol ediliyor' : maxKopuk ? 'bağlı değil' : 'bağlı'}
-          </Durum>
-          <button
-            type="button"
-            onClick={onSabahOzeti}
-            disabled={sabahOzetiMesgul}
-            title="Sabah özetini şimdi üret (yalnız üretir, göndermez)"
-            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md text-[12px] transition hover:brightness-125 disabled:opacity-60"
-            style={{ color: MUTED }}
-          >
-            <Nokta renk={MAVI} />
-            Sabah özeti
-            <b className="font-medium" style={{ color: TEXT }}>
-              {sabahDurum}
-            </b>
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={onSabahOzeti}
+          disabled={sabahOzetiMesgul}
+          aria-busy={sabahOzetiMesgul}
+          title="Sabah özetini şimdi üret (yalnız üretir, göndermez)"
+          className="inline-flex min-h-10 flex-wrap items-center gap-x-2 gap-y-1 rounded-lg px-3 py-2 text-[12px] transition hover:brightness-125 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e6c878] disabled:cursor-wait disabled:opacity-60"
+          style={{ color: GOLD, background: 'rgba(230,200,120,0.07)', border: '1px solid rgba(230,200,120,0.2)' }}
+        >
+          <span className="font-medium">Sabah özeti</span>
+          <span className="text-[11px]" style={{ color: MUTED }}>{sabahDurum}</span>
+        </button>
       </div>
 
-      {/* 2) Nabız: dönem aşama şeridi + üç sade sayı */}
-      <div className="grid items-center gap-x-6 gap-y-4 px-4 pb-4 pt-1.5 sm:px-6 md:grid-cols-[minmax(0,1.6fr)_auto]">
-        <div className="min-w-0">
-          {nabiz ? (
-            <>
-              <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                <span className="text-[10.5px] font-bold tracking-[0.2em]" style={{ color: SOLUK }}>
-                  DÖNEM · {nabiz.toplam} MÜKELLEF
-                </span>
-                <b className="text-[12px] font-semibold tabular-nums" style={{ color: TEXT }}>
-                  {nabiz.verildi} / {nabiz.toplam} verildi
-                </b>
-              </div>
-              <AsamaSeridi dilimler={nabiz.dilimler} toplam={nabiz.toplam} />
-            </>
-          ) : (
-            <>
-              <div className="text-[10.5px] font-bold tracking-[0.2em]" style={{ color: SOLUK }}>
-                DÖNEM
-              </div>
-              <div className="mt-2 text-[12px]" style={{ color: MUTED }}>
-                pano yükleniyor
-              </div>
-            </>
-          )}
-        </div>
-        <div className="flex flex-wrap items-end justify-end gap-x-6 gap-y-3">
-          <Sayi deger={kararSayisi} etiket="SİZDEN BEKLENEN" />
-          <Sayi deger={calisan} etiket="ÇALIŞAN" />
-          <Sayi deger={bugunBiten} etiket="BUGÜN BİTEN" renk={OK} not={bugunYarim > 0 ? `${bugunYarim} yarım kaldı` : undefined} />
-        </div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 pb-3 sm:px-5">
+        {donemAd && (
+          <span className="text-[11px]" style={{ color: MUTED }} title={donemNotu}>
+            {donemAd} beyannameleri
+          </span>
+        )}
+        <Durum nokta={operatorAcik ? OK : MUTED} title={durum?.operator?.cihaz ? `Cihaz: ${durum.operator.cihaz}` : undefined}>
+          Luca operatörü {operatorAcik ? 'açık' : 'kapalı'}
+        </Durum>
+        <Durum nokta={!durum ? MUTED : maxKopuk ? KIRMIZI : OK}>
+          Max {!durum ? 'kontrol ediliyor' : maxKopuk ? 'bağlı değil' : 'bağlı'}
+        </Durum>
       </div>
 
-      {/* 3) Sekmeler */}
       <SadeSekmeler<EkipSekme>
         secili={sekme}
         onSec={onSekme}
@@ -312,6 +262,22 @@ export function Baslik({
           { id: 'kadro', etiket: 'Kadro' },
         ]}
       />
+
+      {sekme === 'pano' && (
+        <div className="px-4 py-3 sm:px-5" style={{ borderTop: `1px solid ${AYRAC}` }}>
+          {nabiz ? (
+            <>
+              <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-[11px]">
+                <span style={{ color: SOLUK }}>Dönem ilerlemesi · {nabiz.toplam} mükellef</span>
+                <span className="tabular-nums" style={{ color: MUTED }}>{nabiz.verildi} / {nabiz.toplam} verildi</span>
+              </div>
+              <AsamaSeridi dilimler={nabiz.dilimler} toplam={nabiz.toplam} />
+            </>
+          ) : (
+            <p role="status" className="text-[11px]" style={{ color: MUTED }}>Dönem panosu yükleniyor…</p>
+          )}
+        </div>
+      )}
     </header>
   );
 }

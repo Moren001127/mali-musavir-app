@@ -31,7 +31,7 @@ export function AcikKalemKarti({
 }: {
   kalem: AcikKalem;
   onBitti: () => void;
-  onCevapla: (metin: string) => void;
+  onCevapla: (metin: string) => boolean | void;
   calisiyor: boolean;
   /** Genel bakışta mükellef adı (iş panelinde gerek yok). */
   ustBaslik?: string | null;
@@ -49,9 +49,9 @@ export function AcikKalemKarti({
   const kararMi = onayMi && kalem.kaynak === 'bildirim';
   const cevapGonder = () => {
     if (!cevap.trim()) return;
-    onCevapla(cevap.trim());
+    if (onCevapla(cevap.trim()) === false) return;
     setCevap('');
-    setSonuc('Cevabınız Koordinatör’e gitti');
+    setSonuc(calisiyor ? 'Cevabınız iş bitince gönderilmek üzere sıraya alındı' : 'Cevabınız işleme alındı');
   };
   const yap = async (fn: () => Promise<{ ok: boolean; error?: string; zatenKapali?: boolean }>, okMetin: string) => {
     if (mesgul) return;
@@ -244,7 +244,7 @@ export function SizdenBeklenenKutu({
   ajanAd: (id: string) => string;
   mukellefAd: (id?: string | null) => string | undefined;
   onBitti: () => void;
-  onCevapla: (vaka: Vaka, metin: string) => void;
+  onCevapla: (vaka: Vaka, metin: string) => boolean | void;
   calisiyor: boolean;
   yukleniyor: boolean;
   hata?: unknown;
@@ -267,8 +267,16 @@ export function SizdenBeklenenKutu({
       ) : (
         <div className="-mt-3">
           {kalemler.map(({ vaka, kalem, ajanId }) => (
+            <details key={`${vaka.vakaId}-${kalem.tip}-${kalem.id}`} className="group border-t py-1" style={{ borderColor: ROW_SEP }}>
+              <summary className="flex cursor-pointer list-none items-center gap-3 py-3 [&::-webkit-details-marker]:hidden">
+                <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: GOLD }} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[12.5px] font-medium" style={{ color: TEXT }} title={vaka.mukellef?.ad || 'Ofis geneli'}>{vaka.mukellef?.ad || 'Ofis geneli'}</span>
+                  <span className="block truncate text-[11.5px]" style={{ color: MUTED }} title={kalem.baslik}>{kalem.baslik}</span>
+                </span>
+                <span className="shrink-0 text-[11px]" style={{ color: GOLD }}><span className="group-open:hidden">İncele</span><span className="hidden group-open:inline">Gizle</span></span>
+              </summary>
             <AcikKalemKarti
-              key={`${vaka.vakaId}-${kalem.tip}-${kalem.id}`}
               kalem={kalem}
               ustBaslik={vaka.mukellef?.ad || 'Ofis geneli'}
               ajanId={ajanId}
@@ -279,6 +287,7 @@ export function SizdenBeklenenKutu({
               onCevapla={(m) => onCevapla(vaka, m)}
               calisiyor={calisiyor}
             />
+            </details>
           ))}
         </div>
       )}
