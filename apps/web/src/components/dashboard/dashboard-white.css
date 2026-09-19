@@ -245,3 +245,23 @@ html[data-theme='D'] [data-beyan-mini] button > div:first-child { overflow: visi
 html[data-theme='D'] [data-beyan-mini] > div > button:not(:first-child) { padding-left: 4px; padding-right: 4px; }
 /* Araç satırı kaldırıldı; sayaçlar doğrudan üst boşluğa yerleşir. */
 html[data-theme='D'] [data-dashboard-counters] { margin-top: 0 !important; }
+/* Sıkı tablo: ad ve dönem aynı satırda, tutarlı sayı hizası. */
+html[data-theme='D'] [data-beyan-panel] { --frame-color: #b7a9df; border-radius: 12px; }
+html[data-theme='D'] [data-beyan-panel] [data-beyan-heading] { padding: 10px 14px; }
+html[data-theme='D'] [data-beyan-panel] [data-beyan-heading] h3 { font-size: 15px; }
+html[data-theme='D'] [data-beyan-panel] [data-beyan-heading-icon] { width: 30px; height: 30px; }
+html[data-theme='D'] [data-beyan-panel] [data-beyan-table-section] { padding: 0 14px 10px; }
+html[data-theme='D'] [data-beyan-panel] table th:first-child { width: 26%; }
+html[data-theme='D'] [data-beyan-panel] table th:last-child { width: 28%; }
+html[data-theme='D'] [data-beyan-panel] table thead th { padding: 6px 10px; background: #f0f1fa !important; letter-spacing: .045em; }
+html[data-theme='D'] [data-beyan-panel] table tbody td { padding: 5px 10px; height: 34px; line-height: 22px; }
+html[data-theme='D'] [data-beyan-panel] table tbody td:first-child > button { display: inline; max-width: 100%; vertical-align: baseline; }
+html[data-theme='D'] [data-beyan-panel] table tbody td:first-child > div:not(.hidden) { display: inline; margin: 0 0 0 10px; white-space: nowrap; font-size: 10px; color: #78869b !important; }
+html[data-theme='D'] [data-beyan-panel] table tbody tr:nth-child(even) { background: #f9fafd !important; }
+html[data-theme='D'] [data-beyan-panel] table :is(th,td) + :is(th,td) { border-left-color: #edf0f6; }
+html[data-theme='D'] [data-beyan-panel] table tbody td:last-child > div { grid-template-columns: 82px minmax(32px,1fr) 34px; gap: 10px; }
+html[data-theme='D'] [data-beyan-panel] table tbody td:last-child span { font-weight: 500; font-size: 10px; }
+html[data-theme='D'] [data-beyan-panel] table tbody td:last-child .h-1\.5 { height: 4px; }
+html[data-theme='D'] [data-beyan-panel] [data-beyan-section] { margin-bottom: 6px; }
+html[data-theme='D'] [data-beyan-mini] > div { padding: 6px 8px; }
+html[data-theme='D'] [data-beyan-mini] { border-radius: 8px; }
