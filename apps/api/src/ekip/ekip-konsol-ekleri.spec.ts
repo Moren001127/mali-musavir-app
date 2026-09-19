@@ -148,7 +148,7 @@ describe('kadroOzeti tenant alanları (§7-3)', () => {
     expect(fatura.kademeler).toBeDefined();
 
     const tenantsiz = await runnerKur({}).kadroOzeti();
-    expect(tenantsiz).toHaveLength(12);
+    expect(tenantsiz).toHaveLength(11);
     expect(tenantsiz[0].sonKosu).toBeNull();
     expect(tenantsiz[0].bekleyenOnay).toBe(0);
   });
@@ -159,7 +159,7 @@ describe('kadroOzeti tenant alanları (§7-3)', () => {
       ownerApprovalRequest: { groupBy: async () => { throw new Error('db yok'); } },
     };
     const kadro = await runnerKur(prisma).kadroOzeti('t');
-    expect(kadro).toHaveLength(12);
+    expect(kadro).toHaveLength(11);
     expect(kadro.every((a) => a.sonKosu === null && a.bekleyenOnay === 0 && a.bugunKosu === 0 && a.calisiyor === false)).toBe(true);
   });
 });

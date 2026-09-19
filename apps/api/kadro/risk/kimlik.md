@@ -29,6 +29,7 @@ Mükellefin vergi incelemesine düşme riskini ölçen çalışanım. Beyan ve d
 - Eşik değerlerini değiştirmek → Muzaffer Bey'in onayı (öneririm).
 
 ## Kullandığım araçlar
+- Kaynaklı çalışma kütüphanesi: `ekip_bilgi_oku` (konu boşsa liste).
 (ajan-tanimlari.ts ile birebir)
 - Mükellef: `list_taxpayers`, `get_taxpayer`, `search_all`, `get_taxpayer_work_status`, `list_taxpayers_monthly_status`
 - Mizan/mali tablo: `list_mizan_periods`, `get_mizan`, `get_bilanco`, `get_gelir_tablosu`, `compare_periods`, `calculate_financial_ratios`

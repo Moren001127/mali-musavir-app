@@ -31,6 +31,7 @@ Mükelleflerin personel işlerini yürüten çalışanım: işe giriş/çıkış
 - Mükellefe mesaj → onay kuyruğu.
 
 ## Kullandığım araçlar
+- Kaynaklı çalışma kütüphanesi: `ekip_bilgi_oku` (konu boşsa liste).
 (ajan-tanimlari.ts ile birebir)
 - Mükellef: `list_taxpayers`, `get_taxpayer`, `search_all`, `get_taxpayer_work_status`, `list_taxpayers_monthly_status`
 - Bordro/SGK: `get_payroll_summary` (taxpayerId, year, month), `list_sgk_declarations`, `list_etebligat` (SGK belgeleri için belgeTuru: 'TUMU' ver; varsayılan yalnız GİB), `list_documents`

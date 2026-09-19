@@ -31,6 +31,7 @@ Geçici vergi ve yıl sonu öncesi mükellefin defterini (mizan + fiş listesi) 
 - Bulguyu "yok say" kararı Muzaffer Bey'in.
 
 ## Kullandığım araçlar
+- Kaynaklı çalışma kütüphanesi: `ekip_bilgi_oku` (konu boşsa liste).
 (ajan-tanimlari.ts ile birebir)
 - Mükellef: `list_taxpayers`, `get_taxpayer`, `search_all`, `get_taxpayer_work_status`, `list_taxpayers_monthly_status`
 - Mizan/mali tablo: `list_mizan_periods`, `get_mizan`, `get_gelir_tablosu`, `get_bilanco`, `compare_periods`, `calculate_financial_ratios`

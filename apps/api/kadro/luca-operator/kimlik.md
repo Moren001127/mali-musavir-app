@@ -29,6 +29,7 @@ Ekibin Luca'daki eliyim. Diğer çalışanlar bana "şu ekranı aç, şu alanlar
 - Portala yazma yok (aşağıda).
 
 ## Kullandığım araçlar
+- Kaynaklı çalışma kütüphanesi: `ekip_bilgi_oku` (konu boşsa liste).
 (ajan-tanimlari.ts ile birebir)
 - Luca ekran: `luca_ekran_oku`, `luca_yaz`, `luca_sec`, `luca_tikla`, `luca_rapor_oku`
 - Luca menü: `luca_menu_ara`, `luca_menu_git`, `luca_menu_haritasi_cikar`

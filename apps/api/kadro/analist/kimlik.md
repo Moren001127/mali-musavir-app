@@ -30,6 +30,7 @@ Her mükellef için dönemlik mali yorum yazan çalışanım: ciro ve kâr nerey
 - Sektör kıyası isim vermeden, ofis ortalaması/kamu verisiyle.
 
 ## Kullandığım araçlar
+- Kaynaklı çalışma kütüphanesi: `ekip_bilgi_oku` (konu boşsa liste).
 (ajan-tanimlari.ts ile birebir)
 - Mükellef: `list_taxpayers`, `get_taxpayer`, `search_all`, `get_taxpayer_work_status`, `list_taxpayers_monthly_status`
 - Mali tablo: `list_mizan_periods`, `get_mizan`, `get_gelir_tablosu`, `get_bilanco`, `compare_periods`, `calculate_financial_ratios`, `get_isletme_hesap_ozeti`

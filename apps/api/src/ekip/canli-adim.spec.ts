@@ -17,9 +17,9 @@ function isleyiciKur(canli?: CanliAdimYazici, secenek: { hata?: boolean; canliMo
   (runner as any).onayKaydiAc = async () => ({ previewId: 'PRV-1', confirmationText: 'x', expiresAt: new Date() });
   const ctx = { tenantId: 't', userId: null, taxpayerId: null };
   const dryRun = !secenek.canliMod;
-  const p: any = { ajanId: 'banka-kasa', gorev: 'x', tenantId: 't', kaynak: 'portal', taxpayerId: null, dryRun };
+  const p: any = { ajanId: 'musteri', gorev: 'x', tenantId: 't', kaynak: 'portal', taxpayerId: null, dryRun };
   const isleyici = (runner as any).portalAracIsleyici({
-    p, ajan: ajanBul('banka-kasa')!, isId: 'is1', dryRun, ctx, emit: () => undefined, toolUses: [], kuruTestYapilacaktilar: [], onayBekleyen: [], canli,
+    p, ajan: ajanBul('musteri')!, isId: 'is1', dryRun, ctx, emit: () => undefined, toolUses: [], kuruTestYapilacaktilar: [], onayBekleyen: [], canli,
   });
   return async (name: string, args: any) => JSON.parse((await isleyici({ name, args })).content[0].text);
 }
@@ -67,11 +67,11 @@ describe('portalAracIsleyici → canlı adım', () => {
       yazilan.push(...adimlar);
     });
     const cagir = isleyiciKur(canli);
-    await cagir('list_fatura_merkezi', { taxpayerId: 'cmnydmgbx000heazyp9i4fq23' });
+    await cagir('list_documents', { taxpayerId: 'cmnydmgbx000heazyp9i4fq23' });
     await cagir('send_whatsapp_template', { to: '905551112233', message: 'm' }); // kuru testte dışarı gönderim → kuru
-    await cagir('post_to_luca', { fis: 1 }); // banka-kasa'ya kapalı araç → red
+    await cagir('post_to_luca', { fis: 1 }); // musteri'ya kapalı araç → red
     await canli.bekle();
-    expect(yazilan.map((a) => `${a.ad}:${a.durum}`)).toEqual(['list_fatura_merkezi:bitti', 'send_whatsapp_template:kuru', 'post_to_luca:red']);
+    expect(yazilan.map((a) => `${a.ad}:${a.durum}`)).toEqual(['list_documents:bitti', 'send_whatsapp_template:kuru', 'post_to_luca:red']);
     expect(yazilan[0].args).toEqual({ taxpayerId: 'cmnydmgbx000heazyp9i4fq23' });
 
     const canliCagir = isleyiciKur(canli, { canliMod: true });
@@ -80,14 +80,14 @@ describe('portalAracIsleyici → canlı adım', () => {
     expect(yazilan[yazilan.length - 1]).toMatchObject({ ad: 'send_whatsapp_template', durum: 'onay' });
 
     const hataliCagir = isleyiciKur(canli, { hata: true });
-    await hataliCagir('list_fatura_merkezi', {});
+    await hataliCagir('list_documents', {});
     await canli.bekle();
-    expect(yazilan[yazilan.length - 1]).toMatchObject({ ad: 'list_fatura_merkezi', durum: 'hata' });
+    expect(yazilan[yazilan.length - 1]).toMatchObject({ ad: 'list_documents', durum: 'hata' });
   });
 
   it('yazıcı verilmeden de (spec/eski çağrı) işleyici çalışır', async () => {
     const cagir = isleyiciKur(undefined);
-    expect((await cagir('list_fatura_merkezi', {})).ok).toBe(true);
+    expect((await cagir('list_documents', {})).ok).toBe(true);
   });
 });
 

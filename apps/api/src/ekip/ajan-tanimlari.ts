@@ -3,7 +3,7 @@ import { OPERATOR_MODELLERI } from '../calisan/luca-operator.service';
 /**
  * EKİP — AJAN TANIMLARI (PLAN/13-AJAN-KADROSU.md §3)
  *
- * 13 ajan; id'ler SABİTTİR (iş dosyası, hafıza ve kimlik klasörü bu id'ye bağlıdır).
+ * 11 aktif ajan; id'ler SABİTTİR (iş dosyası, hafıza ve kimlik klasörü bu id'ye bağlıdır).
  * Araçlar arac-defteri.ts'teki adla seçilir; kademe defterden gelir, burada tekrar yazılmaz.
  * Kimlik klasörü: apps/api/kadro/<id>/ (kimlik.md, kurallar.md, beceriler.md) + apps/api/kadro/00_ORTAK_KURALLAR.md
  * — runner dosya yoksa boş geçer.
@@ -22,7 +22,6 @@ export type AjanModeli = 'opus' | 'sonnet' | 'haiku';
 export type AjanId =
   | 'koordinator'
   | 'fatura'
-  | 'banka-kasa'
   | 'beyanname'
   | 'bordro-sgk'
   | 'edefter'
@@ -99,6 +98,7 @@ export const AJAN_TANIMLARI: AjanTanimi[] = [
       'işi dağıtır, takılanı Muzaffer Bey’e getirir, sabah özetini verir. Sesli muhatap budur.',
     model: 'sonnet',
     araclar: [
+      'ekip_bilgi_oku',
       ...MUKELLEF_OKU, ...EKIP_OKU,
       ...EKIP_ONAY,
       // PLAN/17 §4 (2026-09-13): mali tablo sorusunda ÖNCE "hazır tablo var mı" bakar (MALI_OKU + mali_donemler_listele);
@@ -138,6 +138,7 @@ export const AJAN_TANIMLARI: AjanTanimi[] = [
     // preview_agent_command ÇIKARILDI (2026-09-15, Muzaffer Bey: "onay kodu istemiyorum; kuru/canlı ayrımı yeter"): e-Arşiv/e-Fatura
     //   çekimi artık PRV önizlemesiyle değil fm_cekim_* zinciriyle (R5) yürür; fatura ajanının başka önizleme işi yoktu.
     araclar: [
+      'ekip_bilgi_oku',
       ...MUKELLEF_OKU, ...HAFIZA, ...FM_OKU, ...FM_YAZ, ...FM_LUCA,
       // R5 (2026-09-15): fatura çekimi zinciri — e-Fatura / GİB e-Arşiv sorgusu, bekleme, aktarım.
       ...FM_CEKIM,
@@ -153,25 +154,6 @@ export const AJAN_TANIMLARI: AjanTanimi[] = [
     kimlikKlasoru: klasor('fatura'),
   },
   {
-    id: 'banka-kasa',
-    ad: 'Banka/Kasa Sorumlusu',
-    unvan: 'Banka ve Cari Takip',
-    aciklama: 'Banka hareketi ↔ fatura eşleştirme, kasa/cari takibi, tahsilat hatırlatma.',
-    model: 'sonnet',
-    araclar: [
-      ...MUKELLEF_OKU, 'get_bank_status', 'get_cari_hareketler', 'list_invoices', 'list_earsiv_invoices', 'list_fatura_merkezi',
-      'get_collection_risk_summary', 'list_tasks',
-      // Pilot (banka-kasa, 2026-09-12): get_mizan "ajana kapalı" döndü; kasa/banka/ortak cari kontrolü (100/102/131/331) mizandan yapılır.
-      'get_mizan', 'list_mizan_periods',
-      'search_ai_memory', 'save_ai_memory', 'create_pending_action', 'send_whatsapp_template', 'send_whatsapp_freeform', 'send_sms', ...ONAY,
-      // PLAN/19 H3 (2026-09-14): ödeme vadesi / dönem takvimi (oku).
-      'get_tax_calendar',
-    ],
-    onayNoktalari: ['Mükellefe tahsilat/mutabakat mesajı'],
-    tetikler: ['Muzaffer Bey komutu / Koordinatör görev metni (portal)', 'banka ekstresi geldi olayı — planlandı', 'ayın 5 (tahsilat) / 25 (ekstre eksik) taraması — planlandı'],
-    kimlikKlasoru: klasor('banka-kasa'),
-  },
-  {
     id: 'beyanname',
     ad: 'KDV/Beyanname Uzmanı',
     unvan: 'Beyanname Hazırlık',
@@ -180,6 +162,7 @@ export const AJAN_TANIMLARI: AjanTanimi[] = [
       'Luca tahakkuk fişi → beyanname hazır → Muzaffer Bey’e sunar. Muhtasar, geçici vergi, yıllık, Ba-Bs aynı kalıpla. GİB gönderimi ASLA yapmaz.',
     model: 'opus',
     araclar: [
+      'ekip_bilgi_oku',
       ...MUKELLEF_OKU, ...HAFIZA, ...MALI_OKU, 'get_kdv_summary', 'get_kdv1_on_hazirlik', 'list_tax_payable', 'list_beyan_kayitlari', 'get_beyan_ozet',
       'get_beyanname_config', 'get_beyanname_readiness_summary', 'get_tax_calendar', 'fetch_kdv_from_luca', 'get_isletme_hesap_ozeti',
       // PLAN/17 R1 (2026-09-13): KDV Kontrol zinciri PORTAL işidir ve bu ajanındır — oturum aç → Luca çek + fatura bağla + OCR
@@ -200,6 +183,7 @@ export const AJAN_TANIMLARI: AjanTanimi[] = [
     aciklama: 'İşe giriş/çıkış, bordro, SGK hizmet/tahakkuk, e-bildirge kontrolü. Bildirge gönderimi yapmaz.',
     model: 'sonnet',
     araclar: [
+      'ekip_bilgi_oku',
       ...MUKELLEF_OKU, 'get_payroll_summary', 'list_sgk_declarations', 'list_etebligat', 'get_tax_calendar', 'list_documents',
       // kurallar.md: yıllık değişen rakamlar (asgari ücret, tavan, dilim) ezberden değil referanstan.
       'get_accounting_reference', 'research_official_sources',
@@ -216,6 +200,7 @@ export const AJAN_TANIMLARI: AjanTanimi[] = [
     aciklama: 'e-Defter kontrol kuralları (kasa/stok/banka negatif, mizan↔fiş), berat takvimi, yıl sonu kapanış hazırlığı.',
     model: 'opus',
     araclar: [
+      'ekip_bilgi_oku',
       ...MUKELLEF_OKU, ...HAFIZA, ...MALI_OKU, 'list_edefter_sessions', 'get_beyanname_config', 'get_tax_calendar', 'get_luca_agent_jobs',
       // kurallar.md: enflasyon düzeltmesi / berat süresi gibi yıla bağlı yükümlülük ezberden değil resmi kaynaktan (TEYİT ET).
       'research_official_sources',
@@ -232,6 +217,7 @@ export const AJAN_TANIMLARI: AjanTanimi[] = [
     aciklama: "Diğer ajanların Luca'daki eli: ekran okur, alan doldurur, menü açar, beceri öğrenir. VPS'te 7/24 (Faz B).",
     model: 'sonnet',
     araclar: [
+      'ekip_bilgi_oku',
       ...LUCA_OKU, ...LUCA_YAZ, 'luca_menu_haritasi_cikar', 'luca_kural_kaydet', 'luca_kural_sil', 'luca_mizan_cek',
       // Portal yalnız OKUMA (kurallar.md KURAL 2: portala yazma yok). Mizan gerekiyorsa portaldakini oku, çekim tarihini söyle.
       'list_taxpayers', 'get_taxpayer', 'get_mizan', 'list_mizan_periods', 'get_accounting_reference',
@@ -255,6 +241,7 @@ export const AJAN_TANIMLARI: AjanTanimi[] = [
       'Uyarı raporu üretir.',
     model: 'opus',
     araclar: [
+      'ekip_bilgi_oku',
       ...MUKELLEF_OKU, ...HAFIZA, ...MALI_OKU, 'get_kdv_summary', 'get_kdv1_on_hazirlik', 'list_edefter_sessions', 'list_beyan_kayitlari', 'get_beyan_ozet',
       'get_luca_agent_jobs',
       // PLAN/17 R6 (2026-09-13): PRV ile açılan mizan çekim işini sunucuda bekler.
@@ -277,6 +264,7 @@ export const AJAN_TANIMLARI: AjanTanimi[] = [
       'Rapor "öneri" etiketiyle; Muzaffer Bey’in onayı olmadan mükellefe gitmez.',
     model: 'opus',
     araclar: [
+      'ekip_bilgi_oku',
       ...MUKELLEF_OKU, ...HAFIZA, ...MALI_OKU, 'get_kdv_summary', 'list_tax_payable', 'get_cari_hareketler', 'get_bank_status',
       'get_isletme_hesap_ozeti', 'research_official_sources', 'summarize_with_claude',
       // PLAN/17 R2 (2026-09-13): hazır (kilitli) dönemleri listeler, Muzaffer Bey’in kayıtlı Mali Yorum'unu okur; Luca çekimi İSTEMEZ.
@@ -298,6 +286,7 @@ export const AJAN_TANIMLARI: AjanTanimi[] = [
     aciklama: 'Resmî Gazete / GİB duyurusu → özet → hangi mükellefi ilgilendirir. Muzaffer Bey’e özet.',
     model: 'sonnet',
     araclar: [
+      'ekip_bilgi_oku',
       'list_taxpayers', 'get_taxpayer', 'search_all', 'get_beyanname_config',
       'get_gundem', 'check_official_gazette', 'research_official_sources', 'http_get', 'summarize_with_claude',
       'get_accounting_reference', 'get_tax_calendar',
@@ -314,6 +303,7 @@ export const AJAN_TANIMLARI: AjanTanimi[] = [
     aciklama: 'Vergi incelemesi riski: KDV yüklenim oranı, sürekli devreden, kasa şişkinliği, ortaklar cari, nakit satış oranı. Mükellef bazlı risk puanı.',
     model: 'sonnet',
     araclar: [
+      'ekip_bilgi_oku',
       ...MUKELLEF_OKU, ...HAFIZA, ...MALI_OKU, 'get_kdv_summary', 'list_beyan_kayitlari', 'get_beyan_ozet', 'get_cari_hareketler',
       'list_earsiv_invoices', // nakit satış oranı: SATIS e-arşiv + cari ödeme yöntemi dağılımı
       'get_collection_risk_summary', 'create_pending_action',
@@ -331,6 +321,7 @@ export const AJAN_TANIMLARI: AjanTanimi[] = [
     aciklama: 'Mükellef soru-cevap, hatırlatma, tahsilat (mevcut WhatsApp botu genişler). Toplu mesaj onaylı.',
     model: 'sonnet',
     araclar: [
+      'ekip_bilgi_oku',
       ...MUKELLEF_OKU, 'get_my_profile', 'get_my_work_status', 'get_my_documents', 'get_my_open_tasks', 'get_my_recent_messages',
       'get_my_kdv', 'get_my_invoices', 'get_my_beyanname', 'get_my_balance', 'get_my_tebligat', 'get_my_sgk', 'get_my_isletme_hesap_ozeti', 'get_my_vergi_takvimi',
       'list_etebligat', 'get_collection_risk_summary', 'get_cari_hareketler', 'list_documents', 'list_tasks', 'get_tax_calendar',

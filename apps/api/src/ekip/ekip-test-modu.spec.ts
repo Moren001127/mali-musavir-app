@@ -20,12 +20,12 @@ function isleyiciKur(kaynak: 'test' | 'portal') {
   const runner = new EkipRunnerService(prisma as any, tools as any, dispatcher as any, {} as any, onay as any);
   (runner as any).onayKaydiAc = async () => ({ previewId: 'PRV-TEST', confirmationText: 'x', expiresAt: new Date() });
   const ctx = { tenantId: 't', userId: null, taxpayerId: null };
-  const p: any = { ajanId: 'banka-kasa', gorev: 'x', tenantId: 't', kaynak, taxpayerId: null, dryRun: true };
+  const p: any = { ajanId: 'musteri', gorev: 'x', tenantId: 't', kaynak, taxpayerId: null, dryRun: true };
   const olaylar: any[] = [];
   const kuru: any[] = [];
   const onayBekleyen: any[] = [];
   const isleyici = (runner as any).portalAracIsleyici({
-    p, ajan: ajanBul('banka-kasa')!, isId: 'is1', dryRun: true, ctx, emit: (e: any) => olaylar.push(e), toolUses: [], kuruTestYapilacaktilar: kuru, onayBekleyen,
+    p, ajan: ajanBul('musteri')!, isId: 'is1', dryRun: true, ctx, emit: (e: any) => olaylar.push(e), toolUses: [], kuruTestYapilacaktilar: kuru, onayBekleyen,
   });
   const cagir = async (name: string, args: any) => JSON.parse((await isleyici({ name, args })).content[0].text);
   return { cagir, cagrilar, olaylar, kuru, onayBekleyen };
@@ -40,7 +40,7 @@ describe('ekip TEST modu (kaynak=test)', () => {
 
   it('test modunda okuma serbest, portala yazan araç kesilir (bildirim/onay düşmez), dışarı gönderim onay kaydı açmaz', async () => {
     const t = isleyiciKur('test');
-    expect((await t.cagir('list_fatura_merkezi', { taxpayerId: 'x' })).ok).toBe(true);
+    expect((await t.cagir('list_documents', { taxpayerId: 'x' })).ok).toBe(true);
     const yaz = await t.cagir('create_pending_action', { title: 'Bilgi: deneme' });
     expect(yaz.kuruTest).toBe(true);
     expect(String(yaz.mesaj)).toContain('TEST');
@@ -48,7 +48,7 @@ describe('ekip TEST modu (kaynak=test)', () => {
     expect(gonder.kuruTest).toBe(true);
     expect(gonder.onayBekliyor).toBeUndefined();
     expect(t.onayBekleyen).toHaveLength(0);
-    expect(t.cagrilar).toEqual(['list_fatura_merkezi']); // yazan/gönderen araçlar hiç çalışmadı
+    expect(t.cagrilar).toEqual(['list_documents']); // yazan/gönderen araçlar hiç çalışmadı
     expect(t.kuru.map((k) => k.name)).toEqual(['create_pending_action', 'send_whatsapp_template']);
   });
 

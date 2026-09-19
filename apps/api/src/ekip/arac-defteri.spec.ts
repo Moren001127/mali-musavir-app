@@ -194,15 +194,16 @@ describe('portal_yaz_agir + KDV Kontrol zinciri araçları (PLAN/17)', () => {
 
 describe('ajan-tanimlari', () => {
   const SABIT_IDLER = [
-    'koordinator', 'fatura', 'banka-kasa', 'beyanname', 'bordro-sgk', 'edefter',
+    'koordinator', 'fatura', 'beyanname', 'bordro-sgk', 'edefter',
     'luca-operator', 'denetci', 'analist', 'mevzuat', 'risk', 'musteri',
   ];
 
-  it('12 ajan (Evrak Sorumlusu 2026-09-13 kaldırıldı), id\'ler sabit ve tekil', () => {
-    expect(AJAN_TANIMLARI).toHaveLength(12);
+  it('11 ajan (Evrak ve Banka/Kasa kaldırıldı), id\'ler sabit ve tekil', () => {
+    expect(AJAN_TANIMLARI).toHaveLength(11);
     expect(AJAN_TANIMLARI.map((a) => a.id).sort()).toEqual([...SABIT_IDLER].sort());
     for (const id of SABIT_IDLER) expect(ajanBul(id)?.id).toBe(id);
     expect(ajanBul('yok')).toBeNull();
+    expect(ajanBul('banka-kasa')).toBeNull();
   });
 
   it('her ajanın araç listesindeki tüm adlar defterde var ve tekil', () => {
@@ -377,7 +378,7 @@ describe('fm_* araçları ve Mihsap kapanışı (PLAN/15 Faz 5)', () => {
       expect({ ad, kademe: aracKademesi(ad) }).toEqual({ ad, kademe: 'oku' });
       expect({ ad, acik: aracAcikMi(k, ad, true).acik }).toEqual({ ad, acik: true });
     }
-    for (const id of ['fatura', 'banka-kasa', 'luca-operator', 'denetci', 'risk']) {
+    for (const id of ['fatura', 'luca-operator', 'denetci', 'risk']) {
       expect({ id, takvim: ajanBul(id)!.araclar.includes('get_tax_calendar') }).toEqual({ id, takvim: true });
     }
     expect(aracKademesi('get_tax_calendar')).toBe('oku');

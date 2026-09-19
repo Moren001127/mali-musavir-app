@@ -229,7 +229,7 @@ export function Baslik({
           <h1 className="flex flex-wrap items-baseline gap-2.5 text-[22px] font-semibold leading-tight tracking-[-0.01em]" style={{ color: TEXT }}>
             Ekip
             <small className="text-[12px] font-medium" style={{ color: MUTED }}>
-              {ajanSayisi || 12} personel
+              {ajanSayisi} personel
             </small>
           </h1>
           <p className="mt-1 text-[12.5px]" style={{ color: MUTED }}>

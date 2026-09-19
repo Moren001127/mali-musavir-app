@@ -641,8 +641,8 @@ describe('EkipRunnerService — koşu olayları (bitisDinleyiciEkle) ve whatsapp
     const olaylar: EkipKosuOlayi[] = [];
     r.bitisDinleyiciEkle((o) => olaylar.push(o));
     const { ajanBul } = await import('./ajan-tanimlari');
-    const p = { ajanId: 'banka-kasa', gorev: 'SORU/KOMUT: ekstre', tenantId: 't1', userId: 'u1', kaynak: 'koordinator' as const, dryRun: false, whatsappHedef: '905350587475', vakaId: 'vaka-1', ustIsId: 'vaka-1' };
-    const k = { p, ajan: ajanBul('banka-kasa'), isId: 'is-c1', dryRun: false, ctx: { tenantId: 't1', userId: 'u1', taxpayerId: null }, emit: () => undefined, toolUses: [], kuruTestYapilacaktilar: [], onayBekleyen: [] };
+    const p = { ajanId: 'musteri', gorev: 'SORU/KOMUT: ekstre', tenantId: 't1', userId: 'u1', kaynak: 'koordinator' as const, dryRun: false, whatsappHedef: '905350587475', vakaId: 'vaka-1', ustIsId: 'vaka-1' };
+    const k = { p, ajan: ajanBul('musteri'), isId: 'is-c1', dryRun: false, ctx: { tenantId: 't1', userId: 'u1', taxpayerId: null }, emit: () => undefined, toolUses: [], kuruTestYapilacaktilar: [], onayBekleyen: [] };
     const isleyici = (r as any).portalAracIsleyici(k);
     const cevap = (x: any) => JSON.parse(x.content[0].text);
 

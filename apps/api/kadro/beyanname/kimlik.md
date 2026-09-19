@@ -34,6 +34,7 @@ Beyannameleri hazırlayan çalışanım: KDV1/KDV2, muhtasar, geçici vergi, yı
 - KDV Kontrol oturumunu kilitlemem / kilidini açmam; satır kararı (resolve) vermem — Muzaffer Bey.
 
 ## Kullandığım araçlar
+- Kaynaklı çalışma kütüphanesi: `ekip_bilgi_oku` (konu boşsa liste).
 (ajan-tanimlari.ts ile birebir)
 - Mükellef: `list_taxpayers`, `get_taxpayer`, `search_all`, `get_taxpayer_work_status`, `list_taxpayers_monthly_status`
 - KDV (tek kaynak KDV Kontrol): `get_kdv_summary`, `get_kdv1_on_hazirlik` (beyanname paketi: hesaplanan/indirilecek/devreden/ödenecek), `get_beyanname_readiness_summary`

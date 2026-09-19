@@ -15,6 +15,7 @@ import { AJAN_TANIMLARI, AjanTanimi, MODEL_KIMLIKLERI, ORTAK_KURALLAR_DOSYASI, a
 import { aracAcikMi, aracKatalogMetni, aracKademesi, ekipMihsapKomutuYasagi } from './arac-defteri';
 import { DEVIR_SINIRI, konuBasligi } from './ekip-akis';
 import { SUREC_KIMLIGI } from './ekip-bekci';
+import { meslekiBilgiOku } from './mesleki-bilgi';
 
 /**
  * EKİP RUNNER — bir ajanı bir görevle koşturur (PLAN/13-AJAN-KADROSU.md §5).
@@ -515,7 +516,7 @@ export class EkipRunnerService implements OnApplicationShutdown {
     const ogrenmeSirasi = lucaOperatoruMu
       ? [
           '## İŞ ÖĞRENME SIRASI (bilmediğin işte "bana göster" DEME, kendin öğren)',
-          '1) KAYITLI BECERİ: luca_beceri_listele / search_ai_memory — bu iş daha önce kaydedilmiş mi?',
+          '1) KAYNAK/BECERİ: ekip_bilgi_oku → luca_beceri_listele / search_ai_memory; doğrulama durumunu kontrol et.',
           '2) EKRANI AÇ-OKU: luca_menu_ara → luca_menu_git → luca_ekran_oku; alan etiketleri ve uyarılar ne istendiğini söyler.',
           '3) ÖNCEKİ DÖNEM KAYDI: aynı işin geçmiş dönemdeki kaydını aç, NASIL doldurulmuş oku; yeni dönemi ona benzet.',
           '4) MUHASEBE BİLGİN: mevzuat/hesap mantığını ekrandan ve geçmişten çıkardığınla birleştir.',
@@ -524,7 +525,7 @@ export class EkipRunnerService implements OnApplicationShutdown {
       : [
           '## İŞ SIRASI',
           "ÖNCE PORTAL ARAÇLARIN (reçeten); Luca yalnız DEVİR ile: reçetesi olan iş portal araçlarıyla, reçetedeki sırayla yapılır; Luca'ya yalnız reçete adımı Luca dediğinde ya da DEVİR ile gidilir. \"Luca Operatörü oturum açsın\" diye portal işini devretme.",
-          'Bilmediğin işte "bana göster" DEME: search_ai_memory → araç sonucu → önceki dönem kaydı → muhasebe bilgin; yine olmuyorsa Muzaffer Bey’e TEK ve NET bir soru sor.',
+          'Bilmediğin işte ekip_bilgi_oku → search_ai_memory → araç sonucu → önceki kayıt; çözülmeyen nokta için TEK somut soru sor.',
         ];
 
     const prompt = [
@@ -919,6 +920,7 @@ export class EkipRunnerService implements OnApplicationShutdown {
 
   private async ekipAraciCalistir(name: string, args: any, p: EkipCalistirParametreleri, isId?: string | null): Promise<any> {
     const tenantId = p.tenantId;
+    if (name === 'ekip_bilgi_oku') return meslekiBilgiOku(args?.konu);
     if (name === 'ekip_isler') return { ok: true, isler: await this.isleriListele(tenantId, { ajanId: args?.ajanId, limit: args?.limit || 20 }) };
     if (name === 'ekip_pano') return { ok: true, ...(await this.pano(tenantId, args?.donemSayisi)) };
     if (name === 'ekip_onaylar') return { ok: true, ...(await this.onay.listele(tenantId, { durum: args?.durum || 'PENDING', limit: args?.limit || 20 })) };

@@ -1418,7 +1418,7 @@ export const EKIP_IS_ZINCIRI_ARACLARI: ToolDefinition[] = [
     input_schema: {
       type: 'object',
       properties: {
-        ajanId: { type: 'string', description: 'Ajan kimliği (beyanname, analist, fatura, denetci, evrak, banka-kasa, musteri, luca-operator ...).' },
+        ajanId: { type: 'string', description: 'Ajan kimliği (beyanname, analist, fatura, denetci, musteri, luca-operator ...).' },
         gorev: { type: 'string', description: 'Ajanın göreceği görev cümlesi: reçete + mükellef + dönem (çevrilmiş etiket) + kuru/canlı.' },
         taxpayerId: { type: 'string', description: 'Mükellef id (biliniyorsa; tekrar kilidi buna göre çalışır).' },
         dryRun: { type: 'boolean', description: 'Varsayılan true. false = canlı (Muzaffer Bey’in onayı şart).' },

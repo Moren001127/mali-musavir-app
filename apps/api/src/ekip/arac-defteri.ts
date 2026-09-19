@@ -264,6 +264,7 @@ const EYLEM_ACIKLAMA_EKLERI: Record<string, string> = {
 
 // ─── EKİBİN İÇ ARAÇLARI (runner kendisi çalıştırır) ───
 const EKIP_ARACLARI: AracKaydi[] = [
+  { ad: 'ekip_bilgi_oku', kaynak: 'ekip', kademe: 'oku', aciklama: 'Kaynaklı Luca/GİB çalışma kütüphanesi; konu boşsa liste. Okumak işlem yetkisi vermez.', parametreler: ['konu'] },
   {
     ad: 'ekip_isler',
     kaynak: 'ekip',

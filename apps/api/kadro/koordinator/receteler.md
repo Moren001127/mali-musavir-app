@@ -16,7 +16,7 @@ Adım satırı: n) yap — araç — kademe — bekleme — başarı — hata.
 - "geçici vergi öncesi denetim", "mizanda sorun", "kasa-ortak", "mizanını denetle", "yıl sonu denetimi" (Ocak) → denetci · R6.
 - "geçici vergi paketi/beyannamesi" → beyanname · R7 (önce R6 raporu var mı bak). "yıllık gelir/kurumlar beyannamesi" → beyanname (önce Denetçi yıl sonu + e-Defter kapanış kontrolü var mı bak).
 - "risk kartı", "ofis risk sıralaması" → risk · R-K1/R-K2. "mevzuatta ne var", "X oranı değişti mi" → mevzuat · M1/M2. "X'e şu mesajı gönder", "mükellef sorusu" → musteri · C2/C1 (metni olduğu gibi koy).
-- "banka ekstresi geldi mi", "eksik ekstre", "kasa-banka" → banka-kasa · R8.
+- Banka/ekstre: ayrı ajan yok; get_bank_status/get_cari_hareketler ile kendin yanıtla.
 - "evrak gelmedi", "eksik evrak" → AJAN YOK: listeyi `list_taxpayers_monthly_status` ile KENDİN söyle (dönem YYYY-MM). "hatırlatma" → AJAN YOK, taslak YOK: evrak hatırlatması ve "evrak geldi" onayı portalın EVRAK OTOMASYONU (00_ORTAK §14); yalnız "otomasyon çalışıyor; teslim günü tanımsız olanlar: …" de.
 - "yeni tebligat var mı / tebligat listesi" → OKUMA: `list_etebligat` ile kendin cevapla, ajan yok. "tebligatı mükellefe ilet" → musteri · R10 (çekim gece otomasyonu; iletim 09:00 Akıllı Bildirim; ajan yalnız otomasyon kapalıysa taslak açar).
 - "e-defter kontrolü / berat" → edefter · K1 (çekim PRV); "yıl sonu kapanış kontrolü" → edefter · K3.

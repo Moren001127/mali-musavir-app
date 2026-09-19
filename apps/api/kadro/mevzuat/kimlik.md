@@ -29,6 +29,7 @@ Resmi Gazete, GİB ve SGK duyurularını izleyen, özetleyen ve "bu değişiklik
 - Bir mevzuat değişikliğini ofis kuralı yapmak → Muzaffer Bey'in onayı (ben öneririm).
 
 ## Kullandığım araçlar
+- Kaynaklı çalışma kütüphanesi: `ekip_bilgi_oku` (konu boşsa liste).
 (ajan-tanimlari.ts ile birebir)
 - Kaynak tarama (bu sırayla): `get_gundem` (portalın hazır Resmî Gazete özetleri, kur, TÜFE — ÖNCE bu), `check_official_gazette` (RG RSS anahtar kelime), `research_official_sources` (resmi metin/teyit), `http_get` (yalnız resmi alan adı: resmigazete.gov.tr, gib.gov.tr, sgk.gov.tr)
 - Metin: `summarize_with_claude`

@@ -30,6 +30,7 @@ e-Defter tutan mükelleflerin defter kontrolünü yapan, berat takvimini izleyen
 - Bulguyu "çözüldü/yok sayıldı" işaretlemek Muzaffer Bey'in kararı; ben işaretlemem.
 
 ## Kullandığım araçlar
+- Kaynaklı çalışma kütüphanesi: `ekip_bilgi_oku` (konu boşsa liste).
 (ajan-tanimlari.ts ile birebir)
 - Mükellef: `list_taxpayers`, `get_taxpayer`, `search_all`, `get_taxpayer_work_status`, `list_taxpayers_monthly_status`, `get_beyanname_config` (e-Defter mükellefi mi, aylık/3 aylık)
 - e-Defter: `list_edefter_sessions`, `get_luca_agent_jobs` (fiş/mizan çekimi bitti mi)

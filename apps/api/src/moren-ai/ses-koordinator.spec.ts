@@ -266,10 +266,10 @@ describe('ses-koordinator — ajanSec (PLAN/17 §5 yönlendirme)', () => {
     expect(sec("Luca'da X'in mizanını çek")).toBe('denetci/R6');
   });
 
-  it('banka/ekstre → banka-kasa/R8; evrak/hatırlatma → ajan yok (otomasyon); tebligat → musteri/R10; e-defter/berat → edefter/K1', () => {
-    expect(sec("X'in banka ekstresi geldi mi")).toBe('banka-kasa/R8');
-    expect(sec('Eksik ekstre listesi')).toBe('banka-kasa/R8');
-    expect(sec('Kasa-banka kontrolü yap')).toBe('banka-kasa/R8');
+  it('banka/ekstre → ayrı ajan yok; evrak/hatırlatma → ajan yok (otomasyon); tebligat → musteri/R10; e-defter/berat → edefter/K1', () => {
+    expect(ajanSec("X'in banka ekstresi geldi mi")).toMatchObject({ ajanId: null, recete: null });
+    expect(ajanSec('Eksik ekstre listesi')).toMatchObject({ ajanId: null, recete: null });
+    expect(ajanSec('Kasa-banka kontrolü yap')).toMatchObject({ ajanId: null, recete: null });
     // Evrak Sorumlusu kaldırıldı (2026-09-13): hatırlatma otomasyonun işi, ajan başlatılmaz; eksik listesi Koordinatör'de.
     expect(ajanSec('Ağustos evrakı gelmeyenler kim')).toMatchObject({ ajanId: null, recete: null });
     expect(String(ajanSec('Ağustos evrakı gelmeyenler kim')?.neden)).toContain('OTOMATİK');

@@ -220,7 +220,7 @@ const secim = (ajanId: string, recete: string, neden: string): AjanSecimi => ({ 
  *  - muhasebeleştir / hesap ata / Luca'ya at / faturaları işle → fatura · R4
  *  - geçici vergi öncesi denetim / mizanda sorun / kasa-ortak / mizanı denetle → denetci · R6
  *  - geçici vergi paketi/beyannamesi → beyanname · R7
- *  - banka / ekstre / kasa-banka → banka-kasa · R8;  evrak / hatırlatma → AJAN YOK (evrak otomasyonu; Koordinatör kendisi okur);  tebligat → musteri · R10
+ *  - banka / ekstre / kasa-banka → ayrı ajan yok; Koordinatör mevcut kayıtları okur;  evrak / hatırlatma → AJAN YOK (evrak otomasyonu; Koordinatör kendisi okur);  tebligat → musteri · R10
  *  - e-defter / berat → edefter · K1
  *  - bordro / SGK / muhtasar → ajan yok ("bordro modülü kapalı")
  *  - "Luca'da … aç/doldur/oku/fiş" YALNIZ bu kalıp → luca-operator · ekran (KDV/mizan/gelir tablosu geçiyorsa değil)
@@ -276,7 +276,7 @@ export function ajanSec(cumle: string): AjanSecimi | null {
   }
   // Banka / ekstre (R8)
   if (/\b(ekstre|banka)\b/.test(t) || /kasa[- ]?banka/.test(t)) {
-    return secim('banka-kasa', 'R8', 'Ekstre takibi + 100/102/131/331 mantık; banka hareketi tablosu portalda yok. Dönem: YYYY-MM.');
+    return { ajanId: null, recete: null, neden: 'Banka/Kasa personeli ekipten kaldırıldı. Ayrı ajan BAŞLATMA; banka/ekstre sorusunu get_bank_status ile, cari sorusunu get_cari_hareketler ile kendin yanıtla. Dönem: YYYY-MM.' };
   }
   // Tebligat (R10) — çekim gece otomasyonu, iletim Müşteri İlişkileri (Evrak Sorumlusu 2026-09-13'te kaldırıldı)
   if (/tebligat/.test(t)) {

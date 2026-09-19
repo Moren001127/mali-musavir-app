@@ -12,7 +12,6 @@ const dk = (n) => n * 60_000;
 const AJANLAR = [
   ['koordinator', 'Koordinatör', 'Ofis Müdürü', 'sonnet', 41],
   ['fatura', 'Fatura Muhasebecisi', 'Fatura İşleme', 'opus', 32],
-  ['banka-kasa', 'Banka/Kasa Sorumlusu', 'Banka ve Kasa', 'sonnet', 22],
   ['beyanname', 'Beyanname Uzmanı', 'Beyanname ve KDV', 'opus', 53],
   ['bordro-sgk', 'Bordro/SGK Sorumlusu', 'Bordro ve SGK', 'sonnet', 27],
   ['edefter', 'e-Defter Kontrolörü', 'e-Defter', 'opus', 33],
