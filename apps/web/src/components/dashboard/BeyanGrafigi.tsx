@@ -81,7 +81,20 @@ export function BeyanGrafigi({ rows, loading, error }: {
                     onKeyDown={event => { if (event.key === 'Escape') { setHovered(null); setFocused(null); } }}>
                     <span className="ofis-beyan__drawing">
                       <svg viewBox="0 0 80 124" preserveAspectRatio="none" aria-hidden="true">
-                        <defs><clipPath id={clip}><path d={`M 20 112 V ${112 - height + Math.min(7, height)} Q 20 ${112 - height} 27 ${112 - height} H 53 Q 60 ${112 - height} 60 ${112 - height + Math.min(7, height)} V 112 Z`} /></clipPath></defs>
+                        <defs>
+                          <clipPath id={clip}><path d={`M 20 112 V ${112 - height + Math.min(3, height)} Q 20 ${112 - height} 25 ${112 - height} H 55 Q 60 ${112 - height} 60 ${112 - height + Math.min(3, height)} V 112 Z`} /></clipPath>
+                          {PARTS.map(part => <linearGradient key={part.key} id={`${clip}-${part.key}`} x1="0" y1="0" x2="1" y2="1">
+                            <stop offset="0" stopColor={part.color} />
+                            <stop offset=".45" stopColor={part.color} />
+                            <stop offset="1" stopColor={part.color} stopOpacity=".78" />
+                          </linearGradient>)}
+                          <linearGradient id={`${clip}-reflection`} x1="0" y1="0" x2="1" y2="0">
+                            <stop offset="0" stopColor="#fff" stopOpacity=".24" />
+                            <stop offset=".3" stopColor="#fff" stopOpacity=".07" />
+                            <stop offset=".65" stopColor="#fff" stopOpacity="0" />
+                            <stop offset="1" stopColor="#173855" stopOpacity=".08" />
+                          </linearGradient>
+                        </defs>
                         <g clipPath={`url(#${clip})`}>
                           {PARTS.map(part => {
                             const segmentHeight = row[part.key] / ceiling * 100;
@@ -90,10 +103,12 @@ export function BeyanGrafigi({ rows, loading, error }: {
                             used += segmentHeight;
                             if (segmentHeight > 0) previousHeight = segmentHeight;
                             return <g key={part.key}>
-                              <rect x="20" y={112 - used} width="40" height={segmentHeight} fill={part.color} />
+                              <rect x="20" y={112 - used} width="40" height={segmentHeight} fill={`url(#${clip}-${part.key})`} />
                               {separator && <line x1="20" x2="60" y1={boundary} y2={boundary} stroke="#fff" strokeOpacity="0.55" strokeWidth="0.7" vectorEffect="non-scaling-stroke" />}
                             </g>;
                           })}
+                          <rect x="20" y={112 - height} width="40" height={height} fill={`url(#${clip}-reflection)`} />
+                          <path d={`M 20.5 112 V ${112 - height + Math.min(3, height)} Q 20.5 ${112 - height + .2} 25 ${112 - height + .2} H 55 Q 59.5 ${112 - height + .2} 59.5 ${112 - height + Math.min(3, height)} V 112`} fill="none" stroke="#fff" strokeOpacity=".4" strokeWidth=".7" vectorEffect="non-scaling-stroke" />
                         </g>
                       </svg>
                       <strong className="ofis-beyan__total" style={{ bottom: `${(12 + height) / 124 * 100}%` }}>{row.toplam.toLocaleString('tr-TR')}</strong>

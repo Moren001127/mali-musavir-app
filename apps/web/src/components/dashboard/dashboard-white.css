@@ -243,3 +243,5 @@ html[data-theme='D'] [data-beyan-mini] button > div { text-align: center; }
 }
 html[data-theme='D'] [data-beyan-mini] button > div:first-child { overflow: visible; text-overflow: clip; font-size: 8px; letter-spacing: .025em; }
 html[data-theme='D'] [data-beyan-mini] > div > button:not(:first-child) { padding-left: 4px; padding-right: 4px; }
+/* Araç satırı kaldırıldı; sayaçlar doğrudan üst boşluğa yerleşir. */
+html[data-theme='D'] [data-dashboard-counters] { margin-top: 0 !important; }

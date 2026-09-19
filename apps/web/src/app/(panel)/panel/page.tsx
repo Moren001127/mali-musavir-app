@@ -1890,17 +1890,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <div data-dashboard-intro className="flex flex-col gap-3 px-0 py-1 sm:flex-row sm:items-end sm:justify-end">
-        <h1 className="sr-only">Ofis Paneli</h1>
-        <div className="flex items-center gap-2">
-          <Link href="/panel/evraklar" data-dashboard-action className="inline-flex items-center gap-1.5 rounded-[10px] px-3.5 py-2 text-[12.5px] font-semibold transition-all" style={portalStyle({ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.75)' })}
-            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(184,160,111,0.08)'; e.currentTarget.style.borderColor = 'rgba(184,160,111,0.2)'; e.currentTarget.style.color = '#fafaf9'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = 'rgba(250,250,249,0.75)'; }}>
-            <Download size={14} /> İçe Aktar
-          </Link>
-          <Link href="/panel/mukellefler/yeni" className="inline-flex items-center gap-1.5 rounded-[10px] px-4 py-2 text-[12.5px] font-bold transition-all" style={portalStyle({ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' })}><Plus size={14} /> Yeni Mükellef</Link>
-        </div>
-      </div>
+      <h1 className="sr-only">Ofis Paneli</h1>
 
       {/* Sayaç kartları */}
       <div data-dashboard-counters className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
