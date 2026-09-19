@@ -2,7 +2,8 @@
 import { portalStyle } from '@/lib/portal-theme';
 
 
-import type { CSSProperties, ReactNode } from 'react';
+import type { CSSProperties, ReactNode, ComponentProps } from 'react';
+import { Dugme as TemelDugme, Kutu as TemelKutu } from '../../butce/ui';
 import { CARD_BORDER, GOLD, KIRMIZI, MAVI, MOR, MUTED, OK, ROW_SEP, TEXT, TURUNCU } from '../../butce/ui';
 
 /**
@@ -12,7 +13,15 @@ import { CARD_BORDER, GOLD, KIRMIZI, MAVI, MOR, MUTED, OK, ROW_SEP, TEXT, TURUNC
  *
  * Renk yalnız anlam taşır: altın = sizden beklenen / işlem · mavi = sürüyor · yeşil = bitti · kırmızı = yarım / durdur.
  */
-export { Kutu, KPI, Rozet, Dugme, Girdi, Bos, Yukleniyor, GOLD, OK, KIRMIZI, MAVI, MOR, TURUNCU, TEXT, MUTED, CARD_BG, CARD_BORDER, ROW_SEP } from '../../butce/ui';
+export { KPI, Rozet, Girdi, Bos, Yukleniyor, GOLD, OK, KIRMIZI, MAVI, MOR, TURUNCU, TEXT, MUTED, CARD_BG, CARD_BORDER, ROW_SEP } from '../../butce/ui';
+
+export function Dugme(props: ComponentProps<typeof TemelDugme>) {
+  return <TemelDugme {...props} className={`ekip-button ekip-button--${props.tur || 'ikincil'} ${props.className || ''}`} />;
+}
+
+export function Kutu(props: ComponentProps<typeof TemelKutu>) {
+  return <TemelKutu {...props} className={`ekip-card ${props.className || ''}`} />;
+}
 
 export type AvatarTonu = 'gold' | 'mavi' | 'gri' | 'kirmizi';
 

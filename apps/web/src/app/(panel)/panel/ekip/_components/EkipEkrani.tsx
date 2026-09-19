@@ -1,4 +1,5 @@
 'use client';
+import './ekip-redesign.css';
 import { portalStyle } from '@/lib/portal-theme';
 
 
@@ -307,7 +308,7 @@ export function EkipEkrani() {
   const omurgaYok = isOmurgaYok(kadroS.error);
 
   return (
-    <div className="flex min-w-0 flex-col gap-4 pb-10">
+    <div className="ekip-workspace flex min-w-0 flex-col gap-5 pb-10">
       <Baslik
         durum={durumS.data}
         pano={panoS.data}
@@ -321,6 +322,7 @@ export function EkipEkrani() {
         sekme={sekme}
         onSekme={setSekme}
         onSabahOzeti={() => void sabahOzetiUretSimdi()}
+        onYeniGorev={() => { setSekme('genel'); setOdakNonce(Date.now()); }}
         sabahOzetiMesgul={sabahUretiliyor || (!!kosular.aktifKosu && kosular.aktifKosu.kaynak === 'sabahOzeti')}
       />
 
@@ -342,7 +344,7 @@ export function EkipEkrani() {
       {/* Genel bakış: görev ve karar tek kart; sağda tek akış, altta kadro. */}
       {sekme === 'genel' && (
         <>
-          <div className="grid min-w-0 items-start gap-[18px] xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+          <div className="ekip-overview-grid">
             <GorevKarti ref={komutRef} ajanlar={ajanlar} mukellefler={mukellefler} komutTaslak={komutTaslak} kosular={kosular} odakNonce={odakNonce} escNonce={escNonce} maxBagli={durumS.data?.maxBagli} koordinatorNotu={koordinatorNotu}>
               <SizdenBeklenenKutu kalemler={bekleyenler} onaylar={onaylar} ajanAd={ajanAd} mukellefAd={mukellefAd} onBitti={tazele} onCevapla={vakayaCevapla} calisiyor={!!kosular.aktifKosu} yukleniyor={genelS.isLoading && !genelS.data} hata={genelS.error} />
             </GorevKarti>
@@ -353,12 +355,9 @@ export function EkipEkrani() {
 
       {sekme === 'isler' && (
         <div className="flex min-w-0 flex-col gap-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            {panelGoster ? (
+          {panelGoster && <div className="ekip-jobs-toolbar flex flex-wrap items-center justify-between gap-3">
               <Dugme tur="sade" onClick={() => setPanelKapali(true)}>← İş listesine dön</Dugme>
-            ) : <p className="text-sm text-stone-400">Görevlerinizi izleyin, incelemek için bir iş açın.</p>}
-            <Dugme tur="birincil" onClick={() => { setSekme('genel'); setOdakNonce(Date.now()); }}>+ Yeni görev</Dugme>
-          </div>
+          </div>}
           <div hidden={panelGoster}>
           <IsGecmisi
             akis={akisS.data}

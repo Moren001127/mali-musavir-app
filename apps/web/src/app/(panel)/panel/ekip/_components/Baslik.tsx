@@ -4,20 +4,13 @@ import { portalStyle } from '@/lib/portal-theme';
 
 import type { ReactNode } from 'react';
 import type { EkipDurum, Pano, PanoDonemOzeti } from '@/lib/ekip';
-import { CARD_BORDER, GOLD, KIRMIZI, MAVI, MOR, MUTED, OK, TEXT } from './Tema';
+import { GOLD, KIRMIZI, MAVI, MOR, MUTED, OK, TEXT } from './Tema';
 import { bugunMu, donemEtiketi, saatKisa } from './ortak';
 
 export type EkipSekme = 'genel' | 'isler' | 'pano' | 'kadro';
 
-/** Koyu zeminde okunabilir, ikincil dönem etiketi. */
-const SOLUK = '#a49b88';
-/** Kart içi ince ayraç (sekme şeridinin üst çizgisi). */
-const AYRAC = 'rgba(255,255,255,0.055)';
 /** Şeritteki "evrak bekliyor" dilimi — nötr açık ton. */
 const BEKLIYOR = 'rgba(250,250,249,0.22)';
-/** Koyu zemin üzerinde hafif altın ışık. */
-const KART_ZEMIN =
-  'radial-gradient(ellipse at 0% 0%, rgba(230,200,120,0.08), transparent 55%), linear-gradient(135deg, #191917, #111214)';
 
 /** 6px durum noktası; `parilti` açıkken hafif ışıma. */
 function Nokta({ renk, parilti }: { renk: string; parilti?: boolean }) {
@@ -121,69 +114,7 @@ function AsamaSeridi({ dilimler, toplam }: { dilimler: Dilim[]; toplam: number }
   );
 }
 
-/** Başlığı büyütmeyen, tek satırlık küçük özet. */
-function Sayi({ deger, etiket, renk = TEXT, not }: { deger: number; etiket: string; renk?: string; not?: string }) {
-  return (
-    <span className="inline-flex flex-wrap items-center gap-1.5 text-[11px]" style={portalStyle({ color: MUTED })}>
-      <b className="font-medium tabular-nums" style={portalStyle({ color: renk })}>
-        {deger}
-      </b>
-      {etiket}
-      {not && (
-        <span style={portalStyle({ color: KIRMIZI })}>· {not}</span>
-      )}
-    </span>
-  );
-}
-
-/**
- * Sade sekmeler: seçili bölümde hafif altın zemin ve ince çerçeve.
- * Erişilebilirlik: sarmalayıcı role="tablist", her sekme role="tab" + aria-selected; erişilebilir ad = metnin kendisi.
- */
-function SadeSekmeler<T extends string>({ sekmeler, secili, onSec }: { sekmeler: Array<{ id: T; etiket: string; rozet?: number | null }>; secili: T; onSec: (id: T) => void }) {
-  return (
-    <nav role="tablist" aria-label="Ekip bölümleri" className="flex flex-wrap gap-1 p-2 sm:px-4" style={portalStyle({ borderTop: `1px solid ${AYRAC}`, background: 'rgba(0,0,0,0.12)' })}>
-      {sekmeler.map((s) => {
-        const aktif = s.id === secili;
-        return (
-          <button
-            key={s.id}
-            type="button"
-            role="tab"
-            aria-selected={aktif}
-            onClick={() => onSec(s.id)}
-            className={`relative flex min-h-10 items-center gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-[12px] transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e6c878] ${aktif ? 'font-semibold' : 'hover:bg-white/[0.04] hover:text-white'}`}
-            style={portalStyle({ color: aktif ? GOLD : MUTED, background: aktif ? 'rgba(230,200,120,0.09)' : undefined, boxShadow: aktif ? 'inset 0 0 0 1px rgba(230,200,120,0.16)' : undefined })}
-          >
-            {s.etiket}
-            {!!s.rozet && (
-              <span className="rounded-full px-[7px] py-px text-[10px]" style={portalStyle({ background: 'rgba(255,255,255,0.05)', border: `1px solid ${CARD_BORDER}`, color: MUTED })}>
-                {s.rozet}
-              </span>
-            )}
-          </button>
-        );
-      })}
-    </nav>
-  );
-}
-
-/** Kompakt başlık ve sekmeler; ayrıntılı dönem özeti yalnızca panoda görünür. */
-export function Baslik({
-  durum,
-  ozet,
-  pano,
-  ajanSayisi,
-  kararSayisi,
-  calisan,
-  bugunBiten,
-  bugunYarim,
-  isSayisi,
-  sekme,
-  onSekme,
-  onSabahOzeti,
-  sabahOzetiMesgul,
-}: {
+interface BaslikProps {
   durum: EkipDurum | undefined;
   ozet: PanoDonemOzeti | undefined;
   pano?: Pano;
@@ -196,8 +127,11 @@ export function Baslik({
   sekme: EkipSekme;
   onSekme: (s: EkipSekme) => void;
   onSabahOzeti: () => void;
+  onYeniGorev: () => void;
   sabahOzetiMesgul: boolean;
-}) {
+}
+
+export function Baslik({ durum, ozet, pano, ajanSayisi, kararSayisi, calisan, bugunBiten, bugunYarim, isSayisi, sekme, onSekme, onSabahOzeti, onYeniGorev, sabahOzetiMesgul }: BaslikProps) {
   const sonSabah = durum?.sonSabahOzeti?.createdAt || null;
   const sabahBugun = !!sonSabah && bugunMu(sonSabah);
   const sabahDurum = sabahOzetiMesgul ? 'üretiliyor…' : sabahBugun ? `${saatKisa(sonSabah!).slice(0, 5)} gitti` : durum?.sabahOzeti ? '08:30' : 'kapalı';
@@ -206,80 +140,50 @@ export function Baslik({
   const nabiz = ozet ? dilimleriCikar(ozet, pano) : null;
   const operatorAcik = !!durum?.operator?.acik;
   const maxKopuk = durum?.maxBagli === false;
-
+  const ozetler = [
+    { etiket: 'Çalışan', sayi: calisan, not: 'Devam eden işler', ton: 'petrol' },
+    { etiket: 'Sizden beklenen', sayi: kararSayisi, not: 'Karar ve yanıtlar', ton: 'amber' },
+    { etiket: 'Bugün tamamlanan', sayi: bugunBiten, not: 'Sonuçlanan işler', ton: 'yesil' },
+    { etiket: 'Yarım kalan', sayi: bugunYarim, not: 'Bugün yeniden incelenecek', ton: 'gul' },
+  ];
+  const sekmeler: Array<{id: EkipSekme; etiket: string}> = [
+    {id:'genel',etiket:'Genel bakış'}, {id:'isler',etiket:'İşler'}, {id:'pano',etiket:'Dönem panosu'}, {id:'kadro',etiket:'Kadro'},
+  ];
   return (
-    <header
-      className="relative overflow-hidden rounded-2xl"
-      style={portalStyle({ background: KART_ZEMIN, border: '1px solid rgba(230,200,120,0.14)', boxShadow: '0 8px 24px rgba(0,0,0,0.16)' })}
-    >
-      <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-px" style={portalStyle({ background: 'linear-gradient(90deg, transparent, rgba(230,200,120,0.4), transparent)' })} />
-
-      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-5">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <h1 className="text-[19px] font-semibold leading-tight tracking-tight" style={portalStyle({ color: TEXT })}>Ekip</h1>
-            <span className="text-[11px]" style={portalStyle({ color: MUTED })}>{ajanSayisi} personel</span>
+    <header className="ekip-heading">
+      <div className="ekip-heading-top">
+        <div>
+          <div className="ekip-eyebrow">OFİS OPERASYONLARI</div>
+          <div className="ekip-heading-title"><h1>Ekip</h1><span>{ajanSayisi} personel</span></div>
+          <p className="ekip-heading-description">Görevleri yönetin, ilerlemeyi izleyin, sonuçları inceleyin.</p>
+        </div>
+        <div className="ekip-heading-tools">
+          <div className="flex flex-wrap items-center gap-2">
+          <button type="button" className="ekip-summary-button" onClick={onSabahOzeti} disabled={sabahOzetiMesgul} aria-busy={sabahOzetiMesgul} title="Sabah özetini şimdi üret (yalnız üretir, göndermez)">
+            <span>Sabah özeti</span><small>{sabahDurum}</small>
+          </button>
+          <button type="button" className="ekip-new-task" onClick={onYeniGorev}>+ Yeni görev</button>
           </div>
-          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
-            <Sayi deger={kararSayisi} etiket="karar bekliyor" renk={kararSayisi > 0 ? GOLD : TEXT} />
-            <Sayi deger={calisan} etiket="çalışan" />
-            <Sayi deger={bugunBiten} etiket="bugün biten" not={bugunYarim > 0 ? `${bugunYarim} yarım kaldı` : undefined} />
+          <div className="ekip-connections">
+            <Durum nokta={operatorAcik ? OK : MUTED} title={durum?.operator?.cihaz ? `Cihaz: ${durum.operator.cihaz}` : undefined}>Luca {operatorAcik ? 'açık' : 'kapalı'}</Durum>
+            <Durum nokta={!durum ? MUTED : maxKopuk ? KIRMIZI : OK}>Max {!durum ? 'kontrol ediliyor' : maxKopuk ? 'bağlı değil' : 'bağlı'}</Durum>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={onSabahOzeti}
-          disabled={sabahOzetiMesgul}
-          aria-busy={sabahOzetiMesgul}
-          title="Sabah özetini şimdi üret (yalnız üretir, göndermez)"
-          className="inline-flex min-h-10 flex-wrap items-center gap-x-2 gap-y-1 rounded-lg px-3 py-2 text-[12px] transition hover:brightness-125 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e6c878] disabled:cursor-wait disabled:opacity-60"
-          style={portalStyle({ color: GOLD, background: 'rgba(230,200,120,0.07)', border: '1px solid rgba(230,200,120,0.2)' })}
-        >
-          <span className="font-medium">Sabah özeti</span>
-          <span className="text-[11px]" style={portalStyle({ color: MUTED })}>{sabahDurum}</span>
-        </button>
       </div>
-
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 pb-3 sm:px-5">
-        {donemAd && (
-          <span className="text-[11px]" style={portalStyle({ color: MUTED })} title={donemNotu}>
-            {donemAd} beyannameleri
-          </span>
-        )}
-        <Durum nokta={operatorAcik ? OK : MUTED} title={durum?.operator?.cihaz ? `Cihaz: ${durum.operator.cihaz}` : undefined}>
-          Luca operatörü {operatorAcik ? 'açık' : 'kapalı'}
-        </Durum>
-        <Durum nokta={!durum ? MUTED : maxKopuk ? KIRMIZI : OK}>
-          Max {!durum ? 'kontrol ediliyor' : maxKopuk ? 'bağlı değil' : 'bağlı'}
-        </Durum>
+      <div className="ekip-summary-grid">
+        {ozetler.map((o)=><div key={o.ton} className="ekip-summary-item" data-tone={o.ton}>
+          <span className="ekip-summary-label">{o.etiket}</span><strong>{o.sayi}</strong><small>{o.not}</small>
+        </div>)}
       </div>
-
-      <SadeSekmeler<EkipSekme>
-        secili={sekme}
-        onSec={onSekme}
-        sekmeler={[
-          { id: 'genel', etiket: 'Genel bakış' },
-          { id: 'isler', etiket: 'İşler', rozet: isSayisi || null },
-          { id: 'pano', etiket: 'Dönem panosu' },
-          { id: 'kadro', etiket: 'Kadro' },
-        ]}
-      />
-
-      {sekme === 'pano' && (
-        <div className="px-4 py-3 sm:px-5" style={portalStyle({ borderTop: `1px solid ${AYRAC}` })}>
-          {nabiz ? (
-            <>
-              <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-[11px]">
-                <span style={portalStyle({ color: SOLUK })}>Dönem ilerlemesi · {nabiz.toplam} mükellef</span>
-                <span className="tabular-nums" style={portalStyle({ color: MUTED })}>{nabiz.verildi} / {nabiz.toplam} verildi</span>
-              </div>
-              <AsamaSeridi dilimler={nabiz.dilimler} toplam={nabiz.toplam} />
-            </>
-          ) : (
-            <p role="status" className="text-[11px]" style={portalStyle({ color: MUTED })}>Dönem panosu yükleniyor…</p>
-          )}
-        </div>
-      )}
+      <div className="ekip-navigation-line">
+        <nav role="tablist" aria-label="Ekip bölümleri" className="ekip-navigation">
+          {sekmeler.map(s=><button key={s.id} type="button" role="tab" aria-selected={sekme===s.id} onClick={()=>onSekme(s.id)}>{s.etiket}{s.id==='isler' && isSayisi>0 && <span>{isSayisi}</span>}</button>)}
+        </nav>
+        {donemAd && <span className="ekip-period-label" title={donemNotu}>{donemAd} beyannameleri</span>}
+      </div>
+      {sekme==='pano' && <div className="ekip-period-progress">
+        {nabiz ? <><div className="flex items-center justify-between gap-3 text-xs"><span>Dönem ilerlemesi · {nabiz.toplam} mükellef</span><strong>{nabiz.verildi} / {nabiz.toplam} verildi</strong></div><AsamaSeridi dilimler={nabiz.dilimler} toplam={nabiz.toplam}/></> : <p role="status">Dönem panosu yükleniyor…</p>}
+      </div>}
     </header>
   );
 }

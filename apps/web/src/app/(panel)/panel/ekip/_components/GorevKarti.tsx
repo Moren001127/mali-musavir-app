@@ -1,4 +1,5 @@
 'use client';
+import './genel-redesign.css';
 import { portalStyle } from '@/lib/portal-theme';
 
 
@@ -144,7 +145,7 @@ export const GorevKarti = forwardRef<
         </span>
       }
       style={portalStyle({ scrollMarginTop: 16 })}
-      className={className}
+      className={`eg-gorev ${className}`}
     >
       <div
         ref={(el) => {
@@ -154,7 +155,7 @@ export const GorevKarti = forwardRef<
         }}
       >
         {/* Yazı alanı */}
-        <div className="relative rounded-xl transition-[border-color,box-shadow]" style={portalStyle({ background: 'rgba(0,0,0,0.28)', border: `1px solid ${kenar}`, boxShadow: odakta ? `0 0 0 3px ${GOLD}14` : 'none' })}>
+        <div data-eg-canli={!dryRun} data-eg-dinliyor={listening} className="eg-yazi relative rounded-xl transition-[border-color,box-shadow]" style={portalStyle({ background: 'rgba(0,0,0,0.28)', border: `1px solid ${kenar}`, boxShadow: odakta ? `0 0 0 3px ${GOLD}14` : 'none' })}>
           <textarea
             ref={textareaRef}
             value={gorev}
@@ -170,7 +171,7 @@ export const GorevKarti = forwardRef<
             rows={2}
             aria-label="Görev"
             placeholder={listening ? 'Dinliyorum…' : 'Örn: Bu ayın KDV kontrolünü yap.'}
-            className="min-h-[88px] w-full resize-y bg-transparent px-4 py-3.5 pr-24 text-[14px] leading-relaxed outline-none"
+            className="eg-metin min-h-[104px] w-full resize-y bg-transparent px-4 py-3.5 pr-24 text-[14px] leading-relaxed outline-none"
             style={portalStyle({ color: TEXT })}
           />
           <button
@@ -178,78 +179,81 @@ export const GorevKarti = forwardRef<
             onClick={toggleMic}
             disabled={buCalisiyor}
             title={listening ? 'Dinlemeyi durdur' : 'Sesli söyle — konuş, metne dönüşsün'}
-            className={`absolute right-2.5 top-2.5 inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[11.5px] font-medium transition hover:brightness-125 disabled:opacity-40 ${listening ? 'animate-pulse' : ''}`}
+            data-eg-dinliyor={listening}
+            className={`eg-ses absolute right-2.5 top-2.5 inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[11.5px] font-medium transition hover:brightness-125 disabled:opacity-40 ${listening ? 'animate-pulse' : ''}`}
             style={portalStyle(listening ? { background: `${KIRMIZI}1f`, border: `1px solid ${KIRMIZI}66`, color: KIRMIZI } : { background: 'rgba(255,255,255,0.04)', border: `1px solid ${CARD_BORDER}`, color: MUTED })}
           >
             {listening ? <MicOff size={13} /> : <Mic size={13} />} {listening ? 'Dinliyor' : 'Sesli'}
           </button>
 
-          {/* Alt satır: mükellef · mod · çalıştır */}
-          <div className="flex flex-wrap items-center gap-2 px-3 pb-3">
-            <span className="inline-flex h-9 min-w-0 basis-full sm:basis-[200px] flex-1 items-center gap-2 rounded-xl px-3 text-[12.5px]" style={portalStyle(koyuAlan)}>
-              <Users size={13} style={portalStyle({ color: MUTED })} />
-              <span className="min-w-0 flex-1">
-                <MukellefSecici sade yerTutucu="Ofis geneli · mükellef seç" mukellefler={mukellefler} value={taxpayerId} onChange={setTaxpayerId} renk={GOLD} escNonce={escNonce} />
-              </span>
-            </span>
-            <span className="inline-flex h-9 overflow-hidden rounded-xl" style={portalStyle(koyuAlan)} role="radiogroup" aria-label="Çalışma modu">
-              {(
-                [
-                  ['kuru', 'Kuru test', 'Mükellefe mesaj gitmez, Luca’ya yazılmaz; yalnız "yapacaktım" raporu'],
-                  ['canli', 'Canlı', 'Gerçek işlem — dışarı gönderimler yine onayınıza düşer'],
-                ] as const
-              ).map(([id, ad, title]) => {
-                const aktif = dryRun ? id === 'kuru' : id === 'canli';
-                const renk = id === 'canli' ? KIRMIZI : GOLD;
-                return (
-                  <button
-                    key={id}
-                    type="button"
-                    role="radio"
-                    aria-checked={aktif}
-                    title={title}
-                    onClick={() => {
-                      if (id === 'kuru') {
-                        setDryRun(true);
-                        setCanliTeyit(false);
-                      } else if (dryRun) setCanliTeyit(true);
-                    }}
-                    className="px-3 text-[12px] font-medium transition"
-                    style={portalStyle(aktif ? { background: `${renk}1f`, color: renk, boxShadow: `inset 0 0 0 1px ${renk}4d` } : { color: MUTED })}
-                  >
-                    {ad}
-                  </button>
-                );
-              })}
-            </span>
-            {sabahOzetiSuruyor ? (
-              <Dugme disabled>
-                <Loader2 size={13} className="animate-spin" /> Sabah özeti üretiliyor
-              </Dugme>
-            ) : buCalisiyor ? (
-              <Dugme tur="tehlike" onClick={() => void kosular.durdur(KOORDINATOR)}>
-                <Square size={12} /> Durdur
-              </Dugme>
-            ) : (
-              <button
-                ref={calistirRef}
-                type="button"
-                onClick={calistir}
-                disabled={!calistirabilir}
-                title={baskaCalisiyor ? 'Devam eden görevin bitmesini bekleyin' : dryRun ? 'Görevi deneme modunda başlat' : 'Gerçek işlemi başlat'}
-                className="inline-flex h-9 items-center gap-1.5 rounded-xl px-4 text-[12.5px] font-semibold transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
-                style={portalStyle({ background: `linear-gradient(140deg, ${dryRun ? GOLD : KIRMIZI}, ${koyuTon(dryRun ? GOLD : KIRMIZI)})`, border: `1px solid ${dryRun ? GOLD : KIRMIZI}`, color: '#0b0b0d' })}
-              >
-                {baskaCalisiyor ? <Loader2 size={13} className="animate-spin" /> : dryRun ? <Play size={13} /> : <AlertTriangle size={13} />}
-                {baskaCalisiyor ? 'Görev sürüyor' : maxBagli === false ? 'Bağlantı gerekli' : dryRun ? 'Başlat' : 'Canlı başlat'}
-              </button>
-            )}
-          </div>
+        </div>
 
+        {/* Alt satır: mükellef · mod · çalıştır */}
+        <div className="eg-kontroller flex flex-wrap items-center gap-2">
+          <span className="eg-secici inline-flex h-9 min-w-0 basis-full sm:basis-[200px] flex-1 items-center gap-2 rounded-xl px-3 text-[12.5px]" style={portalStyle(koyuAlan)}>
+            <Users size={13} style={portalStyle({ color: MUTED })} />
+            <span className="min-w-0 flex-1">
+              <MukellefSecici sade yerTutucu="Ofis geneli · mükellef seç" mukellefler={mukellefler} value={taxpayerId} onChange={setTaxpayerId} renk={GOLD} escNonce={escNonce} />
+            </span>
+          </span>
+          <span className="eg-mod inline-flex h-9 overflow-hidden rounded-xl" style={portalStyle(koyuAlan)} role="radiogroup" aria-label="Çalışma modu">
+            {(
+              [
+                ['kuru', 'Kuru test', 'Mükellefe mesaj gitmez, Luca’ya yazılmaz; yalnız "yapacaktım" raporu'],
+                ['canli', 'Canlı', 'Gerçek işlem — dışarı gönderimler yine onayınıza düşer'],
+              ] as const
+            ).map(([id, ad, title]) => {
+              const aktif = dryRun ? id === 'kuru' : id === 'canli';
+              const renk = id === 'canli' ? KIRMIZI : GOLD;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  data-eg-mod={id}
+                  role="radio"
+                  aria-checked={aktif}
+                  title={title}
+                  onClick={() => {
+                    if (id === 'kuru') {
+                      setDryRun(true);
+                      setCanliTeyit(false);
+                    } else if (dryRun) setCanliTeyit(true);
+                  }}
+                  className="px-3 text-[12px] font-medium transition"
+                  style={portalStyle(aktif ? { background: `${renk}1f`, color: renk, boxShadow: `inset 0 0 0 1px ${renk}4d` } : { color: MUTED })}
+                >
+                  {ad}
+                </button>
+              );
+            })}
+          </span>
+          {sabahOzetiSuruyor ? (
+            <Dugme disabled>
+              <Loader2 size={13} className="animate-spin" /> Sabah özeti üretiliyor
+            </Dugme>
+          ) : buCalisiyor ? (
+            <Dugme tur="tehlike" onClick={() => void kosular.durdur(KOORDINATOR)}>
+              <Square size={12} /> Durdur
+            </Dugme>
+          ) : (
+            <button
+              data-eg-canli={!dryRun}
+              ref={calistirRef}
+              type="button"
+              onClick={calistir}
+              disabled={!calistirabilir}
+              title={baskaCalisiyor ? 'Devam eden görevin bitmesini bekleyin' : dryRun ? 'Görevi deneme modunda başlat' : 'Gerçek işlemi başlat'}
+              className="eg-baslat inline-flex h-9 items-center gap-1.5 rounded-xl px-4 text-[12.5px] font-semibold transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+              style={portalStyle({ background: `linear-gradient(140deg, ${dryRun ? GOLD : KIRMIZI}, ${koyuTon(dryRun ? GOLD : KIRMIZI)})`, border: `1px solid ${dryRun ? GOLD : KIRMIZI}`, color: '#0b0b0d' })}
+            >
+              {baskaCalisiyor ? <Loader2 size={13} className="animate-spin" /> : dryRun ? <Play size={13} /> : <AlertTriangle size={13} />}
+              {baskaCalisiyor ? 'Görev sürüyor' : maxBagli === false ? 'Bağlantı gerekli' : dryRun ? 'Başlat' : 'Canlı başlat'}
+            </button>
+          )}
         </div>
 
         {canliTeyit && dryRun && (
-          <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl px-3.5 py-2.5 text-[12.5px]" style={portalStyle({ background: `${KIRMIZI}12`, border: `1px solid ${KIRMIZI}66`, color: TEXT })}>
+          <div className="eg-canli-teyit mt-3 flex flex-wrap items-center gap-2 rounded-xl px-3.5 py-2.5 text-[12.5px]" style={portalStyle({ background: `${KIRMIZI}12`, border: `1px solid ${KIRMIZI}66`, color: TEXT })}>
             <AlertTriangle size={14} style={portalStyle({ color: KIRMIZI })} />
             <span className="min-w-0 flex-1">
               <b>Canlı moda geçiliyor</b> — mükellefe mesaj gidebilir, Luca’ya fiş yazılabilir. Resmi gönderim (GİB/SGK/berat) yine sizde kalır.
@@ -261,7 +265,7 @@ export const GorevKarti = forwardRef<
           </div>
         )}
 
-        <p className="mt-2.5" style={portalStyle(ipucuStil)}>
+        <p className="eg-ipucu mt-2.5" style={portalStyle(ipucuStil)}>
           {dryRun ? 'Kuru testte mesaj gönderilmez, kayıt değiştirilmez.' : 'Canlı mod: gerçek işlem yapılır; gönderimler onayınıza gelir.'}
         </p>
         {children}

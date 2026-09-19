@@ -1,4 +1,5 @@
 'use client';
+import './isler-redesign.css';
 import { portalStyle } from '@/lib/portal-theme';
 
 
@@ -18,7 +19,7 @@ const SAYFA = 8;
 function IsFiltresi({ aktif, onClick, children, sayi, dikkat = false }: { aktif: boolean; onClick: () => void; children: ReactNode; sayi?: number | null; dikkat?: boolean }) {
   return (
     <button type="button" aria-pressed={aktif} onClick={onClick}
-      className="inline-flex min-h-8 items-center gap-1.5 rounded-full px-2.5 text-[11.5px] transition hover:bg-white/[0.04] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+      data-dikkat={dikkat || undefined} className="ekip-isler-filtre"
       style={portalStyle({ color: aktif || dikkat ? GOLD : MUTED, border: `1px solid ${aktif ? `${GOLD}4d` : 'transparent'}`, background: aktif ? `${GOLD}14` : undefined })}>
       {children}
       {sayi != null && <span className="font-semibold tabular-nums" style={portalStyle({ opacity: aktif || dikkat ? 1 : 0.7 })}>{sayi}</span>}
@@ -37,7 +38,7 @@ export function vakaRozeti(v: Vaka, kosuyor: boolean): { ad: string; renk: strin
 }
 
 /**
- * İşler listesi (İşler sekmesi, sol): süzgeç çipleri · gün · mükellef arama; satır = avatar · mükellef · konu · rozet · saat.
+ * İşler listesi (İşler sekmesi, sol): tek araç çubuğu; sütunlar = mükellef/görev · sorumlu · durum · güncelleme.
  * Tıklanan iş sağdaki panelde açılır. 8'er 8'er "Daha fazla göster".
  */
 export function IsGecmisi({ akis, isLoading, error, sayaclar, suzgec, onSuzgec, gun, onGun, taxpayerId, onTaxpayerId, mukellefler, seciliVakaId, onSec, ajanAd }: {
@@ -73,12 +74,11 @@ export function IsGecmisi({ akis, isLoading, error, sayaclar, suzgec, onSuzgec, 
   const liste = vakalar.slice(0, gorunen);
 
   return (
-    <section aria-label="İşler" className="relative min-w-0 rounded-[18px] px-4 pb-5 pt-[18px] sm:px-6"
+    <section aria-label="İşler" className="ekip-isler-liste ekip-isler-yuzey"
       style={portalStyle({ background: 'rgba(255,255,255,0.018)', border: '1px solid rgba(255,255,255,0.065)', boxShadow: '0 18px 44px rgba(0,0,0,0.24)' })}>
-      <span aria-hidden="true" className="pointer-events-none absolute inset-x-6 top-0 h-px" style={portalStyle({ background: `linear-gradient(90deg, transparent, ${GOLD}73, transparent)` })} />
-      <header className="mb-3 flex flex-wrap items-start justify-between gap-2">
+      <header className="ekip-isler-liste-baslik">
         <div className="min-w-0">
-          <h3 className="text-[14px] font-semibold" style={portalStyle({ color: TEXT })}>İşler</h3>
+          <h3 className="ekip-isler-baslik" style={portalStyle({ color: TEXT })}>İşler</h3>
           <p className="mt-1 text-[11.5px]" style={portalStyle({ color: MUTED })}>
             {akis ? `${gun === 1 ? 'Bugün' : `Son ${gun} gün`} · ${vakalar.length} iş · ${bittiN} bitti${hataN ? ` · ${hataN} yarım` : ''}` : 'Verilen görevler'}
           </p>
@@ -88,8 +88,8 @@ export function IsGecmisi({ akis, isLoading, error, sayaclar, suzgec, onSuzgec, 
         </Dugme>
       </header>
       {/* Süzgeçler */}
-      <div className="flex flex-col gap-2">
-        <div className="flex flex-wrap items-center gap-1" role="group" aria-label="İş durumu">
+      <div className="ekip-isler-araclar">
+        <div className="ekip-isler-filtre-grubu" role="group" aria-label="İş durumu">
           {KUTULAR.map((k) => {
             const sayi = k.id === 'tumu' ? toplam : k.sayacAnahtari ? sayaclar?.[k.sayacAnahtari] ?? 0 : null;
             const dikkat = (k.id === 'onay' || k.id === 'istek') && !!sayi;
@@ -101,13 +101,13 @@ export function IsGecmisi({ akis, isLoading, error, sayaclar, suzgec, onSuzgec, 
           })}
           {!!sayaclar?.gecikti && <Rozet metin={`${sayaclar.gecikti} gecikti`} renk={KIRMIZI} />}
         </div>
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className="ekip-isler-donem">
           {([1, 7, 30] as AkisGun[]).map((g) => (
             <IsFiltresi key={g} aktif={gun === g} onClick={() => onGun(g)}>
               {g === 1 ? 'Bugün' : `${g} gün`}
             </IsFiltresi>
           ))}
-          <span className="inline-flex h-8 min-w-[150px] flex-1 items-center gap-2 rounded-[10px] px-3 text-[12px]" style={portalStyle({ background: 'rgba(255,255,255,0.025)', border: `1px solid ${ROW_SEP}` })}>
+          <span className="ekip-isler-arama" style={portalStyle({ background: 'rgba(255,255,255,0.025)', border: `1px solid ${ROW_SEP}` })}>
             <Search size={12} style={portalStyle({ color: MUTED })} />
             <span className="min-w-0 flex-1">
               <MukellefSecici sade yerTutucu="Mükellef ara…" mukellefler={mukellefler} value={taxpayerId} onChange={onTaxpayerId} renk={GOLD} />
@@ -131,49 +131,55 @@ export function IsGecmisi({ akis, isLoading, error, sayaclar, suzgec, onSuzgec, 
         ) : !vakalar.length ? (
           <Bos metin={suzgec === 'tumu' ? 'Bu pencerede iş yok.' : 'Bu kutuda iş yok.'} />
         ) : (
-          liste.map((v, i) => {
-            const secili = seciliVakaId === v.vakaId;
-            const siz = v.kimde.ajanId === 'siz';
-            const kosuyor = v.adimlar.some((a) => a.tip === 'is' && a.durum === 'running');
-            const r = vakaRozeti(v, kosuyor);
-            const isAdimlari = v.adimlar.filter((a) => a.tip === 'is') as Array<{ ajanId: string }>;
-            const sonPersonel = [...isAdimlari].reverse().find((a) => a.ajanId !== 'koordinator');
-            const personelId = siz ? sonPersonel?.ajanId || 'koordinator' : v.kimde.ajanId;
-            return (
-              <button
-                key={v.vakaId}
-                type="button"
-                onClick={() => onSec(v)}
-                aria-current={secili}
-                title="İşi aç"
-                className="flex w-full min-w-0 items-center gap-2.5 rounded-lg px-2 py-2.5 text-left transition hover:bg-white/[0.02] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
-                style={portalStyle({
-                  borderTop: i ? `1px solid ${ROW_SEP}` : undefined,
-                  ...(secili ? { background: `${GOLD}0f`, boxShadow: `inset 3px 0 0 ${GOLD}` } : {}),
+          <div className="ekip-isler-tablo-kaydir">
+            <table className="ekip-isler-tablo" aria-label="İş listesi">
+              <caption className="sr-only">İş ayrıntısını açmak için satıra tıklayın veya görev düğmesinde Enter tuşuna basın.</caption>
+              <thead><tr>
+                <th scope="col">Mükellef / görev</th>
+                <th scope="col">Sorumlu</th>
+                <th scope="col">Durum</th>
+                <th scope="col">Güncelleme</th>
+              </tr></thead>
+              <tbody>
+                {liste.map((v) => {
+                  const secili = seciliVakaId === v.vakaId;
+                  const siz = v.kimde.ajanId === 'siz';
+                  const kosuyor = v.adimlar.some((a) => a.tip === 'is' && a.durum === 'running');
+                  const r = vakaRozeti(v, kosuyor);
+                  const isAdimlari = v.adimlar.filter((a) => a.tip === 'is') as Array<{ ajanId: string }>;
+                  const sonPersonel = [...isAdimlari].reverse().find((a) => a.ajanId !== 'koordinator');
+                  const personelId = siz ? sonPersonel?.ajanId || 'koordinator' : v.kimde.ajanId;
+                  return (
+                    <tr key={v.vakaId} data-secili={secili} onClick={() => onSec(v)}>
+                      <td>
+                        <button type="button" className="ekip-isler-gorev" aria-current={secili}
+                          onClick={(event) => { event.stopPropagation(); onSec(v); }}
+                          title="İşi aç" style={portalStyle({ color: TEXT })}>
+                          <span className="ekip-isler-firma">{v.mukellef?.ad || 'Ofis geneli'}</span>
+                          <span className="ekip-isler-konu" title={v.konu} style={portalStyle({ color: MUTED })}>{v.konu || 'Konu yok'}</span>
+                        </button>
+                        {(siz || !v.kuru || v.gecikti) && <div className="ekip-isler-uyarilar">
+                          {siz && <span style={portalStyle({ color: GOLD })}>Sizden işlem bekliyor</span>}
+                          {!v.kuru && <span style={portalStyle({ color: KIRMIZI })}>Canlı işlem</span>}
+                          {v.gecikti && <span style={portalStyle({ color: KIRMIZI })}>Gecikti</span>}
+                        </div>}
+                      </td>
+                      <td><span className="ekip-isler-sorumlu">
+                        <Avatar kisaltma={ajanKisaltma(personelId)} renk={ajanRengi(personelId)} ton={kosuyor ? 'mavi' : personelId === 'koordinator' ? 'gold' : 'gri'} boyut={24} nabiz={kosuyor} title={ajanKisaAd(personelId, ajanAd(personelId))} />
+                        <span>{ajanKisaAd(personelId, ajanAd(personelId))}</span>
+                      </span></td>
+                      <td><span className="ekip-isler-durum" data-durum={r.ad} style={portalStyle({ color: r.renk })}>
+                        <span aria-hidden="true" className={kosuyor ? 'animate-pulse' : ''} />{r.ad}
+                      </span></td>
+                      <td className="ekip-isler-zaman" style={portalStyle({ color: MUTED })}>
+                        {tarihKisa(v.guncellendi || v.olusturuldu)}
+                      </td>
+                    </tr>
+                  );
                 })}
-              >
-                <Avatar kisaltma={ajanKisaltma(personelId)} renk={ajanRengi(personelId)} ton={kosuyor ? 'mavi' : personelId === 'koordinator' ? 'gold' : 'gri'} boyut={28} nabiz={kosuyor} title={ajanKisaAd(personelId, ajanAd(personelId))} />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[12.5px] font-semibold" style={portalStyle({ color: TEXT })} title={v.mukellef?.ad || 'Ofis geneli'}>
-                    {v.mukellef?.ad || 'Ofis geneli'}
-                  </span>
-                  <span className="block truncate text-[11.5px]" style={portalStyle({ color: MUTED })} title={v.konu}>
-                    {v.konu || 'Konu yok'}
-                    {siz ? ' · sizde' : ''}
-                    {!v.kuru ? <span style={portalStyle({ color: KIRMIZI })}> · canlı</span> : ''}
-                    {v.gecikti ? <span style={portalStyle({ color: KIRMIZI })}> · gecikti</span> : ''}
-                  </span>
-                </span>
-                <span className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap text-[11px]" style={portalStyle({ color: r.renk })}>
-                  <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${kosuyor ? 'animate-pulse' : ''}`} style={portalStyle({ background: r.renk })} />
-                  {r.ad}
-                </span>
-                <span className="w-10 flex-shrink-0 text-right text-[11px] tabular-nums" style={portalStyle({ color: MUTED })}>
-                  {tarihKisa(v.olusturuldu)}
-                </span>
-              </button>
-            );
-          })
+              </tbody>
+            </table>
+          </div>
         )}
         {vakalar.length > gorunen && (
           <div className="pt-2" style={portalStyle({ borderTop: `1px solid ${ROW_SEP}` })}>

@@ -1,4 +1,5 @@
 'use client';
+import './genel-redesign.css';
 import { portalStyle } from '@/lib/portal-theme';
 
 
@@ -76,7 +77,7 @@ export function AcikKalemKarti({
   const altSatir = onayMi && !kararMi ? (hedef ? `→ ${hedef}` : '') : kalem.baslik;
 
   return (
-    <div className="py-3" style={portalStyle({ borderTop: `1px solid ${ROW_SEP}` })}>
+    <div className="eg-karar py-3" style={portalStyle({ borderTop: `1px solid ${ROW_SEP}` })}>
       <div className="flex items-start gap-2.5">
         {ajanId && <Avatar kisaltma={ajanKisaltma(ajanId)} ton="gold" boyut={26} title={ajanAd ? ajanTamAd(ajanId, ajanAd(ajanId)) : ajanId} />}
         <div className="min-w-0 flex-1">
@@ -94,7 +95,7 @@ export function AcikKalemKarti({
               {altSatir}
             </div>
           )}
-          {kalem.confirmationText && !sonuc && <Alinti className="mt-2">{kalem.confirmationText}</Alinti>}
+          {kalem.confirmationText && !sonuc && <Alinti className="eg-karar-alinti mt-2">{kalem.confirmationText}</Alinti>}
           {!onayMi && !sonuc && <div className="mt-1 text-[11.5px]" style={portalStyle({ color: MUTED })}>Yapınca “Yapıldı”ya basın; Koordinatör işe kaldığı yerden devam eder.</div>}
           {sonuc ? (
             <div className="mt-2 text-[12.5px] font-semibold" style={portalStyle({ color: sonuc.startsWith('Hata') ? KIRMIZI : OK })}>
@@ -113,14 +114,15 @@ export function AcikKalemKarti({
                     }
                   }}
                   placeholder={kararMi ? 'Kararınızı yazın (ör. "kilitle", "beklet")…' : 'İsterseniz not yazın (ör. "görselleri yükledim, devam et")…'}
-                  className="h-9 min-w-0 rounded-[10px] px-3 text-[12.5px] outline-none"
+                  aria-label={kararMi ? 'Kararınız' : 'İş için notunuz'}
+                  className="eg-karar-cevap h-9 min-w-0 rounded-[10px] px-3 text-[12.5px] outline-none"
                   style={portalStyle({ background: 'rgba(255,255,255,0.03)', border: `1px solid ${CARD_BORDER}`, color: TEXT })}
                 />
               )}
               <div className="flex flex-wrap items-center gap-1.5">
                 {kararMi ? (
                   <>
-                    <Dugme tur="birincil" disabled={!cevap.trim()} onClick={cevapGonder}>
+                    <Dugme className="eg-karar-birincil" tur="birincil" disabled={!cevap.trim()} onClick={cevapGonder}>
                       <MessageSquareReply size={13} /> {calisiyor ? 'Kararı bitince gönder' : 'Kararı gönder'}
                     </Dugme>
                     <Dugme tur="sade" disabled={mesgul} onClick={() => yap(() => istekKapat(kalem.id), 'Kapatıldı')}>
@@ -129,7 +131,7 @@ export function AcikKalemKarti({
                   </>
                 ) : onayMi ? (
                   <>
-                    <Dugme tur="birincil" disabled={mesgul || teyit} onClick={() => setTeyit(true)}>
+                    <Dugme className="eg-karar-birincil" tur="birincil" disabled={mesgul || teyit} onClick={() => setTeyit(true)}>
                       {mesgul ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />} Onayla ve gönder
                     </Dugme>
                     <Dugme tur="tehlike" disabled={mesgul} onClick={() => yap(() => reddet(kalem.id, 'Ekip ekranından reddedildi'), 'Reddedildi')}>
@@ -138,7 +140,7 @@ export function AcikKalemKarti({
                   </>
                 ) : (
                   <>
-                    <Dugme tur="birincil" disabled={mesgul} onClick={() => yap(() => istekKapat(kalem.id), 'Yapıldı ✓')}>
+                    <Dugme className="eg-karar-birincil" tur="birincil" disabled={mesgul} onClick={() => yap(() => istekKapat(kalem.id), 'Yapıldı ✓')}>
                       {mesgul ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />} Yapıldı
                     </Dugme>
                     {cevap.trim() && (
@@ -186,7 +188,7 @@ export function YerelOnay({ adim, kosu, kosular, onBitti }: { adim: Adim; kosu: 
     }
   };
   return (
-    <div className="py-3" style={portalStyle({ borderTop: `1px solid ${ROW_SEP}` })}>
+    <div className="eg-karar py-3" style={portalStyle({ borderTop: `1px solid ${ROW_SEP}` })}>
       <div className="flex items-baseline gap-2">
         <span className="text-[12.8px] font-semibold" style={portalStyle({ color: TEXT })}>
           Onayınızı bekliyor — {aracAdi(adim.ad)}
@@ -196,7 +198,7 @@ export function YerelOnay({ adim, kosu, kosular, onBitti }: { adim: Adim; kosu: 
         </span>
       </div>
       <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-        <Dugme tur="birincil" disabled={mesgul || teyit} onClick={() => setTeyit(true)}>
+        <Dugme className="eg-karar-birincil" tur="birincil" disabled={mesgul || teyit} onClick={() => setTeyit(true)}>
           <Send size={12} /> Onayla ve gönder
         </Dugme>
         <Dugme tur="tehlike" disabled={mesgul} onClick={() => yap(() => reddet(adim.previewId!, 'Ekip ekranından reddedildi'), 'Reddedildi')}>
@@ -254,9 +256,9 @@ export function SizdenBeklenenKutu({
 }) {
   const onayHaritasi = useMemo(() => new Map(onaylar.map((o) => [o.previewId, o])), [onaylar]);
   return (
-    <section aria-label="Sizden beklenen" className={`mt-3.5 ${className}`}>
+    <section aria-label="Sizden beklenen" className={`eg-kararlar mt-3.5 ${className}`}>
       {!!hata && <p role="alert" className="mb-2 text-[12px]" style={portalStyle({ color: KIRMIZI })}>Kararlar yenilenemedi. {hata instanceof Error ? hata.message : 'Lütfen yeniden deneyin.'}</p>}
-      {kalemler.length > 0 && <div className="mb-3 flex items-center justify-between border-t pt-3 text-[11px]" style={portalStyle({ color: GOLD, borderColor: SADE_AYRAC })}><span>Sizden beklenen</span><span>{kalemler.length} bekliyor</span></div>}
+      {kalemler.length > 0 && <div className="eg-kararlar-baslik mb-3 flex items-center justify-between border-t pt-3 text-[13px]" style={portalStyle({ color: GOLD, borderColor: SADE_AYRAC })}><span>Sizden beklenen</span><span>{kalemler.length} bekliyor</span></div>}
       {yukleniyor && !kalemler.length ? (
         <div className="py-4 text-[12px]" style={portalStyle({ color: MUTED })}>
           Yükleniyor…
@@ -269,7 +271,7 @@ export function SizdenBeklenenKutu({
       ) : (
         <div className="-mt-3">
           {kalemler.map(({ vaka, kalem, ajanId }) => (
-            <details key={`${vaka.vakaId}-${kalem.tip}-${kalem.id}`} className="group border-t py-1" style={portalStyle({ borderColor: ROW_SEP })}>
+            <details key={`${vaka.vakaId}-${kalem.tip}-${kalem.id}`} className="eg-karar-detay group border-t py-1" style={portalStyle({ borderColor: ROW_SEP })}>
               <summary className="flex cursor-pointer list-none items-center gap-3 py-3 [&::-webkit-details-marker]:hidden">
                 <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={portalStyle({ background: GOLD })} />
                 <span className="min-w-0 flex-1">

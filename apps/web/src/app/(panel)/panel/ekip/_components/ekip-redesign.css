@@ -1,0 +1,44 @@
+.ekip-workspace { --ekip-ink: #e7e7ea; --ekip-muted: #a0a4ac; --ekip-line: #35383c; --ekip-surface: #15181a; --ekip-soft: #20272a; --ekip-accent: #83ccc8; color: var(--ekip-ink); font-size: 13px; }
+html[data-theme='D'] .ekip-workspace { --ekip-ink: #243b45; --ekip-muted: #647780; --ekip-line: #dce4e7; --ekip-surface: #fff; --ekip-soft: #f3f7f8; --ekip-accent: #216c70; }
+.ekip-heading { min-width: 0; }
+.ekip-heading-top { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 4px 0 20px; }
+.ekip-eyebrow { font-size: 10px; font-weight: 700; letter-spacing: .14em; color: var(--ekip-accent); margin-bottom: 6px; }
+.ekip-heading-title { display: flex; align-items: center; gap: 12px; }
+.ekip-workspace .ekip-heading-title h1 { margin: 0; font: 750 28px/1.25 var(--font-sans, 'Inter', Arial, sans-serif); color: var(--ekip-ink); letter-spacing: -.6px; }
+.ekip-heading-title > span { color: var(--ekip-muted); font-size: 12px; border-left: 1px solid var(--ekip-line); padding-left: 12px; }
+.ekip-heading-description { color: var(--ekip-muted); font-size: 13px; margin-top: 6px; }
+.ekip-heading-tools { display: flex; align-items: flex-end; flex-direction: column; gap: 10px; }
+.ekip-summary-button { display: inline-flex; align-items: center; gap: 14px; border: 1px solid var(--ekip-line); background: var(--ekip-surface); border-radius: 9px; padding: 9px 13px; color: var(--ekip-ink); font-weight: 650; }
+.ekip-summary-button small { font-size: 11px; font-weight: 500; color: var(--ekip-muted); }
+.ekip-summary-button:disabled { opacity: .6; cursor: wait; }
+.ekip-new-task { border-radius: 9px; background: var(--ekip-accent); color: var(--ekip-surface); font-size: 12px; font-weight: 650; padding: 10px 15px; min-height: 38px; }
+.ekip-connections { display: flex; flex-wrap: wrap; gap: 16px; }
+.ekip-summary-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 12px; margin-bottom: 20px; }
+.ekip-summary-item { position: relative; display: grid; grid-template-columns: 1fr auto; gap: 5px 12px; padding: 16px 18px; border: 1px solid var(--ekip-line); border-radius: 12px; background: var(--ekip-surface); }
+.ekip-summary-label { align-self: center; font-size: 12px; font-weight: 650; }
+.ekip-summary-item strong { grid-row: span 2; font-size: 27px; line-height: 1.4; font-weight: 750; font-variant-numeric: tabular-nums; }
+.ekip-summary-item small { font-size: 11px; color: var(--ekip-muted); }
+html[data-theme='D'] .ekip-summary-item[data-tone='petrol'] { background: linear-gradient(110deg,#eaf4f3,#fbfdfd); border-color: #c6dfdc; color: #246b70; }
+html[data-theme='D'] .ekip-summary-item[data-tone='amber'] { background: linear-gradient(110deg,#fbf3e7,#fffdfa); border-color: #ebdcc1; color: #936a29; }
+html[data-theme='D'] .ekip-summary-item[data-tone='yesil'] { background: linear-gradient(110deg,#edf6ef,#fcfdfc); border-color: #cee2d2; color: #32744b; }
+html[data-theme='D'] .ekip-summary-item[data-tone='gul'] { background: linear-gradient(110deg,#faeef1,#fefcfd); border-color: #ead0d9; color: #a14b68; }
+.ekip-navigation-line { display: flex; justify-content: space-between; align-items: center; gap: 12px; border-bottom: 1px solid var(--ekip-line); }
+.ekip-navigation { display: flex; gap: 20px; overflow-x: auto; }
+.ekip-navigation button { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 2px 10px; margin-bottom: -1px; border-bottom: 3px solid transparent; font-size: 13px; font-weight: 600; white-space: nowrap; color: var(--ekip-muted); }
+.ekip-navigation button[aria-selected='true'] { color: var(--ekip-accent); border-bottom-color: var(--ekip-accent); }
+.ekip-navigation button > span { font-size: 10px; padding: 1px 6px; border-radius: 5px; background: var(--ekip-soft); color: var(--ekip-accent); }
+.ekip-period-label { font-size: 11px; color: var(--ekip-muted); padding-bottom: 10px; }
+.ekip-period-progress { margin-top: 16px; padding: 15px 18px; background: var(--ekip-surface); border: 1px solid var(--ekip-line); border-radius: 12px; }
+.ekip-overview-grid { display: grid; grid-template-columns: minmax(0,1.2fr) minmax(0,1fr); align-items: start; gap: 20px; }
+.ekip-workspace .ekip-section-title { font-family: inherit; font-size: 17px; font-weight: 700; color: var(--ekip-ink); }
+.ekip-section-description { font-size: 12px; color: var(--ekip-muted); margin-top: 3px; }
+.ekip-workspace :is(button,a,input,textarea,select):focus-visible { outline: 2px solid var(--ekip-accent); outline-offset: 3px; }
+.ekip-workspace .ekip-button { border-radius: 8px; min-height: 34px; font-weight: 650; }
+html[data-theme='D'] .ekip-workspace .ekip-button--birincil { background: #216c70 !important; color: #fff !important; border-color: #216c70 !important; }
+html[data-theme='D'] .ekip-workspace .ekip-button--ikincil { background: #fff !important; color: #344e59 !important; border-color: #ccdadd !important; }
+html[data-theme='D'] .ekip-workspace .ekip-button--sade { color: #526b76 !important; }
+html[data-theme='D'] .ekip-workspace .ekip-card { background: #fff !important; border: 1px solid #dce4e7 !important; border-radius: 14px; box-shadow: 0 3px 12px #243b4505 !important; }
+html[data-theme='D'] .ekip-workspace .ekip-card > [data-portal-band] { background: #f3f7f8 !important; border-bottom: 1px solid #dce4e7; margin-bottom: 14px; padding: 15px 18px; }
+.ekip-workspace .ekip-card > [data-portal-band] h3 { font-family: inherit; font-size: 14px; letter-spacing: 0; }
+@media(max-width:1100px) { .ekip-overview-grid { grid-template-columns: minmax(0,1fr); } .ekip-summary-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+@media(max-width:600px) { .ekip-heading-top { align-items: flex-start; flex-direction: column; gap: 12px; } .ekip-heading-tools { width: 100%; align-items: flex-start; flex-direction: row; flex-wrap: wrap; } .ekip-connections { padding: 8px 0; } .ekip-summary-item { padding: 12px; grid-template-columns: 1fr; gap: 3px; } .ekip-summary-item strong { grid-row: auto; } .ekip-summary-item small { display: none; } .ekip-navigation-line { align-items: stretch; flex-direction: column; gap: 0; } .ekip-navigation { gap: 16px; } .ekip-period-label { padding-top: 8px; } }
