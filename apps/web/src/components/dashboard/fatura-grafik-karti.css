@@ -5,7 +5,7 @@
 .fgk-heading small{display:block;color:var(--fg-muted);font-size:8px;letter-spacing:.08em;line-height:1.3}
 .fatura-grafik-karti h3{margin:1px 0 0;font-family:inherit;font-size:17px;font-weight:750;line-height:1.2;color:var(--fg-text)}
 .fgk-total{white-space:nowrap;font-size:11px;color:var(--fg-muted)}
-.fgk-total strong{font-size:29px;line-height:1;font-weight:750;letter-spacing:-.04em;color:var(--fg-text);font-variant-numeric:tabular-nums}
+.fgk-total strong{font-size:22px;line-height:1.15;font-weight:650;letter-spacing:-.3px;color:var(--fg-text);font-variant-numeric:tabular-nums}
 .fgk-link{display:grid;place-items:center;width:30px;height:30px;flex-shrink:0;border:1px solid #d5e2f6;background:#f7faff;border-radius:50%;color:#183c77;box-shadow:0 2px 6px #284a7810}
 .fgk-link:focus-visible{outline:2px solid #2563eb;outline-offset:2px}
 .fatura-grafik-karti .fgk-caption{display:flex;align-items:center;justify-content:space-between;gap:6px;margin:8px 0 3px;color:var(--fg-muted);font-size:9px}
@@ -22,7 +22,7 @@
 .fatura-grafik-karti footer i{display:grid;place-items:center;width:28px;height:30px;flex-shrink:0;border-radius:8px;background:#e4f7ef;color:#078454}
 .fatura-grafik-karti footer>span:nth-child(2) i{background:#fff2dc;color:#bb790b}
 .fatura-grafik-karti footer>span:nth-child(3) i{background:#ffe8ec;color:#d34663}
-.fatura-grafik-karti footer b{display:block;font-size:17px;line-height:1.05;font-weight:750;color:var(--fg-text);font-variant-numeric:tabular-nums}
+.fatura-grafik-karti footer b{display:block;font-size:14px;line-height:1.15;font-weight:650;color:var(--fg-text);font-variant-numeric:tabular-nums}
 .fatura-grafik-karti footer small{display:block;margin-top:3px;font-size:9px;color:var(--fg-muted)}
 .fgk-state{min-height:28px;flex:1;display:flex;align-items:center;justify-content:center;gap:8px;color:var(--fg-muted);font-size:11px;text-align:center}
 .fgk-notice{font-size:11px;margin:3px 0;color:var(--fg-muted)}
@@ -36,5 +36,5 @@ html:not([data-theme='D']) .fatura-grafik-karti{--fg-text:#e7edf8;--fg-muted:#ab
 .fatura-grafik-karti .fgk-caption{margin:5px 0 2px;font-size:9px;line-height:12px}
 .fatura-grafik-karti footer{margin-top:4px;padding-top:5px}
 .fatura-grafik-karti footer i{width:26px;height:28px}
-.fatura-grafik-karti footer b{font-size:16px}
+.fatura-grafik-karti footer b{font-size:14px}
 .fatura-grafik-karti footer small{margin-top:2px;font-size:9px;line-height:11px}
