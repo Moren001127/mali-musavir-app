@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
@@ -51,25 +53,25 @@ export function KadroKarti({ ajanlar, onaylar, kosular, mukellefAd, yukleniyor, 
 
   if (yukleniyor && !ajanlar.length)
     return (
-      <div className="flex items-center gap-2 py-8 text-[12px]" style={{ color: MUTED }}>
+      <div className="flex items-center gap-2 py-8 text-[12px]" style={portalStyle({ color: MUTED })}>
         <Loader2 size={13} className="animate-spin" /> Kadro yükleniyor…
       </div>
     );
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-[12px]" style={{ color: MUTED }}>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-[12px]" style={portalStyle({ color: MUTED })}>
         <span>
-          <b style={{ color: TEXT }}>{ajanlar.length}</b> personel
+          <b style={portalStyle({ color: TEXT })}>{ajanlar.length}</b> personel
         </span>
         <span>
-          · <b style={{ color: calisanSayisi ? MAVI : TEXT }}>{calisanSayisi}</b> çalışıyor
+          · <b style={portalStyle({ color: calisanSayisi ? MAVI : TEXT })}>{calisanSayisi}</b> çalışıyor
         </span>
         <span>
-          · bugün <b style={{ color: TEXT }}>{bugunKosu}</b> koşu
+          · bugün <b style={portalStyle({ color: TEXT })}>{bugunKosu}</b> koşu
         </span>
         <span>
-          · 7 günde <b style={{ color: TEXT }}>{haftaToplam}</b> iş
+          · 7 günde <b style={portalStyle({ color: TEXT })}>{haftaToplam}</b> iş
         </span>
         <span className="ml-auto">Personel işi kendi başlatmaz; görevi Koordinatör verir. Mükellefe giden her mesaj ve Luca’ya her yazım onayınıza düşer.</span>
       </div>
@@ -84,33 +86,33 @@ export function KadroKarti({ ajanlar, onaylar, kosular, mukellefAd, yukleniyor, 
               key={a.id}
               data-ajan={a.id}
               className="relative min-w-0 overflow-hidden rounded-2xl px-4 py-3.5"
-              style={{
+              style={portalStyle({
                 background: calisiyor ? `linear-gradient(140deg, rgba(140,189,232,0.08), ${CARD_BG} 60%)` : CARD_BG,
                 border: `1px solid ${calisiyor ? 'rgba(140,189,232,0.3)' : 'rgba(255,255,255,0.065)'}`,
                 boxShadow: '0 14px 32px rgba(0,0,0,0.18)',
-              }}
+              })}
               title={`${a.ad} — ${a.unvan}\n${calisiyor ? `şu an: ${d.metin}` : d.durum === 'hata' ? 'son iş yarım kaldı' : 'boşta'}${onay > 0 ? `\n${onay} onay bekliyor` : ''}`}
             >
-              <div className="pointer-events-none absolute inset-x-4 top-0 h-px opacity-60" style={{ background: `linear-gradient(90deg, transparent, ${renk}, transparent)` }} />
+              <div className="pointer-events-none absolute inset-x-4 top-0 h-px opacity-60" style={portalStyle({ background: `linear-gradient(90deg, transparent, ${renk}, transparent)` })} />
               <div className="relative flex items-center gap-2.5">
                 <span
                   aria-hidden="true"
                   className="inline-flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full text-[10.5px] font-extrabold"
-                  style={{
+                  style={portalStyle({
                     color: '#0f0d0b',
                     background: `linear-gradient(135deg, ${renk}, color-mix(in srgb, ${renk} 55%, #fff))`,
                     boxShadow: `0 0 12px ${renk}59`,
                     outline: calisiyor ? `2px solid ${MAVI}` : undefined,
                     outlineOffset: 2,
-                  }}
+                  })}
                 >
                   {ajanKisaltma(a.id, a.ad)}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-[13px] font-semibold" style={{ color: TEXT }}>
+                  <div className="truncate text-[13px] font-semibold" style={portalStyle({ color: TEXT })}>
                     {ajanKisaAd(a.id, a.ad)}
                   </div>
-                  <div className="truncate text-[11px]" style={{ color: MUTED }}>
+                  <div className="truncate text-[11px]" style={portalStyle({ color: MUTED })}>
                     {AJAN_UNVAN[a.id] || a.unvan}
                   </div>
                 </div>
@@ -121,16 +123,16 @@ export function KadroKarti({ ajanlar, onaylar, kosular, mukellefAd, yukleniyor, 
                   </div>
                 )}
               </div>
-              <div className="relative mt-2.5 min-h-[34px] text-[11.5px] leading-relaxed" style={{ color: MUTED }}>
+              <div className="relative mt-2.5 min-h-[34px] text-[11.5px] leading-relaxed" style={portalStyle({ color: MUTED })}>
                 {a.aciklama || AJAN_UNVAN[a.id] || a.unvan}
               </div>
-              <div className="relative mt-2.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-[11px]" style={{ color: MUTED }}>
-                <span className="inline-flex min-w-0 max-w-full items-center gap-1.5" style={{ color: calisiyor ? MAVI : d.durum === 'hata' ? KIRMIZI : MUTED }}>
+              <div className="relative mt-2.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-[11px]" style={portalStyle({ color: MUTED })}>
+                <span className="inline-flex min-w-0 max-w-full items-center gap-1.5" style={portalStyle({ color: calisiyor ? MAVI : d.durum === 'hata' ? KIRMIZI : MUTED })}>
                   {calisiyor && <Nokta renk={MAVI} nabiz />}
                   <span className="truncate">{calisiyor ? d.metin : d.durum === 'hata' ? 'son iş yarım kaldı' : `${a.sonKosu?.createdAt ? 'boşta · ' : ''}${sonIsEtiketi(a.sonKosu?.createdAt)}`}</span>
                 </span>
                 <span className="flex-shrink-0 tabular-nums">
-                  bugün <b style={{ color: TEXT }}>{a.bugunKosu ?? 0}</b> · 7 gün <b style={{ color: TEXT }}>{haftalikIs.get(a.id) || 0}</b>
+                  bugün <b style={portalStyle({ color: TEXT })}>{a.bugunKosu ?? 0}</b> · 7 gün <b style={portalStyle({ color: TEXT })}>{haftalikIs.get(a.id) || 0}</b>
                 </span>
               </div>
             </div>

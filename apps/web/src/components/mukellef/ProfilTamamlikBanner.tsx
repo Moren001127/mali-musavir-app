@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -64,48 +66,48 @@ export function ProfilTamamlikBanner({ taxpayerId }: { taxpayerId: string }) {
   return (
     <div
       className="rounded-xl mb-5 overflow-hidden"
-      style={{
+      style={portalStyle({
         background: cfg.bg,
         border: `1px solid ${cfg.color}33`,
-      }}
+      })}
     >
       <button
         onClick={() => setExpanded((e) => !e)}
         className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/[0.02] transition"
       >
         <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
-          style={{ background: `${cfg.color}22`, border: `1px solid ${cfg.color}55` }}>
-          <Icon size={16} style={{ color: cfg.color }} />
+          style={portalStyle({ background: `${cfg.color}22`, border: `1px solid ${cfg.color}55` })}>
+          <Icon size={16} style={portalStyle({ color: cfg.color })} />
         </div>
         <div className="flex-1 text-left">
           <div className="flex items-center gap-2">
-            <span className="text-[13.5px] font-bold" style={{ color: '#fafaf9' }}>
+            <span className="text-[13.5px] font-bold" style={portalStyle({ color: '#fafaf9' })}>
               {cfg.label}
             </span>
             <span className="text-[11px] font-bold tabular-nums px-2 py-0.5 rounded"
-              style={{ background: `${cfg.color}22`, color: cfg.color }}>
+              style={portalStyle({ background: `${cfg.color}22`, color: cfg.color })}>
               %{data.score}
             </span>
             {data.kritikEksikSayisi > 0 && (
               <span className="text-[10.5px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded"
-                style={{ background: 'rgba(239,68,68,0.18)', color: '#ef4444' }}>
+                style={portalStyle({ background: 'rgba(239,68,68,0.18)', color: '#ef4444' })}>
                 {data.kritikEksikSayisi} KRİTİK EKSİK
               </span>
             )}
           </div>
-          <div className="text-[12px] mt-0.5" style={{ color: 'rgba(250,250,249,0.6)' }}>
+          <div className="text-[12px] mt-0.5" style={portalStyle({ color: 'rgba(250,250,249,0.6)' })}>
             {data.eksikSayisi} eksik alan var — tıkla detayları gör
           </div>
         </div>
         {expanded ? (
-          <ChevronDown size={16} style={{ color: 'rgba(250,250,249,0.5)' }} />
+          <ChevronDown size={16} style={portalStyle({ color: 'rgba(250,250,249,0.5)' })} />
         ) : (
-          <ChevronRight size={16} style={{ color: 'rgba(250,250,249,0.5)' }} />
+          <ChevronRight size={16} style={portalStyle({ color: 'rgba(250,250,249,0.5)' })} />
         )}
       </button>
 
       {expanded && (
-        <div className="px-4 pb-4 pt-1 border-t" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+        <div className="px-4 pb-4 pt-1 border-t" style={portalStyle({ borderColor: 'rgba(255,255,255,0.05)' })}>
           {/* Skor breakdown */}
           <div className="grid grid-cols-3 gap-2 mb-4 mt-3">
             <BreakdownTile label="Kritik" data={data.breakdown.kritik} max={50} color="#ef4444" />
@@ -116,19 +118,19 @@ export function ProfilTamamlikBanner({ taxpayerId }: { taxpayerId: string }) {
           {/* Eksik alanlar */}
           <div className="space-y-1.5">
             <div className="text-[10.5px] uppercase font-bold tracking-[.12em] mb-2"
-              style={{ color: 'rgba(250,250,249,0.5)' }}>
+              style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
               Eksik alanlar
             </div>
             {data.eksikler.map((f) => (
               <div
                 key={f.key}
                 className="flex items-center gap-2 text-[12.5px] px-2 py-1.5 rounded"
-                style={{ background: 'rgba(255,255,255,0.02)' }}
+                style={portalStyle({ background: 'rgba(255,255,255,0.02)' })}
               >
-                <span className="w-1 h-3 rounded-sm" style={{ background: TIER_COLOR[f.tier] }} />
-                <span style={{ color: '#fafaf9' }}>{f.label}</span>
+                <span className="w-1 h-3 rounded-sm" style={portalStyle({ background: TIER_COLOR[f.tier] })} />
+                <span style={portalStyle({ color: '#fafaf9' })}>{f.label}</span>
                 <span className="ml-auto text-[10px] uppercase tracking-wider"
-                  style={{ color: TIER_COLOR[f.tier] }}>
+                  style={portalStyle({ color: TIER_COLOR[f.tier] })}>
                   {TIER_LABEL[f.tier]}
                 </span>
               </div>
@@ -144,19 +146,19 @@ function BreakdownTile({ label, data, max, color }: any) {
   const pct = Math.round((data.dolu / data.toplam) * 100);
   return (
     <div className="rounded-lg p-2.5"
-      style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
-      <div className="text-[10px] uppercase font-bold tracking-wider mb-1" style={{ color }}>
+      style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' })}>
+      <div className="text-[10px] uppercase font-bold tracking-wider mb-1" style={portalStyle({ color })}>
         {label}
       </div>
       <div className="flex items-baseline gap-1">
-        <span className="tabular-nums text-[16px] font-bold" style={{ color: '#fafaf9' }}>
+        <span className="tabular-nums text-[16px] font-bold" style={portalStyle({ color: '#fafaf9' })}>
           {data.dolu}/{data.toplam}
         </span>
-        <span className="text-[11px]" style={{ color: 'rgba(250,250,249,0.4)' }}>
+        <span className="text-[11px]" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>
           (%{pct})
         </span>
       </div>
-      <div className="text-[10.5px] mt-0.5 tabular-nums" style={{ color: 'rgba(250,250,249,0.5)' }}>
+      <div className="text-[10.5px] mt-0.5 tabular-nums" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
         {data.puan}/{max} puan
       </div>
     </div>

@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle, portalPaint } from '@/lib/portal-theme';
+
 
 import React, { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -59,11 +61,11 @@ export default function ButcePage() {
   if (erisim.isError) {
     return (
       <div className="mx-auto max-w-md py-24 text-center">
-        <Lock size={28} className="mx-auto mb-3" style={{ color: MUTED }} />
-        <h1 className="text-[15px] font-semibold" style={{ color: TEXT }}>
+        <Lock size={28} className="mx-auto mb-3" style={portalStyle({ color: MUTED })} />
+        <h1 className="text-[15px] font-semibold" style={portalStyle({ color: TEXT })}>
           Sayfa bulunamadı
         </h1>
-        <p className="mt-1 text-[12px]" style={{ color: MUTED }}>
+        <p className="mt-1 text-[12px]" style={portalStyle({ color: MUTED })}>
           Bu adres için görüntüleme yetkiniz yok.
         </p>
       </div>
@@ -81,18 +83,18 @@ export default function ButcePage() {
     <div className="space-y-4 pb-10">
       {/* Başlık */}
       <header className="relative overflow-hidden rounded-2xl px-5 py-4"
-        style={{
+        style={portalStyle({
           background: 'linear-gradient(140deg, rgba(230,200,120,0.09), rgba(255,255,255,0.01) 58%)',
           border: `1px solid ${CARD_BORDER}`,
-        }}
+        })}
       >
         <div
           className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full opacity-25"
-          style={{ background: `radial-gradient(circle, ${GOLD}, transparent 66%)` }}
+          style={portalStyle({ background: `radial-gradient(circle, ${GOLD}, transparent 66%)` })}
         />
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="flex items-center gap-2 text-[17px] font-semibold" style={{ color: TEXT }}>
+            <h1 className="flex items-center gap-2 text-[17px] font-semibold" style={portalStyle({ color: TEXT })}>
               Kişisel Bütçe & Borç Yönetimi
               <button
                 onClick={() => {
@@ -101,12 +103,12 @@ export default function ButcePage() {
                 }}
                 title="Modülü kilitle"
                 className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] transition hover:brightness-125"
-                style={{ background: 'rgba(255,255,255,0.05)', color: MUTED, border: `1px solid ${CARD_BORDER}` }}
+                style={portalStyle({ background: 'rgba(255,255,255,0.05)', color: MUTED, border: `1px solid ${CARD_BORDER}` })}
               >
                 <Lock size={9} /> yalnız size özel · kilitle
               </button>
             </h1>
-            <p className="mt-0.5 text-[12px]" style={{ color: MUTED }}>
+            <p className="mt-0.5 text-[12px]" style={portalStyle({ color: MUTED })}>
               Gelir–gider takibi, kredi kartı ekstre yönetimi ve en verimli borç kapatma planı
             </p>
           </div>
@@ -114,22 +116,22 @@ export default function ButcePage() {
           {donemSecici && (
             <div
               className="flex items-center gap-1 rounded-xl px-1.5 py-1"
-              style={{ background: 'rgba(0,0,0,0.3)', border: `1px solid ${CARD_BORDER}` }}
+              style={portalStyle({ background: 'rgba(0,0,0,0.3)', border: `1px solid ${CARD_BORDER}` })}
             >
               <button
                 onClick={() => setDonem(donemKaydir(donem, -1))}
                 className="rounded-lg p-1 transition hover:bg-white/[0.06]"
-                style={{ color: MUTED }}
+                style={portalStyle({ color: MUTED })}
               >
                 <ChevronLeft size={15} />
               </button>
-              <span className="min-w-[110px] text-center text-[12.5px] font-medium" style={{ color: GOLD }}>
+              <span className="min-w-[110px] text-center text-[12.5px] font-medium" style={portalStyle({ color: GOLD })}>
                 {donemTR(donem)}
               </span>
               <button
                 onClick={() => setDonem(donemKaydir(donem, 1))}
                 className="rounded-lg p-1 transition hover:bg-white/[0.06]"
-                style={{ color: MUTED }}
+                style={portalStyle({ color: MUTED })}
               >
                 <ChevronRight size={15} />
               </button>
@@ -141,16 +143,16 @@ export default function ButcePage() {
       {/* Araç çubuğu — gider türü süzgeci ve sekmeler tek şeritte */}
       <div
         className="rounded-2xl p-2.5"
-        style={{
+        style={portalStyle({
           background: 'linear-gradient(180deg, rgba(255,255,255,0.035), rgba(0,0,0,0.25))',
           border: `1px solid ${CARD_BORDER}`,
           boxShadow: '0 12px 32px -22px rgba(0,0,0,0.9)',
-        }}
+        })}
       >
         {/* Sekmeler */}
         <nav
           className="flex flex-wrap gap-1 rounded-xl p-1"
-          style={{ background: 'rgba(0,0,0,0.32)', border: `1px solid ${CARD_BORDER}` }}
+          style={portalStyle({ background: 'rgba(0,0,0,0.32)', border: `1px solid ${CARD_BORDER}` })}
         >
           {SEKMELER.map((s) => {
             const Ikon = s.ikon;
@@ -160,26 +162,26 @@ export default function ButcePage() {
                 key={s.anahtar}
                 onClick={() => setSekme(s.anahtar)}
                 className="group relative flex items-center gap-1.5 rounded-lg px-3 py-[7px] text-[12.5px] font-medium transition-all duration-150"
-                style={{
+                style={portalStyle({
                   background: aktif
                     ? `linear-gradient(180deg, ${GOLD}2b, ${GOLD}12)`
                     : 'transparent',
                   boxShadow: aktif ? `inset 0 0 0 1px ${GOLD}4d, 0 6px 18px -12px ${GOLD}99` : 'none',
                   color: aktif ? GOLD : MUTED,
-                }}
+                })}
                 onMouseEnter={(e) => {
-                  if (!aktif) e.currentTarget.style.background = 'rgba(255,255,255,0.045)';
+                  if (!aktif) e.currentTarget.style.background = portalPaint('rgba(255,255,255,0.045)', 'background');
                 }}
                 onMouseLeave={(e) => {
-                  if (!aktif) e.currentTarget.style.background = 'transparent';
+                  if (!aktif) e.currentTarget.style.background = portalPaint('transparent', 'background');
                 }}
               >
-                <Ikon size={13} style={{ opacity: aktif ? 1 : 0.75 }} />
+                <Ikon size={13} style={portalStyle({ opacity: aktif ? 1 : 0.75 })} />
                 {s.etiket}
                 {aktif && (
                   <span
                     className="absolute inset-x-3 -bottom-[1px] h-[2px] rounded-full"
-                    style={{ background: `linear-gradient(90deg, transparent, ${GOLD}, transparent)` }}
+                    style={portalStyle({ background: `linear-gradient(90deg, transparent, ${GOLD}, transparent)` })}
                   />
                 )}
               </button>

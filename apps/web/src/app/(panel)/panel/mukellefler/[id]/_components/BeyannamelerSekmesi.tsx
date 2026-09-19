@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -237,7 +239,7 @@ export function BeyannamelerTab({ taxpayerId }: { taxpayerId: string }) {
 
   if (isLoading) {
     return (
-      <div className="flex items-center gap-2 py-10 text-[13px]" style={{ color: MUTED }}>
+      <div className="flex items-center gap-2 py-10 text-[13px]" style={portalStyle({ color: MUTED })}>
         <Loader2 size={15} className="animate-spin" /> Beyannameler yükleniyor…
       </div>
     );
@@ -264,8 +266,8 @@ export function BeyannamelerTab({ taxpayerId }: { taxpayerId: string }) {
       </SekmeBasligi>
 
       {/* Toplu işlemler — ÜSTTE, her zaman görünür (seçim yoksa soluk) */}
-      <div className="flex flex-wrap items-center gap-1.5 border-y py-2" style={{ borderColor: HAIR }}>
-        <span className="mr-1 text-[11.5px] font-medium tabular-nums" style={{ color: selectedTableRows.length ? TEXT : MUTED }}>
+      <div className="flex flex-wrap items-center gap-1.5 border-y py-2" style={portalStyle({ borderColor: HAIR })}>
+        <span className="mr-1 text-[11.5px] font-medium tabular-nums" style={portalStyle({ color: selectedTableRows.length ? TEXT : MUTED })}>
           {selectedTableRows.length} seçili
         </span>
         <BeyanBulkActionButton
@@ -317,23 +319,23 @@ export function BeyannamelerTab({ taxpayerId }: { taxpayerId: string }) {
 
       <TabloSarmal maxHeight={560} minWidth={960}>
         <colgroup>
-          <col style={{ width: 36 }} />
-          <col style={{ width: '20%' }} />
-          <col style={{ width: '20%' }} />
-          <col style={{ width: 110 }} />
-          <col style={{ width: 130 }} />
-          <col style={{ width: 140 }} />
-          <col style={{ width: 64 }} />
+          <col style={portalStyle({ width: 36 })} />
+          <col style={portalStyle({ width: '20%' })} />
+          <col style={portalStyle({ width: '20%' })} />
+          <col style={portalStyle({ width: 110 })} />
+          <col style={portalStyle({ width: 130 })} />
+          <col style={portalStyle({ width: 140 })} />
+          <col style={portalStyle({ width: 64 })} />
         </colgroup>
         <thead>
           <tr>
-            <Th center style={{ padding: '7px 4px' }}>
+            <Th center style={portalStyle({ padding: '7px 4px' })}>
               <input
                 type="checkbox"
                 checked={hepsiSecili}
                 onChange={(e) => setSelectedDocKeys(e.target.checked ? new Set(tableRows.map((item) => item.key)) : new Set())}
                 className="h-3.5 w-3.5 cursor-pointer"
-                style={{ accentColor: '#4f86c9' }}
+                style={portalStyle({ accentColor: '#4f86c9' })}
                 aria-label="Tüm beyannameleri seç"
               />
             </Th>
@@ -354,20 +356,20 @@ export function BeyannamelerTab({ taxpayerId }: { taxpayerId: string }) {
                 const isBeyan = kind === 'beyanname';
                 const secili = selectedDocKeys.has(key);
                 return (
-                  <tr key={key} className="transition-colors hover:bg-white/[0.03]" style={secili ? { background: 'rgba(79,134,201,0.08)' } : undefined}>
-                    <Td center style={{ padding: '6px 4px' }}>
+                  <tr key={key} className="transition-colors hover:bg-white/[0.03]" style={portalStyle(secili ? { background: 'rgba(79,134,201,0.08)' } : undefined)}>
+                    <Td center style={portalStyle({ padding: '6px 4px' })}>
                       <input
                         type="checkbox"
                         checked={secili}
                         onChange={(e) => toggleDocSelection(key, e.target.checked)}
                         className="h-3.5 w-3.5 cursor-pointer"
-                        style={{ accentColor: '#4f86c9' }}
+                        style={portalStyle({ accentColor: '#4f86c9' })}
                         aria-label={`${BEYAN_TIPI_LABEL[row.beyanTipi] || row.beyanTipi} ${tur} seç`}
                       />
                     </Td>
                     <Td>
                       <div className="truncate font-semibold">{fmtBeyanDonem(row.donem)}</div>
-                      <div className="truncate text-[11.5px]" style={{ color: FAINT }}>
+                      <div className="truncate text-[11.5px]" style={portalStyle({ color: FAINT })}>
                         {row.beyanTarihi ? `Beyan: ${fmtDateTR(row.beyanTarihi.substring(0, 10))}` : 'Beyan tarihi yok'}
                         {row.onayNo ? ` · Onay: ${row.onayNo}` : ''}
                       </div>
@@ -375,10 +377,10 @@ export function BeyannamelerTab({ taxpayerId }: { taxpayerId: string }) {
                     <Td><span className="truncate">{BEYAN_TIPI_LABEL[row.beyanTipi] || row.beyanTipi}</span></Td>
                     <Td muted>ASIL</Td>
                     <Td><Cip>{tur}</Cip></Td>
-                    <Td right tabular style={{ color: isBeyan ? FAINT : TEXT, fontWeight: isBeyan ? 500 : 600 }}>
+                    <Td right tabular style={portalStyle({ color: isBeyan ? FAINT : TEXT, fontWeight: isBeyan ? 500 : 600 })}>
                       {isBeyan ? '—' : (row.tahakkukTutari != null ? `${fmtTutar(row.tahakkukTutari)} ₺` : '—')}
                     </Td>
-                    <Td center style={{ padding: '4px 6px' }}>
+                    <Td center style={portalStyle({ padding: '4px 6px' })}>
                       <DocBtn label={hasFile ? 'Görüntüle' : 'PDF yok'} disabled={!hasFile} busy={busy} onClick={() => openDoc(row, kind)} muted={!isBeyan} />
                     </Td>
                   </tr>
@@ -392,18 +394,18 @@ export function BeyannamelerTab({ taxpayerId }: { taxpayerId: string }) {
       {mounted && preview && createPortal((
         <div
           className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4"
-          style={{ background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(3px)' }}
+          style={portalStyle({ background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(3px)' })}
           onClick={closePreview}
         >
           <div
             className="flex h-[min(92vh,900px)] w-full max-w-[1180px] flex-col overflow-hidden"
-            style={{ background: CARD, border: `1px solid ${LINE}`, borderRadius: R_KART }}
+            style={portalStyle({ background: CARD, border: `1px solid ${LINE}`, borderRadius: R_KART })}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between gap-3 px-4 py-3" style={{ borderBottom: `1px solid ${HAIR}` }}>
+            <div className="flex items-center justify-between gap-3 px-4 py-3" style={portalStyle({ borderBottom: `1px solid ${HAIR}` })}>
               <div className="min-w-0">
-                <div className="truncate text-[14px] font-bold" style={{ color: TEXT }}>{preview.title}</div>
-                <div className="mt-0.5 truncate text-[11.5px]" style={{ color: FAINT }}>{preview.subtitle}</div>
+                <div className="truncate text-[14px] font-bold" style={portalStyle({ color: TEXT })}>{preview.title}</div>
+                <div className="mt-0.5 truncate text-[11.5px]" style={portalStyle({ color: FAINT })}>{preview.subtitle}</div>
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <a
@@ -411,7 +413,7 @@ export function BeyannamelerTab({ taxpayerId }: { taxpayerId: string }) {
                   download={`${preview.title}.pdf`.replace(/[\\/:*?"<>|]/g, '_')}
                   className="inline-flex h-8 w-8 items-center justify-center transition hover:brightness-125"
                   title="PDF indir"
-                  style={NOTR_DUGME}
+                  style={portalStyle(NOTR_DUGME)}
                 >
                   <Download size={15} />
                 </a>
@@ -420,7 +422,7 @@ export function BeyannamelerTab({ taxpayerId }: { taxpayerId: string }) {
                   onClick={() => { const f = document.getElementById('mukellef-beyan-pdf') as HTMLIFrameElement | null; f?.contentWindow?.print(); }}
                   className="inline-flex h-8 w-8 items-center justify-center transition hover:brightness-125"
                   title="Yazdır"
-                  style={NOTR_DUGME}
+                  style={portalStyle(NOTR_DUGME)}
                 >
                   <Printer size={15} />
                 </button>
@@ -429,7 +431,7 @@ export function BeyannamelerTab({ taxpayerId }: { taxpayerId: string }) {
                   onClick={closePreview}
                   className="inline-flex h-8 w-8 items-center justify-center transition hover:brightness-125"
                   title="Kapat"
-                  style={NOTR_DUGME}
+                  style={portalStyle(NOTR_DUGME)}
                 >
                   <X size={16} />
                 </button>
@@ -461,7 +463,7 @@ function BeyanBulkActionButton({
       onClick={onClick}
       disabled={disabled}
       className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[6px] px-2.5 text-[12.5px] font-medium transition-colors hover:bg-white/[0.06] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-      style={{ color: MUTED }}
+      style={portalStyle({ color: MUTED })}
     >
       <Icon size={13} />
       {label}

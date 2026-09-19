@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 import { useEffect, useState, useCallback } from 'react';
 import { Cpu, Power, AlertTriangle, CheckCircle2, RefreshCw, ExternalLink, Download } from 'lucide-react';
 
@@ -87,8 +89,8 @@ export default function AgentControlCard() {
 
   if (status.loading) {
     return (
-      <div style={cardStyle}>
-        <div className="flex items-center gap-2 text-[12px]" style={{ color: 'rgba(250,250,249,0.4)' }}>
+      <div style={portalStyle(cardStyle)}>
+        <div className="flex items-center gap-2 text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>
           <RefreshCw size={12} className="animate-spin" /> Extension kontrol ediliyor...
         </div>
       </div>
@@ -97,29 +99,29 @@ export default function AgentControlCard() {
 
   if (!status.installed) {
     return (
-      <div style={{ ...cardStyle, borderColor: 'rgba(245,158,11,0.25)' }}>
+      <div style={portalStyle({ ...cardStyle, borderColor: 'rgba(245,158,11,0.25)' })}>
         <div className="flex items-start gap-3">
-          <div className="flex items-center justify-center rounded-md w-9 h-9 shrink-0" style={{ background: 'rgba(245,158,11,0.12)', color: '#fcd34d' }}>
+          <div className="flex items-center justify-center rounded-md w-9 h-9 shrink-0" style={portalStyle({ background: 'rgba(245,158,11,0.12)', color: '#fcd34d' })}>
             <AlertTriangle size={18} />
           </div>
           <div className="flex-1">
-            <div className="text-[14px] font-semibold mb-1" style={{ color: '#fafaf9' }}>Moren Auto-Agent algılanmadı</div>
-            <p className="text-[12.5px] leading-relaxed mb-3" style={{ color: 'rgba(250,250,249,0.6)' }}>
+            <div className="text-[14px] font-semibold mb-1" style={portalStyle({ color: '#fafaf9' })}>Moren Auto-Agent algılanmadı</div>
+            <p className="text-[12.5px] leading-relaxed mb-3" style={portalStyle({ color: 'rgba(250,250,249,0.6)' })}>
               Extension yüklü olmayabilir ya da Chrome extensions ekranında kapalı olabilir. Luca arka planda, Mihsap ise görünür sekmede çalışsın diye Moren Auto-Agent'ı aç:
             </p>
             <a
               href="/moren-auto-agent.zip"
               download="moren-auto-agent.zip"
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md text-[12.5px] font-semibold mb-3 transition-all"
-              style={{ background: '#d4b876', color: '#0c0a09' }}
+              style={portalStyle({ background: '#d4b876', color: '#0c0a09' })}
             >
               <Download size={13} /> Extension İndir (.zip)
             </a>
-            <ol className="text-[12px] mb-1 space-y-1 list-decimal list-inside" style={{ color: 'rgba(250,250,249,0.55)' }}>
-              <li><code style={codeStyle}>chrome://extensions/</code> ekranında Moren Auto Agent anahtarını aç</li>
+            <ol className="text-[12px] mb-1 space-y-1 list-decimal list-inside" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>
+              <li><code style={portalStyle(codeStyle)}>chrome://extensions/</code> ekranında Moren Auto Agent anahtarını aç</li>
               <li>Açtıktan sonra bu sayfayı yenile</li>
-              <li>Extension yoksa indirilen <code style={codeStyle}>moren-auto-agent.zip</code> dosyasını masaüstüne çıkart</li>
-              <li>Geliştirici modu → <strong style={{ color: '#fafaf9' }}>Paketlenmemiş yükle</strong> ile klasörü seç</li>
+              <li>Extension yoksa indirilen <code style={portalStyle(codeStyle)}>moren-auto-agent.zip</code> dosyasını masaüstüne çıkart</li>
+              <li>Geliştirici modu → <strong style={portalStyle({ color: '#fafaf9' })}>Paketlenmemiş yükle</strong> ile klasörü seç</li>
             </ol>
           </div>
         </div>
@@ -138,22 +140,22 @@ export default function AgentControlCard() {
   const guncellemeVar = installedVersion && latestRuntime && installedVersion !== latestRuntime;
 
   return (
-    <div style={cardStyle}>
+    <div style={portalStyle(cardStyle)}>
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2.5">
-          <div className="flex items-center justify-center rounded-md w-8 h-8" style={{ background: 'rgba(212,184,118,0.12)', color: '#d4b876' }}>
+          <div className="flex items-center justify-center rounded-md w-8 h-8" style={portalStyle({ background: 'rgba(212,184,118,0.12)', color: '#d4b876' })}>
             <Cpu size={16} />
           </div>
           <div>
-            <div className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>Otomatik Agent Kontrolü</div>
-            <div className="text-[11px]" style={{ color: 'rgba(250,250,249,0.45)' }}>Moren Auto-Agent extension üzerinden</div>
+            <div className="text-[13px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>Otomatik Agent Kontrolü</div>
+            <div className="text-[11px]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>Moren Auto-Agent extension üzerinden</div>
           </div>
         </div>
         <button
           onClick={handleRestart}
           disabled={busy}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-semibold transition-all disabled:opacity-50"
-          style={{ background: '#d4b876', color: '#0c0a09' }}
+          style={portalStyle({ background: '#d4b876', color: '#0c0a09' })}
         >
           {busy ? <RefreshCw size={12} className="animate-spin" /> : <Power size={12} />}
           {busy ? 'Yeniden başlatılıyor...' : 'Hepsini Başlat'}
@@ -163,13 +165,13 @@ export default function AgentControlCard() {
       {guncellemeVar && (
         <div
           className="mb-3 p-2.5 rounded-md flex items-center justify-between gap-3"
-          style={{ background: 'rgba(212,184,118,0.10)', border: '1px solid rgba(212,184,118,0.35)' }}
+          style={portalStyle({ background: 'rgba(212,184,118,0.10)', border: '1px solid rgba(212,184,118,0.35)' })}
         >
           <div className="flex items-center gap-2">
-            <AlertTriangle size={14} style={{ color: '#d4b876' }} />
-            <div className="text-[12px]" style={{ color: '#fafaf9' }}>
-              <div className="font-semibold">Yeni güncelleme var: <span style={{ color: '#d4b876' }}>v{latestRuntime}</span></div>
-              <div className="text-[11px]" style={{ color: 'rgba(250,250,249,0.55)' }}>
+            <AlertTriangle size={14} style={portalStyle({ color: '#d4b876' })} />
+            <div className="text-[12px]" style={portalStyle({ color: '#fafaf9' })}>
+              <div className="font-semibold">Yeni güncelleme var: <span style={portalStyle({ color: '#d4b876' })}>v{latestRuntime}</span></div>
+              <div className="text-[11px]" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>
                 Yüklü: v{installedVersion} — Sayfayı yenile (Ctrl+F5). Hâlâ eski ise extension'ı zip'ten yeniden yükle.
               </div>
             </div>
@@ -178,7 +180,7 @@ export default function AgentControlCard() {
             href="/moren-auto-agent.zip"
             download="moren-auto-agent.zip"
             className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded text-[11.5px] font-semibold transition-all"
-            style={{ background: '#d4b876', color: '#0c0a09', whiteSpace: 'nowrap' }}
+            style={portalStyle({ background: '#d4b876', color: '#0c0a09', whiteSpace: 'nowrap' })}
           >
             <Download size={12} /> Yeni .zip
           </a>
@@ -203,13 +205,13 @@ export default function AgentControlCard() {
           openTitle="Mihsap'ı aç"
         />
       </div>
-      <div className="mt-3 pt-3 flex items-center justify-between text-[11px]" style={{ borderTop: '1px solid rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.45)' }}>
+      <div className="mt-3 pt-3 flex items-center justify-between text-[11px]" style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.45)' })}>
         <span>Başka bilgisayara kurmak için:</span>
         <a
           href="/moren-auto-agent.zip"
           download="moren-auto-agent.zip"
           className="inline-flex items-center gap-1 px-2 py-1 rounded transition-all"
-          style={{ background: 'rgba(212,184,118,0.12)', color: '#d4b876', border: '1px solid rgba(212,184,118,0.25)' }}
+          style={portalStyle({ background: 'rgba(212,184,118,0.12)', color: '#d4b876', border: '1px solid rgba(212,184,118,0.25)' })}
           title="Extension .zip dosyasını indir"
         >
           <Download size={11} /> Extension İndir (.zip)
@@ -243,22 +245,22 @@ function StatusPill({
     badge = { bg: 'rgba(251,113,133,0.12)', color: '#fb7185', text: 'Ölü' };
   }
   return (
-    <div className="flex items-center justify-between rounded-md px-3 py-2" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
+    <div className="flex items-center justify-between rounded-md px-3 py-2" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' })}>
       <div className="flex items-center gap-2">
         {running ? (
-          <CheckCircle2 size={14} style={{ color: '#4ade80' }} />
+          <CheckCircle2 size={14} style={portalStyle({ color: '#4ade80' })} />
         ) : (
-          <AlertTriangle size={14} style={{ color: tabs === 0 ? '#a8a29e' : '#fb7185' }} />
+          <AlertTriangle size={14} style={portalStyle({ color: tabs === 0 ? '#a8a29e' : '#fb7185' })} />
         )}
-        <span className="text-[12.5px] font-medium" style={{ color: '#fafaf9' }}>{label}</span>
-        {tabs > 1 && <span className="text-[10.5px]" style={{ color: 'rgba(250,250,249,0.5)' }}>({tabs} sekme)</span>}
+        <span className="text-[12.5px] font-medium" style={portalStyle({ color: '#fafaf9' })}>{label}</span>
+        {tabs > 1 && <span className="text-[10.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>({tabs} sekme)</span>}
       </div>
       <div className="flex items-center gap-1.5">
-        <span className="text-[10.5px] font-semibold px-2 py-[2px] rounded" style={{ background: badge.bg, color: badge.color }}>
+        <span className="text-[10.5px] font-semibold px-2 py-[2px] rounded" style={portalStyle({ background: badge.bg, color: badge.color })}>
           {badge.text}
         </span>
         {tabs === 0 && (
-          <button onClick={onOpen} className="inline-flex items-center gap-1 text-[10.5px] px-1.5 py-[2px] rounded" style={{ background: 'rgba(184,160,111,0.1)', color: '#d4b876', border: '1px solid rgba(184,160,111,0.25)' }} title={openTitle}>
+          <button onClick={onOpen} className="inline-flex items-center gap-1 text-[10.5px] px-1.5 py-[2px] rounded" style={portalStyle({ background: 'rgba(184,160,111,0.1)', color: '#d4b876', border: '1px solid rgba(184,160,111,0.25)' })} title={openTitle}>
             <ExternalLink size={10} />
           </button>
         )}

@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+import './dashboard-white.css';
 
 /**
  * BUGÜN MASANIZDA — gösterge paneli üst alanı (sol 2/3). KARAR: Muzaffer Bey (2026-09-18)
@@ -126,14 +128,14 @@ function AsamaSeridi({ a, toplam }: { a: Asamalar; toplam: number }) {
   const t = Math.max(1, toplam);
   return (
     <div>
-      <div className="flex h-[10px] w-full overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.05)' }}>
-        {parcalar.map((p) => (a[p.k] > 0 ? <div key={p.k} title={`${a[p.k]} ${p.ad}`} style={{ width: `${(a[p.k] / t) * 100}%`, background: p.renk, boxShadow: p.k === 'tamam' ? `0 0 10px ${rgba(P.a, 0.4)}` : 'none' }} /> : null))}
+      <div className="flex h-[10px] w-full overflow-hidden rounded-full" style={portalStyle({ background: 'rgba(255,255,255,0.05)' })}>
+        {parcalar.map((p) => (a[p.k] > 0 ? <div key={p.k} title={`${a[p.k]} ${p.ad}`} style={portalStyle({ width: `${(a[p.k] / t) * 100}%`, background: p.renk, boxShadow: p.k === 'tamam' ? `0 0 10px ${rgba(P.a, 0.4)}` : 'none' })} /> : null))}
       </div>
       <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
         {parcalar.map((p) => (
-          <span key={p.k} className="inline-flex items-center gap-1.5 text-[10.5px]" style={{ color: 'rgba(250,250,249,0.6)' }}>
+          <span key={p.k} className="inline-flex items-center gap-1.5 text-[10.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.6)' })}>
             <span className="w-2 h-2 rounded-sm" style={{ background: p.renk }} />
-            <span className="font-bold tabular-nums" style={{ color: 'rgba(250,250,249,0.9)' }}>{a[p.k]}</span> {p.ad}
+            <span className="font-bold tabular-nums" style={portalStyle({ color: 'rgba(250,250,249,0.9)' })}>{a[p.k]}</span> {p.ad}
           </span>
         ))}
       </div>
@@ -165,10 +167,10 @@ function AkisGrafigi({ gunler }: { gunler: AkisGunu[] }) {
 
 function Nabiz({ baslik, sag, children, vurguRenk }: { baslik: string; sag?: React.ReactNode; children: React.ReactNode; vurguRenk: string }) {
   return (
-    <div className="relative overflow-hidden rounded-xl px-4 py-3" style={{ background: `radial-gradient(circle at 0% 0%, ${rgba(vurguRenk, 0.08)}, transparent 55%), rgba(255,255,255,0.02)`, border: '1px solid rgba(255,255,255,0.07)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.03)' }}>
+    <div className="relative overflow-hidden rounded-xl px-4 py-3" style={portalStyle({ background: `radial-gradient(circle at 0% 0%, ${rgba(vurguRenk, 0.08)}, transparent 55%), rgba(255,255,255,0.02)`, border: '1px solid rgba(255,255,255,0.07)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.03)' })}>
       <span className="absolute top-0 left-4 right-4 h-px" style={{ background: `linear-gradient(90deg, transparent, ${vurguRenk}, transparent)`, opacity: 0.55 }} />
       <div className="flex items-baseline justify-between gap-3 mb-2">
-        <span className="text-[10px] uppercase font-bold tracking-[.2em]" style={{ color: 'rgba(250,250,249,0.5)' }}>{baslik}</span>
+        <span className="text-[10px] uppercase font-bold tracking-[.2em]" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>{baslik}</span>
         {sag}
       </div>
       {children}
@@ -186,27 +188,27 @@ function MukellefKarti({ m }: { m: Mukellef }) {
   return (
     <Link
       href={m.href}
-      className="group relative block rounded-xl px-3 py-2.5 transition-all duration-300 hover:-translate-y-[2px]"
-      style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.028), rgba(255,255,255,0.012))', border: '1px solid rgba(255,255,255,0.075)', boxShadow: '0 10px 26px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.03)' }}
+      data-dashboard-surface className="group relative block rounded-xl px-3 py-2.5 transition-all duration-300 hover:-translate-y-[2px]"
+      style={portalStyle({ background: 'linear-gradient(180deg, rgba(255,255,255,0.028), rgba(255,255,255,0.012))', border: '1px solid rgba(255,255,255,0.075)', boxShadow: '0 10px 26px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.03)' })}
       onMouseEnter={(e) => { e.currentTarget.style.boxShadow = `0 14px 34px rgba(0,0,0,0.3), 0 0 0 1px ${halo}`; }}
       onMouseLeave={(e) => { e.currentTarget.style.boxShadow = '0 10px 26px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.03)'; }}
     >
       <span className="absolute top-0 left-4 right-4 h-px" style={{ background: grad, opacity: 0.6 }} />
       <div className="flex items-start gap-2.5">
-        <span className="relative shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-[10.5px] font-black tracking-wide" style={{ background: grad, color: '#0f0d0b', boxShadow: `0 0 14px ${halo}` }}>
+        <span className="relative shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-[10.5px] font-black tracking-wide" style={portalStyle({ background: grad, color: '#0f0d0b', boxShadow: `0 0 14px ${halo}` })}>
           {bas(m.ad)}
-          {enUst === 'acil' && <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full" style={{ background: P.acil, boxShadow: `0 0 8px ${P.acil}`, border: '2px solid #0a0f0e' }} />}
+          {enUst === 'acil' && <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full" style={portalStyle({ background: P.acil, boxShadow: `0 0 8px ${P.acil}`, border: '2px solid #0a0f0e' })} />}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[12.5px] font-semibold leading-tight" style={{ color: 'rgba(250,250,249,0.92)' }} title={m.ad}>{kisaUnvan(m.ad)}</span>
+          <span className="block truncate text-[12.5px] font-semibold leading-tight" style={portalStyle({ color: 'rgba(250,250,249,0.92)' })} title={m.ad}>{kisaUnvan(m.ad)}</span>
           <span className="mt-1.5 flex flex-wrap gap-1">
             {gorunen.map((r, i) => (
-              <span key={i} className="inline-flex items-center max-w-full rounded-full px-1.5 py-[1px] text-[10px] font-semibold leading-tight whitespace-nowrap overflow-hidden text-ellipsis" title={r.metin} style={{ background: T[r.ton].bg, border: `1px solid ${T[r.ton].border}`, color: T[r.ton].color }}>{r.metin}</span>
+              <span key={i} className="inline-flex items-center max-w-full rounded-full px-1.5 py-[1px] text-[10px] font-semibold leading-tight whitespace-nowrap overflow-hidden text-ellipsis" title={r.metin} style={portalStyle({ background: T[r.ton].bg, border: `1px solid ${T[r.ton].border}`, color: T[r.ton].color })}>{r.metin}</span>
             ))}
-            {m.rozetler.length > 4 && <span className="inline-flex items-center rounded-full px-1.5 py-[1px] text-[10px] font-semibold" style={{ color: 'rgba(250,250,249,0.5)', border: '1px solid rgba(255,255,255,0.08)' }}>+{m.rozetler.length - 4}</span>}
+            {m.rozetler.length > 4 && <span className="inline-flex items-center rounded-full px-1.5 py-[1px] text-[10px] font-semibold" style={portalStyle({ color: 'rgba(250,250,249,0.5)', border: '1px solid rgba(255,255,255,0.08)' })}>+{m.rozetler.length - 4}</span>}
           </span>
         </span>
-        <ArrowUpRight size={12} className="shrink-0 opacity-30 transition group-hover:opacity-90" style={{ color: P.b }} />
+        <ArrowUpRight size={12} className="shrink-0 opacity-30 transition group-hover:opacity-90" style={portalStyle({ color: P.b })} />
       </div>
     </Link>
   );
@@ -229,54 +231,54 @@ export function BugunMasasi({ hitap }: { hitap?: string }) {
   const baglam = [TARIH, ay?.haftaninSonIsGunu ? 'haftanın son iş günü' : null, ay ? `KDV son günü ${ay.kdvSonGun} · ${ay.kdvKalanGun} gün` : null].filter(Boolean).join('  ·  ');
 
   return (
-    <div className="rounded-2xl overflow-hidden relative" style={{ background: P.arka, border: `1px solid ${P.kenar}`, boxShadow: '0 18px 44px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.035)' }}>
+    <div data-dashboard-surface data-dashboard-root className="rounded-2xl overflow-hidden relative" style={portalStyle({ background: P.arka, border: `1px solid ${P.kenar}`, boxShadow: '0 18px 44px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.035)' })}>
       <div className="pointer-events-none absolute inset-x-0 top-0 h-px" style={{ background: P.cizgi }} />
       <div className="pointer-events-none absolute inset-y-5 left-0 w-[3px] rounded-r-full" style={{ background: P.serit, boxShadow: `0 0 18px ${P.glow}` }} />
 
       {/* Üst bant */}
-      <div className="px-6 pt-5 pb-4 flex items-start justify-between gap-4 flex-wrap" style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.025), transparent)' }}>
+      <div data-dashboard-band="mint" className="px-6 pt-5 pb-4 flex items-start justify-between gap-4 flex-wrap" style={portalStyle({ background: 'linear-gradient(180deg, rgba(255,255,255,0.025), transparent)' })}>
         <div className="min-w-0">
-          <div className="text-[24px] font-semibold leading-tight tracking-tight" style={{ color: P.metin }}>{selam(saat)}{hitap ? `, ${hitap}` : ''}.</div>
-          <div className="mt-1 text-[13.5px] italic" style={{ color: P.b, opacity: 0.85 }}>{motivasyon()}</div>
-          <div className="mt-1.5 text-[12px]" style={{ color: 'rgba(250,250,249,0.5)' }}>{baglam}</div>
+          <div className="text-[24px] font-semibold leading-tight tracking-tight" style={portalStyle({ color: P.metin })}>{selam(saat)}{hitap ? `, ${hitap}` : ''}.</div>
+          <div className="mt-1 text-[13.5px] italic" style={portalStyle({ color: P.b, opacity: 0.85 })}>{motivasyon()}</div>
+          <div className="mt-1.5 text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>{baglam}</div>
         </div>
         <div className="flex items-center gap-2">
-          {data?.uretimZamani && <span className="text-[10.5px] tabular-nums" style={{ color: 'rgba(250,250,249,0.4)' }}>↻ {Math.max(0, Math.round((Date.now() - new Date(data.uretimZamani).getTime()) / 60000))} dk önce</span>}
-          <button onClick={yenile} disabled={isFetching} title="Masayı yeniden hesapla" className="text-[11px] inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md transition disabled:opacity-50" style={{ background: rgba(P.a, 0.055), border: `1px solid ${rgba(P.a, 0.14)}`, color: 'rgba(221,246,238,0.72)' }}>
+          {data?.uretimZamani && <span className="text-[10.5px] tabular-nums" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>↻ {Math.max(0, Math.round((Date.now() - new Date(data.uretimZamani).getTime()) / 60000))} dk önce</span>}
+          <button onClick={yenile} disabled={isFetching} title="Masayı yeniden hesapla" className="text-[11px] inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md transition disabled:opacity-50" style={portalStyle({ background: rgba(P.a, 0.055), border: `1px solid ${rgba(P.a, 0.14)}`, color: 'rgba(221,246,238,0.72)' })}>
             {isFetching ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />} Yenile
           </button>
         </div>
       </div>
 
       {isLoading ? (
-        <div className="flex items-center gap-2 text-[13px] px-6 py-5" style={{ color: 'rgba(250,250,249,0.5)' }}><Loader2 size={13} className="animate-spin" /> Masa hazırlanıyor…</div>
+        <div className="flex items-center gap-2 text-[13px] px-6 py-5" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}><Loader2 size={13} className="animate-spin" /> Masa hazırlanıyor…</div>
       ) : (
         <>
           {/* Nabız şeridi */}
           <div className="px-6 grid grid-cols-1 lg:grid-cols-[1.5fr_auto_1.2fr] gap-3">
             {ay?.asamalar && (
-              <Nabiz baslik={`${ay.ad} akışı · ${ay.toplam} mükellef`} vurguRenk={P.a} sag={<span className="text-[11px] tabular-nums" style={{ color: 'rgba(250,250,249,0.6)' }}><b style={{ color: P.a }}>%{ay.yuzde}</b> tamam · {ay.isGunuKaldi} iş günü kaldı</span>}>
+              <Nabiz baslik={`${ay.ad} akışı · ${ay.toplam} mükellef`} vurguRenk={P.a} sag={<span className="text-[11px] tabular-nums" style={portalStyle({ color: 'rgba(250,250,249,0.6)' })}><b style={portalStyle({ color: P.a })}>%{ay.yuzde}</b> tamam · {ay.isGunuKaldi} iş günü kaldı</span>}>
                 <AsamaSeridi a={ay.asamalar} toplam={ay.toplam} />
               </Nabiz>
             )}
             {!!data?.akis?.length && (
-              <Nabiz baslik="7 gün belge akışı" vurguRenk={P.b} sag={<span className="text-[11px] font-bold tabular-nums" style={{ color: '#f4efe5' }}>{data.akis.reduce((t, g) => t + g.fatura + g.belge, 0).toLocaleString('tr-TR')}</span>}>
+              <Nabiz baslik="7 gün belge akışı" vurguRenk={P.b} sag={<span className="text-[11px] font-bold tabular-nums" style={portalStyle({ color: '#f4efe5' })}>{data.akis.reduce((t, g) => t + g.fatura + g.belge, 0).toLocaleString('tr-TR')}</span>}>
                 <AkisGrafigi gunler={data.akis} />
               </Nabiz>
             )}
             {tahsilat && (
-              <Nabiz baslik="Tahsilat" vurguRenk={P.b} sag={<Link href="/panel/cari-kasa" className="text-[10.5px] font-bold inline-flex items-center gap-0.5" style={{ color: P.b }}>Cari Kasa <ArrowUpRight size={10} /></Link>}>
-                <div className="text-[18px] font-bold tabular-nums leading-none" style={{ color: '#f4efe5' }}>{(tahsilat.sayi || 0).toLocaleString('tr-TR')} <span className="text-[11px] font-semibold" style={{ color: 'rgba(250,250,249,0.5)' }}>TL açık · {tahsilat.baslik.split(' ')[0]} mükellef</span></div>
+              <Nabiz baslik="Tahsilat" vurguRenk={P.b} sag={<Link href="/panel/cari-kasa" className="text-[10.5px] font-bold inline-flex items-center gap-0.5" style={portalStyle({ color: P.b })}>Cari Kasa <ArrowUpRight size={10} /></Link>}>
+                <div className="text-[18px] font-bold tabular-nums leading-none" style={portalStyle({ color: '#f4efe5' })}>{(tahsilat.sayi || 0).toLocaleString('tr-TR')} <span className="text-[11px] font-semibold" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>TL açık · {tahsilat.baslik.split(' ')[0]} mükellef</span></div>
                 {!!tahsilat.detay?.length && (() => {
                   const toplam = tahsilat.sayi || 1; const ilk = tahsilat.detay!.slice(0, 5); const digerPay = Math.max(0, 1 - ilk.reduce((t, d) => t + (d.sayi || 0), 0) / toplam);
                   const tonlar = [P.b, rgba(P.b, 0.85), rgba(P.b, 0.7), rgba(P.b, 0.55), rgba(P.b, 0.4)];
                   return (
                     <>
-                      <div className="mt-2 flex h-[8px] w-full overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.05)' }}>
-                        {ilk.map((d, i) => <div key={d.id} title={`${d.metin} · ${(d.sayi || 0).toLocaleString('tr-TR')} TL`} style={{ width: `${((d.sayi || 0) / toplam) * 100}%`, background: tonlar[i] }} />)}
-                        <div style={{ width: `${digerPay * 100}%`, background: 'rgba(255,255,255,0.12)' }} />
+                      <div className="mt-2 flex h-[8px] w-full overflow-hidden rounded-full" style={portalStyle({ background: 'rgba(255,255,255,0.05)' })}>
+                        {ilk.map((d, i) => <div key={d.id} title={`${d.metin} · ${(d.sayi || 0).toLocaleString('tr-TR')} TL`} style={portalStyle({ width: `${((d.sayi || 0) / toplam) * 100}%`, background: tonlar[i] })} />)}
+                        <div style={portalStyle({ width: `${digerPay * 100}%`, background: 'rgba(255,255,255,0.12)' })} />
                       </div>
-                      <div className="mt-1.5 text-[10.5px] truncate" style={{ color: 'rgba(250,250,249,0.55)' }}>{ilk.slice(0, 3).map((d) => `${kisaUnvan(d.metin, 2)} ${tlKisa(d.sayi || 0)}`).join(' · ')}</div>
+                      <div className="mt-1.5 text-[10.5px] truncate" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>{ilk.slice(0, 3).map((d) => `${kisaUnvan(d.metin, 2)} ${tlKisa(d.sayi || 0)}`).join(' · ')}</div>
                     </>
                   );
                 })()}
@@ -286,20 +288,20 @@ export function BugunMasasi({ hitap }: { hitap?: string }) {
 
           {/* Mükellef kartları */}
           <div className="px-6 pt-5 pb-2 flex items-baseline justify-between gap-3">
-            <span className="text-[10.5px] uppercase font-bold tracking-[.24em]" style={{ color: 'rgba(221,246,238,0.72)' }}>Bugün masanızda</span>
-            <span className="text-[11px]" style={{ color: 'rgba(250,250,249,0.45)' }}>{mukellefler.length} mükellef · aciliyet sırasıyla</span>
+            <span className="text-[10.5px] uppercase font-bold tracking-[.24em]" style={portalStyle({ color: 'rgba(221,246,238,0.72)' })}>Bugün masanızda</span>
+            <span className="text-[11px]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>{mukellefler.length} mükellef · aciliyet sırasıyla</span>
           </div>
           {mukellefler.length ? (
-            <div className="px-6 grid gap-2.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))' }}>
+            <div className="px-6 grid gap-2.5" style={portalStyle({ gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))' })}>
               {gorunen.map((m) => <MukellefKarti key={m.id} m={m} />)}
             </div>
           ) : (
-            <div className="px-6 py-3 text-[12.5px]" style={{ color: 'rgba(250,250,249,0.45)' }}>Bugün ilgilenilecek mükellef yok — masa temiz.</div>
+            <div className="px-6 py-3 text-[12.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>Bugün ilgilenilecek mükellef yok — masa temiz.</div>
           )}
           {mukellefler.length > USTE && (
             <div className="px-6 pt-2">
-              <button onClick={() => setHepsi(!hepsi)} className="w-full flex items-center justify-center gap-1 py-2 rounded-lg text-[11.5px] font-semibold transition hover:bg-white/[0.03]" style={{ border: `1px dashed ${rgba(P.b, 0.25)}`, color: P.b }}>
-                {hepsi ? 'daha az göster' : `+${mukellefler.length - USTE} mükellef daha`} <ChevronDown size={12} style={{ transform: hepsi ? 'rotate(180deg)' : 'none' }} />
+              <button onClick={() => setHepsi(!hepsi)} className="w-full flex items-center justify-center gap-1 py-2 rounded-lg text-[11.5px] font-semibold transition hover:bg-white/[0.03]" style={portalStyle({ border: `1px dashed ${rgba(P.b, 0.25)}`, color: P.b })}>
+                {hepsi ? 'daha az göster' : `+${mukellefler.length - USTE} mükellef daha`} <ChevronDown size={12} style={portalStyle({ transform: hepsi ? 'rotate(180deg)' : 'none' })} />
               </button>
             </div>
           )}
@@ -307,16 +309,16 @@ export function BugunMasasi({ hitap }: { hitap?: string }) {
           {/* Genel işler */}
           {genel.length > 0 && (
             <div className="px-6 pt-4 pb-5">
-              <div className="text-[10.5px] uppercase font-bold tracking-[.24em] mb-2" style={{ color: 'rgba(221,246,238,0.72)' }}>Genel işler</div>
+              <div className="text-[10.5px] uppercase font-bold tracking-[.24em] mb-2" style={portalStyle({ color: 'rgba(221,246,238,0.72)' })}>Genel işler</div>
               <div className="flex flex-wrap gap-2">
                 {genel.map((k) => {
                   const renk = genelRenk(P)[k.kaynak] || P.b;
                   const ic = (
-                    <span className="inline-flex items-center gap-2 rounded-full pl-2.5 pr-3 py-1.5 text-[12px] transition hover:brightness-125" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.09)', color: 'rgba(250,250,249,0.86)' }}>
+                    <span className="inline-flex items-center gap-2 rounded-full pl-2.5 pr-3 py-1.5 text-[12px] transition hover:brightness-125" style={portalStyle({ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.09)', color: 'rgba(250,250,249,0.86)' })}>
                       <span className="w-1.5 h-1.5 rounded-full" style={{ background: renk, boxShadow: `0 0 6px ${rgba(renk, 0.55)}` }} />
                       <span className="font-semibold">{k.baslik}</span>
-                      {k.aciklama && <span className="hidden xl:inline" style={{ color: 'rgba(250,250,249,0.45)' }}>· {k.aciklama.length > 48 ? k.aciklama.slice(0, 48) + '…' : k.aciklama}</span>}
-                      {k.href && <ArrowUpRight size={11} style={{ color: P.b, opacity: 0.7 }} />}
+                      {k.aciklama && <span className="hidden xl:inline" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>· {k.aciklama.length > 48 ? k.aciklama.slice(0, 48) + '…' : k.aciklama}</span>}
+                      {k.href && <ArrowUpRight size={11} style={portalStyle({ color: P.b, opacity: 0.7 })} />}
                     </span>
                   );
                   return k.href ? <Link key={k.id} href={k.href}>{ic}</Link> : <span key={k.id}>{ic}</span>;

@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+import './dashboard-white.css';
 
 import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -110,18 +112,18 @@ export function KritikUyariStatCard() {
     <>
       <button
         onClick={() => setOpen(true)}
-        className="text-left rounded-2xl p-5 transition-all hover:scale-[1.02] cursor-pointer"
-        style={{
+        data-dashboard-kpi="amber" data-dashboard-alert={hasIssue ? 'issue' : 'clear'} className="text-left rounded-2xl p-5 transition-all hover:scale-[1.02] cursor-pointer"
+        style={portalStyle({
           background: hasIssue
             ? 'linear-gradient(135deg, rgba(244,63,94,0.10), rgba(244,63,94,0.04))'
             : 'rgba(255,255,255,0.02)',
           border: `1px solid ${hasIssue ? 'rgba(244,63,94,0.30)' : 'rgba(255,255,255,0.05)'}`,
           animation: criticalCount > 0 ? 'moren-banner-pulse 2.8s ease-in-out infinite' : 'none',
-        }}
+        })}
       >
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wider"
-            style={{ color: hasIssue ? '#f43f5e' : 'rgba(250,250,249,0.55)' }}>
+            style={portalStyle({ color: hasIssue ? '#f43f5e' : 'rgba(250,250,249,0.55)' })}>
             <AlertTriangle size={12} />
             <span>Kritik Uyarı</span>
             {criticalCount > 0 && (
@@ -130,16 +132,16 @@ export function KritikUyariStatCard() {
             )}
           </div>
         </div>
-        <p className="leading-none tabular-nums" style={{
+        <p className="leading-none tabular-nums" style={portalStyle({
           fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif',
           fontSize: 26,
           fontWeight: 900,
           letterSpacing: 0,
           color: hasIssue ? '#f43f5e' : '#fafaf9',
-        }}>
+        })}>
           {totalUyari}
         </p>
-        <p className="text-[11.5px] mt-2" style={{ color: 'rgba(250,250,249,0.5)' }}>
+        <p className="text-[11.5px] mt-2" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
           {totalUyari === 0 ? 'Sorun yok — her şey yolunda' : (
             <>
               {critical > 0 && <span>{critical} sistem · </span>}
@@ -156,30 +158,30 @@ export function KritikUyariStatCard() {
       {open && (
         <div className="fixed inset-0 z-50 flex items-start justify-center pt-16 p-4"
           style={{ background: 'rgba(0,0,0,0.7)' }} onClick={() => setOpen(false)}>
-          <div className="w-full max-w-2xl rounded-2xl overflow-hidden max-h-[80vh] flex flex-col"
-            style={{ background: '#0f0d0b', border: '1px solid rgba(255,255,255,0.08)' }}
+          <div data-dashboard-surface data-dashboard-root className="w-full max-w-2xl rounded-2xl overflow-hidden max-h-[80vh] flex flex-col"
+            style={portalStyle({ background: '#0f0d0b', border: '1px solid rgba(255,255,255,0.08)' })}
             onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-5 py-4"
-              style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+            <div data-dashboard-band="peach" className="flex items-center justify-between px-5 py-4"
+              style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.05)' })}>
               <div className="flex items-center gap-2.5">
-                <AlertTriangle size={16} style={{ color: hasIssue ? '#f43f5e' : '#22c55e' }} />
-                <h2 className="text-[16px] font-bold" style={{ color: '#fafaf9', fontFamily: 'Fraunces, serif' }}>
+                <AlertTriangle size={16} style={portalStyle({ color: hasIssue ? '#f43f5e' : '#22c55e' })} />
+                <h2 className="text-[16px] font-bold" style={portalStyle({ color: '#fafaf9', fontFamily: 'Fraunces, serif' })}>
                   Kritik Uyarı Detayı
                 </h2>
               </div>
               <button onClick={() => setOpen(false)} className="p-1 rounded hover:bg-white/5">
-                <X size={16} style={{ color: 'rgba(250,250,249,0.5)' }} />
+                <X size={16} style={portalStyle({ color: 'rgba(250,250,249,0.5)' })} />
               </button>
             </div>
 
             <div className="flex-1 overflow-y-auto p-5 space-y-4">
               {totalUyari === 0 ? (
                 <div className="text-center py-10">
-                  <ShieldCheck size={32} className="mx-auto mb-3" style={{ color: '#22c55e' }} />
-                  <p className="text-[14px]" style={{ color: '#fafaf9', fontWeight: 600 }}>
+                  <ShieldCheck size={32} className="mx-auto mb-3" style={portalStyle({ color: '#22c55e' })} />
+                  <p className="text-[14px]" style={portalStyle({ color: '#fafaf9', fontWeight: 600 })}>
                     Her şey yolunda
                   </p>
-                  <p className="text-[12px] mt-1" style={{ color: 'rgba(250,250,249,0.5)' }}>
+                  <p className="text-[12px] mt-1" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
                     Açık sistem uyarısı, kilit drift'i veya bekleyen kritik bildirim yok.
                   </p>
                 </div>
@@ -224,7 +226,7 @@ export function KritikUyariStatCard() {
                       <Link
                         href="/panel/sistem/kilitli-moduller"
                         className="inline-flex items-center gap-1 text-[11.5px] font-semibold mt-2"
-                        style={{ color: GOLD }}
+                        style={portalStyle({ color: GOLD })}
                       >
                         Kilitli Modüller sayfasına git <ChevronRight size={12} />
                       </Link>
@@ -262,7 +264,7 @@ export function KritikUyariStatCard() {
                       <Link
                         href="/panel/bildirimler"
                         className="inline-flex items-center gap-1 text-[11.5px] font-semibold"
-                        style={{ color: GOLD }}
+                        style={portalStyle({ color: GOLD })}
                       >
                         Bildirimleri görüntüle <ChevronRight size={12} />
                       </Link>
@@ -281,13 +283,13 @@ export function KritikUyariStatCard() {
 function UyariBolumu({ icon: Icon, baslik, sayi, renk, children }: any) {
   return (
     <div className="rounded-xl overflow-hidden"
-      style={{ background: 'rgba(255,255,255,0.02)', border: `1px solid ${renk}33` }}>
+      style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: `1px solid ${renk}33` })}>
       <div className="flex items-center gap-2.5 px-4 py-3"
-        style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-        <Icon size={14} style={{ color: renk }} />
-        <span className="text-[12px] font-bold" style={{ color: '#fafaf9' }}>{baslik}</span>
+        style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.04)' })}>
+        <Icon size={14} style={portalStyle({ color: renk })} />
+        <span className="text-[12px] font-bold" style={portalStyle({ color: '#fafaf9' })}>{baslik}</span>
         <span className="ml-auto text-[10.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded"
-          style={{ background: `${renk}22`, color: renk }}>
+          style={portalStyle({ background: `${renk}22`, color: renk })}>
           {sayi}
         </span>
       </div>
@@ -299,16 +301,16 @@ function UyariBolumu({ icon: Icon, baslik, sayi, renk, children }: any) {
 function UyariSatir({ renk, etiket, mesaj, altMesaj }: { renk: string; etiket: string; mesaj: string; altMesaj?: string }) {
   return (
     <div className="px-3 py-2 rounded-lg"
-      style={{ background: 'rgba(255,255,255,0.02)' }}>
+      style={portalStyle({ background: 'rgba(255,255,255,0.02)' })}>
       <div className="flex items-center gap-2">
         <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded"
-          style={{ background: `${renk}22`, color: renk }}>
+          style={portalStyle({ background: `${renk}22`, color: renk })}>
           {formatUyariEtiketi(etiket)}
         </span>
-        <span className="text-[12.5px]" style={{ color: '#fafaf9' }}>{mesaj}</span>
+        <span className="text-[12.5px]" style={portalStyle({ color: '#fafaf9' })}>{mesaj}</span>
       </div>
       {altMesaj && (
-        <p className="text-[11px] mt-1" style={{ color: 'rgba(250,250,249,0.5)' }}>
+        <p className="text-[11px] mt-1" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
           {altMesaj}
         </p>
       )}

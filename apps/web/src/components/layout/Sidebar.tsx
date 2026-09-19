@@ -1,4 +1,5 @@
 'use client';
+import { ownedThemeStyle, ownedThemeValue } from '@/components/layout/owned-theme';
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -248,36 +249,36 @@ export default function Sidebar() {
 
   return (
     <>
-    <aside
+    <aside data-moren-owned="navigation" data-portal-navigation="true"
       className="flex flex-col flex-shrink-0 overflow-hidden relative"
       data-collapsed={collapsed ? 'true' : 'false'}
-      style={{
+      style={ownedThemeStyle({
         width: collapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH,
-        background: 'linear-gradient(180deg, #090807 0%, #070706 46%, #050505 100%)',
+        background: 'var(--moren-owned-nav-background, linear-gradient(180deg, #090807 0%, #070706 46%, #050505 100%))',
         borderRight: '1px solid rgba(212,184,118,0.12)',
         transition: 'width 260ms cubic-bezier(0.16, 1, 0.3, 1)',
         boxShadow: 'inset -1px 0 0 rgba(255,255,255,0.022), 14px 0 42px rgba(0,0,0,0.28)',
-      }}
+      })}
     >
       {/* Dekoratif radial gradient arka plan */}
       <div
         className="absolute inset-0 pointer-events-none opacity-25"
-        style={{
+        style={ownedThemeStyle({
           background: 'radial-gradient(circle at 42% 0%, rgba(212,184,118,0.10), transparent 33%), radial-gradient(circle at 110% 28%, rgba(240,154,168,0.045), transparent 36%), radial-gradient(circle at 40% 100%, rgba(143,215,189,0.04), transparent 42%)',
-        }}
+        })}
       />
       <div
         className="pointer-events-none absolute inset-y-0 right-0 w-px"
-        style={{ background: 'linear-gradient(180deg, transparent, rgba(212,184,118,0.20), transparent)' }}
+        style={ownedThemeStyle({ background: 'linear-gradient(180deg, transparent, rgba(212,184,118,0.20), transparent)' })}
       />
 
       {/* === LOGO === */}
       <div
         className={collapsed ? 'relative px-1.5 py-2.5' : 'relative px-3 py-3'}
-        style={{
+        style={ownedThemeStyle({
           borderBottom: '1px solid rgba(212,184,118,0.10)',
           background: 'linear-gradient(180deg, rgba(212,184,118,0.045), rgba(5,5,5,0.20) 68%, transparent)',
-        }}
+        })}
       >
         <Link
           href="/panel"
@@ -285,11 +286,11 @@ export default function Sidebar() {
             ? 'group relative flex h-12 items-center justify-center rounded-xl border transition-all duration-300 hover:border-[#d4b87666]'
             : 'group relative flex h-[122px] items-center justify-center rounded-2xl border px-5 py-3 transition-all duration-300 hover:border-[#d4b87666]'
           }
-          style={{
+          style={ownedThemeStyle({
             background: 'linear-gradient(145deg, rgba(212,184,118,0.045), rgba(255,255,255,0.008) 52%, rgba(0,0,0,0.20))',
             borderColor: 'rgba(212,184,118,0.11)',
             boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.035), 0 16px 34px rgba(0,0,0,0.24)',
-          }}
+          })}
           aria-label="Moren"
           onMouseEnter={(e) => showCollapsedTooltip(e, 'Moren Mali Müşavirlik', GOLD)}
           onMouseLeave={hideCollapsedTooltip}
@@ -299,7 +300,7 @@ export default function Sidebar() {
               src={collapsed ? '/brand/moren-logo-mark.png' : '/brand/moren-logo-gold.png'}
               alt="Moren Mali Müşavirlik"
               className="block h-full w-full object-contain"
-              style={{ filter: 'none' }}
+              style={ownedThemeStyle({ filter: 'none' })}
             />
           </span>
         </Link>
@@ -310,12 +311,12 @@ export default function Sidebar() {
             ? 'absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-lg border transition hover:bg-white/[0.06]'
             : 'absolute right-5 top-5 flex h-7 w-7 items-center justify-center rounded-lg border transition hover:bg-white/[0.06]'
           }
-          style={{
+          style={ownedThemeStyle({
             background: 'rgba(15,13,11,0.78)',
             borderColor: 'rgba(212,184,118,0.28)',
             color: GOLD,
             boxShadow: '0 8px 18px rgba(0,0,0,0.22)',
-          }}
+          })}
           aria-label={collapsed ? 'Sol menuyu genislet' : 'Sol menuyu daralt'}
           onMouseEnter={(e) => showCollapsedTooltip(e, 'Menüyü genişlet', GOLD)}
           onMouseLeave={hideCollapsedTooltip}
@@ -339,37 +340,37 @@ export default function Sidebar() {
                   }
                   onMouseEnter={(e) => showCollapsedTooltip(e, group.label, group.color)}
                   onMouseLeave={hideCollapsedTooltip}
-                  style={{
+                  style={ownedThemeStyle({
                     background: `linear-gradient(90deg, ${group.color}0d 0%, rgba(255,255,255,0.010) 46%, transparent 100%)`,
                     borderColor: `${group.color}1c`,
                     boxShadow: `inset 0 1px 0 rgba(255,255,255,0.025), 0 6px 18px ${group.color}05`,
-                  }}
+                  })}
                 >
                   <span
                     className="flex h-[22px] w-[22px] items-center justify-center rounded-md"
-                    style={{
+                    style={ownedThemeStyle({
                       background: `${group.color}18`,
                       border: `1px solid ${group.color}32`,
                       boxShadow: `0 0 14px ${group.color}10, inset 0 1px 0 rgba(255,255,255,0.07)`,
-                    }}
+                    })}
                   >
-                    <GIcon size={12} strokeWidth={2.15} style={{ color: group.color }} />
+                    <GIcon size={12} strokeWidth={2.15} style={ownedThemeStyle({ color: group.color })} />
                   </span>
                   {!collapsed && (
                     <>
                       <p
                         className="text-[10.5px] font-extrabold uppercase flex-none"
-                        style={{
+                        style={ownedThemeStyle({
                           color: group.color,
                           letterSpacing: 0,
                           textShadow: `0 0 16px ${group.color}26`,
-                        }}
+                        })}
                       >
                         {group.label}
                       </p>
                       <div
                         className="h-px flex-1"
-                        style={{ background: `linear-gradient(90deg, ${group.color}44, transparent)` }}
+                        style={ownedThemeStyle({ background: `linear-gradient(90deg, ${group.color}44, transparent)` })}
                       />
                     </>
                   )}
@@ -397,7 +398,7 @@ export default function Sidebar() {
                         ? 'group relative flex items-center justify-center rounded-xl border py-2.5 text-[13px] overflow-hidden'
                         : 'group relative flex items-center gap-3 px-3 py-[6px] rounded-xl border text-[13.5px] overflow-hidden'
                       }
-                      style={{
+                      style={ownedThemeStyle({
                         color: baseColor,
                         background: baseBackground,
                         borderColor: baseBorder,
@@ -405,40 +406,40 @@ export default function Sidebar() {
                         fontWeight: active ? 600 : 450,
                         letterSpacing: 0,
                         transition: 'all 0.28s cubic-bezier(0.16, 1, 0.3, 1)',
-                      }}
+                      })}
                       onMouseEnter={(e) => {
                         showCollapsedTooltip(e, label, group.color);
                         if (!active) {
                           const el = e.currentTarget as HTMLElement;
-                          el.style.background = `linear-gradient(135deg, ${group.color}16 0%, rgba(255,255,255,0.045) 48%, ${group.color}06 100%)`;
-                          el.style.borderColor = `${group.color}42`;
-                          el.style.color = '#fffaf2';
+                          el.style.background = ownedThemeValue(`linear-gradient(135deg, ${group.color}16 0%, rgba(255,255,255,0.045) 48%, ${group.color}06 100%)`, 'background');
+                          el.style.borderColor = ownedThemeValue(`${group.color}42`, 'borderColor');
+                          el.style.color = ownedThemeValue('#fffaf2', 'color');
                           el.style.transform = collapsed ? 'translateY(-1px)' : 'translateX(6px)';
-                          el.style.boxShadow = `inset 0 1px 0 rgba(255,255,255,0.075), 0 10px 28px ${group.color}10`;
+                          el.style.boxShadow = ownedThemeValue(`inset 0 1px 0 rgba(255,255,255,0.075), 0 10px 28px ${group.color}10`, 'boxShadow');
                         }
                       }}
                       onMouseLeave={(e) => {
                         hideCollapsedTooltip();
                         if (!active) {
                           const el = e.currentTarget as HTMLElement;
-                          el.style.background = baseBackground;
-                          el.style.borderColor = baseBorder;
-                          el.style.color = baseColor;
+                          el.style.background = ownedThemeValue(baseBackground, 'background');
+                          el.style.borderColor = ownedThemeValue(baseBorder, 'borderColor');
+                          el.style.color = ownedThemeValue(baseColor, 'color');
                           el.style.transform = 'translateX(0)';
-                          el.style.boxShadow = baseShadow;
+                          el.style.boxShadow = ownedThemeValue(baseShadow, 'boxShadow');
                         }
                       }}
                       aria-label={label}
                     >
                       <span
                         className="absolute inset-y-1 left-1 w-10 rounded-full opacity-0 blur-md transition-opacity duration-300 group-hover:opacity-50"
-                        style={{ background: `${group.color}1b` }}
+                        style={ownedThemeStyle({ background: `${group.color}1b` })}
                       />
                       <span
                         className="absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100"
-                        style={{
+                        style={ownedThemeStyle({
                           background: `linear-gradient(90deg, transparent 0%, ${group.color}0f 46%, transparent 100%)`,
-                        }}
+                        })}
                       />
 
                       {/* Aktif sol şerit */}
@@ -446,17 +447,17 @@ export default function Sidebar() {
                         <>
                           <span
                             className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full"
-                            style={{
+                            style={ownedThemeStyle({
                               background: `linear-gradient(180deg, ${group.color}, ${group.color}99)`,
                               boxShadow: `0 0 8px ${group.color}66`,
-                            }}
+                            })}
                           />
                           {/* Parıltı efekti */}
                           <span
                             className="absolute left-0 top-0 bottom-0 w-full opacity-50 pointer-events-none"
-                            style={{
+                            style={ownedThemeStyle({
                               background: `linear-gradient(90deg, ${group.color}10 0%, transparent 50%)`,
-                            }}
+                            })}
                           />
                         </>
                       )}
@@ -464,7 +465,7 @@ export default function Sidebar() {
                       {/* İkon kutucuğu */}
                       <div
                         className="relative flex items-center justify-center flex-shrink-0 transition-all duration-300 group-hover:scale-105"
-                        style={{
+                        style={ownedThemeStyle({
                           width: collapsed ? 28 : 26,
                           height: collapsed ? 28 : 26,
                           borderRadius: collapsed ? 10 : 8,
@@ -473,12 +474,12 @@ export default function Sidebar() {
                           boxShadow: active
                             ? `0 0 14px ${group.color}20`
                             : `inset 0 1px 0 rgba(255,255,255,0.035)`,
-                        }}
+                        })}
                       >
                         <Icon
                           size={14}
                           strokeWidth={active ? 2.25 : 1.75}
-                          style={{ color: group.color, opacity: active ? 1 : 0.78 }}
+                          style={ownedThemeStyle({ color: group.color, opacity: active ? 1 : 0.78 })}
                         />
                       </div>
 
@@ -493,12 +494,12 @@ export default function Sidebar() {
                             ? 'absolute -right-0.5 -top-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-bold'
                             : 'inline-flex items-center justify-center px-1.5 h-4 text-[10px] font-bold rounded-full flex-shrink-0'
                           }
-                          style={{
+                          style={ownedThemeStyle({
                             background: '#d97706',
                             color: '#fafaf9',
                             minWidth: 16,
                             boxShadow: '0 0 8px rgba(217, 119, 6, 0.5)',
-                          }}
+                          })}
                         >
                           {bekleyenSayisi > 99 ? '99+' : bekleyenSayisi}
                         </span>
@@ -509,7 +510,7 @@ export default function Sidebar() {
                         <ChevronRight
                           size={12}
                           className="transition-transform duration-300 group-hover:translate-x-0.5"
-                          style={{ color: group.color, opacity: 0.7 }}
+                          style={ownedThemeStyle({ color: group.color, opacity: 0.7 })}
                         />
                       )}
                     </Link>
@@ -521,7 +522,7 @@ export default function Sidebar() {
         })}
 
         {/* === KULLANICI KARTI === */}
-        <div className={collapsed ? 'relative px-0 pt-3 pb-1' : 'relative px-1 pt-4 pb-1'} style={{ borderTop: '1px solid rgba(212,184,118,0.10)' }}>
+        <div className={collapsed ? 'relative px-0 pt-3 pb-1' : 'relative px-1 pt-4 pb-1'} style={ownedThemeStyle({ borderTop: '1px solid rgba(212,184,118,0.10)' })}>
           {collapsed ? (
             <div className="flex flex-col items-center gap-2">
               <div
@@ -534,11 +535,11 @@ export default function Sidebar() {
                   )
                 }
                 onMouseLeave={hideCollapsedTooltip}
-                style={{
+                style={ownedThemeStyle({
                   background: 'linear-gradient(135deg, #d4b876, #8b7649)',
                   color: '#0f0d0b',
                   boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.25), 0 8px 20px rgba(0,0,0,0.24)',
-                }}
+                })}
                 aria-label={user ? `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || user.email : 'Kullanici'}
               >
                 {initials}
@@ -546,7 +547,7 @@ export default function Sidebar() {
               <button
                 onClick={() => logout.mutate()}
                 className="flex h-8 w-8 items-center justify-center rounded-lg border transition hover:bg-red-500/15"
-                style={{ borderColor: 'rgba(239,68,68,0.22)', color: '#ef4444' }}
+                style={ownedThemeStyle({ borderColor: 'rgba(239,68,68,0.22)', color: '#ef4444' })}
                 aria-label="Cikis yap"
                 onMouseEnter={(e) => showCollapsedTooltip(e, 'Çıkış yap', '#ef4444')}
                 onMouseLeave={hideCollapsedTooltip}
@@ -557,39 +558,39 @@ export default function Sidebar() {
           ) : (
           <div
             className="relative overflow-hidden rounded-xl p-3 group transition-all duration-300"
-            style={{
+            style={ownedThemeStyle({
               background: 'linear-gradient(135deg, rgba(212,184,118,0.055), rgba(255,255,255,0.012))',
               border: '1px solid rgba(212,184,118,0.11)',
               boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.032)',
-            }}
+            })}
           >
             <div
               className="absolute -bottom-5 -right-5 w-20 h-20 rounded-full"
-              style={{ background: 'radial-gradient(circle, #d4b876, transparent 70%)', opacity: 0.18 }}
+              style={ownedThemeStyle({ background: 'radial-gradient(circle, #d4b876, transparent 70%)', opacity: 0.18 })}
             />
             <div className="relative flex items-center gap-3">
               <div className="relative">
                 <div
                   className="absolute inset-0 rounded-lg blur-sm opacity-40"
-                  style={{ background: 'linear-gradient(135deg, #d4b876, #8b7649)' }}
+                  style={ownedThemeStyle({ background: 'linear-gradient(135deg, #d4b876, #8b7649)' })}
                 />
                 <div
                   className="relative w-9 h-9 rounded-lg flex-shrink-0 flex items-center justify-center text-[12px] font-bold transition-transform duration-200 group-hover:scale-105"
-                  style={{
+                  style={ownedThemeStyle({
                     background: 'linear-gradient(135deg, #d4b876, #8b7649)',
                     color: '#0f0d0b',
                     boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.25), 0 2px 8px rgba(0,0,0,0.3)',
-                  }}
+                  })}
                 >
                   {initials}
                 </div>
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-[13px] font-semibold truncate" style={{ color: '#fafaf9' }}>
+                <p className="text-[13px] font-semibold truncate" style={ownedThemeStyle({ color: '#fafaf9' })}>
                   {user ? `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || user.email : '...'}
                 </p>
-                <p className="text-[10px] font-medium mt-0.5 flex items-center gap-1" style={{ color: '#d4b876' }}>
-                  <span className="w-1 h-1 rounded-full" style={{ background: '#d4b876' }} />
+                <p className="text-[10px] font-medium mt-0.5 flex items-center gap-1" style={ownedThemeStyle({ color: '#d4b876' })}>
+                  <span className="w-1 h-1 rounded-full" style={ownedThemeStyle({ background: '#d4b876' })} />
                   {user?.role === 'ADMIN' ? 'YÖNETİCİ' : 'PERSONEL'}
                 </p>
               </div>
@@ -599,7 +600,7 @@ export default function Sidebar() {
                 title="Çıkış Yap"
                 aria-label="Çıkış yap"
               >
-                <LogOut size={13} style={{ color: '#ef4444' }} />
+                <LogOut size={13} style={ownedThemeStyle({ color: '#ef4444' })} />
               </button>
             </div>
           </div>
@@ -607,7 +608,7 @@ export default function Sidebar() {
           {!collapsed && (
           <p
             className="text-center mt-3 text-[9px] uppercase tabular-nums"
-            style={{ color: 'rgba(250,250,249,0.22)', letterSpacing: 0 }}
+            style={ownedThemeStyle({ color: 'rgba(250,250,249,0.22)', letterSpacing: 0 })}
           >
             v0.1.0 · KVKK
           </p>
@@ -616,9 +617,9 @@ export default function Sidebar() {
       </nav>
     </aside>
     {collapsed && collapsedTooltip && (
-      <div
+      <div data-moren-owned="navigation" data-portal-navigation="true"
         className="pointer-events-none fixed z-[9999] max-w-[260px] rounded-lg border px-3 py-2 text-[12px] font-semibold shadow-2xl"
-        style={{
+        style={ownedThemeStyle({
           left: SIDEBAR_COLLAPSED_WIDTH + 10,
           top: collapsedTooltip.top,
           transform: 'translateY(-50%)',
@@ -627,7 +628,7 @@ export default function Sidebar() {
           color: '#fafaf9',
           boxShadow: `0 14px 30px rgba(0,0,0,0.36), 0 0 20px ${collapsedTooltip.color}20`,
           whiteSpace: 'nowrap',
-        }}
+        })}
       >
         {collapsedTooltip.label}
       </div>

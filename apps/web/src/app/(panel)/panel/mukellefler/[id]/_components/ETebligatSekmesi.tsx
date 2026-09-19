@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 import React, { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Loader2, Mail } from 'lucide-react';
@@ -45,10 +47,10 @@ export function ETebligatTab({ taxpayerId }: { taxpayerId: string }) {
       <TabloSarmal maxHeight={560} minWidth={720}>
         <colgroup>
           <col />
-          <col style={{ width: 150 }} />
-          <col style={{ width: 140 }} />
-          <col style={{ width: 110 }} />
-          <col style={{ width: 64 }} />
+          <col style={portalStyle({ width: 150 })} />
+          <col style={portalStyle({ width: 140 })} />
+          <col style={portalStyle({ width: 110 })} />
+          <col style={portalStyle({ width: 64 })} />
         </colgroup>
         <thead>
           <tr>
@@ -65,17 +67,17 @@ export function ETebligatTab({ taxpayerId }: { taxpayerId: string }) {
               <tr key={d.id} onClick={() => openDoc(d.id, baslik)} className="cursor-pointer transition-colors hover:bg-white/[0.03]">
                 <Td>
                   <div className="font-bold">{raw.kurumAciklama || d.title || '—'}</div>
-                  {raw.altKurum ? <div className="text-[11.5px]" style={{ color: FAINT }}>{raw.altKurum}</div> : null}
+                  {raw.altKurum ? <div className="text-[11.5px]" style={portalStyle({ color: FAINT })}>{raw.altKurum}</div> : null}
                 </Td>
                 <Td muted tabular>{d.referenceNo || '—'}</Td>
                 <Td tabular>{portalDateTr(raw.tebligZamani || d.receivedAt)}</Td>
                 <Td>
-                  <span className="inline-flex items-center gap-1.5 text-[13px] font-medium" style={{ color: okundu ? GREEN : RED }}>
-                    <span className="h-1.5 w-1.5 rounded-full" style={{ background: okundu ? GREEN : RED }} />
+                  <span className="inline-flex items-center gap-1.5 text-[13px] font-medium" style={portalStyle({ color: okundu ? GREEN : RED })}>
+                    <span className="h-1.5 w-1.5 rounded-full" style={portalStyle({ background: okundu ? GREEN : RED })} />
                     {okundu ? 'Okundu' : 'Okunmadı'}
                   </span>
                 </Td>
-                <Td center style={{ padding: '4px 6px' }}>
+                <Td center style={portalStyle({ padding: '4px 6px' })}>
                   <DocBtn label="Tebligatı aç" busy={busy === d.id} onClick={() => openDoc(d.id, baslik)} />
                 </Td>
               </tr>

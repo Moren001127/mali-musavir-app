@@ -1,9 +1,12 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
+import './portal-white.css';
+import './portal-utilities.css';
 import { Providers } from '@/components/providers';
 import { Toaster } from 'sonner';
 import GlobalMorenVoice from '@/components/moren-ai/GlobalMorenVoice';
 import { PwaRegistration } from '@/components/PwaRegistration';
+import { PortalTheme } from '@/components/PortalTheme';
 
 export const metadata: Metadata = {
   applicationName: 'Moren',
@@ -36,8 +39,9 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const theme = process.env.MOREN_PORTAL_THEME === 'A' ? 'A' : 'D';
   return (
-    <html lang="tr" suppressHydrationWarning>
+    <html lang="tr" data-theme={theme} suppressHydrationWarning>
       <head>
         {/* Inter — mükellef kartı tipografisi (onaylanan tasarım). */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -46,13 +50,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
           rel="stylesheet"
         />
-        {/* Portal sabit A temasıyla açılır (FOUC önlemi). */}
+        {/* İlk boyamadan önce doğru tema; Fatura Merkezi özgün kapsamını korur. */}
         <script
           dangerouslySetInnerHTML={{
             __html: `
               (function(){
                 try {
-                  document.documentElement.setAttribute('data-theme', 'A');
+                  var invoice = location.pathname === '/fatura-merkezi' || location.pathname.indexOf('/fatura-merkezi/') === 0;
+                  document.documentElement.setAttribute('data-theme', invoice ? 'A' : '${theme}');
                 } catch(e){}
               })();
             `,
@@ -61,6 +66,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         <Providers>
+          <PortalTheme theme={theme} />
           {children}
           <GlobalMorenVoice />
           <PwaRegistration />

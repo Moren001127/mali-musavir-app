@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle, portalPaint } from '@/lib/portal-theme';
+
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import { kdvApi } from '@/lib/kdv';
@@ -1019,19 +1021,19 @@ export default function KdvKontrolPage() {
       {/* HEADER */}
       <header
         className="relative overflow-hidden rounded-[18px] border px-5 py-4"
-        style={{
+        style={portalStyle({
           background: `radial-gradient(circle at 12% 0%, ${GOLD}2e, transparent 34%), radial-gradient(circle at 84% 8%, ${KDV_STEEL}26, transparent 40%), linear-gradient(160deg, rgba(28,23,17,0.96) 0%, #0f0d0b 72%)`,
           borderColor: 'rgba(255,255,255,0.06)',
           boxShadow: '0 16px 42px rgba(0,0,0,0.28)',
-        }}
+        })}
       >
         <div
           className="absolute inset-x-0 top-0 h-1"
-          style={{ background: `linear-gradient(90deg, #8b7649, ${GOLD_SOFT}, ${GOLD}, #e7cf95, ${KDV_STEEL}, ${GOLD})` }}
+          style={portalStyle({ background: `linear-gradient(90deg, #8b7649, ${GOLD_SOFT}, ${GOLD}, #e7cf95, ${KDV_STEEL}, ${GOLD})` })}
         />
         <div className="mb-3 flex items-center gap-2.5">
-          <span className="h-px w-[26px]" style={{ background: GOLD }} />
-          <span className="text-[10px] font-bold uppercase tracking-[.18em]" style={{ color: GOLD_SOFT }}>
+          <span className="h-px w-[26px]" style={portalStyle({ background: GOLD })} />
+          <span className="text-[10px] font-bold uppercase tracking-[.18em]" style={portalStyle({ color: GOLD_SOFT })}>
             Vergi & Beyanname
           </span>
         </div>
@@ -1039,17 +1041,17 @@ export default function KdvKontrolPage() {
           <div className="flex min-w-0 items-center gap-3.5">
             <span
               className="grid shrink-0 place-items-center rounded-xl"
-              style={{
+              style={portalStyle({
                 width: 46,
                 height: 46,
                 background: `linear-gradient(135deg, ${GOLD}, ${KDV_STEEL})`,
                 boxShadow: '0 8px 22px rgba(212,184,118,0.24)',
-              }}
+              })}
             >
-              <FileSpreadsheet size={24} style={{ color: '#1a1410' }} />
+              <FileSpreadsheet size={24} style={portalStyle({ color: '#1a1410' })} />
             </span>
             <div className="min-w-0">
-              <h1 className="text-[30px] font-semibold leading-none tracking-normal text-[#fafaf9]" style={{ fontFamily: 'Fraunces, Georgia, serif' }}>
+              <h1 className="text-[30px] font-semibold leading-none tracking-normal text-[#fafaf9]" style={portalStyle({ fontFamily: 'Fraunces, Georgia, serif' })}>
                 KDV Kontrol
               </h1>
               <p className="mt-2 text-[13px] font-semibold text-white/45">
@@ -1060,25 +1062,25 @@ export default function KdvKontrolPage() {
           <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
             <span
               className="inline-flex h-9 max-w-[280px] items-center gap-1.5 truncate rounded-[10px] border px-3 text-[12px] font-bold"
-              style={{ color: '#fafaf9', background: 'rgba(255,255,255,0.035)', borderColor: 'rgba(255,255,255,0.08)' }}
+              style={portalStyle({ color: '#fafaf9', background: 'rgba(255,255,255,0.035)', borderColor: 'rgba(255,255,255,0.08)' })}
               title={selectedTp ? taxpayerName(selectedTp) : 'Mükellef seçilmedi'}
             >
-              <Users size={14} style={{ color: GOLD }} />
+              <Users size={14} style={portalStyle({ color: GOLD })} />
               <span className="truncate">{selectedTp ? taxpayerName(selectedTp) : 'Mükellef seçilmedi'}</span>
             </span>
             <span
               className="inline-flex h-9 items-center gap-1.5 rounded-[10px] border px-3 text-[12px] font-bold"
-              style={{ color: '#fafaf9', background: 'rgba(255,255,255,0.035)', borderColor: 'rgba(255,255,255,0.08)' }}
+              style={portalStyle({ color: '#fafaf9', background: 'rgba(255,255,255,0.035)', borderColor: 'rgba(255,255,255,0.08)' })}
             >
-              <Calendar size={14} style={{ color: KDV_STEEL }} />
+              <Calendar size={14} style={portalStyle({ color: KDV_STEEL })} />
               {periodLabel}
             </span>
             <span
               className="inline-flex h-9 max-w-[260px] items-center gap-1.5 rounded-[10px] border px-3 text-[12px] font-bold"
-              style={{ color: '#fafaf9', background: 'rgba(255,255,255,0.035)', borderColor: 'rgba(255,255,255,0.08)' }}
+              style={portalStyle({ color: '#fafaf9', background: 'rgba(255,255,255,0.035)', borderColor: 'rgba(255,255,255,0.08)' })}
               title={selectedActions.length ? selectedActions.map((item) => ACTION_LABEL[item]).join(' + ') : 'İşlem seçilmedi'}
             >
-              <ShieldCheck size={14} style={{ color: GOLD }} />
+              <ShieldCheck size={14} style={portalStyle({ color: GOLD })} />
               <span className="truncate">
                 {selectedActions.length ? selectedActions.map((item) => ACTION_LABEL[item]).join(' + ') : 'İşlem seçilmedi'}
               </span>
@@ -1090,9 +1092,9 @@ export default function KdvKontrolPage() {
       {activeLocked && activeSession && (
         <div
           className="rounded-xl border px-4 py-3 flex items-center justify-between gap-3"
-          style={{ background: 'rgba(34,197,94,0.08)', borderColor: 'rgba(34,197,94,0.22)' }}
+          style={portalStyle({ background: 'rgba(34,197,94,0.08)', borderColor: 'rgba(34,197,94,0.22)' })}
         >
-          <div className="flex items-center gap-2 text-sm" style={{ color: '#bbf7d0' }}>
+          <div className="flex items-center gap-2 text-sm" style={portalStyle({ color: '#bbf7d0' })}>
             <Lock size={15} />
             <span>Bu kontrol sorunsuz tamamlandığı için kilitli. Müdahale etmek için kilidi aç.</span>
           </div>
@@ -1100,7 +1102,7 @@ export default function KdvKontrolPage() {
             onClick={() => unlockSessionMut.mutate(activeSession.id)}
             disabled={unlockSessionMut.isPending}
             className="px-3 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5"
-            style={{ background: 'rgba(34,197,94,0.14)', color: '#bbf7d0' }}
+            style={portalStyle({ background: 'rgba(34,197,94,0.14)', color: '#bbf7d0' })}
           >
             <Unlock size={13} />
             Kilidi Aç
@@ -1109,27 +1111,27 @@ export default function KdvKontrolPage() {
       )}
 
       {/* KOMUT BARI */}
-      <div className="rounded-xl border p-5" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}>
+      <div className="rounded-xl border p-5" style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' })}>
         {/* SIRA: 1) Mükellef → 2) Defter/İşlem → 3) Dönem.
             Mükellef seçilmeden 2 ve 3 disabled (gri); aksiyonlar zaten "Önce mükellef seçin" der. */}
         <div className="flex items-start gap-4 flex-wrap">
           {/* 1. MÜKELLEF — en sola, en geniş, ilk adım */}
           <div className="flex-1 min-w-[280px]">
-            <label className="block text-[11px] uppercase font-semibold tracking-wider mb-1.5 flex items-center gap-1.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
+            <label className="block text-[11px] uppercase font-semibold tracking-wider mb-1.5 flex items-center gap-1.5" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
               <span
                 className="inline-flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-bold"
-                style={{ background: GOLD + '26', color: GOLD }}
+                style={portalStyle({ background: GOLD + '26', color: GOLD })}
               >1</span>
               <Users size={11} className="inline" /> Mükellef
             </label>
             <button
               onClick={() => setPickerOpen(true)}
               className="w-full px-3 py-2.5 rounded-lg text-sm border flex items-center gap-2 text-left hover:brightness-110 transition"
-              style={{
+              style={portalStyle({
                 background: selectedTp ? 'rgba(212,184,118,0.06)' : 'rgba(255,255,255,0.03)',
                 borderColor: selectedTp ? 'rgba(212,184,118,0.3)' : 'rgba(255,255,255,0.05)',
                 color: '#fafaf9',
-              }}
+              })}
             >
               <span className="flex-1 truncate font-medium">
                 {selectedTp ? taxpayerName(selectedTp) : 'Mükellef seç…'}
@@ -1137,10 +1139,10 @@ export default function KdvKontrolPage() {
               {selectedTp?.defterTuru && (
                 <span
                   className="text-[9.5px] px-1.5 py-0.5 rounded font-bold tracking-wide"
-                  style={{
+                  style={portalStyle({
                     background: selectedTp.defterTuru === 'BILANCO' ? 'rgba(37,99,235,0.18)' : 'rgba(168,85,247,0.18)',
                     color: selectedTp.defterTuru === 'BILANCO' ? '#60a5fa' : '#c084fc',
-                  }}
+                  })}
                 >
                   {selectedTp.defterTuru === 'BILANCO' ? 'BİLANÇO' : 'İŞLETME'}
                 </span>
@@ -1149,21 +1151,21 @@ export default function KdvKontrolPage() {
                 <span
                   onClick={(e) => { e.stopPropagation(); setTaxpayerId(''); setSelectedActions([]); }}
                   className="p-0.5 rounded hover:bg-white/10"
-                  style={{ color: 'rgba(250,250,249,0.5)' }}
+                  style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}
                 >
                   <X size={13} />
                 </span>
               )}
-              <ChevronDown size={14} style={{ color: 'rgba(250,250,249,0.45)' }} />
+              <ChevronDown size={14} style={portalStyle({ color: 'rgba(250,250,249,0.45)' })} />
             </button>
           </div>
 
           {/* 2. DEFTER / İŞLEM — mükellef seçilmeden disabled */}
-          <div className="flex-shrink-0" style={{ opacity: taxpayerId ? 1 : 0.45, pointerEvents: taxpayerId ? 'auto' : 'none' }}>
-            <label className="block text-[11px] uppercase font-semibold tracking-wider mb-1.5 flex items-center gap-1.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
+          <div className="flex-shrink-0" style={portalStyle({ opacity: taxpayerId ? 1 : 0.45, pointerEvents: taxpayerId ? 'auto' : 'none' })}>
+            <label className="block text-[11px] uppercase font-semibold tracking-wider mb-1.5 flex items-center gap-1.5" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
               <span
                 className="inline-flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-bold"
-                style={{ background: taxpayerId ? GOLD + '26' : 'rgba(255,255,255,0.08)', color: taxpayerId ? GOLD : 'rgba(250,250,249,0.35)' }}
+                style={portalStyle({ background: taxpayerId ? GOLD + '26' : 'rgba(255,255,255,0.08)', color: taxpayerId ? GOLD : 'rgba(250,250,249,0.35)' })}
               >2</span>
               Defter / İşlem
             </label>
@@ -1187,7 +1189,7 @@ export default function KdvKontrolPage() {
                     disabled={disabled}
                     title={reason}
                     className="px-3 py-2 rounded-lg text-xs font-bold border whitespace-nowrap transition"
-                    style={{
+                    style={portalStyle({
                       background: disabled
                         ? 'rgba(255,255,255,0.015)'
                         : active ? c + '26' : 'rgba(255,255,255,0.03)',
@@ -1200,7 +1202,7 @@ export default function KdvKontrolPage() {
                       cursor: disabled ? 'not-allowed' : 'pointer',
                       opacity: disabled ? 0.5 : 1,
                       textDecoration: disabled && !compatible && taxpayerId ? 'line-through' : 'none',
-                    }}
+                    })}
                   >
                     {ACTION_LABEL[k]}
                   </button>
@@ -1210,11 +1212,11 @@ export default function KdvKontrolPage() {
           </div>
 
           {/* 3. DÖNEM — mükellef seçilmeden disabled */}
-          <div className="flex-shrink-0" style={{ opacity: taxpayerId ? 1 : 0.45, pointerEvents: taxpayerId ? 'auto' : 'none' }}>
-            <label className="block text-[11px] uppercase font-semibold tracking-wider mb-1.5 flex items-center gap-1.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
+          <div className="flex-shrink-0" style={portalStyle({ opacity: taxpayerId ? 1 : 0.45, pointerEvents: taxpayerId ? 'auto' : 'none' })}>
+            <label className="block text-[11px] uppercase font-semibold tracking-wider mb-1.5 flex items-center gap-1.5" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
               <span
                 className="inline-flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-bold"
-                style={{ background: taxpayerId ? GOLD + '26' : 'rgba(255,255,255,0.08)', color: taxpayerId ? GOLD : 'rgba(250,250,249,0.35)' }}
+                style={portalStyle({ background: taxpayerId ? GOLD + '26' : 'rgba(255,255,255,0.08)', color: taxpayerId ? GOLD : 'rgba(250,250,249,0.35)' })}
               >3</span>
               <Calendar size={11} className="inline" /> Dönem
             </label>
@@ -1224,14 +1226,14 @@ export default function KdvKontrolPage() {
               onChange={(e) => setAy(e.target.value)}
               disabled={!taxpayerId}
               className="px-3 py-2.5 rounded-lg text-base font-semibold border outline-none disabled:cursor-not-allowed"
-              style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)', color: '#fafaf9', minWidth: 170 }}
+              style={portalStyle({ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)', color: '#fafaf9', minWidth: 170 })}
             />
           </div>
         </div>
 
         {/* AKSİYON BUTONLARI (4 adım — OCR otomatik). Manuel "Luca Excel Yükle" kaldırıldı
             (kullanıcı 2026-08-06): Luca verisi artık "Luca'dan Çek" ile otomatik çekiliyor. */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mt-5 pt-5 border-t" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mt-5 pt-5 border-t" style={portalStyle({ borderColor: 'rgba(255,255,255,0.05)' })}>
           {/* Luca'dan Çek (otomatik agent) */}
           <ActionBtn
             icon={Download}
@@ -1313,17 +1315,17 @@ export default function KdvKontrolPage() {
         {lucaJobId && (
           <div
             className="rounded-lg p-3 text-sm mt-3"
-            style={{
+            style={portalStyle({
               background: 'rgba(16,185,129,0.08)',
               border: '1px solid rgba(16,185,129,0.3)',
               color: '#fafaf9',
-            }}
+            })}
           >
             <div className="flex items-center gap-3">
-              <Loader2 size={16} className="animate-spin" style={{ color: '#10b981', flexShrink: 0 }} />
+              <Loader2 size={16} className="animate-spin" style={portalStyle({ color: '#10b981', flexShrink: 0 })} />
               <div className="flex-1 min-w-0">
-                <div style={{ color: '#10b981', fontWeight: 600, fontSize: 13 }}>Luca işlemi portal içinde yönetiliyor</div>
-                <div style={{ color: 'rgba(250,250,249,0.65)', fontSize: 12, marginTop: 2 }} className="truncate">
+                <div style={portalStyle({ color: '#10b981', fontWeight: 600, fontSize: 13 })}>Luca işlemi portal içinde yönetiliyor</div>
+                <div style={portalStyle({ color: 'rgba(250,250,249,0.65)', fontSize: 12, marginTop: 2 })} className="truncate">
                   {lucaStatus || 'Moren agent Luca\'dan KDV verisini indiriyor…'}
                 </div>
               </div>
@@ -1331,7 +1333,7 @@ export default function KdvKontrolPage() {
                 onClick={() => cancelLucaJobsMut.mutate()}
                 disabled={cancelLucaJobsMut.isPending}
                 className="px-3 py-1.5 rounded-md text-xs disabled:opacity-50"
-                style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.6)', border: 0 }}
+                style={portalStyle({ background: 'rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.6)', border: 0 })}
               >
                 {cancelLucaJobsMut.isPending ? 'İptal ediliyor...' : 'İptal'}
               </button>
@@ -1346,7 +1348,7 @@ export default function KdvKontrolPage() {
             {lucaLogLines.length > 0 && (
               <div
                 className="mt-2 p-2 rounded text-xs font-mono overflow-y-auto"
-                style={{ background: 'rgba(0,0,0,0.3)', maxHeight: 160, color: 'rgba(250,250,249,0.7)' }}
+                style={portalStyle({ background: 'rgba(0,0,0,0.3)', maxHeight: 160, color: 'rgba(250,250,249,0.7)' })}
               >
                 {lucaLogLines.slice(-15).map((line, i) => (
                   <div key={i} className="leading-relaxed truncate">{line}</div>
@@ -1359,24 +1361,24 @@ export default function KdvKontrolPage() {
 
       {/* AKTİF SEANS SAYAÇLARI */}
       {activeSession && stats && (
-        <div className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
-          <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+        <div className="rounded-2xl overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' })}>
+          <div className="flex items-center justify-between px-5 py-4" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.04)' })}>
             <div className="flex items-center gap-2.5">
-              <span className="w-[3px] h-4 rounded-sm" style={{ background: GOLD }} />
-              <h3 className="text-[13.5px] font-semibold" style={{ color: '#fafaf9' }}>
+              <span className="w-[3px] h-4 rounded-sm" style={portalStyle({ background: GOLD })} />
+              <h3 className="text-[13.5px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>
                 Aktif Seans · {selectedTp ? taxpayerName(selectedTp) : 'Mükellef yok'} · {periodLabel} · {TYPE_LABEL[type]}
               </h3>
             </div>
             <div className="flex items-center gap-2">
               {processingCount > 0 ? (
                 <>
-                  <Loader2 size={12} className="animate-spin" style={{ color: '#60a5fa' }} />
-                  <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: '#60a5fa' }}>OCR Çalışıyor</span>
+                  <Loader2 size={12} className="animate-spin" style={portalStyle({ color: '#60a5fa' })} />
+                  <span className="text-[11px] font-bold uppercase tracking-wider" style={portalStyle({ color: '#60a5fa' })}>OCR Çalışıyor</span>
                 </>
               ) : (
                 <>
-                  <span className="w-2 h-2 rounded-full" style={{ background: '#22c55e', boxShadow: '0 0 8px rgba(34,197,94,0.8)' }} />
-                  <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: '#22c55e' }}>Hazır</span>
+                  <span className="w-2 h-2 rounded-full" style={portalStyle({ background: '#22c55e', boxShadow: '0 0 8px rgba(34,197,94,0.8)' })} />
+                  <span className="text-[11px] font-bold uppercase tracking-wider" style={portalStyle({ color: '#22c55e' })}>Hazır</span>
                 </>
               )}
             </div>
@@ -1409,10 +1411,10 @@ export default function KdvKontrolPage() {
                   { key: 'failed',  label: 'Eşleşme Hatalı',    val: _lucaOrphan + _imageOrphan + _otherUnmatched + _rejected, color: '#f43f5e', icon: XCircle, sub: failedSubParts.join(' · ') || null },
                 ];
               })().map(({ key, label, val, color, icon: Icon, showRerun, sub }: any) => (
-                <div key={key} className="rounded-lg p-2.5" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
-                  <div className="flex items-center justify-between mb-1 text-[10px] font-medium uppercase tracking-wide" style={{ color: 'rgba(250,250,249,0.55)' }}>
+                <div key={key} data-portal-kpi className="rounded-lg p-2.5" style={portalStyle({ ...({ '--kpi-tone': portalStyle({ color }).color } as React.CSSProperties), background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' })}>
+                  <div className="flex items-center justify-between mb-1 text-[10px] font-medium uppercase tracking-wide" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>
                     <span className="flex items-center gap-1.5">
-                      <Icon size={12} style={{ color }} /> {label}
+                      <Icon size={12} style={portalStyle({ color })} /> {label}
                     </span>
                     {showRerun && (
                       <button
@@ -1422,21 +1424,21 @@ export default function KdvKontrolPage() {
                           ? 'Bekleyen faturaları yeniden OCR\'la (başarılılara dokunulmaz)'
                           : 'OCR\'ı tekrar çalıştır'}
                         className="text-[10px] normal-case font-semibold px-2 py-0.5 rounded hover:brightness-125 transition flex items-center gap-1"
-                        style={{
+                        style={portalStyle({
                           background: key === 'pending' ? 'rgba(245,158,11,0.15)' : 'rgba(96,165,250,0.12)',
                           color: key === 'pending' ? '#f59e0b' : '#60a5fa',
-                        }}
+                        })}
                       >
                         <span>{runOcrAgain.isPending ? '…' : '⟳'}</span>
                         {key === 'pending' && !runOcrAgain.isPending && <span>Yenile</span>}
                       </button>
                     )}
                   </div>
-                  <p className="leading-none tabular-nums" style={{ fontFamily: 'Fraunces, serif', fontSize: 22, fontWeight: 700, color: '#fafaf9' }}>
+                  <p className="leading-none tabular-nums" style={portalStyle({ fontFamily: 'Fraunces, serif', fontSize: 22, fontWeight: 700, color: '#fafaf9' })}>
                     {val ?? 0}
                   </p>
                   {sub && (
-                    <p className="mt-1.5 text-[10.5px] tabular-nums leading-tight" style={{ color: 'rgba(250,250,249,0.45)', fontFamily: 'JetBrains Mono, monospace' }}>
+                    <p className="mt-1.5 text-[10.5px] tabular-nums leading-tight" style={portalStyle({ color: 'rgba(250,250,249,0.45)', fontFamily: 'JetBrains Mono, monospace' })}>
                       {sub}
                     </p>
                   )}
@@ -1464,28 +1466,28 @@ export default function KdvKontrolPage() {
               return (
                 <div
                   className="mt-4 px-4 py-3 rounded-xl text-[11.5px] tabular-nums space-y-1"
-                  style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}
+                  style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' })}
                 >
-                  <div className="flex items-center gap-2 flex-wrap" style={{ color: 'rgba(250,250,249,0.6)' }}>
-                    <span style={{ color: GOLD, fontWeight: 600 }}>{stats.totalRecords ?? 0} Luca satırı</span>
+                  <div className="flex items-center gap-2 flex-wrap" style={portalStyle({ color: 'rgba(250,250,249,0.6)' })}>
+                    <span style={portalStyle({ color: GOLD, fontWeight: 600 })}>{stats.totalRecords ?? 0} Luca satırı</span>
                     <span>=</span>
-                    <span style={{ color: '#22c55e', fontWeight: 600 }}>{lucaMatched} tam</span>
+                    <span style={portalStyle({ color: '#22c55e', fontWeight: 600 })}>{lucaMatched} tam</span>
                     <span>+</span>
-                    <span style={{ color: '#fb923c', fontWeight: 600 }}>{lucaReview} incele</span>
-                    {lucaRejected > 0 && <><span>+</span><span style={{ color: '#f43f5e', fontWeight: 600 }}>{lucaRejected} reddedilen</span></>}
+                    <span style={portalStyle({ color: '#fb923c', fontWeight: 600 })}>{lucaReview} incele</span>
+                    {lucaRejected > 0 && <><span>+</span><span style={portalStyle({ color: '#f43f5e', fontWeight: 600 })}>{lucaRejected} reddedilen</span></>}
                     <span>+</span>
-                    <span style={{ color: '#f43f5e', fontWeight: 600 }}>{lucaOnlyMissing} faturası yok</span>
-                    {otherUnmatched > 0 && <><span>+</span><span style={{ color: '#f43f5e', fontWeight: 600 }}>{otherUnmatched} eşleşmedi</span></>}
+                    <span style={portalStyle({ color: '#f43f5e', fontWeight: 600 })}>{lucaOnlyMissing} faturası yok</span>
+                    {otherUnmatched > 0 && <><span>+</span><span style={portalStyle({ color: '#f43f5e', fontWeight: 600 })}>{otherUnmatched} eşleşmedi</span></>}
                   </div>
-                  <div className="flex items-center gap-2 flex-wrap" style={{ color: 'rgba(250,250,249,0.6)' }}>
-                    <span style={{ color: '#a855f7', fontWeight: 600 }}>{stats.totalImages ?? 0} Fatura</span>
+                  <div className="flex items-center gap-2 flex-wrap" style={portalStyle({ color: 'rgba(250,250,249,0.6)' })}>
+                    <span style={portalStyle({ color: '#a855f7', fontWeight: 600 })}>{stats.totalImages ?? 0} Fatura</span>
                     <span>=</span>
-                    <span style={{ color: '#22c55e', fontWeight: 600 }}>{imageMatched} tam</span>
+                    <span style={portalStyle({ color: '#22c55e', fontWeight: 600 })}>{imageMatched} tam</span>
                     <span>+</span>
-                    <span style={{ color: '#fb923c', fontWeight: 600 }}>{imageReview} incele</span>
-                    {imageRejected > 0 && <><span>+</span><span style={{ color: '#f43f5e', fontWeight: 600 }}>{imageRejected} reddedilen</span></>}
+                    <span style={portalStyle({ color: '#fb923c', fontWeight: 600 })}>{imageReview} incele</span>
+                    {imageRejected > 0 && <><span>+</span><span style={portalStyle({ color: '#f43f5e', fontWeight: 600 })}>{imageRejected} reddedilen</span></>}
                     <span>+</span>
-                    <span style={{ color: '#f43f5e', fontWeight: 600 }}>{imageOnlyMissing} Luca'da yok</span>
+                    <span style={portalStyle({ color: '#f43f5e', fontWeight: 600 })}>{imageOnlyMissing} Luca'da yok</span>
                   </div>
                 </div>
               );
@@ -1507,21 +1509,21 @@ export default function KdvKontrolPage() {
               const costTl = costUsd * usdToTry;
               const savedTl = savedUsd * usdToTry;
               return (
-                <div className="flex items-center justify-between gap-3 mt-4 pt-4 border-t" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
+                <div className="flex items-center justify-between gap-3 mt-4 pt-4 border-t" style={portalStyle({ borderColor: 'rgba(255,255,255,0.04)' })}>
                   <div className="flex items-center gap-4 text-[11.5px] tabular-nums flex-wrap">
-                    <span style={{ color: 'rgba(250,250,249,0.5)' }}>OCR Maliyet:</span>
-                    <span style={{ color: '#60a5fa', fontWeight: 600 }}>
-                      {paidCalls} ücretli okuma ≈ <span style={{ color: '#fafaf9' }}>${costUsd.toFixed(4)}</span>
-                      <span style={{ color: 'rgba(250,250,249,0.4)' }}> (~{costTl.toFixed(2)} ₺)</span>
+                    <span style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>OCR Maliyet:</span>
+                    <span style={portalStyle({ color: '#60a5fa', fontWeight: 600 })}>
+                      {paidCalls} ücretli okuma ≈ <span style={portalStyle({ color: '#fafaf9' })}>${costUsd.toFixed(4)}</span>
+                      <span style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}> (~{costTl.toFixed(2)} ₺)</span>
                     </span>
                     {(azureReads > 0 || claudeEscalations > 0) && (
-                      <span style={{ color: '#c084fc', fontWeight: 600 }}>
+                      <span style={portalStyle({ color: '#c084fc', fontWeight: 600 })}>
                         Akış: {azureReads} Azure
                         {claudeEscalations > 0 ? ` · ${claudeEscalations} Claude'a giden` : ''}
                       </span>
                     )}
                     {freeSkips > 0 && (
-                      <span style={{ color: '#22c55e', fontWeight: 600 }}>
+                      <span style={portalStyle({ color: '#22c55e', fontWeight: 600 })}>
                         Ücretsiz atlanan: {freeSkips} belge
                         {cacheHits > 0 ? ` · ${cacheHits} cache` : ''}
                         {xmlParsed > 0 ? ` · ${xmlParsed} XML` : ''}
@@ -1534,7 +1536,7 @@ export default function KdvKontrolPage() {
                       onClick={() => exportExcel.mutate()}
                       disabled={exportExcel.isPending}
                       className="inline-flex items-center gap-1.5 px-4 py-2 text-[12.5px] font-semibold rounded-[9px]"
-                      style={{ background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.3)', color: '#22c55e' }}
+                      style={portalStyle({ background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.3)', color: '#22c55e' })}
                     >
                       <Download size={12} /> Excel İndir
                     </button>
@@ -1548,13 +1550,13 @@ export default function KdvKontrolPage() {
 
       {/* v1.36.69: BELGE SERİ TAKİBİ UYARILARI — sadece satış (KDV_391 / ISLETME_GELIR) için */}
       {activeSession && Array.isArray((stats as any)?.seriUyarilari) && (stats as any).seriUyarilari.length > 0 && (
-        <div className="rounded-2xl overflow-hidden" style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.25)' }}>
-          <div className="flex items-center gap-2.5 px-5 py-4" style={{ borderBottom: '1px solid rgba(245,158,11,0.15)' }}>
-            <AlertTriangle size={14} style={{ color: '#f59e0b' }} />
-            <h3 className="text-[13.5px] font-semibold" style={{ color: '#fafaf9' }}>
+        <div className="rounded-2xl overflow-hidden" style={portalStyle({ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.25)' })}>
+          <div className="flex items-center gap-2.5 px-5 py-4" style={portalStyle({ borderBottom: '1px solid rgba(245,158,11,0.15)' })}>
+            <AlertTriangle size={14} style={portalStyle({ color: '#f59e0b' })} />
+            <h3 className="text-[13.5px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>
               Belge Seri Takibi Uyarıları
             </h3>
-            <span className="ml-auto text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded" style={{ background: 'rgba(245,158,11,0.15)', color: '#f59e0b' }}>
+            <span className="ml-auto text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded" style={portalStyle({ background: 'rgba(245,158,11,0.15)', color: '#f59e0b' })}>
               {(stats as any).seriUyarilari.length} uyarı
             </span>
           </div>
@@ -1563,27 +1565,27 @@ export default function KdvKontrolPage() {
               <div
                 key={idx}
                 className="flex items-start gap-2.5 px-3.5 py-2.5 rounded-lg"
-                style={{
+                style={portalStyle({
                   background: (u.tip === 'cross_break' || u.tip === 'z_cross_break' || u.tip === 'z_duplicate') ? 'rgba(244,63,94,0.08)' : 'rgba(245,158,11,0.08)',
                   border: `1px solid ${(u.tip === 'cross_break' || u.tip === 'z_cross_break' || u.tip === 'z_duplicate') ? 'rgba(244,63,94,0.20)' : 'rgba(245,158,11,0.18)'}`,
-                }}
+                })}
               >
                 <span
                   className="text-[10.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded shrink-0 mt-[1px]"
-                  style={{
+                  style={portalStyle({
                     background: (u.tip === 'cross_break' || u.tip === 'z_cross_break' || u.tip === 'z_duplicate') ? 'rgba(244,63,94,0.18)' : 'rgba(245,158,11,0.18)',
                     color: (u.tip === 'cross_break' || u.tip === 'z_cross_break' || u.tip === 'z_duplicate') ? '#f43f5e' : '#f59e0b',
-                  }}
+                  })}
                 >
                   {u.tip === 'z_gap' ? 'Z No Boşluğu' : u.tip === 'z_cross_break' ? 'Z Dönem Geçişi' : u.tip === 'z_duplicate' ? 'Tekrarlı Z No' : u.tip === 'cross_break' ? 'Dönem Geçişi' : 'Seri Boşluğu'}
                 </span>
-                <p className="text-[12.5px] leading-relaxed" style={{ color: '#fafaf9' }}>
+                <p className="text-[12.5px] leading-relaxed" style={portalStyle({ color: '#fafaf9' })}>
                   {u.mesaj}
                 </p>
               </div>
             ))}
-            <p className="text-[11px] mt-3 leading-relaxed" style={{ color: 'rgba(250,250,249,0.5)' }}>
-              Bu uyarılar yalnızca <strong style={{ color: '#fafaf9' }}>satış kontrollerinde</strong> (KDV 391 / İşletme Geliri) e-belge seri numarası ve Z raporu sıra takibinden gelir. Atlanan belge no'lar iptal edilmiş, kayıt dışı kalmış veya başka bir döneme yazılmış olabilir.
+            <p className="text-[11px] mt-3 leading-relaxed" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
+              Bu uyarılar yalnızca <strong style={portalStyle({ color: '#fafaf9' })}>satış kontrollerinde</strong> (KDV 391 / İşletme Geliri) e-belge seri numarası ve Z raporu sıra takibinden gelir. Atlanan belge no'lar iptal edilmiş, kayıt dışı kalmış veya başka bir döneme yazılmış olabilir.
             </p>
           </div>
         </div>
@@ -1598,42 +1600,42 @@ export default function KdvKontrolPage() {
       {activeSession && contentAuditRows.length > 0 && (
         <div
           className="rounded-xl overflow-hidden"
-          style={{ background: 'rgba(20,184,166,0.035)', border: '1px solid rgba(20,184,166,0.16)' }}
+          style={portalStyle({ background: 'rgba(20,184,166,0.035)', border: '1px solid rgba(20,184,166,0.16)' })}
         >
-          <div className="flex flex-wrap items-center gap-2.5 px-4 py-3" style={{ borderBottom: '1px solid rgba(20,184,166,0.10)' }}>
-            <ShieldCheck size={14} style={{ color: '#14b8a6' }} />
-            <h3 className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>İçerik Denetimi</h3>
-            <span className="text-[10.5px]" style={{ color: 'rgba(250,250,249,0.48)' }}>
+          <div className="flex flex-wrap items-center gap-2.5 px-4 py-3" style={portalStyle({ borderBottom: '1px solid rgba(20,184,166,0.10)' })}>
+            <ShieldCheck size={14} style={portalStyle({ color: '#14b8a6' })} />
+            <h3 className="text-[13px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>İçerik Denetimi</h3>
+            <span className="text-[10.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.48)' })}>
               {contentAuditDoneCount} belge yorumlandı
             </span>
             <div className="ml-auto flex flex-wrap items-center gap-1.5">
               {contentAuditHardRiskCount > 0 && (
-                <span className="text-[10.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded" style={{ background: 'rgba(244,63,94,0.14)', color: '#fb7185' }}>
+                <span className="text-[10.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded" style={portalStyle({ background: 'rgba(244,63,94,0.14)', color: '#fb7185' })}>
                   {contentAuditHardRiskCount} net risk
                 </span>
               )}
               {contentAuditReviewCount > 0 && (
-                <span className="text-[10.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded" style={{ background: 'rgba(245,158,11,0.13)', color: '#fbbf24' }}>
+                <span className="text-[10.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded" style={portalStyle({ background: 'rgba(245,158,11,0.13)', color: '#fbbf24' })}>
                   {contentAuditReviewCount} kontrol
                 </span>
               )}
               {contentAuditAiBroadlyDown && (
-                <span className="text-[10.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded" style={{ background: 'rgba(96,165,250,0.13)', color: '#93c5fd' }}>
+                <span className="text-[10.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded" style={portalStyle({ background: 'rgba(96,165,250,0.13)', color: '#93c5fd' })}>
                   AI yok, kural
                 </span>
               )}
               {!contentAuditAiBroadlyDown && contentAuditProviderIssueCount > 0 && (
-                <span className="text-[10.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded" style={{ background: 'rgba(96,165,250,0.10)', color: '#93c5fd' }}>
+                <span className="text-[10.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded" style={portalStyle({ background: 'rgba(96,165,250,0.10)', color: '#93c5fd' })}>
                   {contentAuditProviderIssueCount} kural
                 </span>
               )}
               {contentAuditPendingAuditCount > 0 && (
-                <span className="text-[10.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded" style={{ background: 'rgba(250,250,249,0.08)', color: 'rgba(250,250,249,0.62)' }}>
+                <span className="text-[10.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded" style={portalStyle({ background: 'rgba(250,250,249,0.08)', color: 'rgba(250,250,249,0.62)' })}>
                   {contentAuditPendingAuditCount} bekliyor
                 </span>
               )}
               {contentAuditHardRiskCount === 0 && contentAuditReviewCount === 0 && contentAuditProviderIssueCount === 0 && contentAuditPendingAuditCount === 0 && (
-                <span className="text-[10.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded" style={{ background: 'rgba(34,197,94,0.13)', color: '#86efac' }}>
+                <span className="text-[10.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded" style={portalStyle({ background: 'rgba(34,197,94,0.13)', color: '#86efac' })}>
                   belirgin risk yok
                 </span>
               )}
@@ -1645,14 +1647,14 @@ export default function KdvKontrolPage() {
                 key={img.id}
                 title={contentAuditTooltip(img)}
                 className="grid min-h-[38px] grid-cols-[118px_minmax(130px,220px)_minmax(0,1fr)] items-start gap-3 border-b px-2.5 py-2 last:border-b-0"
-                style={{ borderColor: 'rgba(20,184,166,0.10)' }}
+                style={portalStyle({ borderColor: 'rgba(20,184,166,0.10)' })}
               >
                 <ContentAuditBadge risk={img.contentAuditRisk} status={img.contentAuditStatus} />
                 <div className="min-w-0">
                   <div className="flex min-w-0 items-center gap-2">
-                    <span className="truncate text-[12px] font-semibold" style={{ color: '#fafaf9' }}>{img.originalName || img.ocrBelgeNo || img.id}</span>
+                    <span className="truncate text-[12px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>{img.originalName || img.ocrBelgeNo || img.id}</span>
                     {img.contentAuditConfidence != null && (
-                      <span className="shrink-0 tabular-nums text-[10px]" style={{ color: 'rgba(250,250,249,0.38)' }}>
+                      <span className="shrink-0 tabular-nums text-[10px]" style={portalStyle({ color: 'rgba(250,250,249,0.38)' })}>
                         %{Math.round(Number(img.contentAuditConfidence || 0) * 100)}
                       </span>
                     )}
@@ -1660,11 +1662,11 @@ export default function KdvKontrolPage() {
                   </div>
                 </div>
                 <div className="min-w-0">
-                  <p className="text-[12px] leading-snug" style={{ color: 'rgba(250,250,249,0.72)', whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
+                  <p className="text-[12px] leading-snug" style={portalStyle({ color: 'rgba(250,250,249,0.72)', whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'anywhere' })}>
                     {img.contentAuditSummary || (img.contentAuditStatus === 'PROCESSING' ? 'Denetleniyor...' : 'Yorum bekleniyor')}
                   </p>
                   {img.contentAuditSuggestion && (
-                    <p className="text-[11px] leading-snug mt-1" style={{ color: 'rgba(94,234,212,0.82)', whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
+                    <p className="text-[11px] leading-snug mt-1" style={portalStyle({ color: 'rgba(94,234,212,0.82)', whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'anywhere' })}>
                       {img.contentAuditSuggestion}
                     </p>
                   )}
@@ -1682,20 +1684,20 @@ export default function KdvKontrolPage() {
 
       {/* CANLI KONTROL AKIŞI — kullanıcı isteğiyle GİZLENDİ (içerik denetimine yer açmak için).
           feed/pushFeed altyapısı korunuyor (OCR akışı besliyor); sadece UI gizli. */}
-      <div className="hidden rounded-xl border overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}>
-          <div className="flex items-center justify-between px-5 py-3.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+      <div className="hidden rounded-xl border overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' })}>
+          <div className="flex items-center justify-between px-5 py-3.5" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.05)' })}>
             <div className="flex items-center gap-2.5">
-              <Zap size={14} style={{ color: GOLD }} />
+              <Zap size={14} style={portalStyle({ color: GOLD })} />
               <div>
-                <h3 className="text-[13.5px] font-semibold flex items-center gap-2" style={{ color: '#fafaf9' }}>
+                <h3 className="text-[13.5px] font-semibold flex items-center gap-2" style={portalStyle({ color: '#fafaf9' })}>
                   Canlı Kontrol Akışı
                   {runReconcile.isPending && (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded" style={{ background: 'rgba(96,165,250,0.15)', color: '#60a5fa' }}>
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded" style={portalStyle({ background: 'rgba(96,165,250,0.15)', color: '#60a5fa' })}>
                       <Loader2 size={9} className="animate-spin" /> Çalışıyor
                     </span>
                   )}
                 </h3>
-                <p className="text-[11px] mt-0.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                <p className="text-[11px] mt-0.5" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                   Eşleşen · uyuşmazlık · eksik kayıtlar canlı akar
                 </p>
               </div>
@@ -1710,7 +1712,7 @@ export default function KdvKontrolPage() {
                 <button
                   onClick={() => { setFeed([]); seenResultIdsRef.current.clear(); }}
                   className="ml-1 text-[10px] px-2 py-1 rounded"
-                  style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.45)' }}
+                  style={portalStyle({ background: 'rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.45)' })}
                 >
                   Temizle
                 </button>
@@ -1720,10 +1722,10 @@ export default function KdvKontrolPage() {
           <div
             ref={feedScrollRef}
             className="p-2 space-y-1 max-h-[420px] overflow-y-auto"
-            style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}
+            style={portalStyle({ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' })}
           >
             {feed.length === 0 ? (
-              <div className="text-center py-12 text-sm" style={{ color: 'rgba(250,250,249,0.35)' }}>
+              <div className="text-center py-12 text-sm" style={portalStyle({ color: 'rgba(250,250,249,0.35)' })}>
                 Henüz akış yok. Yukarıdaki butonlara bastıkça burada detaylı log görünür.
               </div>
             ) : (
@@ -1776,23 +1778,23 @@ export default function KdvKontrolPage() {
 
         return (
           <div>
-            <h3 className="text-[14px] font-semibold mb-3 flex items-center gap-2.5" style={{ color: '#fafaf9' }}>
-              <span className="w-[3px] h-4 rounded-sm" style={{ background: GOLD }} />
+            <h3 className="text-[14px] font-semibold mb-3 flex items-center gap-2.5" style={portalStyle({ color: '#fafaf9' })}>
+              <span className="w-[3px] h-4 rounded-sm" style={portalStyle({ background: GOLD })} />
               Kontroller
               {allRows.length > 0 && (
-                <span className="text-[10.5px] font-medium px-2 py-[2px] rounded-md" style={{ background: 'rgba(184,160,111,0.12)', color: GOLD }}>
+                <span className="text-[10.5px] font-medium px-2 py-[2px] rounded-md" style={portalStyle({ background: 'rgba(184,160,111,0.12)', color: GOLD })}>
                   {allRows.length}
                 </span>
               )}
             </h3>
-            <div className="rounded-2xl overflow-auto max-h-[660px] [&_thead_th]:sticky [&_thead_th]:top-0 [&_thead_th]:z-10 [&_thead_th]:bg-[#15161b] [&_thead_th]:shadow-[inset_0_-1px_0_rgba(255,255,255,0.07)]" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+            <div className="rounded-2xl overflow-auto max-h-[660px] [&_thead_th]:sticky [&_thead_th]:top-0 [&_thead_th]:z-10 [&_thead_th]:bg-[#15161b] [&_thead_th]:shadow-[inset_0_-1px_0_rgba(255,255,255,0.07)]" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' })}>
               <table className="w-full min-w-[1120px] table-fixed text-left">
                 <thead>
-                  <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                    <th className="w-[34%] px-5 py-3 text-[11px] font-bold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>Kontrol</th>
-                    <th className="w-[18%] px-3 py-3 text-[11px] font-bold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>Veri</th>
-                    <th className="w-[28%] px-3 py-3 text-[11px] font-bold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>Sonuç</th>
-                    <th className="w-[20%] px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-right" style={{ color: 'rgba(250,250,249,0.45)' }}>İşlem</th>
+                  <tr style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.05)' })}>
+                    <th className="w-[34%] px-5 py-3 text-[11px] font-bold uppercase tracking-wider" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>Kontrol</th>
+                    <th className="w-[18%] px-3 py-3 text-[11px] font-bold uppercase tracking-wider" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>Veri</th>
+                    <th className="w-[28%] px-3 py-3 text-[11px] font-bold uppercase tracking-wider" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>Sonuç</th>
+                    <th className="w-[20%] px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-right" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>İşlem</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1816,14 +1818,14 @@ export default function KdvKontrolPage() {
                     const canLock = Boolean(s && !isLocked && ((totalResults && totalResults > 0) || bosOturum));
                     const rowKey = s?.id || o?.id || idx;
                     return (
-                      <tr key={rowKey} style={{ borderTop: idx === 0 ? 'none' : '1px solid rgba(255,255,255,0.03)' }}>
+                      <tr key={rowKey} style={portalStyle({ borderTop: idx === 0 ? 'none' : '1px solid rgba(255,255,255,0.03)' })}>
                         <td className="px-5 py-3">
-                          <div className="flex items-center gap-2 min-w-0 text-[13.5px] font-semibold" style={{ color: '#fafaf9' }}>
+                          <div className="flex items-center gap-2 min-w-0 text-[13.5px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>
                             <span className="block min-w-0 truncate">{tname}</span>
                             {isLocked && (
                               <span
                                 className="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10.5px] font-bold"
-                                style={{ background: 'rgba(34,197,94,0.12)', color: '#4ade80' }}
+                                style={portalStyle({ background: 'rgba(34,197,94,0.12)', color: '#4ade80' })}
                               >
                                 <Lock size={11} />
                                 Kilitli
@@ -1832,19 +1834,19 @@ export default function KdvKontrolPage() {
                             {!isLocked && review != null && review > 0 && (
                               <span
                                 className="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10.5px] font-bold"
-                                style={{ background: 'rgba(245,158,11,0.13)', color: '#fbbf24' }}
+                                style={portalStyle({ background: 'rgba(245,158,11,0.13)', color: '#fbbf24' })}
                               >
                                 <AlertTriangle size={11} />
                                 {amountMismatch > 0 ? `Fark ${amountMismatch}` : 'İncele'}
                               </span>
                             )}
                           </div>
-                          <div className="mt-1 flex min-w-0 items-center gap-2.5 text-[11.5px]" style={{ color: 'rgba(250,250,249,0.50)' }}>
+                          <div className="mt-1 flex min-w-0 items-center gap-2.5 text-[11.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.50)' })}>
                             <span className="shrink-0 tabular-nums">{fmtDate(date)}</span>
                             <span className="shrink-0 tabular-nums">{donem}</span>
                             <span className="min-w-0 truncate">{TYPE_LABEL[tip] || tip}</span>
                             {s?.maliyetUsd && s.maliyetUsd > 0 ? (
-                              <span className="shrink-0 tabular-nums" style={{ color: 'rgba(168,85,247,0.82)' }}>
+                              <span className="shrink-0 tabular-nums" style={portalStyle({ color: 'rgba(168,85,247,0.82)' })}>
                                 ${Number(s.maliyetUsd).toFixed(4)}
                               </span>
                             ) : null}
@@ -1852,18 +1854,18 @@ export default function KdvKontrolPage() {
                         </td>
                         <td className="px-3 py-3">
                           <div className="flex flex-wrap items-center gap-1.5 text-[12px] tabular-nums">
-                            <span className="px-2.5 py-1 rounded-lg" style={{ background: 'rgba(184,160,111,0.10)', color: GOLD }}>Luca {luca}</span>
-                            <span className="px-2.5 py-1 rounded-lg" style={{ background: 'rgba(96,165,250,0.10)', color: '#93c5fd' }}>Fatura {fatura}</span>
+                            <span className="px-2.5 py-1 rounded-lg" style={portalStyle({ background: 'rgba(184,160,111,0.10)', color: GOLD })}>Luca {luca}</span>
+                            <span className="px-2.5 py-1 rounded-lg" style={portalStyle({ background: 'rgba(96,165,250,0.10)', color: '#93c5fd' })}>Fatura {fatura}</span>
                           </div>
                         </td>
                         <td className="px-3 py-3">
                           <div className="flex flex-wrap items-center gap-1.5 text-[12px] tabular-nums">
-                            <span className="px-2.5 py-1 rounded-lg font-bold" style={{ background: 'rgba(34,197,94,0.10)', color: matched != null ? '#22c55e' : 'rgba(250,250,249,0.35)' }}>Eşleşen {matched ?? '—'}</span>
-                            <span className="px-2.5 py-1 rounded-lg font-bold" style={{ background: 'rgba(245,158,11,0.10)', color: review && review > 0 ? '#fbbf24' : 'rgba(250,250,249,0.35)' }}>İnceleme {review ?? '—'}</span>
+                            <span className="px-2.5 py-1 rounded-lg font-bold" style={portalStyle({ background: 'rgba(34,197,94,0.10)', color: matched != null ? '#22c55e' : 'rgba(250,250,249,0.35)' })}>Eşleşen {matched ?? '—'}</span>
+                            <span className="px-2.5 py-1 rounded-lg font-bold" style={portalStyle({ background: 'rgba(245,158,11,0.10)', color: review && review > 0 ? '#fbbf24' : 'rgba(250,250,249,0.35)' })}>İnceleme {review ?? '—'}</span>
                             {amountMismatch > 0 && (
-                              <span className="px-2.5 py-1 rounded-lg font-bold" style={{ background: 'rgba(245,158,11,0.14)', color: '#fbbf24' }}>Fark {amountMismatch}</span>
+                              <span className="px-2.5 py-1 rounded-lg font-bold" style={portalStyle({ background: 'rgba(245,158,11,0.14)', color: '#fbbf24' })}>Fark {amountMismatch}</span>
                             )}
-                            <span className="px-2.5 py-1 rounded-lg font-bold" style={{ background: 'rgba(244,63,94,0.10)', color: unmatched && unmatched > 0 ? '#f43f5e' : 'rgba(250,250,249,0.35)' }}>Hata {unmatched ?? '—'}</span>
+                            <span className="px-2.5 py-1 rounded-lg font-bold" style={portalStyle({ background: 'rgba(244,63,94,0.10)', color: unmatched && unmatched > 0 ? '#f43f5e' : 'rgba(250,250,249,0.35)' })}>Hata {unmatched ?? '—'}</span>
                           </div>
                         </td>
                         <td className="px-4 py-3 text-right">
@@ -1878,7 +1880,7 @@ export default function KdvKontrolPage() {
                                 }
                               }}
                               className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
-                              style={{ color: '#f43f5e', background: 'rgba(244,63,94,0.08)' }}
+                              style={portalStyle({ color: '#f43f5e', background: 'rgba(244,63,94,0.08)' })}
                               title="Sil"
                             >
                               <Trash2 size={14} />
@@ -1916,7 +1918,7 @@ export default function KdvKontrolPage() {
                                 }
                               }}
                               className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
-                              style={{ color: '#22c55e', background: 'rgba(34,197,94,0.08)' }}
+                              style={portalStyle({ color: '#22c55e', background: 'rgba(34,197,94,0.08)' })}
                               title={o ? 'Arşivlenmiş Excel indir' : 'Excel üret ve indir'}
                             >
                               <Download size={14} />
@@ -1926,7 +1928,7 @@ export default function KdvKontrolPage() {
                               <Link
                                 href={`/panel/kdv-kontrol?s=${s.id}`}
                                 className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
-                                style={{ color: GOLD, background: 'rgba(184,160,111,0.08)' }}
+                                style={portalStyle({ color: GOLD, background: 'rgba(184,160,111,0.08)' })}
                                 title="Detay"
                               >
                                 <ArrowRight size={14} />
@@ -1936,7 +1938,7 @@ export default function KdvKontrolPage() {
                                 type="button"
                                 disabled
                                 className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg cursor-not-allowed"
-                                style={{ color: 'rgba(184,160,111,0.25)', background: 'rgba(184,160,111,0.04)' }}
+                                style={portalStyle({ color: 'rgba(184,160,111,0.25)', background: 'rgba(184,160,111,0.04)' })}
                                 title="Detay yok"
                               >
                                 <ArrowRight size={14} />
@@ -1947,7 +1949,7 @@ export default function KdvKontrolPage() {
                                 onClick={() => unlockSessionMut.mutate(s.id)}
                                 disabled={unlockSessionMut.isPending}
                                 className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
-                                style={{ color: '#4ade80', background: 'rgba(34,197,94,0.08)' }}
+                                style={portalStyle({ color: '#4ade80', background: 'rgba(34,197,94,0.08)' })}
                                 title="Kilidi aç"
                               >
                                 <Unlock size={14} />
@@ -1962,7 +1964,7 @@ export default function KdvKontrolPage() {
                                 }}
                                 disabled={lockSessionMut.isPending}
                                 className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
-                                style={{ color: '#60a5fa', background: 'rgba(96,165,250,0.08)' }}
+                                style={portalStyle({ color: '#60a5fa', background: 'rgba(96,165,250,0.08)' })}
                                 title={bosOturum && (!totalResults || totalResults === 0) ? 'Boş kontrolü kilitle (hareket yok)' : 'Bu kontrolü kilitle'}
                               >
                                 <Lock size={14} />
@@ -1972,7 +1974,7 @@ export default function KdvKontrolPage() {
                                 type="button"
                                 disabled
                                 className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg cursor-not-allowed"
-                                style={{ color: 'rgba(96,165,250,0.25)', background: 'rgba(96,165,250,0.04)' }}
+                                style={portalStyle({ color: 'rgba(96,165,250,0.25)', background: 'rgba(96,165,250,0.04)' })}
                                 title="Kilit işlemi yok"
                               >
                                 <Lock size={14} />
@@ -1994,36 +1996,36 @@ export default function KdvKontrolPage() {
       {pickerOpen && (
         <div
           className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-[8vh]"
-          style={{ background: 'rgba(0,0,0,.6)', backdropFilter: 'blur(6px)' }}
+          style={portalStyle({ background: 'rgba(0,0,0,.6)', backdropFilter: 'blur(6px)' })}
           onClick={() => setPickerOpen(false)}
         >
           <div
             className="w-full max-w-xl rounded-2xl border shadow-2xl flex flex-col overflow-hidden"
-            style={{ background: 'rgba(17,14,12,0.98)', borderColor: 'rgba(255,255,255,0.05)', maxHeight: '84vh' }}
+            style={portalStyle({ background: 'rgba(17,14,12,0.98)', borderColor: 'rgba(255,255,255,0.05)', maxHeight: '84vh' })}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: 'rgba(255,255,255,0.05)', background: 'linear-gradient(135deg, rgba(184,160,111,.08), transparent)' }}>
+            <div className="flex items-center justify-between px-5 py-4 border-b" style={portalStyle({ borderColor: 'rgba(255,255,255,0.05)', background: 'linear-gradient(135deg, rgba(184,160,111,.08), transparent)' })}>
               <div>
-                <h3 className="text-lg font-bold" style={{ color: '#fafaf9' }}>Mükellef Seç</h3>
-                <p className="text-xs mt-0.5" style={{ color: 'rgba(250,250,249,0.45)' }}>{taxpayers.length} mükellef</p>
+                <h3 className="text-lg font-bold" style={portalStyle({ color: '#fafaf9' })}>Mükellef Seç</h3>
+                <p className="text-xs mt-0.5" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>{taxpayers.length} mükellef</p>
               </div>
-              <button onClick={() => setPickerOpen(false)} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/5" style={{ color: 'rgba(250,250,249,0.45)' }}>
+              <button onClick={() => setPickerOpen(false)} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/5" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                 <X size={16} />
               </button>
             </div>
-            <div className="px-5 py-3 border-b" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
-              <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg border" style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)' }}>
-                <Search size={14} style={{ color: 'rgba(250,250,249,0.45)' }} />
+            <div className="px-5 py-3 border-b" style={portalStyle({ borderColor: 'rgba(255,255,255,0.05)' })}>
+              <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg border" style={portalStyle({ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)' })}>
+                <Search size={14} style={portalStyle({ color: 'rgba(250,250,249,0.45)' })} />
                 <input
                   value={pickerSearch}
                   onChange={(e) => setPickerSearch(e.target.value)}
                   placeholder="Mükellef adı ara…"
                   autoFocus
                   className="flex-1 bg-transparent outline-none text-sm"
-                  style={{ color: '#fafaf9' }}
+                  style={portalStyle({ color: '#fafaf9' })}
                 />
                 {pickerSearch && (
-                  <button onClick={() => setPickerSearch('')} style={{ color: 'rgba(250,250,249,0.45)' }}>
+                  <button onClick={() => setPickerSearch('')} style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                     <X size={13} />
                   </button>
                 )}
@@ -2031,7 +2033,7 @@ export default function KdvKontrolPage() {
             </div>
             <div className="flex-1 overflow-y-auto p-2">
               {filteredTaxpayers.length === 0 ? (
-                <div className="text-sm p-8 text-center" style={{ color: 'rgba(250,250,249,0.45)' }}>Sonuç yok</div>
+                <div className="text-sm p-8 text-center" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>Sonuç yok</div>
               ) : (
                 filteredTaxpayers.map((t) => {
                   const checked = taxpayerId === t.id;
@@ -2042,17 +2044,17 @@ export default function KdvKontrolPage() {
                       key={t.id}
                       onClick={() => { setTaxpayerId(t.id); setPickerOpen(false); }}
                       className="w-full flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg text-left transition-colors"
-                      style={{ background: checked ? 'rgba(184,160,111,.08)' : 'transparent', color: '#fafaf9' }}
-                      onMouseEnter={(e) => { if (!checked) (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,.03)'; }}
-                      onMouseLeave={(e) => { if (!checked) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+                      style={portalStyle({ background: checked ? 'rgba(184,160,111,.08)' : 'transparent', color: '#fafaf9' })}
+                      onMouseEnter={(e) => { if (!checked) (e.currentTarget as HTMLElement).style.background = portalPaint('rgba(255,255,255,.03)', 'background'); }}
+                      onMouseLeave={(e) => { if (!checked) (e.currentTarget as HTMLElement).style.background = portalPaint('transparent', 'background'); }}
                     >
                       <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0"
-                        style={{ background: checked ? 'linear-gradient(135deg, #b8a06f, #8b7649)' : 'rgba(255,255,255,0.05)', color: checked ? '#0f0d0b' : 'rgba(250,250,249,0.45)' }}>
+                        style={portalStyle({ background: checked ? 'linear-gradient(135deg, #b8a06f, #8b7649)' : 'rgba(255,255,255,0.05)', color: checked ? '#0f0d0b' : 'rgba(250,250,249,0.45)' })}>
                         {initial}
                       </div>
                       <span className="flex-1 truncate font-medium">{name}</span>
                       {t.taxNumber && (
-                        <span className="text-[10px] px-2 py-0.5 rounded tabular-nums" style={{ background: 'rgba(255,255,255,0.03)', color: 'rgba(250,250,249,0.45)' }}>
+                        <span className="text-[10px] px-2 py-0.5 rounded tabular-nums" style={portalStyle({ background: 'rgba(255,255,255,0.03)', color: 'rgba(250,250,249,0.45)' })}>
                           {t.taxNumber}
                         </span>
                       )}
@@ -2069,11 +2071,11 @@ export default function KdvKontrolPage() {
       {mappingModal && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }}
+          style={portalStyle({ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' })}
         >
           <div
             className="w-full max-w-4xl rounded-2xl p-6 relative max-h-[92vh] overflow-y-auto"
-            style={{ background: '#1a1a19', border: '1px solid rgba(212,184,118,0.25)' }}
+            style={portalStyle({ background: '#1a1a19', border: '1px solid rgba(212,184,118,0.25)' })}
           >
             <button
               onClick={() => !mappingSubmitting && setMappingModal(null)}
@@ -2082,7 +2084,7 @@ export default function KdvKontrolPage() {
             >
               <X size={18} />
             </button>
-            <h3 className="text-lg font-semibold mb-1" style={{ color: GOLD }}>
+            <h3 className="text-lg font-semibold mb-1" style={portalStyle({ color: GOLD })}>
               Excel Sütun Eşleştirme
             </h3>
             <p className="text-xs text-gray-400 mb-4">
@@ -2098,18 +2100,18 @@ export default function KdvKontrolPage() {
                 ['kdvCol', 'KDV sütunu', 'KDV tutarı (borç/alacak)'],
               ] as const).map(([key, label, hint]) => (
                 <div key={key}>
-                  <label className="block text-xs font-medium mb-1" style={{ color: 'rgba(250,250,249,0.75)' }}>
+                  <label className="block text-xs font-medium mb-1" style={portalStyle({ color: 'rgba(250,250,249,0.75)' })}>
                     {label}
                   </label>
                   <select
                     value={mappingModal[key]}
                     onChange={(e) => setMappingModal({ ...mappingModal, [key]: e.target.value })}
                     className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
-                    style={{
+                    style={portalStyle({
                       background: 'rgba(255,255,255,0.03)',
                       borderColor: 'rgba(255,255,255,0.12)',
                       color: '#fafaf9',
-                    }}
+                    })}
                   >
                     <option value="">— sütun seç —</option>
                     {mappingModal.preview.columns.map((c) => (
@@ -2123,13 +2125,13 @@ export default function KdvKontrolPage() {
 
             {/* Örnek satırlar */}
             <div className="mb-5">
-              <p className="text-xs font-semibold mb-2" style={{ color: GOLD }}>
+              <p className="text-xs font-semibold mb-2" style={portalStyle({ color: GOLD })}>
                 Örnek Satırlar (ilk {Math.min(mappingModal.preview.sampleRows.length, 5)})
               </p>
-              <div className="rounded-lg border overflow-x-auto" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
+              <div className="rounded-lg border overflow-x-auto" style={portalStyle({ borderColor: 'rgba(255,255,255,0.08)' })}>
                 <table className="w-full text-[11px]">
                   <thead>
-                    <tr style={{ background: 'rgba(255,255,255,0.04)' }}>
+                    <tr style={portalStyle({ background: 'rgba(255,255,255,0.04)' })}>
                       {mappingModal.preview.columns.map((c) => {
                         const highlight =
                           c === mappingModal.tarihCol
@@ -2143,13 +2145,13 @@ export default function KdvKontrolPage() {
                           <th
                             key={c}
                             className="px-2 py-1.5 text-left font-semibold whitespace-nowrap"
-                            style={{
+                            style={portalStyle({
                               color: highlight ? GOLD : 'rgba(250,250,249,0.6)',
                               background: highlight?.bg,
                               borderBottom: '1px solid rgba(255,255,255,0.08)',
-                            }}
+                            })}
                           >
-                            {highlight && <span className="mr-1 text-[9px] px-1 rounded" style={{ background: GOLD, color: '#1a1a19' }}>{highlight.tag}</span>}
+                            {highlight && <span className="mr-1 text-[9px] px-1 rounded" style={portalStyle({ background: GOLD, color: '#1a1a19' })}>{highlight.tag}</span>}
                             {c}
                           </th>
                         );
@@ -2158,10 +2160,10 @@ export default function KdvKontrolPage() {
                   </thead>
                   <tbody>
                     {mappingModal.preview.sampleRows.slice(0, 5).map((row, i) => (
-                      <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                      <tr key={i} style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.04)' })}>
                         {mappingModal.preview.columns.map((c) => (
-                          <td key={c} className="px-2 py-1.5 whitespace-nowrap" style={{ color: 'rgba(250,250,249,0.75)' }}>
-                            {row[c] != null ? String(row[c]).slice(0, 30) : <span style={{ color: 'rgba(250,250,249,0.25)' }}>—</span>}
+                          <td key={c} className="px-2 py-1.5 whitespace-nowrap" style={portalStyle({ color: 'rgba(250,250,249,0.75)' })}>
+                            {row[c] != null ? String(row[c]).slice(0, 30) : <span style={portalStyle({ color: 'rgba(250,250,249,0.25)' })}>—</span>}
                           </td>
                         ))}
                       </tr>
@@ -2221,16 +2223,16 @@ function ActionBtn({
       onClick={onClick}
       disabled={disabled || loading}
       className="rounded-xl border p-4 text-left transition disabled:opacity-40 disabled:cursor-not-allowed hover:brightness-110"
-      style={{ background: bg, borderColor: border }}
+      style={portalStyle({ background: bg, borderColor: border })}
     >
       <div className="flex items-center gap-3 mb-2">
-        <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: filled ? 'rgba(15,13,11,0.15)' : color + '22', color: filled ? textColor : color }}>
+        <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={portalStyle({ background: filled ? 'rgba(15,13,11,0.15)' : color + '22', color: filled ? textColor : color })}>
           {loading ? <Loader2 size={16} className="animate-spin" /> : <Icon size={16} />}
         </div>
-        <p className="font-bold text-[13px]" style={{ color: textColor }}>{label}</p>
-        {done && !filled && <CheckCircle2 size={14} style={{ color, marginLeft: 'auto' }} />}
+        <p className="font-bold text-[13px]" style={portalStyle({ color: textColor })}>{label}</p>
+        {done && !filled && <CheckCircle2 size={14} style={portalStyle({ color, marginLeft: 'auto' })} />}
       </div>
-      <p className="text-[11.5px] leading-snug" style={{ color: filled ? 'rgba(15,13,11,0.7)' : 'rgba(250,250,249,0.55)' }}>
+      <p className="text-[11.5px] leading-snug" style={portalStyle({ color: filled ? 'rgba(15,13,11,0.7)' : 'rgba(250,250,249,0.55)' })}>
         {sub}
       </p>
     </button>
@@ -2246,7 +2248,7 @@ function FeedCount({ kind, label, count }: { kind: FeedItem['kind']; label: stri
   };
   const c = colors[kind];
   return (
-    <span className="inline-flex items-center gap-1 text-[10.5px] font-bold tabular-nums px-2 py-0.5 rounded" style={{ background: c + '1a', color: c }}>
+    <span className="inline-flex items-center gap-1 text-[10.5px] font-bold tabular-nums px-2 py-0.5 rounded" style={portalStyle({ background: c + '1a', color: c })}>
       {label}: {count}
     </span>
   );
@@ -2267,22 +2269,22 @@ function FeedRow({ item }: { item: FeedItem }) {
   return (
     <div
       className="flex items-start gap-3 px-3 py-2 rounded-lg text-[12px] animate-in fade-in slide-in-from-bottom-1 duration-200"
-      style={{ background: s.bg, borderLeft: `2px solid ${s.c}` }}
+      style={portalStyle({ background: s.bg, borderLeft: `2px solid ${s.c}` })}
     >
-      <span className="text-[10px] tabular-nums flex-shrink-0 mt-0.5" style={{ color: '#6b6b6b' }}>
+      <span className="text-[10px] tabular-nums flex-shrink-0 mt-0.5" style={portalStyle({ color: '#6b6b6b' })}>
         {time}
       </span>
-      <span className="font-bold flex-shrink-0" style={{ color: s.c, width: 14 }}>
+      <span className="font-bold flex-shrink-0" style={portalStyle({ color: s.c, width: 14 })}>
         {s.icon}
       </span>
       <div className="flex-1 min-w-0">
-        <div className="font-medium leading-tight" style={{ color: '#cbd5e1' }}>
+        <div className="font-medium leading-tight" style={portalStyle({ color: '#cbd5e1' })}>
           {item.title}
         </div>
         {detailLines.length > 0 && (
-          <div className="text-[11px] mt-0.5" style={{ color: '#8a8a8a', lineHeight: '1.5' }}>
+          <div className="text-[11px] mt-0.5" style={portalStyle({ color: '#8a8a8a', lineHeight: '1.5' })}>
             {detailLines.map((line, i) => (
-              <div key={i} style={{ minHeight: '1em' }}>{line}</div>
+              <div key={i} style={portalStyle({ minHeight: '1em' })}>{line}</div>
             ))}
           </div>
         )}
@@ -2301,7 +2303,7 @@ function ContentAuditModelBadge({ model }: { model?: string | null }) {
   return (
     <span
       className="shrink-0 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded"
-      style={{ background: bg, color }}
+      style={portalStyle({ background: bg, color })}
       title={m}
     >
       {label}
@@ -2321,7 +2323,7 @@ function ContentAuditBadge({ risk, status }: { risk?: string | null; status?: st
   const s = map[risk || ''] || map[status || ''] || { label: 'Denetlenmedi', color: 'rgba(250,250,249,0.5)', bg: 'rgba(255,255,255,0.06)' };
   return (
     <span className="text-[10.5px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md shrink-0"
-      style={{ background: s.bg, color: s.color }}>
+      style={portalStyle({ background: s.bg, color: s.color })}>
       {s.label}
     </span>
   );
@@ -2339,7 +2341,7 @@ function ResultBadge({ status }: { status: string }) {
   const s = map[status] ?? map.UNMATCHED;
   return (
     <span className="text-[10.5px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md"
-      style={{ background: s.bg, color: s.color }}>
+      style={portalStyle({ background: s.bg, color: s.color })}>
       {s.label}
     </span>
   );

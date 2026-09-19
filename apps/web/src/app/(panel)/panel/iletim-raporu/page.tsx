@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 // =====================================================================
 // İLETİM RAPORU — Ofis > İletim Raporu
@@ -126,36 +128,36 @@ export default function IletimRaporuPage() {
       {/* Başlık — küçük kahraman kart; altın yalnız burada */}
       <header
         className="relative overflow-hidden rounded-[18px] border px-5 py-3.5"
-        style={{
+        style={portalStyle({
           background: 'radial-gradient(120% 140% at 0% 0%, rgba(212,184,118,0.16), transparent 46%), radial-gradient(120% 140% at 100% 0%, rgba(139,118,73,0.12), transparent 48%), #0f0d0b',
           borderColor: 'rgba(255,255,255,0.06)',
           boxShadow: '0 16px 42px rgba(0,0,0,0.28)',
-        }}
+        })}
       >
-        <div className="absolute inset-x-0 top-0 h-1" style={{ background: 'linear-gradient(90deg, #8b7649, #b8a06f, #d4b876, #e7cf95, #d4b876, #b8a06f)' }} />
+        <div className="absolute inset-x-0 top-0 h-1" style={portalStyle({ background: 'linear-gradient(90deg, #8b7649, #b8a06f, #d4b876, #e7cf95, #d4b876, #b8a06f)' })} />
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
-            <span className="grid shrink-0 place-items-center rounded-xl" style={{ width: 40, height: 40, background: `linear-gradient(135deg, ${GOLD}, ${GOLD_SOFT})`, boxShadow: '0 8px 22px rgba(212,184,118,0.30)' }}>
-              <ClipboardList size={21} style={{ color: '#1a1410' }} />
+            <span className="grid shrink-0 place-items-center rounded-xl" style={portalStyle({ width: 40, height: 40, background: `linear-gradient(135deg, ${GOLD}, ${GOLD_SOFT})`, boxShadow: '0 8px 22px rgba(212,184,118,0.30)' })}>
+              <ClipboardList size={21} style={portalStyle({ color: '#1a1410' })} />
             </span>
             <div className="min-w-0">
               <div className="mb-0.5 flex items-center gap-2">
-                <span className="h-px w-[18px]" style={{ background: GOLD }} />
-                <span className="text-[10px] font-bold uppercase tracking-[.18em]" style={{ color: GOLD_SOFT }}>Ofis</span>
+                <span className="h-px w-[18px]" style={portalStyle({ background: GOLD })} />
+                <span className="text-[10px] font-bold uppercase tracking-[.18em]" style={portalStyle({ color: GOLD_SOFT })}>Ofis</span>
               </div>
-              <h1 style={{ fontFamily: 'Fraunces, Georgia, serif', fontSize: 26, fontWeight: 600, color: METIN, letterSpacing: '-.03em', lineHeight: 1.05 }}>
+              <h1 style={portalStyle({ fontFamily: 'Fraunces, Georgia, serif', fontSize: 26, fontWeight: 600, color: METIN, letterSpacing: '-.03em', lineHeight: 1.05 })}>
                 İletim Raporu
               </h1>
             </div>
           </div>
-          <p className="max-w-[460px] text-[12.5px] leading-5" style={{ color: 'rgba(250,250,249,0.5)' }}>
+          <p className="max-w-[460px] text-[12.5px] leading-5" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
             Mükellefe gönderilen her belgenin günlüğü — tarih sıralı, belge belge. Beyanname, SGK, e-Tebligat, Ödeme Listesi, Cari Kasa ve portal mesajları.
           </p>
         </div>
       </header>
 
       {/* Süzgeç çubuğu — Filtrele'ye basınca uygulanır */}
-      <section className="p-3" style={KART} data-testid="suzgec-cubugu">
+      <section className="p-3" style={portalStyle(KART)} data-testid="suzgec-cubugu">
         <form
           className="flex flex-wrap items-end gap-2.5"
           onSubmit={(e) => {
@@ -171,7 +173,7 @@ export default function IletimRaporuPage() {
               allLabel="Tüm mükellefler"
               allValue="__ALL__"
               placeholder="Tüm mükellefler"
-              style={{ height: 36, padding: '0 12px', borderRadius: 10, fontSize: 12.5, border: `1px solid ${KENAR_YUMUSAK}`, background: 'rgba(255,255,255,0.035)' }}
+              style={portalStyle({ height: 36, padding: '0 12px', borderRadius: 10, fontSize: 12.5, border: `1px solid ${KENAR_YUMUSAK}`, background: 'rgba(255,255,255,0.035)' })}
             />
           </Alan>
           <Alan etiket="Tür" className="min-w-[150px] flex-1">
@@ -191,8 +193,8 @@ export default function IletimRaporuPage() {
             </Secim>
           </Alan>
           <Alan etiket="Dönem">
-            <div className="inline-flex h-9 items-center rounded-[10px]" style={{ border: `1px solid ${KENAR_YUMUSAK}`, background: 'rgba(255,255,255,0.035)' }} role="group" aria-label="Dönem">
-              <button type="button" onClick={() => ayDegistir(ayKaydir(taslak.month, -1))} title="Önceki ay" aria-label="Önceki ay" className="flex h-full w-8 items-center justify-center rounded-l-[10px] transition hover:bg-white/[0.06]" style={{ color: IKINCIL }}>
+            <div className="inline-flex h-9 items-center rounded-[10px]" style={portalStyle({ border: `1px solid ${KENAR_YUMUSAK}`, background: 'rgba(255,255,255,0.035)' })} role="group" aria-label="Dönem">
+              <button type="button" onClick={() => ayDegistir(ayKaydir(taslak.month, -1))} title="Önceki ay" aria-label="Önceki ay" className="flex h-full w-8 items-center justify-center rounded-l-[10px] transition hover:bg-white/[0.06]" style={portalStyle({ color: IKINCIL })}>
                 <ChevronLeft size={15} />
               </button>
               <input
@@ -202,10 +204,10 @@ export default function IletimRaporuPage() {
                 onChange={(e) => e.target.value && ayDegistir(e.target.value)}
                 onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch { /* tarayıcı desteklemiyorsa elle yazılır */ } }}
                 className="h-full cursor-pointer bg-transparent px-1 text-center text-[12.5px] font-semibold outline-none [&::-webkit-calendar-picker-indicator]:hidden"
-                style={{ color: METIN, colorScheme: 'dark', width: 108 }}
+                style={portalStyle({ color: METIN, colorScheme: 'dark', width: 108 })}
                 title={ayAdi(taslak.month)}
               />
-              <button type="button" onClick={() => ayDegistir(ayKaydir(taslak.month, 1))} title="Sonraki ay" aria-label="Sonraki ay" className="flex h-full w-8 items-center justify-center rounded-r-[10px] transition hover:bg-white/[0.06]" style={{ color: IKINCIL }}>
+              <button type="button" onClick={() => ayDegistir(ayKaydir(taslak.month, 1))} title="Sonraki ay" aria-label="Sonraki ay" className="flex h-full w-8 items-center justify-center rounded-r-[10px] transition hover:bg-white/[0.06]" style={portalStyle({ color: IKINCIL })}>
                 <ChevronRight size={15} />
               </button>
             </div>
@@ -215,9 +217,9 @@ export default function IletimRaporuPage() {
               type="submit"
               title={degisiklikVar ? 'Seçilen süzgeçleri uygula' : 'Süzgeçler uygulanmış durumda'}
               className="inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-[10px] px-3.5 text-[12.5px] font-bold transition-[transform,background-color] hover:-translate-y-px"
-              style={degisiklikVar
+              style={portalStyle(degisiklikVar
                 ? { background: 'rgba(255,255,255,0.16)', border: '1px solid rgba(255,255,255,0.28)', color: METIN }
-                : { background: 'rgba(255,255,255,0.07)', border: `1px solid ${KENAR_NOTR}`, color: METIN }}
+                : { background: 'rgba(255,255,255,0.07)', border: `1px solid ${KENAR_NOTR}`, color: METIN })}
             >
               <Filter size={13} /> Filtrele
             </button>
@@ -225,7 +227,7 @@ export default function IletimRaporuPage() {
               <FileSpreadsheet size={13} /> Excel İndir
             </GriDugme>
             {!suzgecBos(uygulanan, bugunAy) && (
-              <button type="button" onClick={temizle} className="text-[11.5px] font-semibold underline decoration-dotted underline-offset-4 hover:opacity-80" style={{ color: IKINCIL }} title="Süzgeçleri sıfırla (bu ay, tüm mükellefler)">
+              <button type="button" onClick={temizle} className="text-[11.5px] font-semibold underline decoration-dotted underline-offset-4 hover:opacity-80" style={portalStyle({ color: IKINCIL })} title="Süzgeçleri sıfırla (bu ay, tüm mükellefler)">
                 Temizle
               </button>
             )}
@@ -235,7 +237,7 @@ export default function IletimRaporuPage() {
 
       {/* Tek satır özet + yeniden dene */}
       <div className="flex flex-wrap items-center justify-between gap-2 px-1">
-        <p className="text-[12.5px] font-semibold" style={{ color: IKINCIL }} data-testid="ozet-satiri">
+        <p className="text-[12.5px] font-semibold" style={portalStyle({ color: IKINCIL })} data-testid="ozet-satiri">
           {gunlukQ.isLoading ? (
             <span className="inline-flex items-center gap-1.5"><Loader2 size={13} className="animate-spin" /> {ayAdi(uygulanan.month)} yükleniyor…</span>
           ) : (
@@ -256,24 +258,24 @@ export default function IletimRaporuPage() {
       </div>
 
       {/* Tablo kartı */}
-      <section className="p-3" style={KART}>
+      <section className="p-3" style={portalStyle(KART)}>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-[11px] font-bold uppercase tracking-[.14em]" style={{ color: 'rgba(250,250,249,0.62)' }}>İletim Raporları</h2>
+          <h2 className="text-[11px] font-bold uppercase tracking-[.14em]" style={portalStyle({ color: 'rgba(250,250,249,0.62)' })}>İletim Raporları</h2>
           <div className="flex flex-wrap items-center gap-2">
-            <label className="inline-flex items-center gap-1.5 text-[11.5px]" style={{ color: IKINCIL }}>
+            <label className="inline-flex items-center gap-1.5 text-[11.5px]" style={portalStyle({ color: IKINCIL })}>
               Kayıt
               <select
                 aria-label="Sayfa başına kayıt"
                 value={tablo.pageSize}
                 onChange={(e) => setTablo((t) => ({ ...t, pageSize: Number(e.target.value), page: 1 }))}
                 className="h-8 px-2 text-[12px] font-semibold"
-                style={GIRDI}
+                style={portalStyle(GIRDI)}
               >
                 {SAYFA_BOYUTLARI.map((n) => <option key={n} value={n}>{n}</option>)}
               </select>
             </label>
             <div className="relative w-full sm:w-[240px]">
-              <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: IKINCIL }} />
+              <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2" style={portalStyle({ color: IKINCIL })} />
               <input
                 type="search"
                 value={aramaMetni}
@@ -281,10 +283,10 @@ export default function IletimRaporuPage() {
                 placeholder="Ara — mükellef ya da belge"
                 aria-label="Ara"
                 className="h-8 w-full text-[12px] outline-none [&::-webkit-search-cancel-button]:hidden"
-                style={{ ...GIRDI, paddingLeft: 30, paddingRight: aramaMetni ? 28 : 12, WebkitAppearance: 'none', appearance: 'none' }}
+                style={portalStyle({ ...GIRDI, paddingLeft: 30, paddingRight: aramaMetni ? 28 : 12, WebkitAppearance: 'none', appearance: 'none' })}
               />
               {aramaMetni && (
-                <button type="button" onClick={() => setAramaMetni('')} title="Aramayı temizle" aria-label="Aramayı temizle" className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 hover:bg-white/[0.06]" style={{ color: IKINCIL }}>
+                <button type="button" onClick={() => setAramaMetni('')} title="Aramayı temizle" aria-label="Aramayı temizle" className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 hover:bg-white/[0.06]" style={portalStyle({ color: IKINCIL })}>
                   <X size={12} />
                 </button>
               )}
@@ -292,54 +294,54 @@ export default function IletimRaporuPage() {
           </div>
         </div>
 
-        <div className="overflow-x-auto rounded-xl" style={{ border: `1px solid ${KENAR_NOTR}`, background: 'rgba(255,255,255,0.02)', opacity: gunlukQ.isFetching && !gunlukQ.isLoading ? 0.7 : 1, transition: 'opacity .15s' }}>
-          <table className="w-full" style={{ borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: 880 }} data-testid="iletim-tablosu">
+        <div className="overflow-x-auto rounded-xl" style={portalStyle({ border: `1px solid ${KENAR_NOTR}`, background: 'rgba(255,255,255,0.02)', opacity: gunlukQ.isFetching && !gunlukQ.isLoading ? 0.7 : 1, transition: 'opacity .15s' })}>
+          <table className="w-full" style={portalStyle({ borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: 880 })} data-testid="iletim-tablosu">
             <colgroup>
-              <col style={{ width: 168 }} />
+              <col style={portalStyle({ width: 168 })} />
               <col />
-              <col style={{ width: 122 }} />
+              <col style={portalStyle({ width: 122 })} />
               <col />
-              <col style={{ width: 168 }} />
+              <col style={portalStyle({ width: 168 })} />
             </colgroup>
             <thead>
-              <tr style={{ background: GRUP_ZEMIN }}>
-                <th style={{ ...HUCRE_BASLIK, padding: 0 }}>
+              <tr style={portalStyle({ background: GRUP_ZEMIN })}>
+                <th style={portalStyle({ ...HUCRE_BASLIK, padding: 0 })}>
                   <button
                     type="button"
                     onClick={sirayiCevir}
                     aria-sort={tablo.sira === 'desc' ? 'descending' : 'ascending'}
                     title={tablo.sira === 'desc' ? 'En yeni üstte — eskiden yeniye sırala' : 'En eski üstte — yeniden eskiye sırala'}
                     className="inline-flex h-full w-full items-center gap-1 px-2.5 py-[7px] text-left uppercase tracking-[.08em] transition hover:bg-white/[0.04]"
-                    style={{ color: 'inherit', fontSize: 'inherit', fontWeight: 'inherit' }}
+                    style={portalStyle({ color: 'inherit', fontSize: 'inherit', fontWeight: 'inherit' })}
                   >
                     Tarih {tablo.sira === 'desc' ? <ArrowDown size={11} /> : <ArrowUp size={11} />}
                   </button>
                 </th>
-                <th style={HUCRE_BASLIK}>Mükellef</th>
-                <th style={HUCRE_BASLIK}>Belge Türü</th>
-                <th style={HUCRE_BASLIK}>Belge Adı</th>
-                <th style={HUCRE_BASLIK}>Durum</th>
+                <th style={portalStyle(HUCRE_BASLIK)}>Mükellef</th>
+                <th style={portalStyle(HUCRE_BASLIK)}>Belge Türü</th>
+                <th style={portalStyle(HUCRE_BASLIK)}>Belge Adı</th>
+                <th style={portalStyle(HUCRE_BASLIK)}>Durum</th>
               </tr>
             </thead>
             <tbody>
               {gunlukQ.isLoading ? (
                 <tr>
-                  <td colSpan={5} style={HUCRE}>
-                    <div className="flex items-center gap-2 px-1 py-5 text-[12.5px]" style={{ color: IKINCIL }}>
+                  <td colSpan={5} style={portalStyle(HUCRE)}>
+                    <div className="flex items-center gap-2 px-1 py-5 text-[12.5px]" style={portalStyle({ color: IKINCIL })}>
                       <Loader2 size={14} className="animate-spin" /> Yükleniyor…
                     </div>
                   </td>
                 </tr>
               ) : gunlukQ.isError ? (
                 <tr>
-                  <td colSpan={5} style={HUCRE}>
-                    <div className="px-1 py-5 text-[12.5px]" style={{ color: HATA_KIRMIZI }}>Günlük alınamadı. Sayfayı yenileyip tekrar deneyin.</div>
+                  <td colSpan={5} style={portalStyle(HUCRE)}>
+                    <div className="px-1 py-5 text-[12.5px]" style={portalStyle({ color: HATA_KIRMIZI })}>Günlük alınamadı. Sayfayı yenileyip tekrar deneyin.</div>
                   </td>
                 </tr>
               ) : satirlar.length === 0 ? (
                 <tr>
-                  <td colSpan={5} style={HUCRE}>
-                    <div className="px-1 py-5 text-[12.5px]" style={{ color: IKINCIL }}>
+                  <td colSpan={5} style={portalStyle(HUCRE)}>
+                    <div className="px-1 py-5 text-[12.5px]" style={portalStyle({ color: IKINCIL })}>
                       {suzgecBos(uygulanan, bugunAy) && !tablo.q
                         ? 'Bu ay gönderim kaydı yok.'
                         : 'Bu süzgeçlere uyan gönderim yok.'}
@@ -349,19 +351,19 @@ export default function IletimRaporuPage() {
               ) : (
                 satirlar.map((s) => (
                   <tr key={s.id} data-durum={s.durum} data-kanal={s.kanal} className="transition-colors hover:bg-white/[0.03]">
-                    <td style={{ ...HUCRE, whiteSpace: 'nowrap' }}>
-                      <span className="text-[12.5px] tabular-nums" style={{ color: METIN }}>{tarihSaatSaniye(s.tarih)}</span>
+                    <td style={portalStyle({ ...HUCRE, whiteSpace: 'nowrap' })}>
+                      <span className="text-[12.5px] tabular-nums" style={portalStyle({ color: METIN })}>{tarihSaatSaniye(s.tarih)}</span>
                     </td>
-                    <td style={{ ...HUCRE, minWidth: 0 }}>
-                      <span className="block truncate text-[13px] font-medium leading-5" style={{ color: METIN }} title={s.unvan}>{s.unvan}</span>
+                    <td style={portalStyle({ ...HUCRE, minWidth: 0 })}>
+                      <span className="block truncate text-[13px] font-medium leading-5" style={portalStyle({ color: METIN })} title={s.unvan}>{s.unvan}</span>
                     </td>
-                    <td style={HUCRE}>
-                      <span className="text-[12.5px]" style={{ color: IKINCIL }}>{s.belgeTuru}</span>
+                    <td style={portalStyle(HUCRE)}>
+                      <span className="text-[12.5px]" style={portalStyle({ color: IKINCIL })}>{s.belgeTuru}</span>
                     </td>
-                    <td style={{ ...HUCRE, minWidth: 0 }}>
-                      <span className="block truncate text-[12.5px] leading-5" style={{ color: METIN }} title={s.belgeAdi}>{s.belgeAdi}</span>
+                    <td style={portalStyle({ ...HUCRE, minWidth: 0 })}>
+                      <span className="block truncate text-[12.5px] leading-5" style={portalStyle({ color: METIN })} title={s.belgeAdi}>{s.belgeAdi}</span>
                     </td>
-                    <td style={HUCRE}>
+                    <td style={portalStyle(HUCRE)}>
                       <DurumHucresi s={s} />
                     </td>
                   </tr>
@@ -373,12 +375,12 @@ export default function IletimRaporuPage() {
 
         {/* Sayfalama */}
         <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 px-1">
-          <span className="text-[11.5px] tabular-nums" style={{ color: SONUK }} data-testid="sayfa-bilgisi">{sayfaBilgisi(yanit)}</span>
+          <span className="text-[11.5px] tabular-nums" style={portalStyle({ color: SONUK })} data-testid="sayfa-bilgisi">{sayfaBilgisi(yanit)}</span>
           <div className="inline-flex items-center gap-1.5">
             <GriDugme kucuk onClick={() => sayfaya(tablo.page - 1)} disabled={!yanit || yanit.sayfa <= 1} title="Önceki sayfa">
               <ChevronLeft size={13} /> Önceki
             </GriDugme>
-            <span className="px-1 text-[11.5px] tabular-nums" style={{ color: IKINCIL }}>Sayfa {yanit?.sayfa ?? 1} / {son}</span>
+            <span className="px-1 text-[11.5px] tabular-nums" style={portalStyle({ color: IKINCIL })}>Sayfa {yanit?.sayfa ?? 1} / {son}</span>
             <GriDugme kucuk onClick={() => sayfaya(tablo.page + 1)} disabled={!yanit || yanit.sayfa >= son} title="Sonraki sayfa">
               Sonraki <ChevronRight size={13} />
             </GriDugme>
@@ -395,7 +397,7 @@ export default function IletimRaporuPage() {
 function Alan({ etiket, children, className = '' }: { etiket: string; children: ReactNode; className?: string }) {
   return (
     <div className={`flex flex-col gap-1 ${className}`}>
-      <span className="text-[10.5px] font-semibold uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.5)' }}>{etiket}</span>
+      <span className="text-[10.5px] font-semibold uppercase tracking-[.08em]" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>{etiket}</span>
       {children}
     </div>
   );
@@ -404,7 +406,7 @@ function Alan({ etiket, children, className = '' }: { etiket: string; children: 
 /** Koyu temalı yerli seçim kutusu */
 function Secim({ value, onChange, children, ariaLabel }: { value: string; onChange: (v: string) => void; children: ReactNode; ariaLabel: string }) {
   return (
-    <select aria-label={ariaLabel} value={value} onChange={(e) => onChange(e.target.value)} className="h-9 w-full px-2.5 text-[12.5px] font-medium" style={GIRDI}>
+    <select aria-label={ariaLabel} value={value} onChange={(e) => onChange(e.target.value)} className="h-9 w-full px-2.5 text-[12.5px] font-medium" style={portalStyle(GIRDI)}>
       {children}
     </select>
   );
@@ -413,7 +415,7 @@ function Secim({ value, onChange, children, ariaLabel }: { value: string; onChan
 /** Dolu, küçük rozet — yalnız kanal (yeşil/mavi), hata (kırmızı) ve test/bekliyor (gri) */
 function Rozet({ children, renk, title }: { children: ReactNode; renk: string; title?: string }) {
   return (
-    <span title={title} className="inline-flex items-center whitespace-nowrap rounded-md px-2 py-[2px] text-[10.5px] font-bold leading-4" style={{ background: renk, color: '#fff' }}>
+    <span title={title} className="inline-flex items-center whitespace-nowrap rounded-md px-2 py-[2px] text-[10.5px] font-bold leading-4" style={portalStyle({ background: renk, color: '#fff' })}>
       {children}
     </span>
   );

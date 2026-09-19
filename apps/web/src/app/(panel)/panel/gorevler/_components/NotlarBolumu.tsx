@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import { useState } from 'react';
 import { ChevronDown, ChevronRight, Edit3, Pin, PinOff, StickyNote, Trash2 } from 'lucide-react';
@@ -19,15 +21,15 @@ export function NotlarBolumu({ notlar, eylemler, acikId, basliksiz }: { notlar: 
   return (
     <Kart renk={NOT_RENK} serit>
       {!basliksiz && (
-        <div className="flex items-center gap-2 px-4 py-3" style={{ borderBottom: `1px solid ${KENAR}` }}>
-          <StickyNote size={14} style={{ color: NOT_RENK }} />
-          <h3 className="text-[12.5px] font-bold" style={{ color: METIN }}>
+        <div className="flex items-center gap-2 px-4 py-3" style={portalStyle({ borderBottom: `1px solid ${KENAR}` })}>
+          <StickyNote size={14} style={portalStyle({ color: NOT_RENK })} />
+          <h3 className="text-[12.5px] font-bold" style={portalStyle({ color: METIN })}>
             Notlar
           </h3>
-          <span className="rounded-md px-1.5 text-[10.5px] font-extrabold tabular-nums leading-4" style={{ background: NOT_RENK, color: '#0b1218' }}>
+          <span className="rounded-md px-1.5 text-[10.5px] font-extrabold tabular-nums leading-4" style={portalStyle({ background: NOT_RENK, color: '#0b1218' })}>
             {notlar.length}
           </span>
-          <span className="text-[11px]" style={{ color: IKINCIL }}>
+          <span className="text-[11px]" style={portalStyle({ color: IKINCIL })}>
             · sabitlenenler üstte · satıra tıklayınca açılır
           </span>
         </div>
@@ -39,7 +41,7 @@ export function NotlarBolumu({ notlar, eylemler, acikId, basliksiz }: { notlar: 
           {sirali.map((n, i) => {
             const genis = !!acik[n.id];
             return (
-              <div key={n.id} style={{ borderTop: i === 0 ? undefined : `1px solid ${KENAR}`, background: acikId === n.id ? 'rgba(125,211,252,0.06)' : n.pinned ? `${NOT_RENK}0a` : undefined }}>
+              <div key={n.id} style={portalStyle({ borderTop: i === 0 ? undefined : `1px solid ${KENAR}`, background: acikId === n.id ? 'rgba(125,211,252,0.06)' : n.pinned ? `${NOT_RENK}0a` : undefined })}>
                 <div className="flex items-start gap-2 px-3 py-2.5">
                   <button
                     type="button"
@@ -47,23 +49,23 @@ export function NotlarBolumu({ notlar, eylemler, acikId, basliksiz }: { notlar: 
                     title={genis ? 'Daralt' : 'Genişlet'}
                     aria-expanded={genis}
                     className="mt-0.5 flex-shrink-0 rounded p-0.5 hover:bg-white/10"
-                    style={{ color: IKINCIL }}
+                    style={portalStyle({ color: IKINCIL })}
                   >
                     {genis ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                   </button>
-                  <Pin size={13} className="mt-1 flex-shrink-0" style={{ color: n.pinned ? '#fbbf24' : 'rgba(255,255,255,0.18)' }} />
+                  <Pin size={13} className="mt-1 flex-shrink-0" style={portalStyle({ color: n.pinned ? '#fbbf24' : 'rgba(255,255,255,0.18)' })} />
                   <button type="button" onClick={() => setAcik((s) => ({ ...s, [n.id]: !genis }))} className="min-w-0 flex-1 text-left">
-                    <div className={`text-[13px] font-semibold leading-5 ${genis ? '' : 'truncate'}`} style={{ color: METIN }}>
+                    <div className={`text-[13px] font-semibold leading-5 ${genis ? '' : 'truncate'}`} style={portalStyle({ color: METIN })}>
                       {n.title}
                     </div>
                     <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
                       <MukellefCipi taxpayer={n.taxpayer} />
                       {n.kaynak && n.kaynak !== 'MANUEL' && <KaynakRozeti value={n.kaynak} />}
-                      <span className="text-[10.5px]" style={{ color: SONUK }}>
+                      <span className="text-[10.5px]" style={portalStyle({ color: SONUK })}>
                         {tarihSaat(n.updatedAt || n.createdAt)}
                       </span>
                       {!genis && n.description && (
-                        <span className="min-w-0 truncate text-[11px]" style={{ color: IKINCIL, maxWidth: 480 }}>
+                        <span className="min-w-0 truncate text-[11px]" style={portalStyle({ color: IKINCIL, maxWidth: 480 })}>
                           — {n.description}
                         </span>
                       )}
@@ -91,11 +93,11 @@ export function NotlarBolumu({ notlar, eylemler, acikId, basliksiz }: { notlar: 
                 {genis && (
                   <div className="px-3 pb-3 pl-[52px]">
                     {n.description ? (
-                      <p className="whitespace-pre-wrap text-[12.5px] leading-relaxed" style={{ color: 'rgba(250,250,249,0.8)' }}>
+                      <p className="whitespace-pre-wrap text-[12.5px] leading-relaxed" style={portalStyle({ color: 'rgba(250,250,249,0.8)' })}>
                         {n.description}
                       </p>
                     ) : (
-                      <p className="text-[12px]" style={{ color: SONUK }}>
+                      <p className="text-[12px]" style={portalStyle({ color: SONUK })}>
                         Açıklama yok — “Düzenle” ile ekleyebilirsiniz.
                       </p>
                     )}

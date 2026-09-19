@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 import Link from 'next/link';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -118,32 +120,32 @@ export default function AjanlarDashboard() {
       {/* === BAŞLIK (AI Maliyet imzası — indigo/mavi teması) === */}
       <header
         className="relative overflow-hidden rounded-2xl border p-5"
-        style={{
+        style={portalStyle({
           borderColor: 'rgba(255,255,255,0.08)',
           background:
             'radial-gradient(120% 140% at 0% 0%, rgba(99,102,241,0.18), transparent 45%), radial-gradient(120% 140% at 100% 0%, rgba(56,189,248,0.14), transparent 45%), #0f0d0b',
-        }}
+        })}
       >
         {/* üst renk şeridi */}
         <div
           className="absolute inset-x-0 top-0 h-1"
-          style={{ background: 'linear-gradient(90deg, #6366f1, #818cf8, #60a5fa, #38bdf8, #22d3ee)' }}
+          style={portalStyle({ background: 'linear-gradient(90deg, #6366f1, #818cf8, #60a5fa, #38bdf8, #22d3ee)' })}
         />
-        <Link href="/panel" className="inline-flex items-center gap-1.5 text-[12px] font-medium" style={{ color: 'rgba(250,250,249,0.58)' }}>
+        <Link href="/panel" className="inline-flex items-center gap-1.5 text-[12px] font-medium" style={portalStyle({ color: 'rgba(250,250,249,0.58)' })}>
           <ArrowLeft size={14} /> Panel
         </Link>
         <div className="mt-2 flex items-center justify-between gap-3 flex-wrap">
-          <h1 className="flex items-center gap-2.5 text-[28px] font-semibold leading-tight" style={{ color: '#fafaf9' }}>
+          <h1 className="flex items-center gap-2.5 text-[28px] font-semibold leading-tight" style={portalStyle({ color: '#fafaf9' })}>
             <span
               className="grid h-10 w-10 place-items-center rounded-xl"
-              style={{ background: 'linear-gradient(135deg, #6366f1, #3b82f6)', boxShadow: '0 6px 18px rgba(99,102,241,0.35)' }}
+              style={portalStyle({ background: 'linear-gradient(135deg, #6366f1, #3b82f6)', boxShadow: '0 6px 18px rgba(99,102,241,0.35)' })}
             >
-              <Cpu size={22} style={{ color: '#ffffff' }} />
+              <Cpu size={22} style={portalStyle({ color: '#ffffff' })} />
             </span>
             Otomasyon Ajanları
           </h1>
         </div>
-        <p className="mt-2 max-w-2xl text-[13px]" style={{ color: 'rgba(250,250,249,0.6)' }}>
+        <p className="mt-2 max-w-2xl text-[13px]" style={portalStyle({ color: 'rgba(250,250,249,0.6)' })}>
           Mali müşavirlik işleyişinin tekrarlayan kısımlarını otomasyon ajanlarına bırakın
         </p>
       </header>
@@ -171,8 +173,8 @@ export default function AjanlarDashboard() {
       <div>
         <div className="flex items-center justify-between mb-3">
           <div>
-            <h2 className="text-lg font-semibold" style={{ color: '#fafaf9' }}>Agent Envanteri</h2>
-            <p className="text-xs mt-0.5" style={{ color: 'rgba(250,250,249,0.42)' }}>
+            <h2 className="text-lg font-semibold" style={portalStyle({ color: '#fafaf9' })}>Agent Envanteri</h2>
+            <p className="text-xs mt-0.5" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>
               Mevcut motorlar korunarak yeni dijital calisanlara gecis haritasi
             </p>
           </div>
@@ -185,8 +187,8 @@ export default function AjanlarDashboard() {
         {plannedAgents.length > 0 && (
           <div className="mt-5">
             <div className="flex items-center gap-2 mb-3">
-              <Clock size={14} style={{ color: '#94a3b8' }} />
-              <h3 className="text-sm font-semibold" style={{ color: '#fafaf9' }}>Sonraki Faz</h3>
+              <Clock size={14} style={portalStyle({ color: '#94a3b8' })} />
+              <h3 className="text-sm font-semibold" style={portalStyle({ color: '#fafaf9' })}>Sonraki Faz</h3>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
               {plannedAgents.map((agent) => (
@@ -220,9 +222,9 @@ function AiUsageWidget({ data }: { data: any }) {
     return (
       <div
         className="rounded-2xl p-5 border"
-        style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
+        style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' })}
       >
-        <div className="text-sm" style={{ color: 'rgba(250,250,249,0.45)' }}>AI kullanımı yükleniyor…</div>
+        <div className="text-sm" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>AI kullanımı yükleniyor…</div>
       </div>
     );
   }
@@ -243,74 +245,74 @@ function AiUsageWidget({ data }: { data: any }) {
   const Kart = ({ title, d, accent }: { title: string; d: any; accent: string }) => (
     <div
       className="relative overflow-hidden rounded-2xl p-4 border"
-      style={{ borderColor: `${accent}40`, background: `linear-gradient(135deg, ${accent}26, ${accent}0a 58%, rgba(255,255,255,0.02))` }}
+      style={portalStyle({ borderColor: `${accent}40`, background: `linear-gradient(135deg, ${accent}26, ${accent}0a 58%, rgba(255,255,255,0.02))` })}
     >
-      <div className="absolute inset-x-0 top-0 h-[3px]" style={{ background: `linear-gradient(90deg, ${accent}, ${accent}33)` }} />
+      <div className="absolute inset-x-0 top-0 h-[3px]" style={portalStyle({ background: `linear-gradient(90deg, ${accent}, ${accent}33)` })} />
       <div className="flex items-center justify-between mb-3">
-        <div className="text-[10px] uppercase font-bold tracking-[.16em]" style={{ color: accent }}>
+        <div className="text-[10px] uppercase font-bold tracking-[.16em]" style={portalStyle({ color: accent })}>
           {title}
         </div>
-        <span className="grid h-7 w-7 place-items-center rounded-lg" style={{ background: `${accent}22`, border: `1px solid ${accent}40` }}>
-          <Cpu size={14} style={{ color: accent }} />
+        <span className="grid h-7 w-7 place-items-center rounded-lg" style={portalStyle({ background: `${accent}22`, border: `1px solid ${accent}40` })}>
+          <Cpu size={14} style={portalStyle({ color: accent })} />
         </span>
       </div>
 
       {/* Sorgu sayısı büyük */}
       <div className="mb-3">
-        <div className="text-3xl font-bold tabular-nums" style={{ color: '#fafaf9' }}>
+        <div className="text-3xl font-bold tabular-nums" style={portalStyle({ color: '#fafaf9' })}>
           {formatToken(d?.sorguSayisi ?? 0)}
         </div>
-        <div className="text-xs" style={{ color: 'rgba(250,250,249,0.45)' }}>API sorgusu</div>
+        <div className="text-xs" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>API sorgusu</div>
       </div>
 
       {/* Karar dağılımı */}
       <div className="grid grid-cols-3 gap-2 mb-3">
         <div className="flex items-center gap-1">
-          <CheckCircle2 size={12} style={{ color: '#22c55e' }} />
+          <CheckCircle2 size={12} style={portalStyle({ color: '#22c55e' })} />
           <div>
-            <div className="text-xs font-semibold" style={{ color: '#22c55e' }}>
+            <div className="text-xs font-semibold" style={portalStyle({ color: '#22c55e' })}>
               {formatToken(d?.onaySayisi ?? 0)}
             </div>
-            <div className="text-[10px]" style={{ color: 'rgba(250,250,249,0.45)' }}>onay</div>
+            <div className="text-[10px]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>onay</div>
           </div>
         </div>
         <div className="flex items-center gap-1">
-          <XCircle size={12} style={{ color: '#f59e0b' }} />
+          <XCircle size={12} style={portalStyle({ color: '#f59e0b' })} />
           <div>
-            <div className="text-xs font-semibold" style={{ color: '#f59e0b' }}>
+            <div className="text-xs font-semibold" style={portalStyle({ color: '#f59e0b' })}>
               {formatToken(d?.atlaSayisi ?? 0)}
             </div>
-            <div className="text-[10px]" style={{ color: 'rgba(250,250,249,0.45)' }}>atla</div>
+            <div className="text-[10px]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>atla</div>
           </div>
         </div>
         <div className="flex items-center gap-1">
-          <HelpCircle size={12} style={{ color: '#94a3b8' }} />
+          <HelpCircle size={12} style={portalStyle({ color: '#94a3b8' })} />
           <div>
-            <div className="text-xs font-semibold" style={{ color: '#94a3b8' }}>
+            <div className="text-xs font-semibold" style={portalStyle({ color: '#94a3b8' })}>
               {formatToken(d?.eminDegilSayisi ?? 0)}
             </div>
-            <div className="text-[10px]" style={{ color: 'rgba(250,250,249,0.45)' }}>?</div>
+            <div className="text-[10px]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>?</div>
           </div>
         </div>
       </div>
 
       {/* Token + Maliyet */}
-      <div className="pt-3 border-t" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+      <div className="pt-3 border-t" style={portalStyle({ borderColor: 'rgba(255,255,255,0.05)' })}>
         <div className="flex items-center justify-between text-xs mb-1">
-          <span style={{ color: 'rgba(250,250,249,0.45)' }}>Token</span>
-          <span className="tabular-nums font-semibold" style={{ color: '#fafaf9' }}>
+          <span style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>Token</span>
+          <span className="tabular-nums font-semibold" style={portalStyle({ color: '#fafaf9' })}>
             {formatToken(d?.toplamToken ?? 0)}
           </span>
         </div>
         <div className="flex items-center justify-between text-xs mb-1">
-          <span style={{ color: 'rgba(250,250,249,0.45)' }}>Gercek / cache</span>
-          <span className="tabular-nums font-semibold" style={{ color: '#fafaf9' }}>
+          <span style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>Gercek / cache</span>
+          <span className="tabular-nums font-semibold" style={portalStyle({ color: '#fafaf9' })}>
             {formatToken(d?.gercekCagriSayisi ?? 0)} / {formatToken(d?.cacheHitSayisi ?? 0)}
           </span>
         </div>
         <div className="flex items-center justify-between text-xs">
-          <span style={{ color: 'rgba(250,250,249,0.45)' }}>Maliyet</span>
-          <span className="tabular-nums font-semibold" style={{ color: accent }}>
+          <span style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>Maliyet</span>
+          <span className="tabular-nums font-semibold" style={portalStyle({ color: accent })}>
             {formatUsd(d?.maliyetUsd ?? 0)} · {formatTl(d?.maliyetUsd ?? 0)}
           </span>
         </div>
@@ -323,14 +325,14 @@ function AiUsageWidget({ data }: { data: any }) {
       <div className="flex items-center gap-2 mb-3">
         <div
           className="w-8 h-8 rounded-lg flex items-center justify-center"
-          style={{ background: 'linear-gradient(135deg, #8b5cf6, #ec4899)' }}
+          style={portalStyle({ background: 'linear-gradient(135deg, #8b5cf6, #ec4899)' })}
         >
-          <DollarSign size={15} style={{ color: '#fff' }} />
+          <DollarSign size={15} style={portalStyle({ color: '#fff' })} />
         </div>
-        <h2 className="text-lg font-semibold" style={{ color: '#fafaf9' }}>
+        <h2 className="text-lg font-semibold" style={portalStyle({ color: '#fafaf9' })}>
           AI Kullanım & Maliyet
         </h2>
-        <span className="text-xs ml-auto tabular-nums" style={{ color: 'rgba(250,250,249,0.45)' }}>
+        <span className="text-xs ml-auto tabular-nums" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
           TCMB USD: ₺{USD_TO_TL.toFixed(4)}
         </span>
       </div>
@@ -338,31 +340,31 @@ function AiUsageWidget({ data }: { data: any }) {
       {/* Bakiye Kartı */}
       <div
         className="rounded-2xl p-4 border mb-3 relative overflow-hidden"
-        style={{
+        style={portalStyle({
           background: 'linear-gradient(135deg, rgba(16,185,129,.16), rgba(16,185,129,.05) 58%, rgba(255,255,255,0.02))',
           borderColor: 'rgba(16,185,129,0.40)',
-        }}
+        })}
       >
-        <div className="absolute inset-x-0 top-0 h-[3px]" style={{ background: 'linear-gradient(90deg, #10b981, rgba(16,185,129,0.2))' }} />
+        <div className="absolute inset-x-0 top-0 h-[3px]" style={portalStyle({ background: 'linear-gradient(90deg, #10b981, rgba(16,185,129,0.2))' })} />
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3">
             <div
               className="w-10 h-10 rounded-lg flex items-center justify-center"
-              style={{ background: 'linear-gradient(135deg, #10b981, #0ea5e9)' }}
+              style={portalStyle({ background: 'linear-gradient(135deg, #10b981, #0ea5e9)' })}
             >
-              <Wallet size={18} style={{ color: '#fff' }} />
+              <Wallet size={18} style={portalStyle({ color: '#fff' })} />
             </div>
             <div>
-              <div className="text-xs uppercase tracking-wider font-bold" style={{ color: '#10b981' }}>
+              <div className="text-xs uppercase tracking-wider font-bold" style={portalStyle({ color: '#10b981' })}>
                 Kalan Kontör Bakiyesi
               </div>
-              <div className="text-2xl font-bold tabular-nums" style={{ color: '#fafaf9' }}>
+              <div className="text-2xl font-bold tabular-nums" style={portalStyle({ color: '#fafaf9' })}>
                 ${bakiye.kalanBakiyeUsd.toFixed(4)}
-                <span className="text-sm font-normal ml-2" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                <span className="text-sm font-normal ml-2" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                   (₺{kalanTl.toFixed(2)})
                 </span>
               </div>
-              <div className="text-xs mt-0.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
+              <div className="text-xs mt-0.5" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                 Yüklenen: ${bakiye.toplamYuklenenUsd.toFixed(2)} · Harcanan: ${bakiye.toplamHarcananUsd.toFixed(4)}
               </div>
             </div>
@@ -370,19 +372,19 @@ function AiUsageWidget({ data }: { data: any }) {
           <button
             onClick={() => setTopupOpen(true)}
             className="px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition"
-            style={{ background: 'linear-gradient(135deg, #10b981, #0ea5e9)', color: '#fff' }}
+            style={portalStyle({ background: 'linear-gradient(135deg, #10b981, #0ea5e9)', color: '#fff' })}
           >
             <Plus size={14} /> Kontör Ekle
           </button>
         </div>
         {/* Progress bar */}
-        <div className="mt-3 h-2 rounded-full overflow-hidden" style={{ background: 'rgba(0,0,0,.08)' }}>
+        <div className="mt-3 h-2 rounded-full overflow-hidden" style={portalStyle({ background: 'rgba(0,0,0,.08)' })}>
           <div
             className="h-full transition-all"
-            style={{
+            style={portalStyle({
               width: `${yuzde}%`,
               background: yuzde > 90 ? '#ef4444' : yuzde > 75 ? '#f59e0b' : '#10b981',
-            }}
+            })}
           />
         </div>
       </div>
@@ -398,27 +400,27 @@ function AiUsageWidget({ data }: { data: any }) {
       {topupOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ background: 'rgba(0,0,0,.5)' }}
+          style={portalStyle({ background: 'rgba(0,0,0,.5)' })}
           onClick={() => setTopupOpen(false)}
         >
           <div
             className="rounded-xl p-5 border w-full max-w-md"
-            style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
+            style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' })}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-2 mb-4">
-              <Wallet size={18} style={{ color: '#10b981' }} />
-              <h3 className="text-lg font-semibold" style={{ color: '#fafaf9' }}>
+              <Wallet size={18} style={portalStyle({ color: '#10b981' })} />
+              <h3 className="text-lg font-semibold" style={portalStyle({ color: '#fafaf9' })}>
                 Kontör Yükleme Kaydı
               </h3>
             </div>
-            <p className="text-xs mb-4" style={{ color: 'rgba(250,250,249,0.45)' }}>
+            <p className="text-xs mb-4" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
               Anthropic hesabınıza yaptığınız yüklemeyi burada kaydedin. Sistem bu tutardan harcamaları düşerek
               bakiyenizi takip eder.
             </p>
             <div className="space-y-3">
               <div>
-                <label className="text-xs font-semibold block mb-1" style={{ color: '#fafaf9' }}>
+                <label className="text-xs font-semibold block mb-1" style={portalStyle({ color: '#fafaf9' })}>
                   Yüklenen Tutar (USD)
                 </label>
                 <input
@@ -429,15 +431,15 @@ function AiUsageWidget({ data }: { data: any }) {
                   onChange={(e) => setTopupAmount(e.target.value)}
                   placeholder="50.00"
                   className="w-full px-3 py-2 rounded-lg border text-sm tabular-nums"
-                  style={{
+                  style={portalStyle({
                     background: 'rgba(255,255,255,0.03)',
                     borderColor: 'rgba(255,255,255,0.05)',
                     color: '#fafaf9',
-                  }}
+                  })}
                 />
               </div>
               <div>
-                <label className="text-xs font-semibold block mb-1" style={{ color: '#fafaf9' }}>
+                <label className="text-xs font-semibold block mb-1" style={portalStyle({ color: '#fafaf9' })}>
                   Not (opsiyonel)
                 </label>
                 <input
@@ -446,11 +448,11 @@ function AiUsageWidget({ data }: { data: any }) {
                   onChange={(e) => setTopupNote(e.target.value)}
                   placeholder="Nisan 2026 yüklemesi"
                   className="w-full px-3 py-2 rounded-lg border text-sm"
-                  style={{
+                  style={portalStyle({
                     background: 'rgba(255,255,255,0.03)',
                     borderColor: 'rgba(255,255,255,0.05)',
                     color: '#fafaf9',
-                  }}
+                  })}
                 />
               </div>
             </div>
@@ -458,7 +460,7 @@ function AiUsageWidget({ data }: { data: any }) {
               <button
                 onClick={() => setTopupOpen(false)}
                 className="px-4 py-2 rounded-lg text-sm"
-                style={{ background: 'transparent', color: 'rgba(250,250,249,0.45)' }}
+                style={portalStyle({ background: 'transparent', color: 'rgba(250,250,249,0.45)' })}
               >
                 İptal
               </button>
@@ -471,7 +473,7 @@ function AiUsageWidget({ data }: { data: any }) {
                   })
                 }
                 className="px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-50 flex items-center gap-1.5"
-                style={{ background: 'linear-gradient(135deg, #10b981, #0ea5e9)', color: '#fff' }}
+                style={portalStyle({ background: 'linear-gradient(135deg, #10b981, #0ea5e9)', color: '#fff' })}
               >
                 <Plus size={14} /> {topupMut.isPending ? 'Kaydediliyor…' : 'Kaydet'}
               </button>
@@ -487,15 +489,15 @@ function StatBox({ label, value, color, icon: Icon }: any) {
   return (
     <div
       className="relative overflow-hidden rounded-2xl border p-4"
-      style={{ borderColor: `${color}40`, background: `linear-gradient(135deg, ${color}26, ${color}0a 58%, rgba(255,255,255,0.02))` }}
+      style={portalStyle({ borderColor: `${color}40`, background: `linear-gradient(135deg, ${color}26, ${color}0a 58%, rgba(255,255,255,0.02))` })}
     >
       <div className="flex items-center justify-between">
-        <span className="text-[10px] uppercase font-bold tracking-[.16em]" style={{ color }}>{label}</span>
-        <span className="grid h-7 w-7 place-items-center rounded-lg" style={{ background: `${color}22`, border: `1px solid ${color}40` }}>
-          <Icon size={14} style={{ color }} />
+        <span className="text-[10px] uppercase font-bold tracking-[.16em]" style={portalStyle({ color })}>{label}</span>
+        <span className="grid h-7 w-7 place-items-center rounded-lg" style={portalStyle({ background: `${color}22`, border: `1px solid ${color}40` })}>
+          <Icon size={14} style={portalStyle({ color })} />
         </span>
       </div>
-      <div className="mt-3 text-[30px] font-semibold leading-none tabular-nums" style={{ color: '#fafaf9' }}>
+      <div className="mt-3 text-[30px] font-semibold leading-none tabular-nums" style={portalStyle({ color: '#fafaf9' })}>
         {typeof value === 'number' ? value.toLocaleString('tr-TR') : value}
       </div>
     </div>
@@ -518,61 +520,61 @@ function AgentRegistryTile({ agent, statusInfo }: { agent: AgentDefinition; stat
     <Link
       href={visual.href}
       className="group relative block rounded-xl p-5 border overflow-hidden transition-all hover:scale-[1.01] hover:shadow-lg"
-      style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
+      style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' })}
     >
-      <div className="absolute left-0 top-0 bottom-0 w-1" style={{ background: visual.gradient }} />
+      <div className="absolute left-0 top-0 bottom-0 w-1" style={portalStyle({ background: visual.gradient })} />
       <div className="flex items-start gap-3 mb-3">
         <div
           className="w-11 h-11 rounded-lg flex items-center justify-center flex-shrink-0 transition-transform group-hover:scale-110"
-          style={{ background: visual.gradient, boxShadow: '0 4px 12px rgba(0,0,0,.15)' }}
+          style={portalStyle({ background: visual.gradient, boxShadow: '0 4px 12px rgba(0,0,0,.15)' })}
         >
-          <Icon size={20} style={{ color: '#fff' }} strokeWidth={2} />
+          <Icon size={20} style={portalStyle({ color: '#fff' })} strokeWidth={2} />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <h3 className="font-semibold" style={{ color: '#fafaf9' }}>{agent.title}</h3>
-            <span className="text-[9px] px-1.5 py-0.5 rounded font-semibold" style={{ background: stage.bg, color: stage.color }}>
+            <h3 className="font-semibold" style={portalStyle({ color: '#fafaf9' })}>{agent.title}</h3>
+            <span className="text-[9px] px-1.5 py-0.5 rounded font-semibold" style={portalStyle({ background: stage.bg, color: stage.color })}>
               {stage.label}
             </span>
             {calisiyor && (
               <span
                 className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded font-semibold"
-                style={{ background: 'rgba(16,185,129,.15)', color: '#22c55e' }}
+                style={portalStyle({ background: 'rgba(16,185,129,.15)', color: '#22c55e' })}
               >
-                <span className="w-1 h-1 rounded-full animate-pulse" style={{ background: '#22c55e' }} />
+                <span className="w-1 h-1 rounded-full animate-pulse" style={portalStyle({ background: '#22c55e' })} />
                 CALISIYOR
               </span>
             )}
           </div>
-          <p className="text-xs mt-1 leading-relaxed" style={{ color: 'rgba(250,250,249,0.45)' }}>
+          <p className="text-xs mt-1 leading-relaxed" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
             {agent.description}
           </p>
         </div>
       </div>
 
       <div className="flex flex-wrap gap-1.5 mb-3">
-        <span className="text-[10px] px-2 py-1 rounded" style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(250,250,249,0.62)' }}>
+        <span className="text-[10px] px-2 py-1 rounded" style={portalStyle({ background: 'rgba(255,255,255,0.04)', color: 'rgba(250,250,249,0.62)' })}>
           {MODE_LABEL[agent.mode]}
         </span>
-        <span className="text-[10px] px-2 py-1 rounded" style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(250,250,249,0.62)' }}>
+        <span className="text-[10px] px-2 py-1 rounded" style={portalStyle({ background: 'rgba(255,255,255,0.04)', color: 'rgba(250,250,249,0.62)' })}>
           {QUEUE_LABEL[agent.queue] || agent.queue}
         </span>
         {agent.legacyRunner && (
-          <span className="text-[10px] px-2 py-1 rounded" style={{ background: 'rgba(212,184,118,.10)', color: '#d4b876' }}>
+          <span className="text-[10px] px-2 py-1 rounded" style={portalStyle({ background: 'rgba(212,184,118,.10)', color: '#d4b876' })}>
             Eski motor: {agent.legacyRunner}
           </span>
         )}
       </div>
 
-      <div className="text-[11px] mb-3 truncate" style={{ color: 'rgba(250,250,249,0.42)' }}>
+      <div className="text-[11px] mb-3 truncate" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>
         {modules || 'Modul baglantisi yok'}
       </div>
 
-      <div className="flex items-center justify-between text-xs pt-3 border-t" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
-        <span style={{ color: 'rgba(250,250,249,0.45)' }}>
+      <div className="flex items-center justify-between text-xs pt-3 border-t" style={portalStyle({ borderColor: 'rgba(255,255,255,0.05)' })}>
+        <span style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
           {lastPing ? `Son ping: ${lastPing}` : agent.stage === 'planned' ? 'Planlandi' : 'Hazir'}
         </span>
-        <span className="inline-flex items-center gap-1 font-semibold transition-transform group-hover:translate-x-0.5" style={{ color: '#b8a06f' }}>
+        <span className="inline-flex items-center gap-1 font-semibold transition-transform group-hover:translate-x-0.5" style={portalStyle({ color: '#b8a06f' })}>
           <Zap size={11} /> Ac <ArrowRight size={11} />
         </span>
       </div>
@@ -587,27 +589,27 @@ function AgentTile({ agent, statusInfo }: any) {
     <Link
       href={agent.href}
       className="group relative block rounded-xl p-5 border overflow-hidden transition-all hover:scale-[1.01] hover:shadow-lg"
-      style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
+      style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' })}
     >
       {/* Gradient side bar */}
       <div
         className="absolute left-0 top-0 bottom-0 w-1"
-        style={{ background: agent.gradient }}
+        style={portalStyle({ background: agent.gradient })}
       />
       <div className="flex items-start gap-3 mb-3">
         <div
           className="w-11 h-11 rounded-lg flex items-center justify-center flex-shrink-0 transition-transform group-hover:scale-110"
-          style={{ background: agent.gradient, boxShadow: '0 4px 12px rgba(0,0,0,.15)' }}
+          style={portalStyle({ background: agent.gradient, boxShadow: '0 4px 12px rgba(0,0,0,.15)' })}
         >
-          <Icon size={20} style={{ color: '#fff' }} strokeWidth={2} />
+          <Icon size={20} style={portalStyle({ color: '#fff' })} strokeWidth={2} />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <h3 className="font-semibold" style={{ color: '#fafaf9' }}>{agent.title}</h3>
+            <h3 className="font-semibold" style={portalStyle({ color: '#fafaf9' })}>{agent.title}</h3>
             {!agent.aktif && (
               <span
                 className="text-[9px] px-1.5 py-0.5 rounded font-semibold"
-                style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.45)' }}
+                style={portalStyle({ background: 'rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.45)' })}
               >
                 YAKINDA
               </span>
@@ -615,23 +617,23 @@ function AgentTile({ agent, statusInfo }: any) {
             {agent.aktif && calisiyor && (
               <span
                 className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded font-semibold"
-                style={{ background: 'rgba(16,185,129,.15)', color: '#059669' }}
+                style={portalStyle({ background: 'rgba(16,185,129,.15)', color: '#059669' })}
               >
-                <span className="w-1 h-1 rounded-full animate-pulse" style={{ background: '#059669' }} />
+                <span className="w-1 h-1 rounded-full animate-pulse" style={portalStyle({ background: '#059669' })} />
                 ÇALIŞIYOR
               </span>
             )}
           </div>
-          <p className="text-xs mt-1" style={{ color: 'rgba(250,250,249,0.45)' }}>
+          <p className="text-xs mt-1" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
             {agent.desc}
           </p>
         </div>
       </div>
-      <div className="flex items-center justify-between text-xs pt-3 border-t" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
-        <span style={{ color: 'rgba(250,250,249,0.45)' }}>
+      <div className="flex items-center justify-between text-xs pt-3 border-t" style={portalStyle({ borderColor: 'rgba(255,255,255,0.05)' })}>
+        <span style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
           {agent.aktif ? (statusInfo?.lastPing ? `Son: ${new Date(statusInfo.lastPing).toLocaleTimeString('tr-TR', { hour12: false, timeZone: 'Europe/Istanbul' })}` : 'Hazır') : '—'}
         </span>
-        <span className="inline-flex items-center gap-1 font-semibold transition-transform group-hover:translate-x-0.5" style={{ color: '#b8a06f' }}>
+        <span className="inline-flex items-center gap-1 font-semibold transition-transform group-hover:translate-x-0.5" style={portalStyle({ color: '#b8a06f' })}>
           <Zap size={11} /> Aç <ArrowRight size={11} />
         </span>
       </div>

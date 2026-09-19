@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -150,14 +152,14 @@ export function DosyalarTab({ taxpayerId }: { taxpayerId: string }) {
       <FormGrup
         baslik="Evrak yükle"
         aciklama="Kira kontratı, imza sirküleri, vekaletname…"
-        sag={<span className="text-[11.5px]" style={{ color: progress ? STEEL_BR : FAINT }}>{progress ? `Yükleme: %${progress}` : file ? `${file.name} seçildi` : 'Dosya seçilmedi'}</span>}
+        sag={<span className="text-[11.5px]" style={portalStyle({ color: progress ? STEEL_BR : FAINT })}>{progress ? `Yükleme: %${progress}` : file ? `${file.name} seçildi` : 'Dosya seçilmedi'}</span>}
       >
         <Satir etiket="Dosya" zorunlu>
           {/* Tarayıcının kendi "Dosya Seç" yazısı yerine kontrollü düğme (dil/biçim tutarlı) */}
           <label className={`${GIRDI_CLS} flex cursor-pointer items-center gap-3`}>
             <input type="file" className="sr-only" onChange={(e) => setFile(e.target.files?.[0] || null)} />
-            <span className="shrink-0 rounded-[4px] px-2 py-0.5 text-[12px] font-bold" style={{ background: 'rgba(79,134,201,0.16)', color: '#74a6e6' }}>Dosya seç</span>
-            <span className="truncate" style={{ color: file ? TEXT : FAINT }}>{file ? file.name : 'PDF, görsel veya ofis belgesi'}</span>
+            <span className="shrink-0 rounded-[4px] px-2 py-0.5 text-[12px] font-bold" style={portalStyle({ background: 'rgba(79,134,201,0.16)', color: '#74a6e6' })}>Dosya seç</span>
+            <span className="truncate" style={portalStyle({ color: file ? TEXT : FAINT })}>{file ? file.name : 'PDF, görsel veya ofis belgesi'}</span>
           </label>
         </Satir>
         <Satir etiket="Kategori">
@@ -180,7 +182,7 @@ export function DosyalarTab({ taxpayerId }: { taxpayerId: string }) {
             onClick={() => uploadMut.mutate()}
             disabled={!file || uploadMut.isPending}
             className="inline-flex h-9 items-center gap-2 px-4 text-[13px] font-bold transition hover:brightness-105 disabled:opacity-50"
-            style={{ background: '#4f86c9', color: '#fff', borderRadius: 8 }}
+            style={portalStyle({ background: '#4f86c9', color: '#fff', borderRadius: 8 })}
           >
             {uploadMut.isPending ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
             Evrakı Yükle
@@ -189,7 +191,7 @@ export function DosyalarTab({ taxpayerId }: { taxpayerId: string }) {
       </FormGrup>
 
       {isLoading ? (
-        <div className="flex items-center gap-2 py-8 text-[13px]" style={{ color: MUTED }}>
+        <div className="flex items-center gap-2 py-8 text-[13px]" style={portalStyle({ color: MUTED })}>
           <Loader2 size={15} className="animate-spin" /> Evraklar yükleniyor...
         </div>
       ) : manualDocuments.length === 0 ? (
@@ -198,10 +200,10 @@ export function DosyalarTab({ taxpayerId }: { taxpayerId: string }) {
         <TabloSarmal minWidth={720}>
           <colgroup>
             <col />
-            <col style={{ width: 120 }} />
-            <col style={{ width: 90 }} />
-            <col style={{ width: 110 }} />
-            <col style={{ width: 128 }} />
+            <col style={portalStyle({ width: 120 })} />
+            <col style={portalStyle({ width: 90 })} />
+            <col style={portalStyle({ width: 110 })} />
+            <col style={portalStyle({ width: 128 })} />
           </colgroup>
           <thead>
             <tr>
@@ -224,19 +226,19 @@ export function DosyalarTab({ taxpayerId }: { taxpayerId: string }) {
                   >
                     <Td>
                       <div className="truncate font-bold">{doc.title}</div>
-                      {!acik && <div className="truncate text-[11.5px]" style={{ color: doc.notes ? MUTED : FAINT }}>{doc.notes || 'Açıklama yok'}</div>}
+                      {!acik && <div className="truncate text-[11.5px]" style={portalStyle({ color: doc.notes ? MUTED : FAINT })}>{doc.notes || 'Açıklama yok'}</div>}
                     </Td>
                     <Td muted>{documentCategoryLabel(doc.category)}</Td>
                     <Td right muted tabular>{formatBytes(doc.sizeBytes)}</Td>
                     <Td muted tabular>{fmtDateTR((doc.updatedAt || doc.createdAt || '').substring(0, 10))}</Td>
-                    <Td center style={{ padding: '4px 6px' }}>
+                    <Td center style={portalStyle({ padding: '4px 6px' })}>
                       <div className="inline-flex gap-1.5" onClick={(e) => e.stopPropagation()}>
                         <button
                           type="button"
                           onClick={() => previewDocument(doc)}
                           disabled={viewBusyDocId === doc.id}
                           className="inline-flex h-8 w-8 items-center justify-center transition hover:brightness-125"
-                          style={ikonDugme(true)}
+                          style={portalStyle(ikonDugme(true))}
                           title="Görüntüle"
                         >
                           {viewBusyDocId === doc.id ? <Loader2 size={14} className="animate-spin" /> : <Eye size={14} />}
@@ -246,7 +248,7 @@ export function DosyalarTab({ taxpayerId }: { taxpayerId: string }) {
                           onClick={() => downloadDocument(doc.id)}
                           disabled={busyDocId === doc.id}
                           className="inline-flex h-8 w-8 items-center justify-center transition hover:brightness-125"
-                          style={ikonDugme(false)}
+                          style={portalStyle(ikonDugme(false))}
                           title="İndir"
                         >
                           {busyDocId === doc.id ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
@@ -257,7 +259,7 @@ export function DosyalarTab({ taxpayerId }: { taxpayerId: string }) {
                             if (confirm('Bu evrak silinsin mi?')) deleteMut.mutate(doc.id);
                           }}
                           className="inline-flex h-8 w-8 items-center justify-center transition hover:brightness-125"
-                          style={ikonDugme(false, RED)}
+                          style={portalStyle(ikonDugme(false, RED))}
                           title="Sil"
                         >
                           <Trash2 size={14} />
@@ -266,9 +268,9 @@ export function DosyalarTab({ taxpayerId }: { taxpayerId: string }) {
                     </Td>
                   </tr>
                   {acik && (
-                    <tr style={{ background: 'rgba(255,255,255,0.02)' }}>
-                      <Td colSpan={SUTUN} muted style={{ padding: '8px 14px', whiteSpace: 'pre-wrap' }}>
-                        <span className="text-[11.5px] font-medium" style={{ color: FAINT }}>Açıklama · </span>
+                    <tr style={portalStyle({ background: 'rgba(255,255,255,0.02)' })}>
+                      <Td colSpan={SUTUN} muted style={portalStyle({ padding: '8px 14px', whiteSpace: 'pre-wrap' })}>
+                        <span className="text-[11.5px] font-medium" style={portalStyle({ color: FAINT })}>Açıklama · </span>
                         {doc.notes || 'Açıklama yok'}
                       </Td>
                     </tr>
@@ -283,18 +285,18 @@ export function DosyalarTab({ taxpayerId }: { taxpayerId: string }) {
       {mounted && previewDoc && createPortal((
         <div
           className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4"
-          style={{ background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(3px)' }}
+          style={portalStyle({ background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(3px)' })}
           onClick={() => setPreviewDoc(null)}
         >
           <div
             className="flex h-[min(92vh,900px)] w-full max-w-[1120px] flex-col overflow-hidden"
-            style={{ background: CARD, border: `1px solid ${LINE}`, borderRadius: R_KART }}
+            style={portalStyle({ background: CARD, border: `1px solid ${LINE}`, borderRadius: R_KART })}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between gap-3 px-4 py-3" style={{ borderBottom: `1px solid ${HAIR}` }}>
+            <div className="flex items-center justify-between gap-3 px-4 py-3" style={portalStyle({ borderBottom: `1px solid ${HAIR}` })}>
               <div className="min-w-0">
-                <div className="truncate text-[14px] font-bold" style={{ color: TEXT }}>{previewDoc.title}</div>
-                <div className="mt-0.5 truncate text-[11.5px]" style={{ color: FAINT }}>{previewDoc.subtitle}</div>
+                <div className="truncate text-[14px] font-bold" style={portalStyle({ color: TEXT })}>{previewDoc.title}</div>
+                <div className="mt-0.5 truncate text-[11.5px]" style={portalStyle({ color: FAINT })}>{previewDoc.subtitle}</div>
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <a
@@ -302,7 +304,7 @@ export function DosyalarTab({ taxpayerId }: { taxpayerId: string }) {
                   download={previewDoc.title.replace(/[\\/:*?"<>|]/g, '_')}
                   className="inline-flex h-8 w-8 items-center justify-center transition hover:brightness-125"
                   title="Evrakı indir"
-                  style={NOTR_DUGME}
+                  style={portalStyle(NOTR_DUGME)}
                 >
                   <Download size={15} />
                 </a>
@@ -311,7 +313,7 @@ export function DosyalarTab({ taxpayerId }: { taxpayerId: string }) {
                   onClick={() => setPreviewDoc(null)}
                   className="inline-flex h-8 w-8 items-center justify-center transition hover:brightness-125"
                   title="Kapat"
-                  style={NOTR_DUGME}
+                  style={portalStyle(NOTR_DUGME)}
                 >
                   <X size={16} />
                 </button>
@@ -324,7 +326,7 @@ export function DosyalarTab({ taxpayerId }: { taxpayerId: string }) {
             ) : previewDoc.mimeType?.includes('pdf') || /\.pdf$/i.test(previewDoc.title) ? (
               <iframe key={previewDoc.docKey} title={previewDoc.title} src={previewDoc.url} className="min-h-0 flex-1 bg-white" />
             ) : (
-              <div className="flex min-h-0 flex-1 items-center justify-center p-6 text-center" style={{ color: MUTED }}>
+              <div className="flex min-h-0 flex-1 items-center justify-center p-6 text-center" style={portalStyle({ color: MUTED })}>
                 Bu dosya tipi tarayici icinde onizlenemiyor. Indirmek icin indir butonunu kullanin.
               </div>
             )}

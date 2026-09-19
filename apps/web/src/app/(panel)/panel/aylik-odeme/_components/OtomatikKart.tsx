@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -45,26 +47,26 @@ export function OtomatikKart({ baslangic }: { baslangic?: OtomatikAyar | null })
   const sonKosu = sonKosuMetni(kaynak.sonKosu);
 
   return (
-    <div className="p-4" style={KART} data-testid="otomatik-kart">
+    <div className="p-4" style={portalStyle(KART)} data-testid="otomatik-kart">
       <KartBaslik ikon={<CalendarClock size={13} />} sag={<Anahtar acik={!!form.aktif} onDegis={(v) => degis({ aktif: v })} title="Otomatik gönderim" />}>
         Otomatik gönderim
       </KartBaslik>
-      <p className="mt-2 text-[12px] leading-relaxed" style={{ color: IKINCIL }}>
+      <p className="mt-2 text-[12px] leading-relaxed" style={portalStyle({ color: IKINCIL })}>
         Her ayın seçilen günü/saatinde gönderilmemişlere gönderir; onay isteği açıksa önce WhatsApp&apos;tan haber verir, gönderimi siz başlatırsınız.
       </p>
-      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-[12.5px]" style={{ color: METIN, opacity: form.aktif ? 1 : 0.55 }}>
+      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-[12.5px]" style={portalStyle({ color: METIN, opacity: form.aktif ? 1 : 0.55 })}>
         <label className="inline-flex items-center gap-1.5">
-          <span style={{ color: IKINCIL }}>Ayın</span>
-          <select aria-label="Gün" value={form.gun} onChange={(e) => degis({ gun: Number(e.target.value) })} className="h-8 px-2 text-[12.5px]" style={{ ...GIRDI, colorScheme: 'dark' }}>
+          <span style={portalStyle({ color: IKINCIL })}>Ayın</span>
+          <select aria-label="Gün" value={form.gun} onChange={(e) => degis({ gun: Number(e.target.value) })} className="h-8 px-2 text-[12.5px]" style={portalStyle({ ...GIRDI, colorScheme: 'dark' })}>
             {Array.from({ length: 28 }, (_, i) => i + 1).map((g) => (
               <option key={g} value={g}>{g}.</option>
             ))}
           </select>
-          <span style={{ color: IKINCIL }}>günü</span>
+          <span style={portalStyle({ color: IKINCIL })}>günü</span>
         </label>
         <label className="inline-flex items-center gap-1.5">
-          <span style={{ color: IKINCIL }}>saat</span>
-          <select aria-label="Saat" value={form.saat} onChange={(e) => degis({ saat: Number(e.target.value) })} className="h-8 px-2 text-[12.5px]" style={{ ...GIRDI, colorScheme: 'dark' }}>
+          <span style={portalStyle({ color: IKINCIL })}>saat</span>
+          <select aria-label="Saat" value={form.saat} onChange={(e) => degis({ saat: Number(e.target.value) })} className="h-8 px-2 text-[12.5px]" style={portalStyle({ ...GIRDI, colorScheme: 'dark' })}>
             {Array.from({ length: 24 }, (_, i) => i).map((s) => (
               <option key={s} value={s}>{String(s).padStart(2, '0')}:00</option>
             ))}
@@ -75,8 +77,8 @@ export function OtomatikKart({ baslangic }: { baslangic?: OtomatikAyar | null })
           <span>Göndermeden önce onayımı iste</span>
         </label>
       </div>
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 pt-3" style={{ borderTop: `1px solid ${KENAR_NOTR}` }}>
-        <span className="text-[11.5px]" style={{ color: sonKosu ? IKINCIL : SONUK }}>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 pt-3" style={portalStyle({ borderTop: `1px solid ${KENAR_NOTR}` })}>
+        <span className="text-[11.5px]" style={portalStyle({ color: sonKosu ? IKINCIL : SONUK })}>
           {sonKosu ? `Son koşu: ${sonKosu}` : 'Henüz çalışmadı'}
         </span>
         <AltinDugme kucuk onClick={() => kaydet.mutate()} disabled={!kirli} yukleniyor={kaydet.isPending} title={kirli ? 'Ayarı kaydet' : 'Değişiklik yok'}>

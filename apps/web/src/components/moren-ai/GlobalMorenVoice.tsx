@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -67,7 +69,7 @@ function TopbarTalkButton({
         onClick={onToggle}
         disabled={busy}
         className="group relative flex h-9 items-center gap-2 rounded-full pl-1.5 pr-3.5 transition disabled:opacity-70"
-        style={{
+        style={portalStyle({
           background: active
             ? `linear-gradient(135deg, ${ROSE}, #b8687a 60%, #9f5260)`
             : 'linear-gradient(135deg, rgba(240,154,168,0.18), rgba(212,184,118,0.10) 70%, rgba(255,255,255,0.03))',
@@ -76,7 +78,7 @@ function TopbarTalkButton({
             ? '0 10px 26px rgba(240,154,168,0.32), inset 0 1px 0 rgba(255,255,255,0.28)'
             : 'inset 0 1px 0 rgba(255,255,255,0.05)',
           color: active ? '#1a1012' : '#fbe3e8',
-        }}
+        })}
         title={active ? 'Sesi kapat' : 'Canlı MOREN AI ile konuş'}
         aria-label={active ? 'Canlı sesi kapat' : 'Canlı MOREN AI ile konuş'}
         aria-pressed={active}
@@ -84,19 +86,19 @@ function TopbarTalkButton({
         <span className="relative grid h-6 w-6 shrink-0 place-items-center">
           {active && !busy ? (
             <>
-              <span className="moren-voice-ring absolute inset-0 rounded-full" style={{ border: '1.5px solid rgba(255,255,255,0.55)' }} />
-              <span className="moren-voice-ring absolute inset-0 rounded-full" style={{ border: '1.5px solid rgba(255,255,255,0.45)', animationDelay: '1.2s' }} />
+              <span className="moren-voice-ring absolute inset-0 rounded-full" style={portalStyle({ border: '1.5px solid rgba(255,255,255,0.55)' })} />
+              <span className="moren-voice-ring absolute inset-0 rounded-full" style={portalStyle({ border: '1.5px solid rgba(255,255,255,0.45)', animationDelay: '1.2s' })} />
             </>
           ) : null}
           <span
             className={`grid h-6 w-6 place-items-center rounded-full ${active ? 'moren-voice-orb-live' : ''}`}
-            style={{
+            style={portalStyle({
               background: active
                 ? 'radial-gradient(circle at 35% 30%, #fff1f4, #ffd9e0 45%, #f09aa8)'
                 : `radial-gradient(circle at 35% 30%, #ffd9e0, ${ROSE} 55%, #9f5260)`,
               color: '#1a1012',
               boxShadow: active ? '0 0 14px rgba(255,255,255,0.35)' : '0 4px 12px rgba(240,154,168,0.35)',
-            }}
+            })}
           >
             {busy || thinking ? <Loader2 size={12} className="animate-spin" /> : voice.status === 'speaking' ? <Sparkles size={12} /> : active ? <MicOff size={12} /> : <Mic size={12} />}
           </span>
@@ -104,12 +106,12 @@ function TopbarTalkButton({
         <span className="flex items-center gap-2">
           <span className="text-[12.5px] font-black tracking-wide">{label}</span>
           {active && (voice.status === 'listening' || voice.status === 'speaking') ? (
-            <span className="flex items-end gap-[2px]" style={{ height: 12 }} aria-hidden>
+            <span className="flex items-end gap-[2px]" style={portalStyle({ height: 12 })} aria-hidden>
               {Array.from({ length: 5 }).map((_, index) => (
                 <span
                   key={index}
                   className="moren-voice-bar w-[2px] rounded-full"
-                  style={{ background: 'rgba(26,16,18,0.75)', animationDelay: `${index * 0.09}s` }}
+                  style={portalStyle({ background: 'rgba(26,16,18,0.75)', animationDelay: `${index * 0.09}s` })}
                 />
               ))}
             </span>
@@ -118,11 +120,11 @@ function TopbarTalkButton({
         {!active ? (
           <span
             className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full"
-            style={{
+            style={portalStyle({
               background: isError ? '#f87171' : GOLD,
               border: '2px solid #080807',
               boxShadow: isError ? '0 0 10px rgba(248,113,113,0.8)' : `0 0 10px ${GOLD}`,
-            }}
+            })}
           />
         ) : null}
       </button>
@@ -131,7 +133,7 @@ function TopbarTalkButton({
           type="button"
           onClick={onExpand}
           className="flex h-9 w-9 items-center justify-center rounded-lg transition hover:bg-white/[0.06]"
-          style={{ border: '1px solid rgba(240,154,168,0.22)', color: ROSE, background: 'rgba(240,154,168,0.08)' }}
+          style={portalStyle({ border: '1px solid rgba(240,154,168,0.22)', color: ROSE, background: 'rgba(240,154,168,0.08)' })}
           title="Ses panelini aç"
           aria-label="Ses panelini aç"
         >
@@ -431,20 +433,20 @@ export default function GlobalMorenVoice() {
         if (!voice.active) startVoice().catch(() => {});
       }}
       className="fixed right-6 bottom-6 z-[85] flex h-14 w-14 items-center justify-center rounded-full transition hover:scale-[1.04] lg:hidden"
-      style={{
+      style={portalStyle({
         background: active ? `linear-gradient(135deg, ${ROSE}, #9f5260)` : `linear-gradient(135deg, ${GOLD}, #8b7649)`,
         boxShadow: active ? '0 18px 45px rgba(240,154,168,0.34), inset 0 1px 0 rgba(255,255,255,0.28)' : '0 18px 45px rgba(212,184,118,0.28), inset 0 1px 0 rgba(255,255,255,0.28)',
         color: '#0f0d0b',
-      }}
+      })}
       title="Canlı MOREN AI"
       aria-label="Canlı MOREN AI"
     >
-      <span className={`grid h-9 w-9 place-items-center rounded-full ${active ? 'moren-voice-orb-live' : ''}`} style={{ background: 'rgba(255,255,255,0.18)' }}>
+      <span className={`grid h-9 w-9 place-items-center rounded-full ${active ? 'moren-voice-orb-live' : ''}`} style={portalStyle({ background: 'rgba(255,255,255,0.18)' })}>
         {status === 'connecting' || status === 'thinking' ? <Loader2 size={20} className="animate-spin" /> : active ? <MicOff size={20} /> : <Mic size={20} />}
       </span>
       <span
         className="absolute -bottom-1 -left-1 flex h-6 w-6 items-center justify-center rounded-full"
-        style={{ background: '#17110f', border: '1px solid rgba(212,184,118,0.48)', color: GOLD, boxShadow: '0 8px 18px rgba(0,0,0,0.28)' }}
+        style={portalStyle({ background: '#17110f', border: '1px solid rgba(212,184,118,0.48)', color: GOLD, boxShadow: '0 8px 18px rgba(0,0,0,0.28)' })}
       >
         <MessageSquareText size={12} />
       </span>
@@ -473,42 +475,42 @@ export default function GlobalMorenVoice() {
       {isMorenAiPage || !expanded ? null : (
         <div
           className="fixed right-6 top-16 z-[85] w-[330px] overflow-hidden rounded-xl border shadow-2xl"
-          style={{
+          style={portalStyle({
             background: 'radial-gradient(120% 90% at 0% 0%, rgba(240,154,168,0.14), transparent 55%), linear-gradient(180deg, rgba(26,18,19,0.98), rgba(10,9,6,0.98))',
             borderColor: status === 'error' ? 'rgba(248,113,113,0.38)' : 'rgba(240,154,168,0.32)',
             boxShadow: '0 22px 70px rgba(0,0,0,0.46), 0 0 35px rgba(240,154,168,0.12)',
-          }}
+          })}
         >
-          <div className="absolute inset-x-0 top-0 h-[3px]" style={{ background: 'linear-gradient(90deg,#f09aa8,#e7b6a0,#d4b876,#c8a25e,#f09aa8)' }} />
-          <div className="flex items-center gap-3 border-b px-4 py-3" style={{ borderColor: LINE }}>
+          <div className="absolute inset-x-0 top-0 h-[3px]" style={portalStyle({ background: 'linear-gradient(90deg,#f09aa8,#e7b6a0,#d4b876,#c8a25e,#f09aa8)' })} />
+          <div className="flex items-center gap-3 border-b px-4 py-3" style={portalStyle({ borderColor: LINE })}>
             <div className="relative grid h-10 w-10 shrink-0 place-items-center">
               {active && status !== 'connecting' ? (
                 <>
-                  <span className="moren-voice-ring absolute inset-0 rounded-full" style={{ border: '2px solid rgba(240,154,168,0.5)' }} />
-                  <span className="moren-voice-ring absolute inset-0 rounded-full" style={{ border: '2px solid rgba(240,154,168,0.5)', animationDelay: '1.2s' }} />
+                  <span className="moren-voice-ring absolute inset-0 rounded-full" style={portalStyle({ border: '2px solid rgba(240,154,168,0.5)' })} />
+                  <span className="moren-voice-ring absolute inset-0 rounded-full" style={portalStyle({ border: '2px solid rgba(240,154,168,0.5)', animationDelay: '1.2s' })} />
                 </>
               ) : null}
               <div
                 className={`grid h-9 w-9 place-items-center rounded-full ${active ? 'moren-voice-orb-live' : ''}`}
-                style={{ background: 'radial-gradient(circle at 35% 30%, #ffd9e0, #f09aa8 55%, #9f5260)', color: '#1a1012' }}
+                style={portalStyle({ background: 'radial-gradient(circle at 35% 30%, #ffd9e0, #f09aa8 55%, #9f5260)', color: '#1a1012' })}
               >
                 {status === 'connecting' ? <Loader2 size={17} className="animate-spin" /> : <Bot size={17} />}
               </div>
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <p className="truncate text-[13px] font-bold" style={{ color: TEXT }}>Canlı MOREN AI</p>
+                <p className="truncate text-[13px] font-bold" style={portalStyle({ color: TEXT })}>Canlı MOREN AI</p>
                 <span
                   className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
-                  style={{
+                  style={portalStyle({
                     background: status === 'error' ? 'rgba(248,113,113,0.14)' : active ? 'rgba(34,197,94,0.12)' : 'rgba(212,184,118,0.14)',
                     color: status === 'error' ? '#fca5a5' : active ? '#86efac' : GOLD,
-                  }}
+                  })}
                 >
                   {statusLabel}
                 </span>
               </div>
-              <p className="mt-0.5 truncate text-[11px]" style={{ color: MUTED }}>
+              <p className="mt-0.5 truncate text-[11px]" style={portalStyle({ color: MUTED })}>
                 {voice.koordinator ? 'Muhatap: Koordinatör · ' : ''}{currentRoute.label}
               </p>
             </div>
@@ -516,7 +518,7 @@ export default function GlobalMorenVoice() {
               type="button"
               onClick={() => setExpanded(false)}
               className="flex h-8 w-8 items-center justify-center rounded-lg transition hover:bg-white/[0.06]"
-              style={{ color: MUTED }}
+              style={portalStyle({ color: MUTED })}
               title="Küçült"
             >
               <Minimize2 size={15} />
@@ -528,7 +530,7 @@ export default function GlobalMorenVoice() {
                 setExpanded(false);
               }}
               className="flex h-8 w-8 items-center justify-center rounded-lg transition hover:bg-white/[0.06]"
-              style={{ color: MUTED }}
+              style={portalStyle({ color: MUTED })}
               title="Kapat"
             >
               <X size={15} />
@@ -538,25 +540,25 @@ export default function GlobalMorenVoice() {
           <div className="space-y-3 px-4 py-4">
             <div
               className="flex items-center gap-3 rounded-lg border px-3 py-2.5"
-              style={{
+              style={portalStyle({
                 borderColor: voice.longWait ? 'rgba(212,184,118,0.34)' : LINE,
                 background: voice.longWait
                   ? 'linear-gradient(135deg, rgba(212,184,118,0.12), rgba(255,255,255,0.02))'
                   : 'linear-gradient(135deg, rgba(240,154,168,0.07), rgba(255,255,255,0.02))',
-              }}
+              })}
             >
               <div
                 className="flex h-8 w-8 items-center justify-center rounded-full"
-                style={{
+                style={portalStyle({
                   background: !active || status === 'error' ? 'rgba(212,184,118,0.13)' : 'rgba(34,197,94,0.14)',
                   color: !active || status === 'error' ? GOLD : '#86efac',
-                }}
+                })}
               >
                 {status === 'speaking' ? <Sparkles size={15} /> : status === 'thinking' ? <Loader2 size={15} className="animate-spin" /> : <Mic size={15} />}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-[12.5px] font-semibold" style={{ color: TEXT }}>{voice.lastAction}</p>
-                <p className="truncate text-[10.5px]" style={{ color: MUTED }}>
+                <p className="truncate text-[12.5px] font-semibold" style={portalStyle({ color: TEXT })}>{voice.lastAction}</p>
+                <p className="truncate text-[10.5px]" style={portalStyle({ color: MUTED })}>
                   {status === 'thinking'
                     ? voice.longWait
                       ? `${thinkingSeconds} sn — iş uzun sürüyor; sonuç mesajlaşmaya da düşer.`
@@ -569,15 +571,15 @@ export default function GlobalMorenVoice() {
             {active ? (
               <div
                 className="rounded-lg border px-3 py-2"
-                style={{
+                style={portalStyle({
                   borderColor: voice.micSessiz ? 'rgba(248,113,113,0.34)' : LINE,
                   background: voice.micSessiz
                     ? 'linear-gradient(135deg, rgba(248,113,113,0.10), rgba(255,255,255,0.02))'
                     : 'linear-gradient(180deg, rgba(255,255,255,0.03), transparent)',
-                }}
+                })}
               >
                 <div className="flex items-center gap-2">
-                  <span className="text-[10.5px] font-semibold" style={{ color: voice.micSessiz ? '#fca5a5' : MUTED }}>
+                  <span className="text-[10.5px] font-semibold" style={portalStyle({ color: voice.micSessiz ? '#fca5a5' : MUTED })}>
                     Mikrofon
                   </span>
                   {/* Seviye çubukları — kullanıcı "duyuyor mu?" diye bakınca cevabı burada görür */}
@@ -589,7 +591,7 @@ export default function GlobalMorenVoice() {
                         <span
                           key={i}
                           className="flex-1 rounded-sm transition-all duration-150"
-                          style={{
+                          style={portalStyle({
                             height: `${35 + i * 4.5}%`,
                             background: dolu
                               ? i > 10
@@ -598,17 +600,17 @@ export default function GlobalMorenVoice() {
                                   ? GOLD
                                   : '#4ade80'
                               : 'rgba(255,255,255,0.08)',
-                          }}
+                          })}
                         />
                       );
                     })}
                   </div>
-                  <span className="w-8 text-right text-[10px] tabular-nums" style={{ color: MUTED }}>
+                  <span className="w-8 text-right text-[10px] tabular-nums" style={portalStyle({ color: MUTED })}>
                     {Math.round(voice.micLevel * 100)}
                   </span>
                 </div>
                 {voice.micSessiz ? (
-                  <p className="mt-1.5 text-[11px] leading-snug" style={{ color: '#fca5a5' }}>
+                  <p className="mt-1.5 text-[11px] leading-snug" style={portalStyle({ color: '#fca5a5' })}>
                     Mikrofondan ses gelmiyor. Klavyedeki mikrofon kapatma tuşunu, Windows Ayarlar → Ses → Giriş seviyesini ve mikrofonu
                     kullanan başka bir uygulamayı (arama vb.) kontrol edin.
                   </p>
@@ -617,7 +619,7 @@ export default function GlobalMorenVoice() {
             ) : null}
 
             {voice.errorText ? (
-              <p className="rounded-lg border px-3 py-2 text-[11.5px]" style={{ borderColor: 'rgba(248,113,113,0.28)', color: '#fca5a5', background: 'rgba(248,113,113,0.08)' }}>
+              <p className="rounded-lg border px-3 py-2 text-[11.5px]" style={portalStyle({ borderColor: 'rgba(248,113,113,0.28)', color: '#fca5a5', background: 'rgba(248,113,113,0.08)' })}>
                 {voice.errorText}
               </p>
             ) : null}
@@ -625,20 +627,20 @@ export default function GlobalMorenVoice() {
             {voice.lastAnswer ? (
               <p
                 className="rounded-lg border px-3 py-2 text-[11.5px] leading-relaxed"
-                style={{ borderColor: 'rgba(240,154,168,0.18)', color: 'rgba(250,250,249,0.82)', background: 'rgba(240,154,168,0.06)', whiteSpace: 'pre-wrap' }}
+                style={portalStyle({ borderColor: 'rgba(240,154,168,0.18)', color: 'rgba(250,250,249,0.82)', background: 'rgba(240,154,168,0.06)', whiteSpace: 'pre-wrap' })}
               >
                 {voice.lastAnswer.slice(0, 420)}
               </p>
             ) : null}
 
             <div className="grid grid-cols-2 gap-2 text-[11px]">
-              <div className="rounded-lg border px-3 py-2" style={{ borderColor: LINE, color: MUTED, background: 'linear-gradient(180deg, rgba(255,255,255,0.03), transparent)' }}>
+              <div className="rounded-lg border px-3 py-2" style={portalStyle({ borderColor: LINE, color: MUTED, background: 'linear-gradient(180deg, rgba(255,255,255,0.03), transparent)' })}>
                 <p>Oturum maliyeti</p>
-                <p className="mt-1 text-[13px] font-semibold tabular-nums" style={{ color: TEXT }}>${voice.sessionCost.toFixed(4)}</p>
+                <p className="mt-1 text-[13px] font-semibold tabular-nums" style={portalStyle({ color: TEXT })}>${voice.sessionCost.toFixed(4)}</p>
               </div>
-              <div className="rounded-lg border px-3 py-2" style={{ borderColor: LINE, color: MUTED, background: 'linear-gradient(180deg, rgba(255,255,255,0.03), transparent)' }}>
+              <div className="rounded-lg border px-3 py-2" style={portalStyle({ borderColor: LINE, color: MUTED, background: 'linear-gradient(180deg, rgba(255,255,255,0.03), transparent)' })}>
                 <p>Canlı token</p>
-                <p className="mt-1 text-[13px] font-semibold tabular-nums" style={{ color: TEXT }}>{voice.sessionTokens}</p>
+                <p className="mt-1 text-[13px] font-semibold tabular-nums" style={portalStyle({ color: TEXT })}>{voice.sessionTokens}</p>
               </div>
             </div>
 
@@ -647,7 +649,7 @@ export default function GlobalMorenVoice() {
                 type="button"
                 onClick={openMessaging}
                 className="flex h-10 items-center justify-center gap-2 rounded-lg border px-3 text-[12.5px] font-semibold transition hover:bg-white/[0.06]"
-                style={{ borderColor: 'rgba(212,184,118,0.26)', color: GOLD, background: 'rgba(212,184,118,0.08)' }}
+                style={portalStyle({ borderColor: 'rgba(212,184,118,0.26)', color: GOLD, background: 'rgba(212,184,118,0.08)' })}
               >
                 <MessageSquareText size={15} />
                 Mesajlaşma
@@ -657,11 +659,11 @@ export default function GlobalMorenVoice() {
                 onClick={toggleVoice}
                 disabled={status === 'connecting'}
                 className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg text-[12.5px] font-semibold transition disabled:opacity-50"
-                style={{
+                style={portalStyle({
                   background: active ? 'rgba(248,113,113,0.16)' : `linear-gradient(135deg, ${ROSE}, #9f5260)`,
                   border: active ? '1px solid rgba(248,113,113,0.34)' : '1px solid rgba(255,255,255,0.12)',
                   color: active ? '#fca5a5' : '#160d10',
-                }}
+                })}
               >
                 {status === 'connecting'
                   ? <Loader2 size={15} className="animate-spin" />
@@ -678,12 +680,12 @@ export default function GlobalMorenVoice() {
         <div
           ref={chatPanelRef}
           className="fixed z-[86] flex max-h-[calc(100vh-48px)] w-[380px] max-w-[calc(100vw-32px)] flex-col overflow-hidden rounded-xl border shadow-2xl"
-          style={{
+          style={portalStyle({
             ...(chatPanelPosition ? { left: chatPanelPosition.x, top: chatPanelPosition.y } : { right: 24, top: 64 }),
             background: 'linear-gradient(180deg, rgba(18,14,12,0.99), rgba(9,8,6,0.99))',
             borderColor: 'rgba(212,184,118,0.28)',
             boxShadow: '0 24px 75px rgba(0,0,0,0.52), 0 0 36px rgba(212,184,118,0.12)',
-          }}
+          })}
         >
           <div
             className="flex items-center gap-3 border-b px-4 py-3"
@@ -691,21 +693,21 @@ export default function GlobalMorenVoice() {
             onPointerMove={handleChatPanelPointerMove}
             onPointerUp={handleChatPanelPointerUp}
             onPointerCancel={handleChatPanelPointerUp}
-            style={{ borderColor: LINE, cursor: 'move', touchAction: 'none' }}
+            style={portalStyle({ borderColor: LINE, cursor: 'move', touchAction: 'none' })}
           >
             <div
               className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
-              style={{
+              style={portalStyle({
                 background: 'rgba(212,184,118,0.12)',
                 border: '1px solid rgba(212,184,118,0.28)',
                 color: GOLD,
-              }}
+              })}
             >
               <MessageSquareText size={18} />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[13px] font-bold" style={{ color: TEXT }}>MOREN AI Mesajlaşma</p>
-              <p className="mt-0.5 truncate text-[11px]" style={{ color: MUTED }}>
+              <p className="truncate text-[13px] font-bold" style={portalStyle({ color: TEXT })}>MOREN AI Mesajlaşma</p>
+              <p className="mt-0.5 truncate text-[11px]" style={portalStyle({ color: MUTED })}>
                 {miniConversation?.title || currentRoute.label}
               </p>
             </div>
@@ -713,7 +715,7 @@ export default function GlobalMorenVoice() {
               type="button"
               onClick={() => setChatOpen(false)}
               className="flex h-8 w-8 items-center justify-center rounded-lg transition hover:bg-white/[0.06]"
-              style={{ color: MUTED }}
+              style={portalStyle({ color: MUTED })}
               title="Kapat"
             >
               <X size={15} />
@@ -722,12 +724,12 @@ export default function GlobalMorenVoice() {
 
           <div className="min-h-[260px] flex-1 space-y-3 overflow-y-auto px-4 py-4">
             {miniConversationLoading ? (
-              <div className="flex items-center gap-2 text-[12px]" style={{ color: GOLD }}>
+              <div className="flex items-center gap-2 text-[12px]" style={portalStyle({ color: GOLD })}>
                 <Loader2 size={14} className="animate-spin" />
                 Konuşma yükleniyor...
               </div>
             ) : miniMessages.length === 0 && !localChatNotice ? (
-              <div className="rounded-lg border px-3 py-3 text-[12.5px] leading-relaxed" style={{ borderColor: LINE, color: MUTED, background: 'rgba(255,255,255,0.025)' }}>
+              <div className="rounded-lg border px-3 py-3 text-[12.5px] leading-relaxed" style={portalStyle({ borderColor: LINE, color: MUTED, background: 'rgba(255,255,255,0.025)' })}>
                 Buradan modül değiştirmeden MOREN AI ile yazışabilirsiniz.
               </div>
             ) : null}
@@ -738,12 +740,12 @@ export default function GlobalMorenVoice() {
                 <div key={message.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
                   <div
                     className="max-w-[82%] rounded-lg border px-3 py-2 text-[12.5px] leading-relaxed"
-                    style={{
+                    style={portalStyle({
                       borderColor: isUser ? 'rgba(212,184,118,0.32)' : LINE,
                       background: isUser ? 'rgba(212,184,118,0.13)' : 'rgba(255,255,255,0.035)',
                       color: TEXT,
                       whiteSpace: 'pre-wrap',
-                    }}
+                    })}
                   >
                     {message.content}
                   </div>
@@ -752,21 +754,21 @@ export default function GlobalMorenVoice() {
             })}
 
             {localChatNotice ? (
-              <div className="rounded-lg border px-3 py-2 text-[12.5px]" style={{ borderColor: 'rgba(212,184,118,0.28)', color: GOLD, background: 'rgba(212,184,118,0.08)' }}>
+              <div className="rounded-lg border px-3 py-2 text-[12.5px]" style={portalStyle({ borderColor: 'rgba(212,184,118,0.28)', color: GOLD, background: 'rgba(212,184,118,0.08)' })}>
                 {localChatNotice}
               </div>
             ) : null}
 
             {sendMiniMessage.isPending ? (
-              <div className="flex items-center gap-2 text-[12px]" style={{ color: GOLD }}>
+              <div className="flex items-center gap-2 text-[12px]" style={portalStyle({ color: GOLD })}>
                 <Loader2 size={14} className="animate-spin" />
                 Yanıt hazırlanıyor...
               </div>
             ) : null}
           </div>
 
-          <div className="border-t p-3" style={{ borderColor: LINE }}>
-            <div className="flex items-end gap-2 rounded-lg border bg-black/20 p-2" style={{ borderColor: LINE }}>
+          <div className="border-t p-3" style={portalStyle({ borderColor: LINE })}>
+            <div className="flex items-end gap-2 rounded-lg border bg-black/20 p-2" style={portalStyle({ borderColor: LINE })}>
               <textarea
                 value={chatInput}
                 onChange={(event) => setChatInput(event.target.value)}
@@ -779,14 +781,14 @@ export default function GlobalMorenVoice() {
                 rows={1}
                 placeholder="MOREN AI'a yaz..."
                 className="min-h-[40px] flex-1 resize-none border-0 bg-transparent px-2 py-2 text-sm outline-none"
-                style={{ color: TEXT, caretColor: GOLD, boxShadow: 'none' }}
+                style={portalStyle({ color: TEXT, caretColor: GOLD, boxShadow: 'none' })}
               />
               <button
                 type="button"
                 onClick={handleMiniChatSend}
                 disabled={!chatInput.trim() || sendMiniMessage.isPending}
                 className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg font-semibold transition disabled:opacity-40"
-                style={{ background: `linear-gradient(135deg, ${GOLD}, #8b7649)`, color: '#0f0d0b' }}
+                style={portalStyle({ background: `linear-gradient(135deg, ${GOLD}, #8b7649)`, color: '#0f0d0b' })}
                 title="Gönder"
               >
                 {sendMiniMessage.isPending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}

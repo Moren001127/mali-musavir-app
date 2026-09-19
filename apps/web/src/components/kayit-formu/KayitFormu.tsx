@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 import React from 'react';
 import { Loader2, Save } from 'lucide-react';
 
@@ -37,16 +39,16 @@ export const METIN_CLS = `${ALAN_TEMEL} min-h-[76px] resize-y px-3.5 py-2.5 lead
 
 export function AlanGirdi({ className = '', mono: _mono, style, ...props }: React.InputHTMLAttributes<HTMLInputElement> & { mono?: boolean }) {
   // `mono` geriye uyumluluk için kabul edilir, uygulanmaz (rakamlar normal yazı tipinde, tabular-nums).
-  return <input {...props} className={`${GIRDI_CLS} ${className}`} style={{ colorScheme: 'dark', ...(style || {}) }} />;
+  return <input {...props} className={`${GIRDI_CLS} ${className}`} style={portalStyle({ colorScheme: 'dark', ...(style || {}) })} />;
 }
 
 export function AlanSecim({ className = '', style, children, ...props }: React.SelectHTMLAttributes<HTMLSelectElement>) {
   return (
     <span className="relative block">
-      <select {...props} className={`${SECIM_CLS} appearance-none ${className}`} style={{ colorScheme: 'dark', ...(style || {}) }}>
+      <select {...props} className={`${SECIM_CLS} appearance-none ${className}`} style={portalStyle({ colorScheme: 'dark', ...(style || {}) })}>
         {children}
       </select>
-      <svg aria-hidden="true" viewBox="0 0 16 16" className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2" style={{ color: MUTED }}>
+      <svg aria-hidden="true" viewBox="0 0 16 16" className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2" style={portalStyle({ color: MUTED })}>
         <path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     </span>
@@ -54,13 +56,13 @@ export function AlanSecim({ className = '', style, children, ...props }: React.S
 }
 
 export function AlanMetin({ className = '', style, ...props }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea {...props} className={`${METIN_CLS} ${className}`} style={{ colorScheme: 'dark', ...(style || {}) }} />;
+  return <textarea {...props} className={`${METIN_CLS} ${className}`} style={portalStyle({ colorScheme: 'dark', ...(style || {}) })} />;
 }
 
 /** Alan içinde sağa yaslı kısa ek (ör. "gün"). */
 export function AlanEk({ children }: { children: React.ReactNode }) {
   return (
-    <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[12.5px]" style={{ color: FAINT }}>
+    <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[12.5px]" style={portalStyle({ color: FAINT })}>
       {children}
     </span>
   );
@@ -87,9 +89,9 @@ export function FormGrup({
   const sutunCls = sutun === 1 ? 'grid-cols-1' : sutun === 3 ? 'grid-cols-1 md:grid-cols-2 xl:grid-cols-3' : 'grid-cols-1 md:grid-cols-2';
   return (
     <section className={className}>
-      <header className="mb-3 flex min-h-[26px] items-center gap-3 border-b pb-2" style={{ borderColor: LINE }}>
-        <span className="text-[11.5px] font-bold uppercase tracking-[0.10em]" style={{ color: 'rgba(250,250,249,0.50)' }}>{baslik}</span>
-        {aciklama && <span className="hidden truncate text-[12px] sm:inline" style={{ color: FAINT }}>{aciklama}</span>}
+      <header className="mb-3 flex min-h-[26px] items-center gap-3 border-b pb-2" style={portalStyle({ borderColor: LINE })}>
+        <span className="text-[11.5px] font-bold uppercase tracking-[0.10em]" style={portalStyle({ color: 'rgba(250,250,249,0.50)' })}>{baslik}</span>
+        {aciklama && <span className="hidden truncate text-[12px] sm:inline" style={portalStyle({ color: FAINT })}>{aciklama}</span>}
         {sag && <span className="ml-auto flex items-center gap-2">{sag}</span>}
       </header>
       <div className={`grid gap-x-10 gap-y-3 ${sutunCls}`}>{children}</div>
@@ -120,18 +122,18 @@ export function Satir({
 }) {
   const Etiket = htmlFor ? 'label' : 'div';
   return (
-    <div className={`grid grid-cols-[160px_minmax(0,1fr)] gap-x-4 ${genis ? 'md:col-span-full' : ''}`} style={{ alignItems: hizala === 'ust' ? 'start' : 'center' }}>
+    <div className={`grid grid-cols-[160px_minmax(0,1fr)] gap-x-4 ${genis ? 'md:col-span-full' : ''}`} style={portalStyle({ alignItems: hizala === 'ust' ? 'start' : 'center' })}>
       <Etiket
         {...(htmlFor ? { htmlFor } : {})}
         className={`text-[13px] font-medium leading-[18px] ${hizala === 'ust' ? 'pt-2.5' : ''}`}
-        style={{ color: 'rgba(250,250,249,0.74)' }}
+        style={portalStyle({ color: 'rgba(250,250,249,0.74)' })}
       >
         {etiket}
-        {zorunlu && <span style={{ color: AMBER }}> *</span>}
+        {zorunlu && <span style={portalStyle({ color: AMBER })}> *</span>}
       </Etiket>
       <div className="min-w-0">
         {children}
-        {ipucu && <div className="mt-1 text-[12px] leading-4" style={{ color: FAINT }}>{ipucu}</div>}
+        {ipucu && <div className="mt-1 text-[12px] leading-4" style={portalStyle({ color: FAINT })}>{ipucu}</div>}
       </div>
     </div>
   );
@@ -139,7 +141,7 @@ export function Satir({
 
 /** Alan + sağında ikinci alan (telefon | ad gibi). */
 export function AlanCifti({ children, oran = '1fr 0.9fr' }: { children: React.ReactNode; oran?: string }) {
-  return <div className="grid gap-2" style={{ gridTemplateColumns: oran }}>{children}</div>;
+  return <div className="grid gap-2" style={portalStyle({ gridTemplateColumns: oran })}>{children}</div>;
 }
 
 // ── Şalter satırı ──
@@ -162,8 +164,8 @@ export function Anahtar({
     <label className={`flex min-h-[38px] items-center gap-2.5 ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
       <input type="checkbox" className="sr-only" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
       <Salter checked={checked} disabled={disabled} />
-      <span className="text-[13.5px] font-medium" style={{ color: checked ? GREEN : MUTED }}>{checked ? acikYazi : kapaliYazi}</span>
-      {aciklama && <span className="text-[12px]" style={{ color: FAINT }}>· {aciklama}</span>}
+      <span className="text-[13.5px] font-medium" style={portalStyle({ color: checked ? GREEN : MUTED })}>{checked ? acikYazi : kapaliYazi}</span>
+      {aciklama && <span className="text-[12px]" style={portalStyle({ color: FAINT })}>· {aciklama}</span>}
     </label>
   );
 }
@@ -174,11 +176,11 @@ export function Salter({ checked, disabled }: { checked: boolean; disabled?: boo
     <span
       aria-hidden="true"
       className="relative inline-block h-[22px] w-[38px] shrink-0 rounded-full transition-colors duration-150"
-      style={{ background: checked ? GREEN : 'rgba(255,255,255,0.16)', opacity: disabled ? 0.4 : 1, boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.35)' }}
+      style={portalStyle({ background: checked ? GREEN : 'rgba(255,255,255,0.16)', opacity: disabled ? 0.4 : 1, boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.35)' })}
     >
       <span
         className="absolute top-[2px] h-[18px] w-[18px] rounded-full transition-[left] duration-150"
-        style={{ left: checked ? 18 : 2, background: '#fafaf9', boxShadow: '0 1px 2px rgba(0,0,0,0.4)' }}
+        style={portalStyle({ left: checked ? 18 : 2, background: '#fafaf9', boxShadow: '0 1px 2px rgba(0,0,0,0.4)' })}
       />
     </span>
   );
@@ -201,7 +203,7 @@ export function Secici({
   const px = boy === 'kucuk' ? 'px-3' : 'px-4';
   const fs = boy === 'kucuk' ? 'text-[12.5px]' : 'text-[13.5px]';
   return (
-    <div className={`inline-flex ${h} max-w-full overflow-x-auto p-[3px] [scrollbar-width:none]`} style={{ border: `1px solid ${LINE}`, background: ALAN_ZEMIN, borderRadius: R }}>
+    <div className={`inline-flex ${h} max-w-full overflow-x-auto p-[3px] [scrollbar-width:none]`} style={portalStyle({ border: `1px solid ${LINE}`, background: ALAN_ZEMIN, borderRadius: R })}>
       {options.map((o) => {
         const on = value === o.value;
         const seciliStil = o.pasif
@@ -213,7 +215,7 @@ export function Secici({
             type="button"
             onClick={() => onChange(o.value)}
             className={`whitespace-nowrap rounded-[6px] ${px} ${fs} transition-colors duration-150 hover:text-white`}
-            style={on ? seciliStil : { color: MUTED, background: 'transparent', fontWeight: 500 }}
+            style={portalStyle(on ? seciliStil : { color: MUTED, background: 'transparent', fontWeight: 500 })}
           >
             {o.label}
           </button>
@@ -234,7 +236,7 @@ export function DurumCipi({ ton, children }: { ton: 'yesil' | 'amber' | 'mavi' |
           ? { background: 'rgba(79,134,201,0.12)', border: '1px solid rgba(79,134,201,0.32)', color: STEEL_BR }
           : { background: 'rgba(255,255,255,0.03)', border: `1px solid ${LINE}`, color: MUTED };
   return (
-    <span className="inline-flex h-6 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 text-[11.5px] font-medium" style={st}>
+    <span className="inline-flex h-6 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 text-[11.5px] font-medium" style={portalStyle(st)}>
       {children}
     </span>
   );
@@ -243,8 +245,8 @@ export function DurumCipi({ ton, children }: { ton: 'yesil' | 'amber' | 'mavi' |
 /** Küçük durum noktası + yazı (tablo hücreleri için). */
 export function DurumNoktasi({ acik, acikYazi = 'Takipte', kapaliYazi = 'Takip dışı' }: { acik: boolean; acikYazi?: string; kapaliYazi?: string }) {
   return (
-    <span className="inline-flex items-center gap-2 whitespace-nowrap text-[13px] font-medium" style={{ color: acik ? GREEN : FAINT }}>
-      <span className="h-2 w-2 rounded-full" style={{ background: acik ? GREEN : 'rgba(255,255,255,0.18)' }} />
+    <span className="inline-flex items-center gap-2 whitespace-nowrap text-[13px] font-medium" style={portalStyle({ color: acik ? GREEN : FAINT })}>
+      <span className="h-2 w-2 rounded-full" style={portalStyle({ background: acik ? GREEN : 'rgba(255,255,255,0.18)' })} />
       {acik ? acikYazi : kapaliYazi}
     </span>
   );
@@ -268,8 +270,8 @@ export function FormAltBilgi({
   vurgulu?: boolean;
 }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4" style={{ borderColor: HAIR }}>
-      <span className="text-[12px]" style={{ color: FAINT }}>
+    <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4" style={portalStyle({ borderColor: HAIR })}>
+      <span className="text-[12px]" style={portalStyle({ color: FAINT })}>
         {not ?? 'Bu bölümdeki değişiklikler üstteki Kaydet ile de kaydedilir.'}
       </span>
       <button
@@ -278,9 +280,9 @@ export function FormAltBilgi({
         disabled={saving}
         className="inline-flex h-[38px] items-center gap-2 px-4 text-[13.5px] font-semibold transition hover:brightness-110 disabled:opacity-50"
         style={
-          vurgulu
+          portalStyle(vurgulu
             ? { background: STEEL, color: '#fff', borderRadius: R, boxShadow: '0 4px 14px rgba(79,134,201,0.25)' }
-            : { background: 'rgba(255,255,255,0.05)', border: `1px solid ${LINE}`, color: TEXT, borderRadius: R }
+            : { background: 'rgba(255,255,255,0.05)', border: `1px solid ${LINE}`, color: TEXT, borderRadius: R })
         }
       >
         {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}

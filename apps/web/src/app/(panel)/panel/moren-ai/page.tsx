@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -526,45 +528,45 @@ export default function MorenAIPage() {
       {/* ── Sekreter başlığı: Elif — gerçek biriyle yazışıyormuş havası ── */}
       <header
         className="relative shrink-0 overflow-hidden rounded-2xl border px-5 py-3.5"
-        style={{
+        style={portalStyle({
           borderColor: LINE,
           background:
             'radial-gradient(120% 140% at 0% 0%, rgba(240,154,168,0.16), transparent 46%), radial-gradient(120% 140% at 100% 0%, rgba(212,184,118,0.14), transparent 46%), #0f0d0b',
-        }}
+        })}
       >
-        <div className="absolute inset-x-0 top-0 h-1" style={{ background: 'linear-gradient(90deg,#f09aa8,#e7b6a0,#d4b876,#c8a25e,#f09aa8)' }} />
+        <div className="absolute inset-x-0 top-0 h-1" style={portalStyle({ background: 'linear-gradient(90deg,#f09aa8,#e7b6a0,#d4b876,#c8a25e,#f09aa8)' })} />
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <span className="relative grid h-12 w-12 place-items-center rounded-full text-[19px] font-bold" style={{ background: 'linear-gradient(135deg,#f09aa8,#d4b876)', boxShadow: '0 6px 18px rgba(240,154,168,0.34)', color: '#1a1410', fontFamily: 'Fraunces, serif' }}>
+            <span className="relative grid h-12 w-12 place-items-center rounded-full text-[19px] font-bold" style={portalStyle({ background: 'linear-gradient(135deg,#f09aa8,#d4b876)', boxShadow: '0 6px 18px rgba(240,154,168,0.34)', color: '#1a1410', fontFamily: 'Fraunces, serif' })}>
               E
               <span
                 className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2"
-                style={{
+                style={portalStyle({
                   borderColor: '#0f0d0b',
                   background: sekreterMesgul ? '#fbbf24' : '#4ade80',
                   boxShadow: `0 0 8px ${sekreterMesgul ? 'rgba(251,191,36,0.8)' : 'rgba(74,222,128,0.8)'}`,
-                }}
+                })}
               />
             </span>
             <div>
-              <h1 className="text-[21px] font-bold leading-tight" style={{ color: TEXT, fontFamily: 'Fraunces, serif' }}>Elif</h1>
-              <p className="flex items-center gap-1.5 text-[12px]" style={{ color: sekreterMesgul ? GOLD : MUTED }}>
+              <h1 className="text-[21px] font-bold leading-tight" style={portalStyle({ color: TEXT, fontFamily: 'Fraunces, serif' })}>Elif</h1>
+              <p className="flex items-center gap-1.5 text-[12px]" style={portalStyle({ color: sekreterMesgul ? GOLD : MUTED })}>
                 {sekreterDurum}
-                <span style={{ color: 'rgba(250,250,249,0.35)' }}>· MOREN AI Ofis Sekreteri</span>
+                <span style={portalStyle({ color: 'rgba(250,250,249,0.35)' })}>· MOREN AI Ofis Sekreteri</span>
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             {(messages.length > 0 || voice.sessionCost > 0) && (
-              <div className="hidden items-center gap-1.5 rounded-xl border px-3 py-2 text-[12px] sm:flex" style={{ borderColor: LINE, color: MUTED }}>
-                Oturum <b className="tabular-nums" style={{ color: TEXT }}>${visibleSessionCost.toFixed(4)}</b>
+              <div className="hidden items-center gap-1.5 rounded-xl border px-3 py-2 text-[12px] sm:flex" style={portalStyle({ borderColor: LINE, color: MUTED })}>
+                Oturum <b className="tabular-nums" style={portalStyle({ color: TEXT })}>${visibleSessionCost.toFixed(4)}</b>
               </div>
             )}
             <button
               type="button"
               onClick={() => setTtsEnabled((value) => !value)}
               className="flex h-10 w-10 items-center justify-center rounded-xl border transition hover:bg-white/[0.06]"
-              style={{ borderColor: ttsEnabled ? LINE_GOLD : LINE, color: ttsEnabled ? GOLD : MUTED }}
+              style={portalStyle({ borderColor: ttsEnabled ? LINE_GOLD : LINE, color: ttsEnabled ? GOLD : MUTED })}
               title={ttsEnabled ? 'Sesli okuma açık' : 'Sesli okuma kapalı'}
             >
               {ttsEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
@@ -573,7 +575,7 @@ export default function MorenAIPage() {
               type="button"
               onClick={() => setLeftCollapsed((value) => !value)}
               className="hidden h-10 items-center gap-2 rounded-xl border px-3 text-[12.5px] font-semibold transition hover:bg-white/[0.06] lg:flex"
-              style={{ borderColor: leftCollapsed ? LINE : LINE_GOLD, color: leftCollapsed ? MUTED : GOLD }}
+              style={portalStyle({ borderColor: leftCollapsed ? LINE : LINE_GOLD, color: leftCollapsed ? MUTED : GOLD })}
               title="Sohbet panelini gizle/göster"
             >
               <MessageSquare size={15} /> Sohbetler
@@ -582,7 +584,7 @@ export default function MorenAIPage() {
               type="button"
               onClick={() => setQuickMenuOpen((value) => !value)}
               className="flex h-10 items-center gap-2 rounded-xl border px-3 text-[12.5px] font-semibold transition hover:bg-white/[0.06]"
-              style={{ borderColor: quickMenuOpen ? LINE_GOLD : LINE, color: quickMenuOpen ? GOLD : MUTED }}
+              style={portalStyle({ borderColor: quickMenuOpen ? LINE_GOLD : LINE, color: quickMenuOpen ? GOLD : MUTED })}
               title="Hızlı sorular, canlı özet ve hafıza notu"
             >
               <Sparkles size={15} /> Hızlı menü
@@ -595,15 +597,15 @@ export default function MorenAIPage() {
       {quickMenuOpen && (
         <div
           className="absolute right-0 top-[84px] z-40 flex max-h-[72vh] w-[320px] flex-col overflow-hidden rounded-xl border shadow-2xl"
-          style={{ borderColor: LINE_GOLD, background: '#141210' }}
+          style={portalStyle({ borderColor: LINE_GOLD, background: '#141210' })}
         >
-          <div className="flex items-center gap-2 border-b px-4 py-2.5" style={{ borderColor: LINE }}>
-            <Sparkles size={14} style={{ color: GOLD }} />
-            <span className="flex-1 text-[13px] font-semibold" style={{ color: TEXT }}>Hızlı menü</span>
-            <button type="button" onClick={() => refetchBrain()} className="flex h-7 w-7 items-center justify-center rounded-lg border transition hover:bg-white/[0.06]" style={{ borderColor: LINE, color: GOLD }} title="Yenile">
+          <div className="flex items-center gap-2 border-b px-4 py-2.5" style={portalStyle({ borderColor: LINE })}>
+            <Sparkles size={14} style={portalStyle({ color: GOLD })} />
+            <span className="flex-1 text-[13px] font-semibold" style={portalStyle({ color: TEXT })}>Hızlı menü</span>
+            <button type="button" onClick={() => refetchBrain()} className="flex h-7 w-7 items-center justify-center rounded-lg border transition hover:bg-white/[0.06]" style={portalStyle({ borderColor: LINE, color: GOLD })} title="Yenile">
               {brainLoading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
             </button>
-            <button type="button" onClick={() => setQuickMenuOpen(false)} className="flex h-7 w-7 items-center justify-center rounded-lg border transition hover:bg-white/[0.06]" style={{ borderColor: LINE, color: MUTED }} title="Kapat">
+            <button type="button" onClick={() => setQuickMenuOpen(false)} className="flex h-7 w-7 items-center justify-center rounded-lg border transition hover:bg-white/[0.06]" style={portalStyle({ borderColor: LINE, color: MUTED })} title="Kapat">
               ×
             </button>
           </div>
@@ -615,13 +617,13 @@ export default function MorenAIPage() {
                 { label: 'Banka aksiyonu', value: (officeBrain?.briefing?.ozet?.bankaEksik ?? 0) + (officeBrain?.briefing?.ozet?.bankaHesapsiz ?? 0) },
                 { label: 'Cari borçlu', value: officeBrain?.briefing?.ozet?.borcluMukellef ?? 0 },
               ].map((metric) => (
-                <div key={metric.label} className="rounded-lg border px-2.5 py-2" style={{ borderColor: LINE, background: SOFT }}>
-                  <p className="text-[10px]" style={{ color: MUTED }}>{metric.label}</p>
-                  <p className="mt-0.5 text-[18px] font-semibold leading-none tabular-nums" style={{ color: TEXT }}>{metric.value}</p>
+                <div key={metric.label} className="rounded-lg border px-2.5 py-2" style={portalStyle({ borderColor: LINE, background: SOFT })}>
+                  <p className="text-[10px]" style={portalStyle({ color: MUTED })}>{metric.label}</p>
+                  <p className="mt-0.5 text-[18px] font-semibold leading-none tabular-nums" style={portalStyle({ color: TEXT })}>{metric.value}</p>
                 </div>
               ))}
             </div>
-            <p className="mb-1.5 mt-3 text-[10.5px] font-semibold uppercase tracking-[0.12em]" style={{ color: 'rgba(250,250,249,0.42)' }}>Hazır sorular</p>
+            <p className="mb-1.5 mt-3 text-[10.5px] font-semibold uppercase tracking-[0.12em]" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>Hazır sorular</p>
             <div className="space-y-1.5">
               {[
                 'Bugün önce neye bakmalıyım?',
@@ -635,38 +637,38 @@ export default function MorenAIPage() {
                   type="button"
                   onClick={() => { askQuick(quick); setQuickMenuOpen(false); }}
                   className="w-full rounded-lg border px-3 py-2 text-left text-[12px] transition hover:bg-white/[0.05]"
-                  style={{ borderColor: LINE, color: TEXT, background: 'rgba(255,255,255,0.02)' }}
+                  style={portalStyle({ borderColor: LINE, color: TEXT, background: 'rgba(255,255,255,0.02)' })}
                 >
                   {quick}
                 </button>
               ))}
             </div>
-            <p className="mb-1.5 mt-3 text-[10.5px] font-semibold uppercase tracking-[0.12em]" style={{ color: 'rgba(250,250,249,0.42)' }}>Son hafıza</p>
+            <p className="mb-1.5 mt-3 text-[10.5px] font-semibold uppercase tracking-[0.12em]" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>Son hafıza</p>
             <div className="space-y-1.5">
               {(memoryData?.memories || []).slice(0, 3).map((memory: any) => (
-                <div key={memory.id} className="rounded-lg border px-3 py-2" style={{ borderColor: LINE, background: 'rgba(255,255,255,0.02)' }}>
-                  <p className="truncate text-[12px] font-semibold" style={{ color: TEXT }}>{memory.title}</p>
-                  <p className="mt-0.5 line-clamp-2 text-[11px] leading-relaxed" style={{ color: MUTED }}>{memory.content}</p>
+                <div key={memory.id} className="rounded-lg border px-3 py-2" style={portalStyle({ borderColor: LINE, background: 'rgba(255,255,255,0.02)' })}>
+                  <p className="truncate text-[12px] font-semibold" style={portalStyle({ color: TEXT })}>{memory.title}</p>
+                  <p className="mt-0.5 line-clamp-2 text-[11px] leading-relaxed" style={portalStyle({ color: MUTED })}>{memory.content}</p>
                 </div>
               ))}
-              {!(memoryData?.memories || []).length && <p className="text-[12px]" style={{ color: MUTED }}>Henüz kayıtlı not yok.</p>}
+              {!(memoryData?.memories || []).length && <p className="text-[12px]" style={portalStyle({ color: MUTED })}>Henüz kayıtlı not yok.</p>}
             </div>
           </div>
-          <div className="border-t p-3" style={{ borderColor: LINE }}>
+          <div className="border-t p-3" style={portalStyle({ borderColor: LINE })}>
             <div className="flex gap-2">
               <input
                 value={memoryText}
                 onChange={(event) => setMemoryText(event.target.value)}
                 placeholder="Hafızaya kısa not..."
                 className="h-9 min-w-0 flex-1 rounded-lg border px-3 text-[12px]"
-                style={{ background: SOFT, borderColor: LINE, color: TEXT }}
+                style={portalStyle({ background: SOFT, borderColor: LINE, color: TEXT })}
               />
               <button
                 type="button"
                 disabled={!memoryText.trim() || saveMemoryMut.isPending}
                 onClick={() => saveMemoryMut.mutate()}
                 className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition disabled:opacity-40"
-                style={{ borderColor: LINE_GOLD, color: GOLD, background: 'rgba(212,184,118,0.08)' }}
+                style={portalStyle({ borderColor: LINE_GOLD, color: GOLD, background: 'rgba(212,184,118,0.08)' })}
                 title="Kaydet"
               >
                 {saveMemoryMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={15} />}
@@ -679,28 +681,28 @@ export default function MorenAIPage() {
       {/* ── Gövde: sohbet listesi · konuşma · ofis beyni ── */}
       <div className="flex min-h-0 flex-1 gap-3 overflow-hidden">
       {!leftCollapsed && (
-      <aside className="flex w-[260px] shrink-0 flex-col overflow-hidden rounded-lg border bg-[#0f0d0b]/80" style={{ borderColor: LINE }}>
-        <div className="flex items-center gap-3 border-b px-4 py-3" style={{ borderColor: LINE }}>
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg" style={{ background: 'rgba(212,184,118,0.12)', color: GOLD }}>
+      <aside className="flex w-[260px] shrink-0 flex-col overflow-hidden rounded-lg border bg-[#0f0d0b]/80" style={portalStyle({ borderColor: LINE })}>
+        <div className="flex items-center gap-3 border-b px-4 py-3" style={portalStyle({ borderColor: LINE })}>
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg" style={portalStyle({ background: 'rgba(212,184,118,0.12)', color: GOLD })}>
             <Brain size={18} />
           </div>
           <div className="min-w-0 flex-1">
-            <h1 className="text-[15px] font-semibold leading-tight" style={{ color: TEXT }}>Sohbetler</h1>
-            <p className="truncate text-[11px]" style={{ color: MUTED }}>Elif ile geçmiş konuşmalar</p>
+            <h1 className="text-[15px] font-semibold leading-tight" style={portalStyle({ color: TEXT })}>Sohbetler</h1>
+            <p className="truncate text-[11px]" style={portalStyle({ color: MUTED })}>Elif ile geçmiş konuşmalar</p>
           </div>
           <button
             type="button"
             onClick={handleNewChat}
             className="flex h-8 w-8 items-center justify-center rounded-lg border transition hover:bg-white/[0.06]"
-            style={{ borderColor: LINE_GOLD, color: GOLD }}
+            style={portalStyle({ borderColor: LINE_GOLD, color: GOLD })}
             title="Yeni konuşma"
           >
             <Plus size={16} />
           </button>
         </div>
 
-        <div className="relative border-b p-3" style={{ borderColor: LINE }}>
-          <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: 'rgba(250,250,249,0.42)' }}>
+        <div className="relative border-b p-3" style={portalStyle({ borderColor: LINE })}>
+          <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em]" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>
             Mükellef konteksti
           </label>
           <div
@@ -715,7 +717,7 @@ export default function MorenAIPage() {
               type="button"
               onClick={() => setTaxpayerPickerOpen((value) => !value)}
               className="flex h-9 w-full items-center justify-between gap-2 rounded-lg border px-3 text-left text-[12.5px] transition hover:bg-white/[0.06]"
-              style={{ background: SOFT, borderColor: taxpayerPickerOpen ? LINE_GOLD : LINE, color: TEXT }}
+              style={portalStyle({ background: SOFT, borderColor: taxpayerPickerOpen ? LINE_GOLD : LINE, color: TEXT })}
               aria-expanded={taxpayerPickerOpen}
             >
               <span className="min-w-0 truncate">
@@ -724,18 +726,18 @@ export default function MorenAIPage() {
               <ChevronDown
                 size={14}
                 className={`shrink-0 transition ${taxpayerPickerOpen ? 'rotate-180' : ''}`}
-                style={{ color: GOLD }}
+                style={portalStyle({ color: GOLD })}
               />
             </button>
 
             {taxpayerPickerOpen && (
               <div
                 className="absolute left-0 right-0 z-30 mt-2 max-h-[280px] overflow-y-auto rounded-lg border p-1 shadow-2xl"
-                style={{
+                style={portalStyle({
                   background: '#14110e',
                   borderColor: LINE_GOLD,
                   boxShadow: '0 18px 50px rgba(0,0,0,0.45)',
-                }}
+                })}
               >
                 <button
                   type="button"
@@ -744,14 +746,14 @@ export default function MorenAIPage() {
                     setTaxpayerPickerOpen(false);
                   }}
                   className="w-full rounded-md px-3 py-2 text-left text-[12.5px] font-semibold transition hover:bg-white/[0.06]"
-                  style={{
+                  style={portalStyle({
                     color: selectedTaxpayerId ? MUTED : TEXT,
                     background: selectedTaxpayerId ? 'transparent' : 'rgba(212,184,118,0.12)',
-                  }}
+                  })}
                 >
                   Genel ofis sorusu
                 </button>
-                <div className="my-1 border-t" style={{ borderColor: LINE }} />
+                <div className="my-1 border-t" style={portalStyle({ borderColor: LINE })} />
                 {taxpayers.map((taxpayer) => {
                   const active = selectedTaxpayerId === taxpayer.id;
                   return (
@@ -763,10 +765,10 @@ export default function MorenAIPage() {
                         setTaxpayerPickerOpen(false);
                       }}
                       className="w-full rounded-md px-3 py-2 text-left text-[12.5px] transition hover:bg-white/[0.06]"
-                      style={{
+                      style={portalStyle({
                         color: active ? TEXT : 'rgba(250,250,249,0.72)',
                         background: active ? 'rgba(212,184,118,0.12)' : 'transparent',
-                      }}
+                      })}
                     >
                       <span className="block truncate">{taxpayerName(taxpayer)}</span>
                     </button>
@@ -779,7 +781,7 @@ export default function MorenAIPage() {
 
         <div className="flex-1 overflow-y-auto p-2">
           {conversations.length === 0 ? (
-            <div className="px-4 py-10 text-center text-[12px]" style={{ color: MUTED }}>
+            <div className="px-4 py-10 text-center text-[12px]" style={portalStyle({ color: MUTED })}>
               Henüz konuşma yok.
             </div>
           ) : (
@@ -795,16 +797,16 @@ export default function MorenAIPage() {
                       setInput('');
                     }}
                     className="group relative cursor-pointer rounded-lg border px-3 py-2.5 transition"
-                    style={{
+                    style={portalStyle({
                       background: active ? 'rgba(212,184,118,0.11)' : 'transparent',
                       borderColor: active ? LINE_GOLD : 'transparent',
-                    }}
+                    })}
                   >
                     <div className="flex gap-2">
-                      <MessageSquare size={14} className="mt-0.5 shrink-0" style={{ color: active ? GOLD : 'rgba(250,250,249,0.38)' }} />
+                      <MessageSquare size={14} className="mt-0.5 shrink-0" style={portalStyle({ color: active ? GOLD : 'rgba(250,250,249,0.38)' })} />
                       <div className="min-w-0 flex-1 pr-9">
-                        <p className="truncate text-[12.5px] font-semibold" style={{ color: TEXT }}>{conversation.title}</p>
-                        <p className="mt-1 text-[10.5px] tabular-nums" style={{ color: 'rgba(250,250,249,0.38)' }}>
+                        <p className="truncate text-[12.5px] font-semibold" style={portalStyle({ color: TEXT })}>{conversation.title}</p>
+                        <p className="mt-1 text-[10.5px] tabular-nums" style={portalStyle({ color: 'rgba(250,250,249,0.38)' })}>
                           {new Date(conversation.updatedAt).toLocaleDateString('tr-TR')} · ${conversation.totalCostUsd.toFixed(3)}
                         </p>
                       </div>
@@ -819,7 +821,7 @@ export default function MorenAIPage() {
                         className="flex h-6 w-6 items-center justify-center rounded-md hover:bg-white/10"
                         title="Yeniden adlandır"
                       >
-                        <Edit3 size={11} style={{ color: MUTED }} />
+                        <Edit3 size={11} style={portalStyle({ color: MUTED })} />
                       </button>
                       <button
                         type="button"
@@ -830,7 +832,7 @@ export default function MorenAIPage() {
                         className="flex h-6 w-6 items-center justify-center rounded-md hover:bg-red-500/15"
                         title="Sil"
                       >
-                        <Trash2 size={11} style={{ color: '#f87171' }} />
+                        <Trash2 size={11} style={portalStyle({ color: '#f87171' })} />
                       </button>
                     </div>
                   </div>
@@ -846,54 +848,54 @@ export default function MorenAIPage() {
         {/* ── Canlı MOREN AI — kompakt şerit (konuşma öncelikli) ── */}
         <div
           className="relative flex shrink-0 items-center gap-3 overflow-hidden rounded-xl border px-4 py-2.5"
-          style={{
+          style={portalStyle({
             borderColor: voiceActive ? 'rgba(240,154,168,0.5)' : LINE_GOLD,
             background: 'radial-gradient(90% 160% at 10% 0%, rgba(240,154,168,0.12), transparent 60%), #14110e',
             boxShadow: voiceActive ? '0 0 0 1px rgba(240,154,168,0.16)' : 'none',
-          }}
+          })}
         >
           <div className="relative grid h-11 w-11 shrink-0 place-items-center">
             {voiceActive && (
               <>
-                <span className="moren-voice-ring absolute inset-0 rounded-full" style={{ border: '2px solid rgba(240,154,168,0.5)' }} />
-                <span className="moren-voice-ring absolute inset-0 rounded-full" style={{ border: '2px solid rgba(240,154,168,0.5)', animationDelay: '0.8s' }} />
-                <span className="moren-voice-ring absolute inset-0 rounded-full" style={{ border: '2px solid rgba(240,154,168,0.5)', animationDelay: '1.6s' }} />
+                <span className="moren-voice-ring absolute inset-0 rounded-full" style={portalStyle({ border: '2px solid rgba(240,154,168,0.5)' })} />
+                <span className="moren-voice-ring absolute inset-0 rounded-full" style={portalStyle({ border: '2px solid rgba(240,154,168,0.5)', animationDelay: '0.8s' })} />
+                <span className="moren-voice-ring absolute inset-0 rounded-full" style={portalStyle({ border: '2px solid rgba(240,154,168,0.5)', animationDelay: '1.6s' })} />
               </>
             )}
             <div
               className={`grid h-10 w-10 place-items-center rounded-full ${voiceActive ? 'moren-voice-orb-live' : ''}`}
-              style={{ background: 'radial-gradient(circle at 35% 30%, #ffd9e0, #f09aa8 55%, #9f5260)', color: '#1a1012', boxShadow: '0 6px 16px rgba(240,154,168,0.4), inset 0 2px 5px rgba(255,255,255,0.4)' }}
+              style={portalStyle({ background: 'radial-gradient(circle at 35% 30%, #ffd9e0, #f09aa8 55%, #9f5260)', color: '#1a1012', boxShadow: '0 6px 16px rgba(240,154,168,0.4), inset 0 2px 5px rgba(255,255,255,0.4)' })}
             >
               {voice.status === 'connecting' || voice.status === 'thinking' ? <Loader2 size={18} className="animate-spin" /> : voiceStatus === 'speaking' || voice.status === 'speaking' ? <Sparkles size={18} /> : <Mic size={18} />}
             </div>
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <p className="text-[14px] font-bold" style={{ color: TEXT }}>Canlı MOREN AI</p>
+              <p className="text-[14px] font-bold" style={portalStyle({ color: TEXT })}>Canlı MOREN AI</p>
               <span
                 className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10.5px] font-bold"
-                style={{ background: voiceActive ? 'rgba(34,197,94,0.14)' : 'rgba(212,184,118,0.14)', color: voiceActive ? '#86efac' : GOLD }}
+                style={portalStyle({ background: voiceActive ? 'rgba(34,197,94,0.14)' : 'rgba(212,184,118,0.14)', color: voiceActive ? '#86efac' : GOLD })}
               >
-                <span className="h-1.5 w-1.5 rounded-full" style={{ background: 'currentColor' }} />
+                <span className="h-1.5 w-1.5 rounded-full" style={portalStyle({ background: 'currentColor' })} />
                 {voiceLabel}
               </span>
             </div>
             {voiceActive && voice.status === 'thinking' ? (
-              <p className="mt-0.5 truncate text-[11px]" style={{ color: voice.longWait ? GOLD : MUTED }}>
+              <p className="mt-0.5 truncate text-[11px]" style={portalStyle({ color: voice.longWait ? GOLD : MUTED })}>
                 {voice.longWait ? 'Hâlâ çalışıyor — koordinatör işi yürütüyor; sonuç mesajlaşmaya da düşer.' : 'Koordinatör veriyi topluyor…'}
               </p>
             ) : voiceActive ? (
-              <div className="mt-1 flex items-end gap-[2px]" style={{ height: 15 }}>
+              <div className="mt-1 flex items-end gap-[2px]" style={portalStyle({ height: 15 })}>
                 {Array.from({ length: 18 }).map((_, index) => (
                   <span
                     key={index}
                     className="moren-voice-bar w-[2.5px] rounded-full"
-                    style={{ background: 'linear-gradient(180deg,#f09aa8,#d4b876)', animationDelay: `${index * 0.05}s` }}
+                    style={portalStyle({ background: 'linear-gradient(180deg,#f09aa8,#d4b876)', animationDelay: `${index * 0.05}s` })}
                   />
                 ))}
               </div>
             ) : (
-              <p className="mt-0.5 truncate text-[11px]" style={{ color: MUTED }}>
+              <p className="mt-0.5 truncate text-[11px]" style={portalStyle({ color: MUTED })}>
                 {voice.errorText
                   ? voice.errorText
                   : 'Gerçek zamanlı sesli asistan — muhatap ekip koordinatörü; sayfa değişse de ses sürer.'}
@@ -902,18 +904,18 @@ export default function MorenAIPage() {
           </div>
           <div className="flex shrink-0 items-center gap-3">
             <div className="hidden text-right sm:block">
-              <p className="text-[9.5px]" style={{ color: 'rgba(250,250,249,0.40)' }}>maliyet · token</p>
-              <p className="text-[12px] font-bold tabular-nums" style={{ color: TEXT }}>${voice.sessionCost.toFixed(4)} · {voice.sessionTokens}</p>
+              <p className="text-[9.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.40)' })}>maliyet · token</p>
+              <p className="text-[12px] font-bold tabular-nums" style={portalStyle({ color: TEXT })}>${voice.sessionCost.toFixed(4)} · {voice.sessionTokens}</p>
             </div>
             <button
               type="button"
               onClick={handleVoiceModeToggle}
               className="flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-[13px] font-bold transition"
-              style={{
+              style={portalStyle({
                 background: voiceActive ? 'rgba(248,113,113,0.16)' : 'linear-gradient(135deg,#f09aa8,#9f5260)',
                 color: voiceActive ? '#fca5a5' : '#160d10',
                 border: voiceActive ? '1px solid rgba(248,113,113,0.34)' : 'none',
-              }}
+              })}
             >
               {voice.status === 'connecting' ? <Loader2 size={16} className="animate-spin" /> : voiceActive ? <MicOff size={16} /> : <Mic size={16} />}
               {voiceActive ? 'Sesi Kapat' : 'Canlı Konuş'}
@@ -922,18 +924,18 @@ export default function MorenAIPage() {
         </div>
 
         {/* ── Konuşma kartı ── */}
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border bg-[#0f0d0b]/80" style={{ borderColor: LINE }}>
-        <div className="flex items-center gap-3 border-b px-4 py-2.5" style={{ borderColor: LINE }}>
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border bg-[#0f0d0b]/80" style={portalStyle({ borderColor: LINE })}>
+        <div className="flex items-center gap-3 border-b px-4 py-2.5" style={portalStyle({ borderColor: LINE })}>
           <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-bold uppercase tracking-[0.14em]" style={{ color: GOLD }}>
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em]" style={portalStyle({ color: GOLD })}>
               {selectedTaxpayer ? taxpayerName(selectedTaxpayer) : 'Genel çalışma'}
             </p>
-            <h2 className="truncate text-[14px] font-semibold" style={{ color: TEXT }}>
+            <h2 className="truncate text-[14px] font-semibold" style={portalStyle({ color: TEXT })}>
               {activeConv?.title || 'Yeni konuşma'}
             </h2>
           </div>
           {messages.length > 0 && (
-            <p className="hidden text-[11px] tabular-nums sm:block" style={{ color: MUTED }}>{messages.length} mesaj</p>
+            <p className="hidden text-[11px] tabular-nums sm:block" style={portalStyle({ color: MUTED })}>{messages.length} mesaj</p>
           )}
         </div>
 
@@ -952,18 +954,18 @@ export default function MorenAIPage() {
               ))}
               {sendMutation.isPending && (
                 <div className="flex items-center gap-2.5">
-                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[13px] font-bold" style={{ background: 'linear-gradient(135deg,#f09aa8,#d4b876)', color: '#1a1410', fontFamily: 'Fraunces, serif' }}>
+                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[13px] font-bold" style={portalStyle({ background: 'linear-gradient(135deg,#f09aa8,#d4b876)', color: '#1a1410', fontFamily: 'Fraunces, serif' })}>
                     E
                   </span>
-                  <div className="flex items-center gap-1 rounded-2xl border px-3.5 py-2.5" style={{ borderColor: LINE, background: SOFT }}>
+                  <div className="flex items-center gap-1 rounded-2xl border px-3.5 py-2.5" style={portalStyle({ borderColor: LINE, background: SOFT })}>
                     {[0, 1, 2].map((i) => (
                       <span
                         key={i}
                         className="h-1.5 w-1.5 animate-bounce rounded-full"
-                        style={{ background: GOLD, animationDelay: `${i * 0.15}s` }}
+                        style={portalStyle({ background: GOLD, animationDelay: `${i * 0.15}s` })}
                       />
                     ))}
-                    <span className="ml-2 text-[11.5px]" style={{ color: MUTED }}>Elif yazıyor…</span>
+                    <span className="ml-2 text-[11.5px]" style={portalStyle({ color: MUTED })}>Elif yazıyor…</span>
                   </div>
                 </div>
               )}
@@ -971,8 +973,8 @@ export default function MorenAIPage() {
           )}
         </div>
 
-        <div className="border-t p-3" style={{ borderColor: LINE }}>
-          <div className="flex items-end gap-2 rounded-lg border bg-black/20 p-2" style={{ borderColor: LINE }}>
+        <div className="border-t p-3" style={portalStyle({ borderColor: LINE })}>
+          <div className="flex items-end gap-2 rounded-lg border bg-black/20 p-2" style={portalStyle({ borderColor: LINE })}>
             <textarea
               ref={inputRef}
               id="moren-ai-chat-input"
@@ -993,18 +995,18 @@ export default function MorenAIPage() {
               disabled={sendMutation.isPending || recorder.recording}
               rows={1}
               className="moren-ai-input min-h-[42px] flex-1 resize-none border-0 bg-transparent px-2 py-2 text-sm outline-none"
-              style={{ color: TEXT, caretColor: GOLD, boxShadow: 'none' }}
+              style={portalStyle({ color: TEXT, caretColor: GOLD, boxShadow: 'none' })}
             />
             <button
               type="button"
               onClick={handleMic}
               disabled={sendMutation.isPending}
               className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border transition disabled:opacity-40"
-              style={{
+              style={portalStyle({
                 background: (recorder.recording || realtimeActive) ? 'rgba(239,68,68,0.18)' : SOFT,
                 borderColor: (recorder.recording || realtimeActive) ? 'rgba(239,68,68,0.45)' : LINE,
                 color: (recorder.recording || realtimeActive) ? '#fca5a5' : GOLD,
-              }}
+              })}
               title={recorder.recording || realtimeActive ? 'Sesi durdur' : 'Mikrofon'}
             >
               {voice.status === 'connecting' ? <Loader2 size={16} className="animate-spin" /> : (recorder.recording || realtimeActive) ? <MicOff size={16} /> : <Mic size={16} />}
@@ -1014,7 +1016,7 @@ export default function MorenAIPage() {
               onClick={handleSend}
               disabled={!input.trim() || sendMutation.isPending}
               className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg font-semibold transition disabled:opacity-40"
-              style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DEEP})`, color: '#0f0d0b' }}
+              style={portalStyle({ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DEEP})`, color: '#0f0d0b' })}
               title="Gönder"
             >
               {sendMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
@@ -1043,13 +1045,13 @@ function EmptyChatState({ askQuick }: { askQuick: (text: string) => void }) {
     <div className="flex h-full flex-col justify-center">
       <div className="mx-auto w-full max-w-2xl">
         <div className="mb-6 flex items-center gap-4">
-          <span className="relative grid h-14 w-14 shrink-0 place-items-center rounded-full text-[22px] font-bold" style={{ background: 'linear-gradient(135deg,#f09aa8,#d4b876)', boxShadow: '0 6px 18px rgba(240,154,168,0.34)', color: '#1a1410', fontFamily: 'Fraunces, serif' }}>
+          <span className="relative grid h-14 w-14 shrink-0 place-items-center rounded-full text-[22px] font-bold" style={portalStyle({ background: 'linear-gradient(135deg,#f09aa8,#d4b876)', boxShadow: '0 6px 18px rgba(240,154,168,0.34)', color: '#1a1410', fontFamily: 'Fraunces, serif' })}>
             E
-            <span className="absolute bottom-0.5 right-0.5 h-3 w-3 rounded-full border-2" style={{ borderColor: '#0f0d0b', background: '#4ade80', boxShadow: '0 0 8px rgba(74,222,128,0.8)' }} />
+            <span className="absolute bottom-0.5 right-0.5 h-3 w-3 rounded-full border-2" style={portalStyle({ borderColor: '#0f0d0b', background: '#4ade80', boxShadow: '0 0 8px rgba(74,222,128,0.8)' })} />
           </span>
           <div>
-            <h3 className="text-[22px] font-semibold" style={{ color: TEXT, fontFamily: 'Fraunces, serif' }}>Merhaba, ben Elif 👋</h3>
-            <p className="mt-1 text-sm" style={{ color: MUTED }}>Ofisin sekreteriyim — mükellef, beyan, evrak, tahsilat… ne lazımsa yazman yeterli.</p>
+            <h3 className="text-[22px] font-semibold" style={portalStyle({ color: TEXT, fontFamily: 'Fraunces, serif' })}>Merhaba, ben Elif 👋</h3>
+            <p className="mt-1 text-sm" style={portalStyle({ color: MUTED })}>Ofisin sekreteriyim — mükellef, beyan, evrak, tahsilat… ne lazımsa yazman yeterli.</p>
           </div>
         </div>
         <div className="grid gap-2 sm:grid-cols-2">
@@ -1059,7 +1061,7 @@ function EmptyChatState({ askQuick }: { askQuick: (text: string) => void }) {
               type="button"
               onClick={() => askQuick(prompt)}
               className="rounded-lg border p-3 text-left text-[12.5px] leading-relaxed transition hover:bg-white/[0.05]"
-              style={{ borderColor: LINE, color: TEXT, background: SOFT }}
+              style={portalStyle({ borderColor: LINE, color: TEXT, background: SOFT })}
             >
               {prompt}
             </button>
@@ -1136,7 +1138,7 @@ function MessageBubble({
       {!isUser && (
         <span
           className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[13px] font-bold"
-          style={{ background: 'linear-gradient(135deg,#f09aa8,#d4b876)', color: '#1a1410', fontFamily: 'Fraunces, serif' }}
+          style={portalStyle({ background: 'linear-gradient(135deg,#f09aa8,#d4b876)', color: '#1a1410', fontFamily: 'Fraunces, serif' })}
           title="Elif — MOREN AI Ofis Sekreteri"
         >
           E
@@ -1144,11 +1146,11 @@ function MessageBubble({
       )}
       <div
         className="max-w-[78%] rounded-lg border px-4 py-3 text-sm"
-        style={{
+        style={portalStyle({
           background: isUser ? 'rgba(212,184,118,0.12)' : 'rgba(255,255,255,0.035)',
           borderColor: isUser ? LINE_GOLD : LINE,
           color: TEXT,
-        }}
+        })}
       >
         <div className="moren-md text-[13px] leading-[1.6]">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
@@ -1161,22 +1163,22 @@ function MessageBubble({
               <div
                 key={`${preview.agent}-${preview.action}-${index}`}
                 className="rounded-lg border p-3"
-                style={{ borderColor: preview.ok ? 'rgba(240,154,168,0.34)' : 'rgba(248,113,113,0.34)', background: preview.ok ? 'rgba(240,154,168,0.08)' : 'rgba(248,113,113,0.08)' }}
+                style={portalStyle({ borderColor: preview.ok ? 'rgba(240,154,168,0.34)' : 'rgba(248,113,113,0.34)', background: preview.ok ? 'rgba(240,154,168,0.08)' : 'rgba(248,113,113,0.08)' })}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-[12px] font-semibold" style={{ color: TEXT }}>Onay bekleyen aksiyon</p>
-                    <p className="mt-1 text-[11px]" style={{ color: MUTED }}>{preview.agent} · {preview.action}</p>
+                    <p className="text-[12px] font-semibold" style={portalStyle({ color: TEXT })}>Onay bekleyen aksiyon</p>
+                    <p className="mt-1 text-[11px]" style={portalStyle({ color: MUTED })}>{preview.agent} · {preview.action}</p>
                   </div>
-                  <span className="rounded-md border px-2 py-1 text-[10px] font-semibold" style={{ borderColor: LINE, color: preview.ok ? GOLD : '#fca5a5' }}>
+                  <span className="rounded-md border px-2 py-1 text-[10px] font-semibold" style={portalStyle({ borderColor: LINE, color: preview.ok ? GOLD : '#fca5a5' })}>
                     {preview.ok ? 'Hazır' : 'Eksik'}
                   </span>
                 </div>
                 {preview.etki ? (
-                  <p className="mt-2 text-[12px] leading-relaxed" style={{ color: TEXT }}>{preview.etki}</p>
+                  <p className="mt-2 text-[12px] leading-relaxed" style={portalStyle({ color: TEXT })}>{preview.etki}</p>
                 ) : null}
                 {Array.isArray(preview.errors) && preview.errors.length > 0 ? (
-                  <ul className="mt-2 space-y-1 text-[11px]" style={{ color: '#fca5a5' }}>
+                  <ul className="mt-2 space-y-1 text-[11px]" style={portalStyle({ color: '#fca5a5' })}>
                     {preview.errors.map((error: string) => <li key={error}>{error}</li>)}
                   </ul>
                 ) : null}
@@ -1185,7 +1187,7 @@ function MessageBubble({
                   disabled={!preview.ok || confirming}
                   onClick={() => onConfirmAction?.(preview)}
                   className="mt-3 inline-flex h-8 items-center gap-2 rounded-lg border px-3 text-[11.5px] font-semibold transition disabled:opacity-45"
-                  style={{ borderColor: LINE_GOLD, color: GOLD, background: 'rgba(212,184,118,0.08)' }}
+                  style={portalStyle({ borderColor: LINE_GOLD, color: GOLD, background: 'rgba(212,184,118,0.08)' })}
                 >
                   {confirming ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
                   Onayla ve kuyruğa al
@@ -1196,7 +1198,7 @@ function MessageBubble({
         ) : null}
 
         {!isUser && (message.inputTokens || message.outputTokens) ? (
-          <div className="mt-2 flex gap-3 border-t pt-2 text-[10px]" style={{ borderColor: LINE, color: 'rgba(250,250,249,0.36)' }}>
+          <div className="mt-2 flex gap-3 border-t pt-2 text-[10px]" style={portalStyle({ borderColor: LINE, color: 'rgba(250,250,249,0.36)' })}>
             <span className="flex items-center gap-1"><DollarSign size={10} />${message.costUsd?.toFixed(4) || '0.0000'}</span>
             <span>{message.inputTokens}+{message.outputTokens} token</span>
           </div>

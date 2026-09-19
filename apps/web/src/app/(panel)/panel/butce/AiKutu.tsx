@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import React, { useState } from 'react';
 import { Sparkles, RefreshCw, Send } from 'lucide-react';
@@ -31,7 +33,7 @@ export default function AiKutu({
     <Kutu
       baslik={
         <span className="flex items-center gap-2">
-          <Sparkles size={14} style={{ color: MOR }} /> {baslik}
+          <Sparkles size={14} style={portalStyle({ color: MOR })} /> {baslik}
         </span>
       }
       aciklama={aciklama}
@@ -49,13 +51,13 @@ export default function AiKutu({
       ) : rapor ? (
         <AiMetin metin={rapor.icerik} soluk={rapor.hata} />
       ) : (
-        <p className="text-[12px]" style={{ color: MUTED }}>
+        <p className="text-[12px]" style={portalStyle({ color: MUTED })}>
           Henüz yorum üretilmedi.
         </p>
       )}
 
       {rapor && !rapor.hata && (
-        <p className="mt-3 text-[10px]" style={{ color: 'rgba(113,113,122,0.8)' }}>
+        <p className="mt-3 text-[10px]" style={portalStyle({ color: 'rgba(113,113,122,0.8)' })}>
           {rapor.model} · {new Date(rapor.createdAt).toLocaleString('tr-TR')}
           {rapor.onbellek ? ' · kayıtlı yorum' : ''}
         </p>

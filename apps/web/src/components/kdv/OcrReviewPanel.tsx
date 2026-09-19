@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -394,32 +396,32 @@ export function OcrReviewPanel({
     <div
       ref={rootRef}
       className="rounded-2xl overflow-hidden scroll-mt-24"
-      style={{
+      style={portalStyle({
         background: 'rgba(245,158,11,0.04)',
         border: '1px solid rgba(245,158,11,0.22)',
-      }}
+      })}
     >
       <div
         className="flex items-center justify-between px-5 py-4 flex-wrap gap-3"
-        style={{ borderBottom: '1px solid rgba(245,158,11,0.15)' }}
+        style={portalStyle({ borderBottom: '1px solid rgba(245,158,11,0.15)' })}
       >
         <div className="flex items-center gap-2.5">
-          <AlertTriangle size={14} style={{ color: '#f59e0b' }} />
+          <AlertTriangle size={14} style={portalStyle({ color: '#f59e0b' })} />
           <div>
-            <h3 className="text-[13.5px] font-semibold" style={{ color: '#fafaf9' }}>
+            <h3 className="text-[13.5px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>
               OCR Teyit Paneli
             </h3>
-            <p className="text-[11px] mt-0.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
+            <p className="text-[11px] mt-0.5" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
               OCR sonuçları tek liste —{' '}
-              <span className="font-semibold" style={{ color: '#22c55e' }}>
+              <span className="font-semibold" style={portalStyle({ color: '#22c55e' })}>
                 {summary.success}
               </span>{' '}
               başarılı ·{' '}
-              <span className="font-semibold" style={{ color: '#f59e0b' }}>
+              <span className="font-semibold" style={portalStyle({ color: '#f59e0b' })}>
                 {summary.needsReview + summary.lowConf + summary.failed}
               </span>{' '}
               teyit bekler ·{' '}
-              <span className="font-semibold" style={{ color: '#22c55e' }}>
+              <span className="font-semibold" style={portalStyle({ color: '#22c55e' })}>
                 {summary.confirmed}
               </span>{' '}
               teyit edildi · {summary.total} toplam
@@ -434,7 +436,7 @@ export function OcrReviewPanel({
             disabled={backfillMut.isPending}
             title="OCR'ın okuyamadığı KDV oranlarını, görseli yeniden okumadan kayıtlı veriden (matrah + metin) doldurur"
             className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[11.5px] font-bold transition disabled:opacity-50"
-            style={{ background: 'rgba(20,184,166,0.14)', color: '#2dd4bf', border: '1px solid rgba(20,184,166,0.4)' }}
+            style={portalStyle({ background: 'rgba(20,184,166,0.14)', color: '#2dd4bf', border: '1px solid rgba(20,184,166,0.4)' })}
           >
             {backfillMut.isPending ? '…' : '%'} Oranları Tamamla
           </button>
@@ -502,7 +504,7 @@ export function OcrReviewPanel({
             active={filter === 'all'}
             onClick={() => { setFilter('all'); setActiveId(null); }}
           />
-          <div className="text-[11px] font-bold uppercase tracking-wider ml-1" style={{ color: '#f59e0b' }}>
+          <div className="text-[11px] font-bold uppercase tracking-wider ml-1" style={portalStyle({ color: '#f59e0b' })}>
             Eşik %{Math.round(THRESHOLD * 100)}
           </div>
         </div>
@@ -511,14 +513,14 @@ export function OcrReviewPanel({
       {pending.length === 0 ? (
         <div
           className="flex items-center justify-center gap-3 py-10 text-[13px]"
-          style={{
+          style={portalStyle({
             color:
               summary.processing > 0
                 ? '#60a5fa'
                 : filter === 'needsReview'
                   ? '#22c55e'
                   : 'rgba(250,250,249,0.55)',
-          }}
+          })}
         >
           {summary.processing > 0 && (filter === 'reviewFlow' || filter === 'needsReview') ? (
             <>
@@ -543,7 +545,7 @@ export function OcrReviewPanel({
         {/* Sol: liste */}
         <div
           className="overflow-y-auto max-h-[520px]"
-          style={{ borderRight: '1px solid rgba(255,255,255,0.04)' }}
+          style={portalStyle({ borderRight: '1px solid rgba(255,255,255,0.04)' })}
         >
           {pending.map((img) => {
             const active = img.id === (activeImg?.id ?? null);
@@ -567,14 +569,14 @@ export function OcrReviewPanel({
                 key={img.id}
                 data-ocr-id={img.id}
                 className="w-full transition relative scroll-mt-24"
-                style={{
+                style={portalStyle({
                   background: active
                     ? `${accentColor}1a`
                     : 'transparent',
                   borderLeft: `3px solid ${active ? accentColor : (confirmed ? 'rgba(34,197,94,0.3)' : isSuccess ? 'rgba(96,165,250,0.2)' : 'transparent')}`,
                   borderBottom: '1px solid rgba(255,255,255,0.03)',
                   opacity: (confirmed || isSuccess) && !active ? 0.75 : 1,
-                }}
+                })}
               >
                 <button
                   onClick={() => setActiveId(img.id)}
@@ -583,33 +585,33 @@ export function OcrReviewPanel({
                   <div className="flex items-center justify-between gap-2 mb-1">
                     <p
                       className="text-[12px] font-medium truncate flex items-center gap-1.5"
-                      style={{ color: active ? '#fafaf9' : 'rgba(250,250,249,0.75)' }}
+                      style={portalStyle({ color: active ? '#fafaf9' : 'rgba(250,250,249,0.75)' })}
                     >
-                      {confirmed && <CheckCircle2 size={11} style={{ color: '#22c55e', flexShrink: 0 }} />}
-                      {isSuccess && <CheckCircle2 size={11} style={{ color: '#60a5fa', flexShrink: 0 }} />}
+                      {confirmed && <CheckCircle2 size={11} style={portalStyle({ color: '#22c55e', flexShrink: 0 })} />}
+                      {isSuccess && <CheckCircle2 size={11} style={portalStyle({ color: '#60a5fa', flexShrink: 0 })} />}
                       <span className="truncate">{imageDisplayName(img)}</span>
                     </p>
                     {typeof avg === 'number' && (
                       <span
                         className="text-[10px] font-bold tabular-nums"
-                        style={{ color: avgColor, marginRight: 28 }}
+                        style={portalStyle({ color: avgColor, marginRight: 28 })}
                       >
                         %{Math.round(avg * 100)}
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center gap-1.5 text-[10px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                  <div className="flex items-center gap-1.5 text-[10px]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                     {confirmed ? (
                       <span
                         className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded"
-                        style={{ background: 'rgba(34,197,94,0.15)', color: '#22c55e' }}
+                        style={portalStyle({ background: 'rgba(34,197,94,0.15)', color: '#22c55e' })}
                       >
                         Teyit Edildi
                       </span>
                     ) : isSuccess ? (
                       <span
                         className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded"
-                        style={{ background: 'rgba(96,165,250,0.15)', color: '#60a5fa' }}
+                        style={portalStyle({ background: 'rgba(96,165,250,0.15)', color: '#60a5fa' })}
                       >
                         Başarılı
                       </span>
@@ -619,7 +621,7 @@ export function OcrReviewPanel({
                     {img.ocrEngine && (
                       <span
                         className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded"
-                        style={{ background: engineBadge.bg, color: engineBadge.color }}
+                        style={portalStyle({ background: engineBadge.bg, color: engineBadge.color })}
                       >
                         {engineBadge.label}
                       </span>
@@ -640,14 +642,14 @@ export function OcrReviewPanel({
                       : 'Ucuz yeniden oku (cache/Azure öncelikli)'
                   }
                   className="absolute top-2.5 right-2.5 inline-flex items-center justify-center w-6 h-6 rounded-md transition disabled:opacity-70"
-                  style={{
+                  style={portalStyle({
                     background: isReocring
                       ? 'rgba(96,165,250,0.18)'
                       : 'rgba(184,160,111,0.12)',
                     border: `1px solid ${isReocring ? 'rgba(96,165,250,0.35)' : 'rgba(184,160,111,0.3)'}`,
                     color: isReocring ? '#60a5fa' : GOLD,
                     cursor: isReocring ? 'wait' : 'pointer',
-                  }}
+                  })}
                 >
                   {isReocring ? (
                     <Loader2 size={11} className="animate-spin" />
@@ -665,14 +667,14 @@ export function OcrReviewPanel({
           <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-5">
             {/* Fatura görseli — büyüteçli */}
             {previewError ? (
-              <div className="flex flex-col items-center justify-center gap-3 rounded-xl" style={{ minHeight: 320, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)' }}>
-                <AlertTriangle size={26} style={{ color: '#fbbf24' }} />
-                <p className="text-[13px] text-center px-4" style={{ color: 'rgba(250,250,249,0.6)' }}>Fatura görseli yüklenemedi.<br />Bağlantı yavaş olabilir.</p>
+              <div className="flex flex-col items-center justify-center gap-3 rounded-xl" style={portalStyle({ minHeight: 320, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)' })}>
+                <AlertTriangle size={26} style={portalStyle({ color: '#fbbf24' })} />
+                <p className="text-[13px] text-center px-4" style={portalStyle({ color: 'rgba(250,250,249,0.6)' })}>Fatura görseli yüklenemedi.<br />Bağlantı yavaş olabilir.</p>
                 <button
                   type="button"
                   onClick={() => setPreviewNonce((n) => n + 1)}
                   className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[12.5px] font-semibold"
-                  style={{ background: 'rgba(212,184,118,0.14)', border: '1px solid rgba(212,184,118,0.3)', color: GOLD }}
+                  style={portalStyle({ background: 'rgba(212,184,118,0.14)', border: '1px solid rgba(212,184,118,0.3)', color: GOLD })}
                 >
                   <RefreshCw size={13} /> Tekrar dene
                 </button>
@@ -733,11 +735,11 @@ export function OcrReviewPanel({
               {hasTevkifat && (
                 <div
                   className="rounded-lg px-3 py-2 text-[11px]"
-                  style={{ background: 'rgba(251,146,60,0.08)', border: '1px solid rgba(251,146,60,0.24)', color: 'rgba(250,250,249,0.72)' }}
+                  style={portalStyle({ background: 'rgba(251,146,60,0.08)', border: '1px solid rgba(251,146,60,0.24)', color: 'rgba(250,250,249,0.72)' })}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-bold uppercase tracking-wider" style={{ color: '#fb923c' }}>Tevkifat kontrolü</span>
-                    <span className="font-mono" style={{ color: '#fafaf9' }}>
+                    <span className="font-bold uppercase tracking-wider" style={portalStyle({ color: '#fb923c' })}>Tevkifat kontrolü</span>
+                    <span className="font-mono" style={portalStyle({ color: '#fafaf9' })}>
                       Tam KDV {fmtLooseMoney(netKdvAmount + tevkifatAmount)}
                     </span>
                   </div>
@@ -754,25 +756,25 @@ export function OcrReviewPanel({
               />
 
               {activeImg.ocrBelgeTipi && (
-                <p className="text-[10.5px]" style={{ color: 'rgba(250,250,249,0.35)' }}>
-                  Belge tipi: <span className="font-semibold" style={{ color: GOLD }}>{activeImg.ocrBelgeTipi}</span>
+                <p className="text-[10.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.35)' })}>
+                  Belge tipi: <span className="font-semibold" style={portalStyle({ color: GOLD })}>{activeImg.ocrBelgeTipi}</span>
                 </p>
               )}
 
               {activeImg.ocrEngine && (
-                <p className="text-[10.5px]" style={{ color: 'rgba(250,250,249,0.35)' }}>
-                  OCR: <span style={{ color: 'rgba(250,250,249,0.6)' }}>{activeImg.ocrEngine}</span>
+                <p className="text-[10.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.35)' })}>
+                  OCR: <span style={portalStyle({ color: 'rgba(250,250,249,0.6)' })}>{activeImg.ocrEngine}</span>
                   {typeof activeImg.ocrValidationScore === 'number' && (
                     <span
                       className="ml-2"
-                      style={{
+                      style={portalStyle({
                         color:
                           activeImg.ocrValidationScore >= 0.9
                             ? '#86efac'
                             : activeImg.ocrValidationScore >= 0.7
                             ? '#fbbf24'
                             : '#fca5a5',
-                      }}
+                      })}
                     >
                       · doğrulama %{Math.round(activeImg.ocrValidationScore * 100)}
                     </span>
@@ -783,7 +785,7 @@ export function OcrReviewPanel({
               {activeImg.isManuallyConfirmed && (
                 <div
                   className="flex items-center gap-2 text-[11.5px] font-semibold px-3 py-2 rounded-lg"
-                  style={{ background: 'rgba(34,197,94,0.08)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.2)' }}
+                  style={portalStyle({ background: 'rgba(34,197,94,0.08)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.2)' })}
                 >
                   <CheckCircle2 size={12} /> Bu fatura daha önce teyit edildi — değiştirirsen üzerine yazılır.
                 </div>
@@ -792,7 +794,7 @@ export function OcrReviewPanel({
               {!activeImg.isManuallyConfirmed && activeImg.ocrStatus === 'SUCCESS' && (
                 <div
                   className="flex items-center gap-2 text-[11.5px] font-semibold px-3 py-2 rounded-lg"
-                  style={{ background: 'rgba(96,165,250,0.08)', color: '#60a5fa', border: '1px solid rgba(96,165,250,0.2)' }}
+                  style={portalStyle({ background: 'rgba(96,165,250,0.08)', color: '#60a5fa', border: '1px solid rgba(96,165,250,0.2)' })}
                 >
                   <CheckCircle2 size={12} /> OCR yüksek güvenle okudu — değerler doğruysa atla, yanlışsa düzeltip teyit et.
                 </div>
@@ -803,13 +805,13 @@ export function OcrReviewPanel({
                   onClick={handleConfirm}
                   disabled={confirmMut.isPending}
                   className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 text-[13px] font-semibold rounded-[9px] transition hover:brightness-110 disabled:opacity-60"
-                  style={{
+                  style={portalStyle({
                     background: activeImg.isManuallyConfirmed
                       ? 'rgba(34,197,94,0.15)'
                       : `linear-gradient(135deg, ${GOLD}, ${GOLD}cc)`,
                     color: activeImg.isManuallyConfirmed ? '#22c55e' : '#0f0d0b',
                     border: activeImg.isManuallyConfirmed ? '1px solid rgba(34,197,94,0.35)' : 'none',
-                  }}
+                  })}
                 >
                   {confirmMut.isPending ? (
                     <Loader2 size={14} className="animate-spin" />
@@ -833,11 +835,11 @@ export function OcrReviewPanel({
                     ['PENDING', 'PROCESSING'].includes(activeImg.ocrStatus)
                   }
                   className="inline-flex items-center justify-center gap-1.5 px-3 py-2.5 text-[12px] rounded-[9px] disabled:opacity-70"
-                  style={{
+                  style={portalStyle({
                     background: 'rgba(184,160,111,0.1)',
                     color: GOLD,
                     border: '1px solid rgba(184,160,111,0.28)',
-                  }}
+                  })}
                   title="Ucuz yeniden oku (cache/Azure öncelikli)"
                 >
                   {reocringIds.has(activeImg.id) ||
@@ -855,11 +857,11 @@ export function OcrReviewPanel({
                     ['PENDING', 'PROCESSING'].includes(activeImg.ocrStatus)
                   }
                   className="inline-flex items-center justify-center gap-1.5 px-3 py-2.5 text-[12px] rounded-[9px] disabled:opacity-70"
-                  style={{
+                  style={portalStyle({
                     background: 'rgba(192,132,252,0.1)',
                     color: '#c084fc',
                     border: '1px solid rgba(192,132,252,0.28)',
-                  }}
+                  })}
                   title="AI ile zorla oku (Claude maliyeti oluşabilir)"
                 >
                   AI
@@ -870,11 +872,11 @@ export function OcrReviewPanel({
                     target="_blank"
                     rel="noreferrer"
                     className="inline-flex items-center justify-center gap-1.5 px-3 py-2.5 text-[12px] rounded-[9px]"
-                    style={{
+                    style={portalStyle({
                       background: 'rgba(255,255,255,0.04)',
                       color: 'rgba(250,250,249,0.7)',
                       border: '1px solid rgba(255,255,255,0.06)',
-                    }}
+                    })}
                     title="Büyük önizleme"
                   >
                     <Eye size={12} />
@@ -884,7 +886,7 @@ export function OcrReviewPanel({
             </div>
           </div>
         ) : (
-          <div className="p-8 text-center text-[12px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
+          <div className="p-8 text-center text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
             Listeden bir fatura seçin
           </div>
         )}
@@ -927,16 +929,16 @@ function FieldInput({
   return (
     <div>
       <div className="flex items-center justify-between mb-1.5">
-        <label className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.55)' }}>
+        <label className="text-[11px] font-bold uppercase tracking-wider" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>
           {label}
         </label>
         {showBadge && (
           <span
             className="text-[10px] font-bold tabular-nums px-2 py-0.5 rounded"
-            style={{
+            style={portalStyle({
               background: color + '1a',
               color,
-            }}
+            })}
           >
             {missing ? 'OKUNAMADI' : `%${pct}`}
           </span>
@@ -956,12 +958,12 @@ function FieldInput({
           }
         }}
         className="w-full px-3 py-2 text-[13px] rounded-lg outline-none transition focus:brightness-110"
-        style={{
+        style={portalStyle({
           background: readOnly ? 'rgba(34,197,94,0.04)' : 'rgba(255,255,255,0.03)',
           border: `1px solid ${readOnly ? 'rgba(34,197,94,0.2)' : low || missing ? color + '55' : 'rgba(255,255,255,0.08)'}`,
           color: readOnly ? 'rgba(34,197,94,0.9)' : '#fafaf9',
           cursor: readOnly ? 'not-allowed' : 'text',
-        }}
+        })}
       />
     </div>
   );
@@ -1018,14 +1020,14 @@ function KdvBreakdownEditor({
   }
 
   return (
-    <div className="rounded-lg p-3" style={{ background: 'rgba(184,160,111,0.04)', border: '1px solid rgba(184,160,111,0.18)' }}>
+    <div className="rounded-lg p-3" style={portalStyle({ background: 'rgba(184,160,111,0.04)', border: '1px solid rgba(184,160,111,0.18)' })}>
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
-          <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: GOLD }}>
+          <span className="text-[11px] font-bold uppercase tracking-wider" style={portalStyle({ color: GOLD })}>
             KDV Kırılımı
           </span>
           {list.length > 0 && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'rgba(184,160,111,0.15)', color: GOLD }}>
+            <span className="text-[10px] px-1.5 py-0.5 rounded" style={portalStyle({ background: 'rgba(184,160,111,0.15)', color: GOLD })}>
               {list.length} oran
             </span>
           )}
@@ -1034,19 +1036,19 @@ function KdvBreakdownEditor({
           type="button"
           onClick={addRow}
           className="px-2 py-0.5 rounded text-[10.5px] font-bold"
-          style={{ background: 'rgba(184,160,111,0.15)', color: GOLD, border: '1px solid rgba(184,160,111,0.3)' }}
+          style={portalStyle({ background: 'rgba(184,160,111,0.15)', color: GOLD, border: '1px solid rgba(184,160,111,0.3)' })}
         >
           + Oran Ekle
         </button>
       </div>
 
       {list.length === 0 ? (
-        <p className="text-[10.5px]" style={{ color: 'rgba(250,250,249,0.4)' }}>
+        <p className="text-[10.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>
           Çok oranlı belge (Z raporu, karma fatura) değilse boş bırak. Gerekiyorsa "+ Oran Ekle" ile satır ekle.
         </p>
       ) : (
         <>
-          <div className="grid grid-cols-[70px_1fr_28px] gap-2 items-center pb-1 mb-1 text-[9.5px] font-bold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.45)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+          <div className="grid grid-cols-[70px_1fr_28px] gap-2 items-center pb-1 mb-1 text-[9.5px] font-bold uppercase tracking-wider" style={portalStyle({ color: 'rgba(250,250,249,0.45)', borderBottom: '1px solid rgba(255,255,255,0.05)' })}>
             <span>Oran</span>
             <span>KDV Tutarı</span>
             <span></span>
@@ -1063,9 +1065,9 @@ function KdvBreakdownEditor({
                     setItem(idx, { oran: n });
                   }}
                   className="w-full px-2 py-1 pr-5 text-[12px] rounded text-right font-mono outline-none"
-                  style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: GOLD }}
+                  style={portalStyle({ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: GOLD })}
                 />
-                <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] pointer-events-none" style={{ color: 'rgba(250,250,249,0.4)' }}>%</span>
+                <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] pointer-events-none" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>%</span>
               </div>
               <KirilimTutarInput
                 value={b.tutar}
@@ -1075,18 +1077,18 @@ function KdvBreakdownEditor({
                 type="button"
                 onClick={() => removeRow(idx)}
                 className="w-6 h-6 flex items-center justify-center rounded"
-                style={{ background: 'rgba(244,63,94,0.08)', color: '#f43f5e' }}
+                style={portalStyle({ background: 'rgba(244,63,94,0.08)', color: '#f43f5e' })}
                 title="Bu satırı sil"
               >
                 <XIcon size={12} />
               </button>
             </div>
           ))}
-          <div className="grid grid-cols-[70px_1fr_28px] gap-2 items-center pt-1.5 mt-1" style={{ borderTop: '1px solid rgba(184,160,111,0.2)' }}>
+          <div className="grid grid-cols-[70px_1fr_28px] gap-2 items-center pt-1.5 mt-1" style={portalStyle({ borderTop: '1px solid rgba(184,160,111,0.2)' })}>
             <span></span>
             <div className="col-span-2 flex items-center justify-between gap-3 px-2 py-1">
-              <span className="text-[11px] font-bold" style={{ color: GOLD }}>Toplam KDV</span>
-              <span className="text-[12.5px] font-mono font-bold text-right" style={{ color: GOLD }}>
+              <span className="text-[11px] font-bold" style={portalStyle({ color: GOLD })}>Toplam KDV</span>
+              <span className="text-[12.5px] font-mono font-bold text-right" style={portalStyle({ color: GOLD })}>
                 {toplam.toFixed(2).replace('.', ',')}
               </span>
             </div>
@@ -1120,7 +1122,7 @@ function KirilimTutarInput({ value, onCommit }: { value: number | null | undefin
       onChange={(e) => { setTxt(e.target.value); onCommit(parse(e.target.value)); }}
       onBlur={() => { setOdak(false); setTxt(fmt(parse(txt))); }}
       className="w-full px-2 py-1 text-[12px] rounded text-right font-mono outline-none"
-      style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(34,197,94,0.2)', color: '#22c55e' }}
+      style={portalStyle({ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(34,197,94,0.2)', color: '#22c55e' })}
     />
   );
 }
@@ -1198,10 +1200,10 @@ function ZoomableImage({ src, alt }: { src: string | null; alt: string }) {
       <div
         ref={containerRef}
         className="relative rounded-lg overflow-hidden flex items-center justify-center min-h-[260px] group cursor-zoom-in"
-        style={{
+        style={portalStyle({
           background: 'rgba(0,0,0,0.3)',
           border: '1px solid rgba(255,255,255,0.05)',
-        }}
+        })}
         onMouseMove={handleMove}
         onMouseLeave={() => setHoverPos(null)}
         onWheel={handleWheel}
@@ -1214,7 +1216,7 @@ function ZoomableImage({ src, alt }: { src: string | null; alt: string }) {
               src={src}
               alt={alt}
               className="w-full h-full object-contain select-none"
-              style={{ maxHeight: 420, pointerEvents: 'none' }}
+              style={portalStyle({ maxHeight: 420, pointerEvents: 'none' })}
               draggable={false}
             />
 
@@ -1259,7 +1261,7 @@ function ZoomableImage({ src, alt }: { src: string | null; alt: string }) {
               return (
                 <div
                   className="pointer-events-none absolute rounded-md shadow-2xl"
-                  style={{
+                  style={portalStyle({
                     width: lensW,
                     height: lensH,
                     left: lx,
@@ -1273,7 +1275,7 @@ function ZoomableImage({ src, alt }: { src: string | null; alt: string }) {
                     backgroundPosition: `${lensBgX}px ${lensBgY}px`,
                     imageRendering: 'crisp-edges' as any,
                     WebkitImageRendering: '-webkit-optimize-contrast',
-                  } as any}
+                  } as any)}
                 />
               );
             })()}
@@ -1289,7 +1291,7 @@ function ZoomableImage({ src, alt }: { src: string | null; alt: string }) {
                 type="button"
                 onClick={(e) => { e.stopPropagation(); setControlsOpen((v) => !v); }}
                 className="px-2 py-1 rounded text-[10px] font-bold tabular-nums flex items-center gap-1 transition-all"
-                style={{ background: 'rgba(0,0,0,0.75)', color: GOLD, border: '1px solid rgba(184,160,111,0.3)' }}
+                style={portalStyle({ background: 'rgba(0,0,0,0.75)', color: GOLD, border: '1px solid rgba(184,160,111,0.3)' })}
                 title="Büyüteç kontrolleri"
               >
                 <ZoomIn size={11} />
@@ -1299,20 +1301,20 @@ function ZoomableImage({ src, alt }: { src: string | null; alt: string }) {
               {controlsOpen && (
                 <div
                   className="rounded-lg p-2.5 flex flex-col gap-2 text-[10.5px]"
-                  style={{ background: 'rgba(0,0,0,0.85)', border: '1px solid rgba(184,160,111,0.3)', minWidth: 200, backdropFilter: 'blur(4px)' }}
+                  style={portalStyle({ background: 'rgba(0,0,0,0.85)', border: '1px solid rgba(184,160,111,0.3)', minWidth: 200, backdropFilter: 'blur(4px)' })}
                 >
                   {/* Zoom slider + butonları */}
                   <div className="flex flex-col gap-1">
-                    <div className="flex items-center justify-between text-[9.5px] uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.55)' }}>
+                    <div className="flex items-center justify-between text-[9.5px] uppercase tracking-[.08em]" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>
                       <span>Yakınlık</span>
-                      <span className="font-bold tabular-nums" style={{ color: GOLD }}>{zoom.toFixed(1)}×</span>
+                      <span className="font-bold tabular-nums" style={portalStyle({ color: GOLD })}>{zoom.toFixed(1)}×</span>
                     </div>
                     <div className="flex items-center gap-1.5">
                       <button
                         type="button"
                         onClick={(e) => { e.stopPropagation(); setZoom((z) => Math.max(1.2, z - 0.25)); }}
                         className="w-6 h-6 flex items-center justify-center rounded"
-                        style={{ background: 'rgba(184,160,111,0.12)', color: GOLD }}
+                        style={portalStyle({ background: 'rgba(184,160,111,0.12)', color: GOLD })}
                       >
                         <ZoomOut size={12} />
                       </button>
@@ -1324,13 +1326,13 @@ function ZoomableImage({ src, alt }: { src: string | null; alt: string }) {
                         value={zoom}
                         onChange={(e) => setZoom(parseFloat(e.target.value))}
                         className="flex-1"
-                        style={{ accentColor: GOLD }}
+                        style={portalStyle({ accentColor: GOLD })}
                       />
                       <button
                         type="button"
                         onClick={(e) => { e.stopPropagation(); setZoom((z) => Math.min(6, z + 0.25)); }}
                         className="w-6 h-6 flex items-center justify-center rounded"
-                        style={{ background: 'rgba(184,160,111,0.12)', color: GOLD }}
+                        style={portalStyle({ background: 'rgba(184,160,111,0.12)', color: GOLD })}
                       >
                         <ZoomIn size={12} />
                       </button>
@@ -1339,9 +1341,9 @@ function ZoomableImage({ src, alt }: { src: string | null; alt: string }) {
 
                   {/* Lens boyut slider */}
                   <div className="flex flex-col gap-1">
-                    <div className="flex items-center justify-between text-[9.5px] uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.55)' }}>
+                    <div className="flex items-center justify-between text-[9.5px] uppercase tracking-[.08em]" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>
                       <span>Büyüteç Çapı</span>
-                      <span className="font-bold tabular-nums" style={{ color: GOLD }}>{lensSize}px</span>
+                      <span className="font-bold tabular-nums" style={portalStyle({ color: GOLD })}>{lensSize}px</span>
                     </div>
                     <input
                       type="range"
@@ -1351,35 +1353,35 @@ function ZoomableImage({ src, alt }: { src: string | null; alt: string }) {
                       value={lensSize}
                       onChange={(e) => setLensSize(parseInt(e.target.value, 10))}
                       className="w-full"
-                      style={{ accentColor: GOLD }}
+                      style={portalStyle({ accentColor: GOLD })}
                     />
                   </div>
 
                   {/* Yan panel toggle */}
-                  <label className="flex items-center gap-2 cursor-pointer pt-1" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                  <label className="flex items-center gap-2 cursor-pointer pt-1" style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.08)' })}>
                     <input
                       type="checkbox"
                       checked={showSidePanel}
                       onChange={(e) => { e.stopPropagation(); setShowSidePanel(e.target.checked); }}
                       onClick={(e) => e.stopPropagation()}
-                      style={{ accentColor: GOLD }}
+                      style={portalStyle({ accentColor: GOLD })}
                     />
-                    <span className="text-[10px] font-semibold" style={{ color: 'rgba(250,250,249,0.85)' }}>
+                    <span className="text-[10px] font-semibold" style={portalStyle({ color: 'rgba(250,250,249,0.85)' })}>
                       Sabit Yan Panel (görsel kapanmaz)
                     </span>
                   </label>
 
                   {/* Sıfırla + hint */}
-                  <div className="flex items-center gap-2 pt-1" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                  <div className="flex items-center gap-2 pt-1" style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.08)' })}>
                     <button
                       type="button"
                       onClick={(e) => { e.stopPropagation(); setZoom(3.5); setLensSize(280); }}
                       className="flex-1 px-2 py-1 rounded text-[10px] font-semibold"
-                      style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(250,250,249,0.7)' }}
+                      style={portalStyle({ background: 'rgba(255,255,255,0.06)', color: 'rgba(250,250,249,0.7)' })}
                     >
                       Sıfırla (3.5× · 280px)
                     </button>
-                    <span className="text-[9px]" style={{ color: 'rgba(250,250,249,0.4)' }}>
+                    <span className="text-[9px]" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>
                       Wheel: zoom · Shift+Wheel: çap
                     </span>
                   </div>
@@ -1390,13 +1392,13 @@ function ZoomableImage({ src, alt }: { src: string | null; alt: string }) {
             {/* Fullscreen hint */}
             <div
               className="pointer-events-none absolute bottom-2 left-2 flex items-center gap-1 px-2 py-1 rounded text-[10px] font-semibold opacity-0 group-hover:opacity-100 transition"
-              style={{ background: 'rgba(0,0,0,0.7)', color: '#fafaf9' }}
+              style={portalStyle({ background: 'rgba(0,0,0,0.7)', color: '#fafaf9' })}
             >
               <Maximize2 size={10} /> Görsele tıkla → tam ekran
             </div>
           </>
         ) : (
-          <Loader2 size={20} className="animate-spin" style={{ color: GOLD }} />
+          <Loader2 size={20} className="animate-spin" style={portalStyle({ color: GOLD })} />
         )}
       </div>
 
@@ -1447,7 +1449,7 @@ function LightboxModal({
   const content = (
     <div
       className="fixed inset-0 z-[9999] flex items-center justify-center"
-      style={{ background: 'rgba(0,0,0,0.92)' }}
+      style={portalStyle({ background: 'rgba(0,0,0,0.92)' })}
       onClick={onClose}
       onWheel={(e) => {
         e.preventDefault();
@@ -1462,21 +1464,21 @@ function LightboxModal({
         <button
           onClick={() => setScale((s) => Math.max(0.5, s - 0.25))}
           className="p-2 rounded-lg hover:brightness-125 transition"
-          style={{ background: 'rgba(255,255,255,0.1)', color: '#fafaf9' }}
+          style={portalStyle({ background: 'rgba(255,255,255,0.1)', color: '#fafaf9' })}
           title="Uzaklaş (−)"
         >
           <ZoomOut size={16} />
         </button>
         <span
           className="px-3 py-1.5 rounded-lg text-[12px] font-bold tabular-nums min-w-[60px] text-center"
-          style={{ background: 'rgba(255,255,255,0.08)', color: GOLD }}
+          style={portalStyle({ background: 'rgba(255,255,255,0.08)', color: GOLD })}
         >
           {Math.round(scale * 100)}%
         </span>
         <button
           onClick={() => setScale((s) => Math.min(8, s + 0.25))}
           className="p-2 rounded-lg hover:brightness-125 transition"
-          style={{ background: 'rgba(255,255,255,0.1)', color: '#fafaf9' }}
+          style={portalStyle({ background: 'rgba(255,255,255,0.1)', color: '#fafaf9' })}
           title="Yaklaş (+)"
         >
           <ZoomIn size={16} />
@@ -1487,7 +1489,7 @@ function LightboxModal({
             setOffset({ x: 0, y: 0 });
           }}
           className="px-3 py-2 rounded-lg text-[11px] font-semibold hover:brightness-125 transition"
-          style={{ background: 'rgba(255,255,255,0.1)', color: '#fafaf9' }}
+          style={portalStyle({ background: 'rgba(255,255,255,0.1)', color: '#fafaf9' })}
           title="Sıfırla (0)"
         >
           1:1
@@ -1495,7 +1497,7 @@ function LightboxModal({
         <button
           onClick={onClose}
           className="p-2 rounded-lg hover:brightness-125 transition"
-          style={{ background: 'rgba(244,63,94,0.2)', color: '#f43f5e' }}
+          style={portalStyle({ background: 'rgba(244,63,94,0.2)', color: '#f43f5e' })}
           title="Kapat (Esc)"
         >
           <XIcon size={16} />
@@ -1520,20 +1522,20 @@ function LightboxModal({
         }}
         onMouseUp={() => (dragging.current = null)}
         onMouseLeave={() => (dragging.current = null)}
-        style={{
+        style={portalStyle({
           transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
           maxWidth: '92vw',
           maxHeight: '92vh',
           cursor: dragging.current ? 'grabbing' : scale > 1 ? 'grab' : 'zoom-in',
           transition: dragging.current ? 'none' : 'transform 0.1s ease-out',
           userSelect: 'none',
-        }}
+        })}
       />
 
       {/* Kısayol ipucu */}
       <div
         className="absolute bottom-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-lg text-[11px]"
-        style={{ background: 'rgba(0,0,0,0.6)', color: 'rgba(250,250,249,0.7)' }}
+        style={portalStyle({ background: 'rgba(0,0,0,0.6)', color: 'rgba(250,250,249,0.7)' })}
       >
         Scroll: zoom · Drag: kaydır · + / −: zoom · 0: sıfırla · Esc: kapat
       </div>
@@ -1567,11 +1569,11 @@ function SummaryChip({
       className={`inline-flex items-center gap-1 text-[10.5px] font-bold tabular-nums px-2 py-0.5 rounded transition ${
         clickable ? 'hover:brightness-125 cursor-pointer' : 'cursor-default'
       }`}
-      style={{
+      style={portalStyle({
         background: bg,
         color,
         border: `1px solid ${border}`,
-      }}
+      })}
     >
       {label}: {count}
     </button>
@@ -1589,7 +1591,7 @@ function StatusTag({ status }: { status: string }) {
   return (
     <span
       className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded"
-      style={{ background: m.color + '1a', color: m.color }}
+      style={portalStyle({ background: m.color + '1a', color: m.color })}
     >
       {m.label}
     </span>

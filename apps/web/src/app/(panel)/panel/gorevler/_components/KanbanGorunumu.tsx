@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import { ArrowLeft, ArrowRight, Check, Loader2, Pin, RotateCcw } from 'lucide-react';
 import type { Task, TaskStatus } from '@/lib/tasks';
@@ -40,19 +42,19 @@ export function KanbanGorunumu({ gorevler, bitenler, bitenlerYukleniyor, eylemle
       {SUTUNLAR.map((s) => {
         const liste = gruplar[s.key];
         return (
-          <section key={s.key} className="min-w-0 overflow-hidden rounded-2xl" style={{ ...kartArkaPlan(s.renk), minHeight: 240 }}>
-            <div className="flex items-center gap-2 px-3.5 py-2.5" style={{ background: 'rgba(255,255,255,0.045)', borderBottom: `1px solid ${KENAR_NOTR}` }}>
-              <span className="h-1.5 w-1.5 rounded-full" style={{ background: s.renk, opacity: 0.8 }} />
-              <h3 className="text-[11.5px] font-semibold uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.85)' }}>
+          <section key={s.key} className="min-w-0 overflow-hidden rounded-2xl" style={portalStyle({ ...kartArkaPlan(s.renk), minHeight: 240 })}>
+            <div className="flex items-center gap-2 px-3.5 py-2.5" style={portalStyle({ background: 'rgba(255,255,255,0.045)', borderBottom: `1px solid ${KENAR_NOTR}` })}>
+              <span className="h-1.5 w-1.5 rounded-full" style={portalStyle({ background: s.renk, opacity: 0.8 })} />
+              <h3 className="text-[11.5px] font-semibold uppercase tracking-[.08em]" style={portalStyle({ color: 'rgba(250,250,249,0.85)' })}>
                 {s.ad}
               </h3>
-              <span className="ml-auto text-[11.5px] tabular-nums" style={{ color: IKINCIL }}>
+              <span className="ml-auto text-[11.5px] tabular-nums" style={portalStyle({ color: IKINCIL })}>
                 {liste.length}
               </span>
             </div>
             <div className="space-y-2 p-2">
               {s.key === 'DONE' && bitenlerYukleniyor && liste.length === 0 && (
-                <div className="flex items-center justify-center gap-2 py-6 text-[12px]" style={{ color: IKINCIL }}>
+                <div className="flex items-center justify-center gap-2 py-6 text-[12px]" style={portalStyle({ color: IKINCIL })}>
                   <Loader2 size={13} className="animate-spin" /> Bitenler alınıyor
                 </div>
               )}
@@ -75,9 +77,9 @@ function KanbanKarti({ gorev: t, sutun, eylemler, acik }: { gorev: Task; sutun: 
   const tasi = `inline-flex h-7 items-center gap-1 whitespace-nowrap rounded-md px-2 text-[11px] font-medium transition ${TASI_SINIF}`;
 
   return (
-    <article className="rounded-xl p-3" style={{ background: 'rgba(0,0,0,0.30)', border: `1px solid ${acik ? `${GOLD}99` : KENAR_NOTR}` }}>
-      <button type="button" onClick={() => eylemler.ac(t.id)} title="Detayı aç" className={`block w-full text-left text-[13px] font-medium leading-5 hover:underline decoration-dotted underline-offset-4 ${t.status === 'DONE' ? 'line-through opacity-60' : ''}`} style={{ color: METIN }}>
-        {t.pinned && <Pin size={11} className="mr-1 inline -translate-y-px" style={{ color: SABIT_RENK }} />}
+    <article className="rounded-xl p-3" style={portalStyle({ background: 'rgba(0,0,0,0.30)', border: `1px solid ${acik ? `${GOLD}99` : KENAR_NOTR}` })}>
+      <button type="button" onClick={() => eylemler.ac(t.id)} title="Detayı aç" className={`block w-full text-left text-[13px] font-medium leading-5 hover:underline decoration-dotted underline-offset-4 ${t.status === 'DONE' ? 'line-through opacity-60' : ''}`} style={portalStyle({ color: METIN })}>
+        {t.pinned && <Pin size={11} className="mr-1 inline -translate-y-px" style={portalStyle({ color: SABIT_RENK })} />}
         {t.title}
       </button>
       <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
@@ -90,13 +92,13 @@ function KanbanKarti({ gorev: t, sutun, eylemler, acik }: { gorev: Task; sutun: 
         <TekrarIkonu task={t} />
       </div>
       {tarih && (
-        <div className="mt-1.5 text-[11.5px] tabular-nums" style={{ color: 'rgba(250,250,249,0.8)' }}>
+        <div className="mt-1.5 text-[11.5px] tabular-nums" style={portalStyle({ color: 'rgba(250,250,249,0.8)' })}>
           {kisaTarih(tarih)}
           {!t.allDay && t.dueTime ? ` ${t.dueTime}` : ''}
-          {gecikme ? <span style={{ color: gecikti ? GECIKME_RENK : IKINCIL }}> · {gecikme}</span> : null}
+          {gecikme ? <span style={portalStyle({ color: gecikti ? GECIKME_RENK : IKINCIL })}> · {gecikme}</span> : null}
         </div>
       )}
-      <div className="mt-2.5 flex flex-wrap items-center justify-between gap-1.5 border-t pt-2" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
+      <div className="mt-2.5 flex flex-wrap items-center justify-between gap-1.5 border-t pt-2" style={portalStyle({ borderColor: 'rgba(255,255,255,0.07)' })}>
         <div className="flex flex-wrap items-center gap-1">
           {sutun === 'OPEN' && (
             <button type="button" onClick={() => eylemler.baslat(t.id)} className={tasi} title="Sürüyor sütununa taşı">

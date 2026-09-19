@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 /**
  * Aylık Ödeme Listesi — ortak palet ve küçük parçalar.
@@ -39,7 +41,7 @@ export const GRUP_BOSLUK = 18;
 /** Nötr ince çip (taksit, kanal, sayı) */
 export function Cip({ children, title, className = '', style }: { children: ReactNode; title?: string; className?: string; style?: CSSProperties }) {
   return (
-    <span title={title} className={`inline-flex flex-shrink-0 items-center gap-1 whitespace-nowrap rounded-md px-1.5 py-[2px] text-[10.5px] font-medium leading-4 ${className}`} style={{ ...CIP_NOTR, ...style }}>
+    <span title={title} className={`inline-flex flex-shrink-0 items-center gap-1 whitespace-nowrap rounded-md px-1.5 py-[2px] text-[10.5px] font-medium leading-4 ${className}`} style={portalStyle({ ...CIP_NOTR, ...style })}>
       {children}
     </span>
   );
@@ -55,7 +57,7 @@ export function AltinDugme({ children, onClick, disabled, yukleniyor, title, cla
       disabled={disabled || yukleniyor}
       title={title}
       className={`inline-flex ${kucuk ? 'h-8 px-3 text-[12px]' : 'h-9 px-3.5 text-[12.5px]'} flex-shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[10px] font-bold transition-[transform,filter] hover:-translate-y-px hover:brightness-110 disabled:opacity-45 disabled:hover:translate-y-0 ${className}`}
-      style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_SOFT})`, color: '#0f0d0b' }}
+      style={portalStyle({ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_SOFT})`, color: '#0f0d0b' })}
     >
       {yukleniyor ? <Loader2 size={13} className="animate-spin" /> : null}
       {children}
@@ -75,9 +77,9 @@ export function GriDugme({ children, onClick, disabled, yukleniyor, title, class
       aria-expanded={ariaExpanded}
       className={`inline-flex ${kucuk ? 'h-8 px-2.5 text-[12px]' : 'h-9 px-3 text-[12.5px]'} flex-shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[10px] font-semibold transition-[transform,background-color,border-color,color] hover:-translate-y-px disabled:opacity-40 disabled:hover:translate-y-0 ${className}`}
       style={
-        aktif
+        portalStyle(aktif
           ? { background: 'rgba(212,184,118,0.10)', border: `1px solid ${GOLD}66`, color: GOLD }
-          : { background: 'rgba(255,255,255,0.03)', border: `1px solid ${KENAR_NOTR}`, color: 'rgba(250,250,249,0.78)' }
+          : { background: 'rgba(255,255,255,0.03)', border: `1px solid ${KENAR_NOTR}`, color: 'rgba(250,250,249,0.78)' })
       }
     >
       {yukleniyor ? <Loader2 size={13} className="animate-spin" /> : null}
@@ -98,9 +100,9 @@ export function Anahtar({ acik, onDegis, title, disabled }: { acik: boolean; onD
       disabled={disabled}
       onClick={() => onDegis(!acik)}
       className="relative inline-flex h-[20px] w-[36px] flex-shrink-0 items-center rounded-full transition-colors disabled:opacity-40"
-      style={{ background: acik ? GOLD : 'rgba(255,255,255,0.12)', border: `1px solid ${acik ? GOLD : KENAR_NOTR}` }}
+      style={portalStyle({ background: acik ? GOLD : 'rgba(255,255,255,0.12)', border: `1px solid ${acik ? GOLD : KENAR_NOTR}` })}
     >
-      <span className="absolute h-[14px] w-[14px] rounded-full transition-[left]" style={{ left: acik ? 18 : 2, background: acik ? '#0f0d0b' : 'rgba(250,250,249,0.7)' }} />
+      <span className="absolute h-[14px] w-[14px] rounded-full transition-[left]" style={portalStyle({ left: acik ? 18 : 2, background: acik ? '#0f0d0b' : 'rgba(250,250,249,0.7)' })} />
     </button>
   );
 }
@@ -109,8 +111,8 @@ export function Anahtar({ acik, onDegis, title, disabled }: { acik: boolean; onD
 export function KartBaslik({ ikon, children, sag }: { ikon?: ReactNode; children: ReactNode; sag?: ReactNode }) {
   return (
     <div className="flex items-center gap-2">
-      {ikon && <span style={{ color: ALTIN_SOLUK }}>{ikon}</span>}
-      <span className="text-[11px] font-bold uppercase tracking-[.14em]" style={{ color: ALTIN_SOLUK }}>{children}</span>
+      {ikon && <span style={portalStyle({ color: ALTIN_SOLUK })}>{ikon}</span>}
+      <span className="text-[11px] font-bold uppercase tracking-[.14em]" style={portalStyle({ color: ALTIN_SOLUK })}>{children}</span>
       {sag && <span className="ml-auto">{sag}</span>}
     </div>
   );

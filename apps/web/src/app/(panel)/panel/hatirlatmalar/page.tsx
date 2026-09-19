@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import React, { useMemo, useState } from 'react';
 import Link from 'next/link';
@@ -144,36 +146,36 @@ export default function HatirlatmalarPage() {
       {/* === BASLIK (AI Maliyet imzasi — zumrut/teal temasi) === */}
       <header
         className="relative overflow-hidden rounded-2xl border p-5"
-        style={{
+        style={portalStyle({
           borderColor: 'rgba(255,255,255,0.08)',
           background:
             'radial-gradient(120% 140% at 0% 0%, rgba(16,185,129,0.18), transparent 45%), radial-gradient(120% 140% at 100% 0%, rgba(45,212,191,0.14), transparent 45%), #0f0d0b',
-        }}
+        })}
       >
         {/* ust renk seridi */}
         <div
           className="absolute inset-x-0 top-0 h-1"
-          style={{ background: 'linear-gradient(90deg, #10b981, #2dd4bf, #34d399, #a3e635, #d4b876)' }}
+          style={portalStyle({ background: 'linear-gradient(90deg, #10b981, #2dd4bf, #34d399, #a3e635, #d4b876)' })}
         />
-        <Link href="/panel" className="inline-flex items-center gap-1.5 text-[12px] font-medium" style={{ color: 'rgba(250,250,249,0.58)' }}>
+        <Link href="/panel" className="inline-flex items-center gap-1.5 text-[12px] font-medium" style={portalStyle({ color: 'rgba(250,250,249,0.58)' })}>
           <ArrowLeft size={14} /> Panel
         </Link>
         <div className="mt-2 flex items-center justify-between gap-3 flex-wrap">
-          <h1 className="flex items-center gap-2.5 text-[28px] font-semibold leading-tight" style={{ color: '#fafaf9' }}>
+          <h1 className="flex items-center gap-2.5 text-[28px] font-semibold leading-tight" style={portalStyle({ color: '#fafaf9' })}>
             <span
               className="grid h-10 w-10 place-items-center rounded-xl"
-              style={{ background: 'linear-gradient(135deg, #10b981, #2dd4bf)', boxShadow: '0 6px 18px rgba(16,185,129,0.35)' }}
+              style={portalStyle({ background: 'linear-gradient(135deg, #10b981, #2dd4bf)', boxShadow: '0 6px 18px rgba(16,185,129,0.35)' })}
             >
-              <MessageSquareText size={22} style={{ color: '#08130f' }} />
+              <MessageSquareText size={22} style={portalStyle({ color: '#08130f' })} />
             </span>
             WhatsApp Otomasyonu
           </h1>
           <div className="flex items-center gap-2 flex-wrap">
-            <select value={month} onChange={(e) => setMonth(Number(e.target.value))} className="px-3 py-2 rounded-lg text-sm border outline-none cursor-pointer" style={selectStyle}>
-              {AYLAR.map((a, i) => <option key={a} value={i + 1} style={{ background: '#0f0d0b' }}>{a}</option>)}
+            <select value={month} onChange={(e) => setMonth(Number(e.target.value))} className="px-3 py-2 rounded-lg text-sm border outline-none cursor-pointer" style={portalStyle(selectStyle)}>
+              {AYLAR.map((a, i) => <option key={a} value={i + 1} style={portalStyle({ background: '#0f0d0b' })}>{a}</option>)}
             </select>
-            <select value={year} onChange={(e) => setYear(Number(e.target.value))} className="px-3 py-2 rounded-lg text-sm border outline-none cursor-pointer" style={selectStyle}>
-              {[year - 1, year, year + 1].map((y) => <option key={y} value={y} style={{ background: '#0f0d0b' }}>{y}</option>)}
+            <select value={year} onChange={(e) => setYear(Number(e.target.value))} className="px-3 py-2 rounded-lg text-sm border outline-none cursor-pointer" style={portalStyle(selectStyle)}>
+              {[year - 1, year, year + 1].map((y) => <option key={y} value={y} style={portalStyle({ background: '#0f0d0b' })}>{y}</option>)}
             </select>
             <button
               onClick={() => {
@@ -182,13 +184,13 @@ export default function HatirlatmalarPage() {
               }}
               className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12px] font-semibold transition-colors"
               title="Yenile"
-              style={{ background: 'rgba(16,185,129,0.16)', color: '#34d399', border: '1px solid rgba(16,185,129,0.35)' }}
+              style={portalStyle({ background: 'rgba(16,185,129,0.16)', color: '#34d399', border: '1px solid rgba(16,185,129,0.35)' })}
             >
               <RefreshCw size={14} /> Yenile
             </button>
           </div>
         </div>
-        <p className="mt-2 max-w-2xl text-[13px]" style={{ color: 'rgba(250,250,249,0.6)' }}>
+        <p className="mt-2 max-w-2xl text-[13px]" style={portalStyle({ color: 'rgba(250,250,249,0.6)' })}>
           Evrak, tahsilat ve portal mesajlarını göndermeden önce alıcıları, atlama sebeplerini ve mesaj içeriğini kontrol et.
         </p>
       </header>
@@ -216,13 +218,13 @@ export default function HatirlatmalarPage() {
       </div>
 
       {!qrBagli && (
-        <div className="rounded-2xl px-4 py-3 flex items-start gap-3" style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.25)', color: '#fbbf24' }}>
+        <div className="rounded-2xl px-4 py-3 flex items-start gap-3" style={portalStyle({ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.25)', color: '#fbbf24' })}>
           <AlertTriangle size={17} className="mt-0.5 flex-shrink-0" />
           <div className="text-sm">
             <div className="font-semibold">
               {whatsappReady ? 'WhatsApp bağlantısı şu an kopuk.' : 'WhatsApp bağlantısı kapalı.'}
             </div>
-            <div className="text-[12.5px] mt-0.5" style={{ color: 'rgba(250,250,249,0.62)' }}>
+            <div className="text-[12.5px] mt-0.5" style={portalStyle({ color: 'rgba(250,250,249,0.62)' })}>
               {whatsappReady
                 ? "Kayıtlı oturum var; gönderirken otomatik yeniden bağlanmayı deneyecek. Sürerse Ayarlar › Entegrasyonlar › WhatsApp ekranından QR kodunu telefonla yeniden okutun."
                 : (whatsappStatus?.error || 'Ayarlar › Entegrasyonlar › WhatsApp ekranından QR kodu telefonla okutun.')}
@@ -232,14 +234,14 @@ export default function HatirlatmalarPage() {
       )}
 
       <div className="grid grid-cols-1 xl:grid-cols-[0.85fr_1.15fr] gap-4">
-        <section className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)' }}>
-          <div className="px-5 py-4 flex items-start gap-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-            <span className="w-10 h-10 rounded-xl inline-flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #d4b876, #b8863a)', boxShadow: '0 6px 16px rgba(212,184,118,0.30)' }}>
-              <Settings size={17} style={{ color: '#1a1410' }} />
+        <section className="rounded-2xl overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)' })}>
+          <div className="px-5 py-4 flex items-start gap-3" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.06)' })}>
+            <span className="w-10 h-10 rounded-xl inline-flex items-center justify-center" style={portalStyle({ background: 'linear-gradient(135deg, #d4b876, #b8863a)', boxShadow: '0 6px 16px rgba(212,184,118,0.30)' })}>
+              <Settings size={17} style={portalStyle({ color: '#1a1410' })} />
             </span>
             <div>
-              <h2 className="text-[16px] font-semibold" style={{ color: '#fafaf9', fontFamily: 'Fraunces, serif' }}>Bağlantı Ayarları</h2>
-              <p className="text-[12.5px] mt-1" style={{ color: 'rgba(250,250,249,0.48)' }}>WhatsApp hattının bağlantı durumu.</p>
+              <h2 className="text-[16px] font-semibold" style={portalStyle({ color: '#fafaf9', fontFamily: 'Fraunces, serif' })}>Bağlantı Ayarları</h2>
+              <p className="text-[12.5px] mt-1" style={portalStyle({ color: 'rgba(250,250,249,0.48)' })}>WhatsApp hattının bağlantı durumu.</p>
             </div>
           </div>
           <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -252,33 +254,33 @@ export default function HatirlatmalarPage() {
           </div>
         </section>
 
-        <section className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)' }}>
-          <div className="px-5 py-4 flex items-start justify-between gap-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        <section className="rounded-2xl overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)' })}>
+          <div className="px-5 py-4 flex items-start justify-between gap-3" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.06)' })}>
             <div className="flex items-start gap-3">
-              <span className="w-10 h-10 rounded-xl inline-flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #10b981, #2dd4bf)', boxShadow: '0 6px 16px rgba(16,185,129,0.30)' }}>
-                <Inbox size={17} style={{ color: '#08130f' }} />
+              <span className="w-10 h-10 rounded-xl inline-flex items-center justify-center" style={portalStyle({ background: 'linear-gradient(135deg, #10b981, #2dd4bf)', boxShadow: '0 6px 16px rgba(16,185,129,0.30)' })}>
+                <Inbox size={17} style={portalStyle({ color: '#08130f' })} />
               </span>
               <div>
-                <h2 className="text-[16px] font-semibold" style={{ color: '#fafaf9', fontFamily: 'Fraunces, serif' }}>Gelen Mesajlar</h2>
-                <p className="text-[12.5px] mt-1" style={{ color: 'rgba(250,250,249,0.48)' }}>Webhook ile eşleşen son WhatsApp kayıtları.</p>
+                <h2 className="text-[16px] font-semibold" style={portalStyle({ color: '#fafaf9', fontFamily: 'Fraunces, serif' })}>Gelen Mesajlar</h2>
+                <p className="text-[12.5px] mt-1" style={portalStyle({ color: 'rgba(250,250,249,0.48)' })}>Webhook ile eşleşen son WhatsApp kayıtları.</p>
               </div>
             </div>
             <button
               onClick={() => inboxQuery.refetch()}
               className="h-9 w-9 rounded-lg inline-flex items-center justify-center"
               title="Gelen mesajları yenile"
-              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
+              style={portalStyle({ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' })}
             >
               <RefreshCw size={14} />
             </button>
           </div>
           <div className="max-h-[300px] overflow-auto">
             {inboxQuery.isLoading ? (
-              <div className="py-10 text-center" style={{ color: 'rgba(250,250,249,0.45)' }}>
+              <div className="py-10 text-center" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                 <Loader2 size={18} className="inline animate-spin mr-2" /> Yükleniyor...
               </div>
             ) : !inboxQuery.data?.length ? (
-              <div className="py-10 text-center" style={{ color: 'rgba(250,250,249,0.45)' }}>Henüz WhatsApp kaydı yok.</div>
+              <div className="py-10 text-center" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>Henüz WhatsApp kaydı yok.</div>
             ) : (
               inboxQuery.data.map((item) => <InboxRow key={item.id} item={item} />)
             )}
@@ -302,7 +304,7 @@ export default function HatirlatmalarPage() {
             evrakSend.mutate();
           }}
           controls={
-            <div className="flex items-center gap-3 flex-wrap text-[12px]" style={{ color: 'rgba(250,250,249,0.58)' }}>
+            <div className="flex items-center gap-3 flex-wrap text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.58)' })}>
               <label className="inline-flex items-center gap-1.5 cursor-pointer">
                 <input type="checkbox" checked={includeNotDue} onChange={(e) => setIncludeNotDue(e.target.checked)} />
                 günü gelmeyeni de göster
@@ -347,18 +349,18 @@ function SummaryCard({ icon: Icon, label, value, sub, tone }: { icon: any; label
   return (
     <div
       className="relative overflow-hidden rounded-2xl border p-4"
-      style={{ borderColor: `${color}40`, background: `linear-gradient(135deg, ${color}26, ${color}0a 58%, rgba(255,255,255,0.02))` }}
+      style={portalStyle({ borderColor: `${color}40`, background: `linear-gradient(135deg, ${color}26, ${color}0a 58%, rgba(255,255,255,0.02))` })}
     >
       <div className="flex items-center justify-between">
-        <span className="text-[10px] uppercase font-bold tracking-[.16em]" style={{ color }}>{label}</span>
-        <span className="grid h-7 w-7 place-items-center rounded-lg" style={{ background: `${color}22`, border: `1px solid ${color}40` }}>
-          <Icon size={14} style={{ color }} />
+        <span className="text-[10px] uppercase font-bold tracking-[.16em]" style={portalStyle({ color })}>{label}</span>
+        <span className="grid h-7 w-7 place-items-center rounded-lg" style={portalStyle({ background: `${color}22`, border: `1px solid ${color}40` })}>
+          <Icon size={14} style={portalStyle({ color })} />
         </span>
       </div>
-      <div className="mt-3 text-[30px] font-semibold leading-none" style={{ color: '#fafaf9' }}>
+      <div className="mt-3 text-[30px] font-semibold leading-none" style={portalStyle({ color: '#fafaf9' })}>
         {value}
       </div>
-      <div className="text-[11.5px] mt-1 truncate" style={{ color: 'rgba(250,250,249,0.55)' }}>{sub}</div>
+      <div className="text-[11.5px] mt-1 truncate" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>{sub}</div>
     </div>
   );
 }
@@ -366,9 +368,9 @@ function SummaryCard({ icon: Icon, label, value, sub, tone }: { icon: any; label
 function StatusPill({ label, value, tone = 'neutral' }: { label: string; value: string; tone?: 'green' | 'amber' | 'neutral' }) {
   const color = tone === 'green' ? '#4ade80' : tone === 'amber' ? '#fbbf24' : 'rgba(250,250,249,0.62)';
   return (
-    <div className="rounded-xl p-3 min-w-0" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)' }}>
-      <div className="text-[10px] uppercase font-bold tracking-[.14em]" style={{ color: 'rgba(250,250,249,0.38)' }}>{label}</div>
-      <div className="text-[12.5px] mt-1 truncate font-semibold" title={value} style={{ color }}>{value}</div>
+    <div className="rounded-xl p-3 min-w-0" style={portalStyle({ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)' })}>
+      <div className="text-[10px] uppercase font-bold tracking-[.14em]" style={portalStyle({ color: 'rgba(250,250,249,0.38)' })}>{label}</div>
+      <div className="text-[12.5px] mt-1 truncate font-semibold" title={value} style={portalStyle({ color })}>{value}</div>
     </div>
   );
 }
@@ -376,30 +378,30 @@ function StatusPill({ label, value, tone = 'neutral' }: { label: string; value: 
 function InboxRow({ item }: { item: WhatsAppInboxItem }) {
   const incoming = item.direction === 'incoming';
   return (
-    <div className="px-5 py-3 hover:bg-white/[0.025] transition" style={{ borderBottom: '1px solid rgba(255,255,255,0.045)' }}>
+    <div className="px-5 py-3 hover:bg-white/[0.025] transition" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.045)' })}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2 min-w-0">
             <span
               className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider flex-shrink-0"
-              style={{
+              style={portalStyle({
                 color: incoming ? '#10b981' : GOLD,
                 background: incoming ? 'rgba(16,185,129,0.12)' : 'rgba(212,184,118,0.12)',
                 border: incoming ? '1px solid rgba(16,185,129,0.25)' : '1px solid rgba(212,184,118,0.25)',
-              }}
+              })}
             >
               {incoming ? 'Gelen' : 'Giden'}
             </span>
-            <span className="text-[13px] font-semibold truncate" style={{ color: '#fafaf9' }}>{item.taxpayer.name}</span>
+            <span className="text-[13px] font-semibold truncate" style={portalStyle({ color: '#fafaf9' })}>{item.taxpayer.name}</span>
           </div>
-          <div className="text-[11.5px] mt-1 truncate" style={{ color: 'rgba(250,250,249,0.44)' }}>{item.subject}</div>
+          <div className="text-[11.5px] mt-1 truncate" style={portalStyle({ color: 'rgba(250,250,249,0.44)' })}>{item.subject}</div>
         </div>
-        <div className="text-[11px] whitespace-nowrap" style={{ color: 'rgba(250,250,249,0.36)' }}>
+        <div className="text-[11px] whitespace-nowrap" style={portalStyle({ color: 'rgba(250,250,249,0.36)' })}>
           {new Date(item.occurredAt).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
         </div>
       </div>
       {item.content ? (
-        <div className="text-[12px] leading-relaxed mt-2 line-clamp-2" style={{ color: 'rgba(250,250,249,0.58)' }}>
+        <div className="text-[12px] leading-relaxed mt-2 line-clamp-2" style={portalStyle({ color: 'rgba(250,250,249,0.58)' })}>
           {item.content}
         </div>
       ) : null}
@@ -433,16 +435,16 @@ function ReminderPanel({
   controls?: React.ReactNode;
 }) {
   return (
-    <section className="relative rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.025)', border: `1px solid ${accent}26` }}>
-      <div className="absolute inset-x-0 top-0 h-[3px]" style={{ background: `linear-gradient(90deg, ${accent}, ${accent}33)` }} />
-      <div className="px-5 py-4 flex items-start justify-between gap-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+    <section className="relative rounded-2xl overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.025)', border: `1px solid ${accent}26` })}>
+      <div className="absolute inset-x-0 top-0 h-[3px]" style={portalStyle({ background: `linear-gradient(90deg, ${accent}, ${accent}33)` })} />
+      <div className="px-5 py-4 flex items-start justify-between gap-4" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.06)' })}>
         <div className="flex items-start gap-3">
-          <span className="w-10 h-10 rounded-xl inline-flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${accent}, ${accent}aa)`, boxShadow: `0 6px 16px ${accent}30` }}>
-            <Icon size={17} style={{ color: '#0f0d0b' }} />
+          <span className="w-10 h-10 rounded-xl inline-flex items-center justify-center" style={portalStyle({ background: `linear-gradient(135deg, ${accent}, ${accent}aa)`, boxShadow: `0 6px 16px ${accent}30` })}>
+            <Icon size={17} style={portalStyle({ color: '#0f0d0b' })} />
           </span>
           <div>
-            <h2 className="text-[16px] font-semibold" style={{ color: '#fafaf9', fontFamily: 'Fraunces, serif' }}>{title}</h2>
-            <p className="text-[12.5px] mt-1" style={{ color: 'rgba(250,250,249,0.48)' }}>{desc}</p>
+            <h2 className="text-[16px] font-semibold" style={portalStyle({ color: '#fafaf9', fontFamily: 'Fraunces, serif' })}>{title}</h2>
+            <p className="text-[12.5px] mt-1" style={portalStyle({ color: 'rgba(250,250,249,0.48)' })}>{desc}</p>
             {controls && <div className="mt-2">{controls}</div>}
           </div>
         </div>
@@ -450,26 +452,26 @@ function ReminderPanel({
           onClick={onSend}
           disabled={sending || loading || !preview?.gonderilecek}
           className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-[12.5px] font-bold disabled:opacity-45"
-          style={{ background: `linear-gradient(135deg, ${accent}, ${accent}aa)`, color: '#0f0d0b' }}
+          style={portalStyle({ background: `linear-gradient(135deg, ${accent}, ${accent}aa)`, color: '#0f0d0b' })}
         >
           {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
           {sendLabel}
         </button>
       </div>
 
-      <div className="px-5 py-3 flex items-center gap-3 text-[12px]" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.58)' }}>
-        <span><strong style={{ color: '#fafaf9' }}>{preview?.gonderilecek || 0}</strong> gönderilecek</span>
-        <span className="w-1 h-1 rounded-full" style={{ background: 'rgba(250,250,249,0.25)' }} />
-        <span><strong style={{ color: '#fafaf9' }}>{preview?.atlanacak || 0}</strong> atlanacak</span>
+      <div className="px-5 py-3 flex items-center gap-3 text-[12px]" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.58)' })}>
+        <span><strong style={portalStyle({ color: '#fafaf9' })}>{preview?.gonderilecek || 0}</strong> gönderilecek</span>
+        <span className="w-1 h-1 rounded-full" style={portalStyle({ background: 'rgba(250,250,249,0.25)' })} />
+        <span><strong style={portalStyle({ color: '#fafaf9' })}>{preview?.atlanacak || 0}</strong> atlanacak</span>
       </div>
 
       <div className="max-h-[520px] overflow-auto">
         {loading ? (
-          <div className="py-14 text-center" style={{ color: 'rgba(250,250,249,0.45)' }}>
+          <div className="py-14 text-center" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
             <Loader2 size={18} className="inline animate-spin mr-2" /> Yükleniyor...
           </div>
         ) : rows.length === 0 ? (
-          <div className="py-14 text-center" style={{ color: 'rgba(250,250,249,0.45)' }}>Gösterilecek kayıt yok.</div>
+          <div className="py-14 text-center" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>Gösterilecek kayıt yok.</div>
         ) : (
           rows.slice(0, 80).map((row) => <ReminderRowItem key={row.taxpayerId} row={row} />)
         )}
@@ -481,24 +483,24 @@ function ReminderPanel({
 function ReminderRowItem({ row }: { row: ReminderRow }) {
   const ok = Boolean(row.gonderilebilir);
   return (
-    <div className="px-5 py-3 flex items-start gap-3 hover:bg-white/[0.025] transition" style={{ borderBottom: '1px solid rgba(255,255,255,0.045)' }}>
+    <div className="px-5 py-3 flex items-start gap-3 hover:bg-white/[0.025] transition" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.045)' })}>
       <span className="mt-0.5">
-        {ok ? <CheckCircle2 size={16} style={{ color: '#4ade80' }} /> : <AlertTriangle size={16} style={{ color: '#fbbf24' }} />}
+        {ok ? <CheckCircle2 size={16} style={portalStyle({ color: '#4ade80' })} /> : <AlertTriangle size={16} style={portalStyle({ color: '#fbbf24' })} />}
       </span>
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-3">
-          <div className="text-[13px] font-semibold truncate" style={{ color: '#fafaf9' }}>{row.ad}</div>
+          <div className="text-[13px] font-semibold truncate" style={portalStyle({ color: '#fafaf9' })}>{row.ad}</div>
           {row.bakiye !== undefined && (
-            <div className="text-[12px] font-mono tabular-nums" style={{ color: GOLD }}>{formatMoney(row.bakiye)} TL</div>
+            <div className="text-[12px] font-mono tabular-nums" style={portalStyle({ color: GOLD })}>{formatMoney(row.bakiye)} TL</div>
           )}
         </div>
-        <div className="text-[11.5px] mt-1 flex items-center gap-2 flex-wrap" style={{ color: 'rgba(250,250,249,0.46)' }}>
+        <div className="text-[11.5px] mt-1 flex items-center gap-2 flex-wrap" style={portalStyle({ color: 'rgba(250,250,249,0.46)' })}>
           <span>{row.phone || row.phones?.[0] || 'telefon yok'}</span>
           {row.evrakTeslimGunu ? <span>teslim günü: {row.evrakTeslimGunu}</span> : null}
           {row.sonHatirlatmaTarihi ? <span>son: {new Date(row.sonHatirlatmaTarihi).toLocaleDateString('tr-TR')}</span> : null}
         </div>
         {!ok && row.atlamaSebebi && (
-          <div className="text-[11px] mt-1" style={{ color: '#fbbf24' }}>{row.atlamaSebebi}</div>
+          <div className="text-[11px] mt-1" style={portalStyle({ color: '#fbbf24' })}>{row.atlamaSebebi}</div>
         )}
       </div>
     </div>

@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -114,24 +116,24 @@ export default function LucaSessionPage() {
       {/* === BASLIK (AI Maliyet imzasi — camgobegi/teal + altin temasi) === */}
       <header
         className="relative overflow-hidden rounded-2xl border p-5"
-        style={{
+        style={portalStyle({
           borderColor: 'rgba(255,255,255,0.08)',
           background:
             'radial-gradient(120% 140% at 0% 0%, rgba(45,212,191,0.18), transparent 45%), radial-gradient(120% 140% at 100% 0%, rgba(212,184,118,0.14), transparent 45%), #0f0d0b',
-        }}
+        })}
       >
         {/* ust renk seridi */}
         <div
           className="absolute inset-x-0 top-0 h-1"
-          style={{ background: 'linear-gradient(90deg, #2dd4bf, #22d3ee, #5eead4, #d4b876)' }}
+          style={portalStyle({ background: 'linear-gradient(90deg, #2dd4bf, #22d3ee, #5eead4, #d4b876)' })}
         />
         <div className="flex items-center justify-between gap-3 flex-wrap">
-          <h1 className="flex items-center gap-2.5 text-[28px] font-semibold leading-tight" style={{ color: '#fafaf9' }}>
+          <h1 className="flex items-center gap-2.5 text-[28px] font-semibold leading-tight" style={portalStyle({ color: '#fafaf9' })}>
             <span
               className="grid h-10 w-10 place-items-center rounded-xl"
-              style={{ background: 'linear-gradient(135deg, #2dd4bf, #0d9488)', boxShadow: '0 6px 18px rgba(45,212,191,0.35)' }}
+              style={portalStyle({ background: 'linear-gradient(135deg, #2dd4bf, #0d9488)', boxShadow: '0 6px 18px rgba(45,212,191,0.35)' })}
             >
-              <ShieldCheck size={22} style={{ color: '#07201c' }} />
+              <ShieldCheck size={22} style={portalStyle({ color: '#07201c' })} />
             </span>
             Luca Oturum Yöneticisi
           </h1>
@@ -139,12 +141,12 @@ export default function LucaSessionPage() {
             onClick={() => refetch()}
             className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12px] font-semibold transition-colors"
             title="Yenile"
-            style={{ background: 'rgba(45,212,191,0.16)', color: '#5eead4', border: '1px solid rgba(45,212,191,0.35)' }}
+            style={portalStyle({ background: 'rgba(45,212,191,0.16)', color: '#5eead4', border: '1px solid rgba(45,212,191,0.35)' })}
           >
             <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} /> Yenile
           </button>
         </div>
-        <p className="mt-2 max-w-2xl text-[13px]" style={{ color: 'rgba(250,250,249,0.6)' }}>
+        <p className="mt-2 max-w-2xl text-[13px]" style={portalStyle({ color: 'rgba(250,250,249,0.6)' })}>
           Luca kullanan modüller için ortak oturum, cihaz ve güvenlik kodu paneli.
         </p>
       </header>
@@ -190,18 +192,18 @@ export default function LucaSessionPage() {
       ) : (
         <div
           className="rounded-lg border p-5 flex items-center justify-between gap-4"
-          style={{ background: 'rgba(255,255,255,0.025)', borderColor: 'rgba(255,255,255,0.06)' }}
+          style={portalStyle({ background: 'rgba(255,255,255,0.025)', borderColor: 'rgba(255,255,255,0.06)' })}
         >
           <div>
-            <div className="text-sm font-semibold" style={{ color: '#fafaf9' }}>Portal içinde güvenlik kodu hazır</div>
-            <div className="text-xs mt-1" style={{ color: 'rgba(250,250,249,0.52)' }}>
+            <div className="text-sm font-semibold" style={portalStyle({ color: '#fafaf9' })}>Portal içinde güvenlik kodu hazır</div>
+            <div className="text-xs mt-1" style={portalStyle({ color: 'rgba(250,250,249,0.52)' })}>
               Fatura, mizan veya hesap planı çekiminde Luca kod isterse görsel burada açılacak.
             </div>
           </div>
           <button
             onClick={() => refetch()}
             className="px-3 py-2 rounded-md text-xs font-semibold flex items-center gap-2"
-            style={{ background: 'rgba(45,212,191,0.16)', color: '#5eead4', border: '1px solid rgba(45,212,191,0.35)' }}
+            style={portalStyle({ background: 'rgba(45,212,191,0.16)', color: '#5eead4', border: '1px solid rgba(45,212,191,0.35)' })}
           >
             {isLoading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
             Yenile
@@ -210,11 +212,11 @@ export default function LucaSessionPage() {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <section className="relative overflow-hidden rounded-2xl border p-4" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' }}>
-          <div className="absolute inset-x-0 top-0 h-[3px]" style={{ background: 'linear-gradient(90deg, #2dd4bf, rgba(45,212,191,0.2))' }} />
-          <h2 className="text-sm font-bold mb-3 flex items-center gap-2" style={{ color: '#fafaf9' }}>
-            <span className="grid h-7 w-7 place-items-center rounded-lg" style={{ background: 'linear-gradient(135deg, #2dd4bf, #0d9488)', boxShadow: '0 4px 12px rgba(45,212,191,0.30)' }}>
-              <Monitor size={14} style={{ color: '#07201c' }} />
+        <section className="relative overflow-hidden rounded-2xl border p-4" style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' })}>
+          <div className="absolute inset-x-0 top-0 h-[3px]" style={portalStyle({ background: 'linear-gradient(90deg, #2dd4bf, rgba(45,212,191,0.2))' })} />
+          <h2 className="text-sm font-bold mb-3 flex items-center gap-2" style={portalStyle({ color: '#fafaf9' })}>
+            <span className="grid h-7 w-7 place-items-center rounded-lg" style={portalStyle({ background: 'linear-gradient(135deg, #2dd4bf, #0d9488)', boxShadow: '0 4px 12px rgba(45,212,191,0.30)' })}>
+              <Monitor size={14} style={portalStyle({ color: '#07201c' })} />
             </span>
             Bağlı Cihazlar
           </h2>
@@ -223,14 +225,14 @@ export default function LucaSessionPage() {
               <EmptyLine text="Henüz Luca agent ping'i yok" />
             ) : (
               devices.map((d, i) => (
-                <div key={`${d.id || 'unknown'}-${i}`} className="rounded-md px-3 py-2" style={{ background: 'rgba(255,255,255,0.03)' }}>
+                <div key={`${d.id || 'unknown'}-${i}`} className="rounded-md px-3 py-2" style={portalStyle({ background: 'rgba(255,255,255,0.03)' })}>
                   <div className="flex items-center justify-between gap-3">
-                    <span className="font-mono text-xs" style={{ color: d.id === currentDeviceId ? GOLD : '#fafaf9' }}>{d.id || 'cihaz kimliği yok'}</span>
-                    <span className="text-[11px]" style={{ color: deviceStatusColor(d) }}>
+                    <span className="font-mono text-xs" style={portalStyle({ color: d.id === currentDeviceId ? GOLD : '#fafaf9' })}>{d.id || 'cihaz kimliği yok'}</span>
+                    <span className="text-[11px]" style={portalStyle({ color: deviceStatusColor(d) })}>
                       {deviceStatusLabel(d)}
                     </span>
                   </div>
-                  <div className="text-[11px] mt-1 truncate" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                  <div className="text-[11px] mt-1 truncate" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                     Son ping: {new Date(d.lastPing).toLocaleTimeString('tr-TR')} · {d.url || 'url yok'}
                   </div>
                 </div>
@@ -239,15 +241,15 @@ export default function LucaSessionPage() {
           </div>
         </section>
 
-        <section className="relative overflow-hidden rounded-2xl border p-4" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' }}>
-          <div className="absolute inset-x-0 top-0 h-[3px]" style={{ background: 'linear-gradient(90deg, #d4b876, rgba(212,184,118,0.2))' }} />
-          <h2 className="text-sm font-bold mb-3 flex items-center gap-2" style={{ color: '#fafaf9' }}>
-            <span className="grid h-7 w-7 place-items-center rounded-lg" style={{ background: 'linear-gradient(135deg, #d4b876, #b8863a)', boxShadow: '0 4px 12px rgba(212,184,118,0.30)' }}>
-              <CheckCircle2 size={14} style={{ color: '#1a1410' }} />
+        <section className="relative overflow-hidden rounded-2xl border p-4" style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' })}>
+          <div className="absolute inset-x-0 top-0 h-[3px]" style={portalStyle({ background: 'linear-gradient(90deg, #d4b876, rgba(212,184,118,0.2))' })} />
+          <h2 className="text-sm font-bold mb-3 flex items-center gap-2" style={portalStyle({ color: '#fafaf9' })}>
+            <span className="grid h-7 w-7 place-items-center rounded-lg" style={portalStyle({ background: 'linear-gradient(135deg, #d4b876, #b8863a)', boxShadow: '0 4px 12px rgba(212,184,118,0.30)' })}>
+              <CheckCircle2 size={14} style={portalStyle({ color: '#1a1410' })} />
             </span>
             Son Güvenlik Kodları
           </h2>
-          <p className="mb-3 text-[11px] leading-relaxed" style={{ color: 'rgba(250,250,249,0.50)' }}>
+          <p className="mb-3 text-[11px] leading-relaxed" style={portalStyle({ color: 'rgba(250,250,249,0.50)' })}>
             Bunlar girilecek kod degil; Luca'nin actigi guvenlik kodu istek kayitlaridir.
             Aktif olan kod ustte "Aktif Kod" olarak, gorseliyle birlikte acilir.
           </p>
@@ -256,14 +258,14 @@ export default function LucaSessionPage() {
               <EmptyLine text="Henüz güvenlik kodu isteği yok" />
             ) : (
               challenges.slice(0, 8).map((ch) => (
-                <div key={ch.id} className="rounded-md px-3 py-2 flex items-center justify-between gap-3" style={{ background: 'rgba(255,255,255,0.03)' }}>
+                <div key={ch.id} className="rounded-md px-3 py-2 flex items-center justify-between gap-3" style={portalStyle({ background: 'rgba(255,255,255,0.03)' })}>
                   <div className="min-w-0">
-                    <div className="text-xs font-mono truncate" style={{ color: '#fafaf9' }}>{ch.jobId || ch.id}</div>
-                    <div className="text-[11px] mt-1" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                    <div className="text-xs font-mono truncate" style={portalStyle({ color: '#fafaf9' })}>{ch.jobId || ch.id}</div>
+                    <div className="text-[11px] mt-1" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                       {new Date(ch.createdAt).toLocaleString('tr-TR')}
                     </div>
                   </div>
-                  <span className="text-[11px] font-semibold px-2 py-1 rounded" style={statusPill(ch.status)}>
+                  <span className="text-[11px] font-semibold px-2 py-1 rounded" style={portalStyle(statusPill(ch.status))}>
                     {statusLabel(ch.status)}
                   </span>
                 </div>
@@ -325,17 +327,17 @@ function LucaCredentialEditor({
   return (
     <section
       className="relative overflow-hidden rounded-2xl border p-4"
-      style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' }}
+      style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' })}
     >
-      <div className="absolute inset-x-0 top-0 h-[3px]" style={{ background: 'linear-gradient(90deg, #2dd4bf, #d4b876)' }} />
+      <div className="absolute inset-x-0 top-0 h-[3px]" style={portalStyle({ background: 'linear-gradient(90deg, #2dd4bf, #d4b876)' })} />
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2">
-          <span className="grid h-7 w-7 place-items-center rounded-lg" style={{ background: 'linear-gradient(135deg, #2dd4bf, #0d9488)' }}>
-            <KeyRound size={14} style={{ color: '#07201c' }} />
+          <span className="grid h-7 w-7 place-items-center rounded-lg" style={portalStyle({ background: 'linear-gradient(135deg, #2dd4bf, #0d9488)' })}>
+            <KeyRound size={14} style={portalStyle({ color: '#07201c' })} />
           </span>
           <div>
-            <h2 className="text-sm font-bold" style={{ color: '#fafaf9' }}>Luca Giriş Bilgileri</h2>
-            <div className="text-[11px] mt-0.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
+            <h2 className="text-sm font-bold" style={portalStyle({ color: '#fafaf9' })}>Luca Giriş Bilgileri</h2>
+            <div className="text-[11px] mt-0.5" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
               {credential?.saved
                 ? `Kayıtlı — Üye no: ${credential.uyeNo || '-'} · Kullanıcı: ${credential.username || '-'}`
                 : 'Henüz tanımlı değil'}
@@ -345,7 +347,7 @@ function LucaCredentialEditor({
         <button
           onClick={() => setOpen((v) => !v)}
           className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12px] font-semibold"
-          style={{ background: 'rgba(212,184,118,0.14)', color: GOLD, border: '1px solid rgba(212,184,118,0.35)' }}
+          style={portalStyle({ background: 'rgba(212,184,118,0.14)', color: GOLD, border: '1px solid rgba(212,184,118,0.35)' })}
         >
           {open ? <X size={14} /> : <KeyRound size={14} />}
           {open ? 'Vazgeç' : 'Şifreyi Güncelle'}
@@ -355,40 +357,40 @@ function LucaCredentialEditor({
       {open ? (
         <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
           <label className="block">
-            <span className="text-[11px] font-semibold" style={{ color: 'rgba(250,250,249,0.6)' }}>Üye No</span>
+            <span className="text-[11px] font-semibold" style={portalStyle({ color: 'rgba(250,250,249,0.6)' })}>Üye No</span>
             <input
               value={uyeNo}
               onChange={(e) => setUyeNo(e.target.value)}
               className="mt-1 w-full rounded-lg border px-3 py-2 text-sm outline-none"
-              style={inputStyle}
+              style={portalStyle(inputStyle)}
             />
           </label>
           <label className="block">
-            <span className="text-[11px] font-semibold" style={{ color: 'rgba(250,250,249,0.6)' }}>Kullanıcı Adı</span>
+            <span className="text-[11px] font-semibold" style={portalStyle({ color: 'rgba(250,250,249,0.6)' })}>Kullanıcı Adı</span>
             <input
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               className="mt-1 w-full rounded-lg border px-3 py-2 text-sm outline-none"
-              style={inputStyle}
+              style={portalStyle(inputStyle)}
             />
           </label>
           <label className="block">
-            <span className="text-[11px] font-semibold" style={{ color: 'rgba(250,250,249,0.6)' }}>Yeni Şifre</span>
-            <div className="mt-1 flex items-center rounded-lg border" style={{ ...inputStyle, padding: 0 }}>
+            <span className="text-[11px] font-semibold" style={portalStyle({ color: 'rgba(250,250,249,0.6)' })}>Yeni Şifre</span>
+            <div className="mt-1 flex items-center rounded-lg border" style={portalStyle({ ...inputStyle, padding: 0 })}>
               <input
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 type={showPassword ? 'text' : 'password'}
                 placeholder="Yeni şifre"
                 className="w-full bg-transparent px-3 py-2 text-sm outline-none"
-                style={{ color: '#fafaf9', minWidth: 0 }}
+                style={portalStyle({ color: '#fafaf9', minWidth: 0 })}
                 onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
               />
               <button
                 type="button"
                 onClick={() => setShowPassword((v) => !v)}
                 className="px-2"
-                style={{ color: 'rgba(250,250,249,0.55)' }}
+                style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}
               >
                 {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
               </button>
@@ -399,12 +401,12 @@ function LucaCredentialEditor({
               onClick={submit}
               disabled={saveMut.isPending}
               className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-[12px] font-semibold disabled:opacity-60"
-              style={{ background: 'linear-gradient(135deg, #2dd4bf, #0d9488)', color: '#07201c' }}
+              style={portalStyle({ background: 'linear-gradient(135deg, #2dd4bf, #0d9488)', color: '#07201c' })}
             >
               {saveMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
               Kaydet
             </button>
-            <span className="text-[11px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
+            <span className="text-[11px]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
               Şifre sunucuda şifrelenir; veri çekerken otomatik kullanılır.
             </span>
           </div>
@@ -436,24 +438,24 @@ function LucaWorkerAccountsPanel() {
   return (
     <section
       className="relative overflow-hidden rounded-2xl border p-4"
-      style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' }}
+      style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' })}
     >
-      <div className="absolute inset-x-0 top-0 h-[3px]" style={{ background: 'linear-gradient(90deg, #2dd4bf, #d4b876)' }} />
+      <div className="absolute inset-x-0 top-0 h-[3px]" style={portalStyle({ background: 'linear-gradient(90deg, #2dd4bf, #d4b876)' })} />
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-3">
         <div>
-          <h2 className="text-sm font-bold flex items-center gap-2" style={{ color: '#fafaf9' }}>
-            <span className="grid h-7 w-7 place-items-center rounded-lg" style={{ background: 'linear-gradient(135deg, #2dd4bf, #0d9488)', boxShadow: '0 4px 12px rgba(45,212,191,0.30)' }}>
-              <Users size={14} style={{ color: '#07201c' }} />
+          <h2 className="text-sm font-bold flex items-center gap-2" style={portalStyle({ color: '#fafaf9' })}>
+            <span className="grid h-7 w-7 place-items-center rounded-lg" style={portalStyle({ background: 'linear-gradient(135deg, #2dd4bf, #0d9488)', boxShadow: '0 4px 12px rgba(45,212,191,0.30)' })}>
+              <Users size={14} style={portalStyle({ color: '#07201c' })} />
             </span>
             Luca Kullanici Havuzu
           </h2>
-          <div className="text-[11px] mt-1" style={{ color: 'rgba(250,250,249,0.48)' }}>
+          <div className="text-[11px] mt-1" style={portalStyle({ color: 'rgba(250,250,249,0.48)' })}>
             5 Luca kullanicisini buradan tanimla; sifreler kaydedilirken sifreli tutulur.
           </div>
         </div>
         <span
           className="px-2.5 py-1 rounded-full text-[11px] font-semibold"
-          style={{ background: 'rgba(212,184,118,0.12)', color: GOLD }}
+          style={portalStyle({ background: 'rgba(212,184,118,0.12)', color: GOLD })}
         >
           {accounts.filter((a) => a.isActive).length}/{Math.max(5, accounts.length)} aktif
         </span>
@@ -541,7 +543,7 @@ function LucaWorkerAccountRow({
   return (
     <div
       className="rounded-md border px-3 py-3"
-      style={{ background: account ? 'rgba(255,255,255,0.025)' : 'rgba(255,255,255,0.014)', borderColor: 'rgba(255,255,255,0.06)' }}
+      style={portalStyle({ background: account ? 'rgba(255,255,255,0.025)' : 'rgba(255,255,255,0.014)', borderColor: 'rgba(255,255,255,0.06)' })}
     >
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-[1fr_.9fr_1fr_1fr_auto] gap-2 items-end">
         <CompactField label="Gorunen Ad">
@@ -551,7 +553,7 @@ function LucaWorkerAccountRow({
             autoComplete="off"
             name={`luca-worker-name-${slotIndex}`}
             className="w-full px-2.5 py-2 rounded-md text-xs outline-none"
-            style={inputStyle()}
+            style={portalStyle(inputStyle())}
           />
         </CompactField>
         <CompactField label="Uye No">
@@ -561,7 +563,7 @@ function LucaWorkerAccountRow({
             autoComplete="off"
             name={`luca-worker-uyeno-${slotIndex}`}
             className="w-full px-2.5 py-2 rounded-md text-xs outline-none"
-            style={inputStyle()}
+            style={portalStyle(inputStyle())}
           />
         </CompactField>
         <CompactField label="Kullanici Adi">
@@ -573,7 +575,7 @@ function LucaWorkerAccountRow({
             autoComplete="off"
             name={`luca-worker-user-${slotIndex}`}
             className="w-full px-2.5 py-2 rounded-md text-xs outline-none"
-            style={inputStyle()}
+            style={portalStyle(inputStyle())}
           />
         </CompactField>
         <CompactField label={account?.hasPassword ? 'Sifre (degistir)' : 'Sifre'}>
@@ -586,13 +588,13 @@ function LucaWorkerAccountRow({
               name={`luca-worker-pass-${slotIndex}`}
               placeholder={account?.hasPassword ? 'mevcut korunur' : ''}
               className="w-full px-2.5 py-2 rounded-l-md text-xs outline-none"
-              style={inputStyle()}
+              style={portalStyle(inputStyle())}
             />
             <button
               type="button"
               onClick={() => setShowPassword((v) => !v)}
               className="px-2 rounded-r-md"
-              style={{ ...inputStyle(), borderLeft: '0' }}
+              style={portalStyle({ ...inputStyle(), borderLeft: '0' })}
               title={showPassword ? 'Gizle' : 'Goster'}
             >
               {showPassword ? <EyeOff size={13} /> : <Eye size={13} />}
@@ -605,11 +607,11 @@ function LucaWorkerAccountRow({
             type="button"
             onClick={() => setIsActive((v) => !v)}
             className="h-9 px-3 rounded-md text-xs font-semibold"
-            style={{
+            style={portalStyle({
               background: isActive ? 'rgba(34,197,94,0.14)' : 'rgba(148,163,184,0.10)',
               color: isActive ? '#86efac' : 'rgba(250,250,249,0.48)',
               border: `1px solid ${isActive ? 'rgba(34,197,94,0.25)' : 'rgba(255,255,255,0.08)'}`,
-            }}
+            })}
           >
             {isActive ? 'Aktif' : 'Pasif'}
           </button>
@@ -618,7 +620,7 @@ function LucaWorkerAccountRow({
             disabled={saveMut.isPending}
             onClick={() => saveMut.mutate()}
             className="h-9 px-3 rounded-md text-xs font-bold flex items-center gap-1.5 disabled:opacity-50"
-            style={{ background: GOLD, color: '#111827' }}
+            style={portalStyle({ background: GOLD, color: '#111827' })}
           >
             {saveMut.isPending ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
             Kaydet
@@ -631,7 +633,7 @@ function LucaWorkerAccountRow({
                 if (window.confirm(`${displayName} silinsin mi?`)) deleteMut.mutate();
               }}
               className="h-9 w-9 rounded-md inline-flex items-center justify-center disabled:opacity-50"
-              style={{ background: 'rgba(239,68,68,0.10)', color: '#fca5a5', border: '1px solid rgba(239,68,68,0.18)' }}
+              style={portalStyle({ background: 'rgba(239,68,68,0.10)', color: '#fca5a5', border: '1px solid rgba(239,68,68,0.18)' })}
               title="Sil"
             >
               {deleteMut.isPending ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
@@ -641,7 +643,7 @@ function LucaWorkerAccountRow({
       </div>
 
       {account?.lastError ? (
-        <div className="mt-2 text-[11px]" style={{ color: '#fca5a5' }}>
+        <div className="mt-2 text-[11px]" style={portalStyle({ color: '#fca5a5' })}>
           Son hata: {account.lastError}
         </div>
       ) : null}
@@ -652,7 +654,7 @@ function LucaWorkerAccountRow({
 function CompactField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="block text-[10px] uppercase font-bold tracking-[.10em] mb-1" style={{ color: 'rgba(250,250,249,0.42)' }}>
+      <span className="block text-[10px] uppercase font-bold tracking-[.10em] mb-1" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>
         {label}
       </span>
       {children}
@@ -686,18 +688,18 @@ function CaptchaPanel({
   isCancelling: boolean;
 }) {
   return (
-    <div className="rounded-xl border p-5" style={{ background: 'rgba(212,184,118,0.075)', borderColor: 'rgba(212,184,118,0.32)' }}>
+    <div className="rounded-xl border p-5" style={portalStyle({ background: 'rgba(212,184,118,0.075)', borderColor: 'rgba(212,184,118,0.32)' })}>
       <div className="flex flex-col lg:flex-row gap-5 lg:items-center">
-        <div className="rounded-lg p-3 inline-flex items-center justify-center" style={{ background: '#f8fafc', minWidth: 220 }}>
+        <div className="rounded-lg p-3 inline-flex items-center justify-center" style={portalStyle({ background: '#f8fafc', minWidth: 220 })}>
           {challenge.captchaImage ? (
-            <img src={challenge.captchaImage} alt="Luca güvenlik kodu" style={{ maxWidth: 260, maxHeight: 120, objectFit: 'contain' }} />
+            <img src={challenge.captchaImage} alt="Luca güvenlik kodu" style={portalStyle({ maxWidth: 260, maxHeight: 120, objectFit: 'contain' })} />
           ) : (
             <span className="text-xs text-slate-500">Görsel bekleniyor</span>
           )}
         </div>
         <div className="flex-1">
-          <div className="text-sm font-bold" style={{ color: '#fafaf9' }}>Luca güvenlik kodu gerekiyor</div>
-          <div className="text-xs mt-1" style={{ color: 'rgba(250,250,249,0.62)' }}>
+          <div className="text-sm font-bold" style={portalStyle({ color: '#fafaf9' })}>Luca güvenlik kodu gerekiyor</div>
+          <div className="text-xs mt-1" style={portalStyle({ color: 'rgba(250,250,249,0.62)' })}>
             Kod Luca sekmesinde değil, burada girilecek. Agent cevabı alıp arka plandaki Luca ekranına uygulayacak.
           </div>
           <div className="mt-4 flex flex-col sm:flex-row gap-2">
@@ -710,13 +712,13 @@ function CaptchaPanel({
               autoFocus
               placeholder="Güvenlik kodu"
               className="px-3 py-2 rounded-md text-sm outline-none"
-              style={{ background: 'rgba(15,13,11,0.9)', color: '#fafaf9', border: '1px solid rgba(255,255,255,0.1)' }}
+              style={portalStyle({ background: 'rgba(15,13,11,0.9)', color: '#fafaf9', border: '1px solid rgba(255,255,255,0.1)' })}
             />
             <button
               disabled={isSubmitting || value.trim().length < 3}
               onClick={onSubmit}
               className="px-4 py-2 rounded-md text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
-              style={{ background: GOLD, color: '#111827' }}
+              style={portalStyle({ background: GOLD, color: '#111827' })}
             >
               {isSubmitting ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
               Devam Et
@@ -725,7 +727,7 @@ function CaptchaPanel({
               disabled={isCancelling}
               onClick={onCancel}
               className="px-3 py-2 rounded-md text-sm font-semibold flex items-center justify-center gap-2"
-              style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(250,250,249,0.72)' }}
+              style={portalStyle({ background: 'rgba(255,255,255,0.06)', color: 'rgba(250,250,249,0.72)' })}
             >
               <X size={14} />
               İptal
@@ -754,23 +756,23 @@ function StatusCard({
   return (
     <div
       className="relative overflow-hidden rounded-2xl border p-4"
-      style={{ borderColor: `${color}40`, background: `linear-gradient(135deg, ${color}26, ${color}0a 58%, rgba(255,255,255,0.02))` }}
+      style={portalStyle({ borderColor: `${color}40`, background: `linear-gradient(135deg, ${color}26, ${color}0a 58%, rgba(255,255,255,0.02))` })}
     >
       <div className="flex items-center justify-between">
-        <span className="text-[11px] uppercase font-bold tracking-[.12em]" style={{ color }}>{title}</span>
-        <span className="grid h-7 w-7 place-items-center rounded-lg" style={{ background: `${color}22`, border: `1px solid ${color}40` }}>
-          <Icon size={14} style={{ color }} />
+        <span className="text-[11px] uppercase font-bold tracking-[.12em]" style={portalStyle({ color })}>{title}</span>
+        <span className="grid h-7 w-7 place-items-center rounded-lg" style={portalStyle({ background: `${color}22`, border: `1px solid ${color}40` })}>
+          <Icon size={14} style={portalStyle({ color })} />
         </span>
       </div>
-      <div className="mt-3 text-sm font-semibold truncate" style={{ color: '#fafaf9' }}>{value}</div>
-      <div className="mt-1 text-xs truncate" style={{ color: 'rgba(250,250,249,0.5)' }}>{detail}</div>
+      <div className="mt-3 text-sm font-semibold truncate" style={portalStyle({ color: '#fafaf9' })}>{value}</div>
+      <div className="mt-1 text-xs truncate" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>{detail}</div>
     </div>
   );
 }
 
 function EmptyLine({ text }: { text: string }) {
   return (
-    <div className="rounded-md px-3 py-3 text-xs" style={{ background: 'rgba(255,255,255,0.025)', color: 'rgba(250,250,249,0.45)' }}>
+    <div className="rounded-md px-3 py-3 text-xs" style={portalStyle({ background: 'rgba(255,255,255,0.025)', color: 'rgba(250,250,249,0.45)' })}>
       {text}
     </div>
   );

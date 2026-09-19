@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 /**
  * CARİ KASA — ORTAK TASARIM DİLİ.
@@ -68,20 +70,20 @@ export function BolumBasligi({
       <div className="flex items-center gap-3">
         <span
           className="flex h-9 w-9 items-center justify-center rounded-xl"
-          style={{
+          style={portalStyle({
             background: `linear-gradient(140deg, ${renk}26, rgba(255,255,255,0.01) 65%)`,
             border: `1px solid ${renk}33`,
             color: renk,
-          }}
+          })}
         >
           {ikon}
         </span>
         <div>
-          <div className="text-[15px] font-semibold" style={{ color: TEXT }}>
+          <div className="text-[15px] font-semibold" style={portalStyle({ color: TEXT })}>
             {baslik}
           </div>
           {aciklama && (
-            <div className="mt-0.5 text-[11.5px]" style={{ color: MUTED }}>
+            <div className="mt-0.5 text-[11.5px]" style={portalStyle({ color: MUTED })}>
               {aciklama}
             </div>
           )}
@@ -121,33 +123,33 @@ export function SayacKutusu({
       onClick={onClick}
       disabled={!tiklanabilir}
       className="relative overflow-hidden rounded-2xl px-4 py-3.5 text-left transition disabled:cursor-default"
-      style={{
+      style={portalStyle({
         background: aktif
           ? `linear-gradient(140deg, ${renk}24, rgba(255,255,255,0.01) 62%)`
           : CARD_BG,
         border: `1px solid ${aktif ? `${renk}47` : CARD_BORDER}`,
         boxShadow: aktif ? `0 16px 34px -22px ${renk}` : '0 14px 32px rgba(0,0,0,0.20)',
-      }}
+      })}
     >
       <span
         className="pointer-events-none absolute -right-6 -top-8 h-24 w-24 rounded-full opacity-[0.16]"
-        style={{ background: `radial-gradient(circle, ${renk}, transparent 68%)` }}
+        style={portalStyle({ background: `radial-gradient(circle, ${renk}, transparent 68%)` })}
       />
-      <span className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider" style={{ color: MUTED }}>
-        {ikon && <span style={{ color: renk }}>{ikon}</span>}
+      <span className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider" style={portalStyle({ color: MUTED })}>
+        {ikon && <span style={portalStyle({ color: renk })}>{ikon}</span>}
         {etiket}
       </span>
-      <span className="mt-1.5 block text-[21px] font-semibold tabular-nums" style={{ color: renk }}>
+      <span className="mt-1.5 block text-[21px] font-semibold tabular-nums" style={portalStyle({ color: renk })}>
         {sayi}
       </span>
       <span className="mt-0.5 flex items-baseline justify-between gap-2">
         {aciklama && (
-          <span className="text-[11px]" style={{ color: MUTED }}>
+          <span className="text-[11px]" style={portalStyle({ color: MUTED })}>
             {aciklama}
           </span>
         )}
         {tutar && (
-          <span className="text-[11px] tabular-nums" style={{ color: MUTED }}>
+          <span className="text-[11px] tabular-nums" style={portalStyle({ color: MUTED })}>
             {tutar}
           </span>
         )}
@@ -173,23 +175,23 @@ export function ListeKarti({
   return (
     <section
       className="relative overflow-hidden rounded-2xl"
-      style={{
+      style={portalStyle({
         background: CARD_BG,
         border: `1px solid ${CARD_BORDER}`,
         boxShadow: '0 18px 44px rgba(0,0,0,0.24)',
-      }}
+      })}
     >
       <div
         className="pointer-events-none absolute inset-x-0 top-0 h-px"
-        style={{ background: `linear-gradient(90deg, transparent, ${renk}66, transparent)` }}
+        style={portalStyle({ background: `linear-gradient(90deg, transparent, ${renk}66, transparent)` })}
       />
       <header className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
         <span className="flex items-baseline gap-2">
-          <span className="text-[13px] font-semibold" style={{ color: TEXT }}>
+          <span className="text-[13px] font-semibold" style={portalStyle({ color: TEXT })}>
             {baslik}
           </span>
           {sayi !== undefined && (
-            <span className="text-[11px] tabular-nums" style={{ color: MUTED }}>
+            <span className="text-[11px] tabular-nums" style={portalStyle({ color: MUTED })}>
               {sayi}
             </span>
           )}

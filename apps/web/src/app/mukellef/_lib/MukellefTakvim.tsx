@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 /**
  * Mükellef Mali Takvim — ofis (müşavir) BuHaftaTakvim bileşeninin BİREBİR kopyası.
@@ -164,35 +166,35 @@ export function MukellefTakvim() {
   return (
     <div
       className="rounded-2xl p-4 sm:p-5"
-      style={{
+      style={portalStyle({
         background: 'linear-gradient(180deg, rgba(245,166,184,0.052), rgba(255,255,255,0.014))',
         border: '1px solid rgba(245,166,184,0.16)',
-      }}
+      })}
     >
       <div className="flex flex-wrap items-center gap-2.5 mb-3">
-        <span className="w-[3px] h-4 rounded-sm" style={{ background: ROSE }} />
-        <h3 className="text-[14px] font-semibold flex items-center gap-2" style={{ color: '#fafaf9' }}>
-          <Calendar size={14} style={{ color: ROSE_SOFT }} />
+        <span className="w-[3px] h-4 rounded-sm" style={portalStyle({ background: ROSE })} />
+        <h3 className="text-[14px] font-semibold flex items-center gap-2" style={portalStyle({ color: '#fafaf9' })}>
+          <Calendar size={14} style={portalStyle({ color: ROSE_SOFT })} />
           Bu Ay Mali Takvim
         </h3>
         {rows.length > 0 && (
-          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ml-1" style={{ background: 'rgba(245,166,184,0.12)', color: ROSE, border: '1px solid rgba(245,166,184,0.30)' }}>
+          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ml-1" style={portalStyle({ background: 'rgba(245,166,184,0.12)', color: ROSE, border: '1px solid rgba(245,166,184,0.30)' })}>
             {rows.length} son tarih
           </span>
         )}
         <span
           className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded"
           title="KDV2: ayın 25'i · MUHSGK/Damga/Konaklama: ayın 26'sı · KDV1: ayın 28'i · Geçici Vergi: Şubat/Mayıs/Ağustos/Kasım 17'si · Ay sonu: Turizm Payı"
-          style={{ background: 'rgba(255,255,255,0.045)', color: 'rgba(250,250,249,0.58)', border: '1px solid rgba(255,255,255,0.09)' }}
+          style={portalStyle({ background: 'rgba(255,255,255,0.045)', color: 'rgba(250,250,249,0.58)', border: '1px solid rgba(255,255,255,0.09)' })}
         >
           {CURRENT_MONTH_LABEL}
         </span>
         {urgentCount > 0 && (
-          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded" style={{ background: 'rgba(245,166,184,0.12)', color: '#ffc4cf', border: '1px solid rgba(245,166,184,0.30)' }}>
+          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded" style={portalStyle({ background: 'rgba(245,166,184,0.12)', color: '#ffc4cf', border: '1px solid rgba(245,166,184,0.30)' })}>
             {urgentCount} yakın
           </span>
         )}
-        <span className="ml-auto text-[11px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
+        <span className="ml-auto text-[11px]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
           {monthStart.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })} — {monthEnd.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}
         </span>
       </div>
@@ -206,8 +208,8 @@ export function MukellefTakvim() {
       </div>
 
       {rows.length === 0 ? (
-        <div className="rounded-2xl py-10 text-center" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
-          <p className="text-[13px]" style={{ color: 'rgba(250,250,249,0.5)' }}>
+        <div className="rounded-2xl py-10 text-center" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' })}>
+          <p className="text-[13px]" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
             Kalan günlerde beyanname veya bildirim son tarihi yok.
           </p>
         </div>
@@ -231,28 +233,28 @@ function CalendarDayTile({ day }: { day: ReturnType<typeof buildCalendarDays>[nu
     <div
       className="min-h-[76px] rounded-xl p-2.5 transition-all"
       title={titleParts.join('\n')}
-      style={{
+      style={portalStyle({
         background: hasDeadline ? tone.bg : 'rgba(255,255,255,0.016)',
         border: hasDeadline ? `1px solid ${tone.border}` : '1px solid rgba(255,255,255,0.05)',
         boxShadow: hasDeadline ? 'inset 0 1px 0 rgba(255,255,255,0.035)' : 'none',
-      }}
+      })}
     >
       <div className="flex items-start justify-between gap-2">
         <div>
-          <div className="text-[17px] leading-none tabular-nums" style={{ fontFamily: 'Fraunces, serif', fontWeight: 700, color: hasDeadline ? tone.pillText : 'rgba(250,250,249,0.72)' }}>
+          <div className="text-[17px] leading-none tabular-nums" style={portalStyle({ fontFamily: 'Fraunces, serif', fontWeight: 700, color: hasDeadline ? tone.pillText : 'rgba(250,250,249,0.72)' })}>
             {day.date.getDate()}
           </div>
-          <div className="text-[9px] uppercase font-bold mt-1" style={{ color: 'rgba(250,250,249,0.38)' }}>{month}</div>
+          <div className="text-[9px] uppercase font-bold mt-1" style={portalStyle({ color: 'rgba(250,250,249,0.38)' })}>{month}</div>
         </div>
         {hasDeadline && (
           <div className="flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full" style={{ background: tone.accent }} />
+            <span className="w-1.5 h-1.5 rounded-full" style={portalStyle({ background: tone.accent })} />
           </div>
         )}
       </div>
       <div className="mt-2 flex flex-wrap gap-1">
         {hasDeadline && (
-          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ background: tone.pillBg, border: `1px solid ${tone.pillBorder}`, color: tone.pillText }}>
+          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={portalStyle({ background: tone.pillBg, border: `1px solid ${tone.pillBorder}`, color: tone.pillText })}>
             {day.deadlines.length} son
           </span>
         )}
@@ -269,32 +271,32 @@ function DeadlineRowItem({ row }: { row: DeadlineRow }) {
   return (
     <div
       className="rounded-xl flex items-center gap-3 pl-1 pr-3 py-2 transition-all hover:translate-x-[2px] relative"
-      style={{
+      style={portalStyle({
         background: tone.bg,
         border: `1px solid ${tone.border}`,
         boxShadow: row.gunFark <= 1 ? `inset 3px 0 0 ${tone.accent}` : `inset 2px 0 0 ${tone.accent}`,
-      }}
+      })}
     >
       <div className="pl-3 pr-1 min-w-[58px] flex flex-col items-start">
-        <span className="tabular-nums leading-none" style={{ fontFamily: 'Fraunces, serif', fontSize: 22, fontWeight: 700, color: '#fafaf9', letterSpacing: '-.03em' }}>
+        <span className="tabular-nums leading-none" style={portalStyle({ fontFamily: 'Fraunces, serif', fontSize: 22, fontWeight: 700, color: '#fafaf9', letterSpacing: '-.03em' })}>
           {row.date.getDate()}
         </span>
-        <span className="text-[10px] uppercase font-bold tracking-wider mt-0.5" style={{ color: 'rgba(250,250,249,0.4)' }}>
+        <span className="text-[10px] uppercase font-bold tracking-wider mt-0.5" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>
           {MONTHS_TR[month]}
         </span>
       </div>
 
       <div className="flex-1 min-w-0 flex items-center gap-3">
-        <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: tone.pillBg, border: `1px solid ${tone.pillBorder}`, color: tone.pillText }}>
+        <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={portalStyle({ background: tone.pillBg, border: `1px solid ${tone.pillBorder}`, color: tone.pillText })}>
           <Icon size={15} />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="text-[13px] font-semibold truncate" style={{ color: '#fafaf9', letterSpacing: '-0.01em' }}>{row.title}</div>
-          <div className="text-[11px] mt-0.5 truncate" style={{ color: 'rgba(250,250,249,0.5)' }}>{row.subtitle}</div>
+          <div className="text-[13px] font-semibold truncate" style={portalStyle({ color: '#fafaf9', letterSpacing: '-0.01em' })}>{row.title}</div>
+          <div className="text-[11px] mt-0.5 truncate" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>{row.subtitle}</div>
         </div>
       </div>
 
-      <span className="text-[10.5px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full flex-shrink-0" style={{ background: tone.pillBg, color: tone.pillText, border: `1px solid ${tone.pillBorder}` }}>
+      <span className="text-[10.5px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full flex-shrink-0" style={portalStyle({ background: tone.pillBg, color: tone.pillText, border: `1px solid ${tone.pillBorder}` })}>
         {tone.label}
       </span>
     </div>

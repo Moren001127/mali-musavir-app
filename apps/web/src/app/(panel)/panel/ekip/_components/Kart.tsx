@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import { forwardRef, type CSSProperties, type ReactNode } from 'react';
 import { TEMA } from './ortak';
@@ -60,22 +62,22 @@ export const Kart = forwardRef<
       ref={ref}
       id={id}
       className={`relative min-w-0 overflow-hidden rounded-2xl ${className}`}
-      style={{ background: YUZEY[ton], border: `1px solid ${secili ? `${renk}66` : YUZEY.kenar}`, boxShadow: '0 18px 44px rgba(0,0,0,0.30)', ...style }}
+      style={portalStyle({ background: YUZEY[ton], border: `1px solid ${secili ? `${renk}66` : YUZEY.kenar}`, boxShadow: '0 18px 44px rgba(0,0,0,0.30)', ...style })}
     >
       {serit ? (
-        <div className="h-[3px] w-full" style={{ background: `linear-gradient(90deg, ${renk}, ${renk}55 55%, transparent)` }} />
+        <div className="h-[3px] w-full" style={portalStyle({ background: `linear-gradient(90deg, ${renk}, ${renk}55 55%, transparent)` })} />
       ) : (
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-px" style={{ background: `linear-gradient(90deg, transparent, ${renk}66, transparent)` }} />
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-px" style={portalStyle({ background: `linear-gradient(90deg, transparent, ${renk}66, transparent)` })} />
       )}
-      <div className="pointer-events-none absolute -right-10 -top-12 h-40 w-40 rounded-full opacity-[0.14]" style={{ background: `radial-gradient(circle, ${renk}, transparent 68%)` }} />
+      <div className="pointer-events-none absolute -right-10 -top-12 h-40 w-40 rounded-full opacity-[0.14]" style={portalStyle({ background: `radial-gradient(circle, ${renk}, transparent 68%)` })} />
       {baslik && (
         <header className="relative flex flex-wrap items-start justify-between gap-3 px-5 pb-3 pt-4">
           <div className="min-w-0">
-            <h3 className="text-[13.5px] font-semibold tracking-wide" style={{ color: TEMA.metin }}>
+            <h3 className="text-[13.5px] font-semibold tracking-wide" style={portalStyle({ color: TEMA.metin })}>
               {baslik}
             </h3>
             {aciklama && (
-              <p className="mt-0.5 text-[11.5px]" style={{ color: TEMA.ikincil }}>
+              <p className="mt-0.5 text-[11.5px]" style={portalStyle({ color: TEMA.ikincil })}>
                 {aciklama}
               </p>
             )}
@@ -92,18 +94,18 @@ export const Kart = forwardRef<
 export function KPI({ etiket, deger, altBilgi, renk = TEMA.mavi, ikon, vurgu = false, onClick, title }: { etiket: string; deger: string | number; altBilgi?: string; renk?: string; ikon?: ReactNode; vurgu?: boolean; onClick?: () => void; title?: string }) {
   const icerik = (
     <>
-      <div className="pointer-events-none absolute -right-6 -top-8 h-24 w-24 rounded-full opacity-[0.16]" style={{ background: `radial-gradient(circle, ${renk}, transparent 68%)` }} />
+      <div className="pointer-events-none absolute -right-6 -top-8 h-24 w-24 rounded-full opacity-[0.16]" style={portalStyle({ background: `radial-gradient(circle, ${renk}, transparent 68%)` })} />
       <div className="flex items-center gap-1.5">
-        {ikon && <span style={{ color: renk }}>{ikon}</span>}
-        <span className="text-[10.5px] uppercase tracking-wider" style={{ color: TEMA.soluk }}>
+        {ikon && <span style={portalStyle({ color: renk })}>{ikon}</span>}
+        <span className="text-[10.5px] uppercase tracking-wider" style={portalStyle({ color: TEMA.soluk })}>
           {etiket}
         </span>
       </div>
-      <div className="mt-1 text-[22px] font-semibold leading-none tabular-nums" style={{ color: vurgu ? renk : TEMA.metin }}>
+      <div className="mt-1 text-[22px] font-semibold leading-none tabular-nums" style={portalStyle({ color: vurgu ? renk : TEMA.metin })}>
         {deger}
       </div>
       {altBilgi && (
-        <div className="mt-1 truncate text-[11px]" style={{ color: TEMA.ikincil }}>
+        <div className="mt-1 truncate text-[11px]" style={portalStyle({ color: TEMA.ikincil })}>
           {altBilgi}
         </div>
       )}
@@ -116,13 +118,13 @@ export function KPI({ etiket, deger, altBilgi, renk = TEMA.mavi, ikon, vurgu = f
   };
   if (onClick) {
     return (
-      <button type="button" onClick={onClick} title={title} className="relative min-w-0 overflow-hidden rounded-2xl px-4 py-3 text-left transition-[transform] duration-150 hover:-translate-y-px" style={stil}>
+      <button type="button" onClick={onClick} title={title} className="relative min-w-0 overflow-hidden rounded-2xl px-4 py-3 text-left transition-[transform] duration-150 hover:-translate-y-px" style={portalStyle(stil)}>
         {icerik}
       </button>
     );
   }
   return (
-    <div className="relative min-w-0 overflow-hidden rounded-2xl px-4 py-3" style={stil} title={title}>
+    <div className="relative min-w-0 overflow-hidden rounded-2xl px-4 py-3" style={portalStyle(stil)} title={title}>
       {icerik}
     </div>
   );
@@ -131,7 +133,7 @@ export function KPI({ etiket, deger, altBilgi, renk = TEMA.mavi, ikon, vurgu = f
 /** Rozet — küçük yuvarlak etiket. */
 export function Rozet({ children, renk = TEMA.altin, title }: { children: ReactNode; renk?: string; title?: string }) {
   return (
-    <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[10.5px] font-medium" style={{ background: `${renk}1f`, border: `1px solid ${renk}44`, color: renk }} title={title}>
+    <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[10.5px] font-medium" style={portalStyle({ background: `${renk}1f`, border: `1px solid ${renk}44`, color: renk })} title={title}>
       {children}
     </span>
   );
@@ -168,7 +170,7 @@ export const Dugme = forwardRef<
       disabled={disabled}
       title={title}
       className={`inline-flex flex-shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg font-semibold transition-[transform,filter,opacity] duration-150 hover:-translate-y-px hover:brightness-110 disabled:opacity-45 disabled:hover:translate-y-0 disabled:hover:brightness-100 ${buyuk ? 'px-4 py-2 text-[13px]' : 'px-3 py-1.5 text-[12px]'} ${className}`}
-      style={stil}
+      style={portalStyle(stil)}
       {...rest}
     >
       {children}
@@ -180,10 +182,10 @@ export const Dugme = forwardRef<
 export function BosDurum({ ikon, metin, renk = TEMA.mavi, ek }: { ikon: ReactNode; metin: ReactNode; renk?: string; ek?: ReactNode }) {
   return (
     <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
-      <span className="flex h-10 w-10 items-center justify-center rounded-full" style={{ background: `${renk}14`, color: renk }}>
+      <span className="flex h-10 w-10 items-center justify-center rounded-full" style={portalStyle({ background: `${renk}14`, color: renk })}>
         {ikon}
       </span>
-      <span className="text-[13px]" style={{ color: TEMA.ikincil }}>
+      <span className="text-[13px]" style={portalStyle({ color: TEMA.ikincil })}>
         {metin}
       </span>
       {ek}
@@ -194,8 +196,8 @@ export function BosDurum({ ikon, metin, renk = TEMA.mavi, ek }: { ikon: ReactNod
 /** Durum kelimesi + nokta. */
 export function DurumKelimesi({ renk, nabiz = false, children, title }: { renk: string; nabiz?: boolean; children: ReactNode; title?: string }) {
   return (
-    <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-[11.5px] font-semibold" style={{ color: renk }} title={title}>
-      <span className={`inline-block h-1.5 w-1.5 rounded-full ${nabiz ? 'animate-pulse' : ''}`} style={{ background: renk, boxShadow: nabiz ? `0 0 0 3px ${renk}33` : 'none' }} />
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-[11.5px] font-semibold" style={portalStyle({ color: renk })} title={title}>
+      <span className={`inline-block h-1.5 w-1.5 rounded-full ${nabiz ? 'animate-pulse' : ''}`} style={portalStyle({ background: renk, boxShadow: nabiz ? `0 0 0 3px ${renk}33` : 'none' })} />
       {children}
     </span>
   );
@@ -208,12 +210,12 @@ export function Avatar({ kisaltma, boyut = 32, durum = 'bos', title }: { kisaltm
   return (
     <span
       className={`flex ${px} flex-shrink-0 items-center justify-center rounded-full font-bold tracking-wide`}
-      style={{
+      style={portalStyle({
         background: durum === 'bos' ? 'rgba(255,255,255,0.08)' : `${renk}22`,
         border: `1px solid ${renk}`,
         color: durum === 'bos' ? TEMA.ikincil : renk,
         boxShadow: durum === 'calisiyor' ? `0 0 0 3px ${renk}22` : 'none',
-      }}
+      })}
       title={title}
     >
       {kisaltma}
@@ -227,13 +229,13 @@ export function Hap({ renk = TEMA.ikincil, dolu = false, children, onClick, titl
   const sinif = `inline-flex flex-shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2.5 py-[3px] text-[11px] font-semibold leading-4 ${className}`;
   if (onClick) {
     return (
-      <button type="button" onClick={onClick} title={title} className={`${sinif} transition-[filter] duration-150 hover:brightness-125`} style={stil}>
+      <button type="button" onClick={onClick} title={title} className={`${sinif} transition-[filter] duration-150 hover:brightness-125`} style={portalStyle(stil)}>
         {children}
       </button>
     );
   }
   return (
-    <span title={title} className={sinif} style={stil}>
+    <span title={title} className={sinif} style={portalStyle(stil)}>
       {children}
     </span>
   );

@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 import { useMe } from '@/hooks/useAuth';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
@@ -35,13 +37,13 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: '#050505' }}>
+      <div className="min-h-screen flex items-center justify-center" style={portalStyle({ background: '#050505' })}>
         <div className="text-center">
           <div
             className="w-10 h-10 rounded-full border-2 border-transparent animate-spin mx-auto"
-            style={{ borderTopColor: '#d4b876', borderRightColor: '#d4b876' }}
+            style={portalStyle({ borderTopColor: '#d4b876', borderRightColor: '#d4b876' })}
           />
-          <p className="text-sm mt-3" style={{ color: 'rgba(250,250,249,0.45)' }}>Yükleniyor...</p>
+          <p className="text-sm mt-3" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>Yükleniyor...</p>
         </div>
       </div>
     );
@@ -50,7 +52,7 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
   if (!user) return null;
 
   return (
-    <div data-panel-shell className="flex h-screen w-full max-w-full overflow-hidden" style={{ background: '#050505' }}>
+    <div data-panel-shell className="flex h-screen w-full max-w-full overflow-hidden" style={portalStyle({ background: '#050505' })}>
       <div className="hidden lg:flex">
         <Sidebar />
       </div>

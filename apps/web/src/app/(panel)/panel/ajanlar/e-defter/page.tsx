@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle, portalPaint } from '@/lib/portal-theme';
+
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
@@ -98,25 +100,25 @@ function TaxpayerSelect({ taxpayers, value, onChange }: { taxpayers: Taxpayer[];
         type="button"
         onClick={() => setOpen((o) => !o)}
         className="h-11 w-full rounded-xl pl-3 pr-9 text-[13px] inline-flex items-center gap-2 cursor-pointer transition-colors relative"
-        style={{ background: 'rgba(255,255,255,.04)', border: `1px solid ${open ? BORDER_STRONG : BORDER}`, color: TEXT }}
+        style={portalStyle({ background: 'rgba(255,255,255,.04)', border: `1px solid ${open ? BORDER_STRONG : BORDER}`, color: TEXT })}
       >
-        <span className="grid place-items-center w-[22px] h-[22px] rounded-md shrink-0" style={{ background: NAVY_SOFT, color: NAVY }}><Building2 size={13} /></span>
-        <span className="flex-1 text-left truncate font-semibold" style={{ color: selected ? TEXT : MUTED }}>
+        <span className="grid place-items-center w-[22px] h-[22px] rounded-md shrink-0" style={portalStyle({ background: NAVY_SOFT, color: NAVY })}><Building2 size={13} /></span>
+        <span className="flex-1 text-left truncate font-semibold" style={portalStyle({ color: selected ? TEXT : MUTED })}>
           {selected ? taxpayerName(selected) : (taxpayers.length ? 'Mükellef seçin' : 'Bilanço mükellefi yok')}
         </span>
-        {selected?.taxNumber && <span className="text-[11px] tabular-nums shrink-0" style={{ color: MUTED2 }}>{selected.taxNumber}</span>}
-        <ChevronDown size={15} className="absolute right-3 transition-transform" style={{ color: MUTED, transform: open ? 'rotate(180deg)' : 'none' }} />
+        {selected?.taxNumber && <span className="text-[11px] tabular-nums shrink-0" style={portalStyle({ color: MUTED2 })}>{selected.taxNumber}</span>}
+        <ChevronDown size={15} className="absolute right-3 transition-transform" style={portalStyle({ color: MUTED, transform: open ? 'rotate(180deg)' : 'none' })} />
       </button>
       {open && rect && typeof document !== 'undefined' && createPortal(
-        <div ref={panelRef} className="rounded-xl overflow-hidden" style={{ position: 'fixed', left: rect.left, top: rect.top, width: rect.width, zIndex: 9999, background: '#16161b', border: `1px solid ${BORDER_STRONG}`, boxShadow: '0 18px 44px rgba(0,0,0,.55)' }}>
-          <div className="p-2" style={{ borderBottom: `1px solid ${BORDER}` }}>
-            <div className="h-9 rounded-lg px-2.5 flex items-center gap-2 w-full" style={{ background: 'rgba(255,255,255,.05)', border: `1px solid ${BORDER}` }}>
-              <Search size={13} style={{ color: MUTED2 }} />
-              <input autoFocus value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Mükellef veya VKN ara…" className="bg-transparent outline-none text-[13px] w-full" style={{ color: TEXT }} />
+        <div ref={panelRef} className="rounded-xl overflow-hidden" style={portalStyle({ position: 'fixed', left: rect.left, top: rect.top, width: rect.width, zIndex: 9999, background: '#16161b', border: `1px solid ${BORDER_STRONG}`, boxShadow: '0 18px 44px rgba(0,0,0,.55)' })}>
+          <div className="p-2" style={portalStyle({ borderBottom: `1px solid ${BORDER}` })}>
+            <div className="h-9 rounded-lg px-2.5 flex items-center gap-2 w-full" style={portalStyle({ background: 'rgba(255,255,255,.05)', border: `1px solid ${BORDER}` })}>
+              <Search size={13} style={portalStyle({ color: MUTED2 })} />
+              <input autoFocus value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Mükellef veya VKN ara…" className="bg-transparent outline-none text-[13px] w-full" style={portalStyle({ color: TEXT })} />
             </div>
           </div>
-          <div className="overflow-auto py-1" style={{ maxHeight: 'min(340px, 60vh)' }}>
-            {filtered.length === 0 && (<div className="px-3 py-6 text-center text-[12px]" style={{ color: MUTED }}>Eşleşen mükellef yok</div>)}
+          <div className="overflow-auto py-1" style={portalStyle({ maxHeight: 'min(340px, 60vh)' })}>
+            {filtered.length === 0 && (<div className="px-3 py-6 text-center text-[12px]" style={portalStyle({ color: MUTED })}>Eşleşen mükellef yok</div>)}
             {filtered.map((t) => {
               const on = t.id === value;
               return (
@@ -125,21 +127,21 @@ function TaxpayerSelect({ taxpayers, value, onChange }: { taxpayers: Taxpayer[];
                   type="button"
                   onClick={() => { onChange(t.id); setOpen(false); setSearch(''); }}
                   className="w-full px-3 py-2 text-left flex items-center gap-2.5 transition-colors"
-                  style={{ background: on ? NAVY_SOFT : 'transparent' }}
-                  onMouseEnter={(e) => { if (!on) e.currentTarget.style.background = PANEL_HOVER; }}
-                  onMouseLeave={(e) => { if (!on) e.currentTarget.style.background = 'transparent'; }}
+                  style={portalStyle({ background: on ? NAVY_SOFT : 'transparent' })}
+                  onMouseEnter={(e) => { if (!on) e.currentTarget.style.background = portalPaint(PANEL_HOVER, 'background'); }}
+                  onMouseLeave={(e) => { if (!on) e.currentTarget.style.background = portalPaint('transparent', 'background'); }}
                 >
-                  <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: on ? NAVY : 'rgba(255,255,255,.15)' }} />
+                  <span className="w-1.5 h-1.5 rounded-full shrink-0" style={portalStyle({ background: on ? NAVY : 'rgba(255,255,255,.15)' })} />
                   <span className="flex-1 min-w-0">
-                    <span className="block truncate text-[13px] font-semibold" style={{ color: on ? NAVY : TEXT }}>{taxpayerName(t)}</span>
-                    {t.taxNumber && <span className="block text-[11px] tabular-nums" style={{ color: MUTED2 }}>VKN {t.taxNumber}</span>}
+                    <span className="block truncate text-[13px] font-semibold" style={portalStyle({ color: on ? NAVY : TEXT })}>{taxpayerName(t)}</span>
+                    {t.taxNumber && <span className="block text-[11px] tabular-nums" style={portalStyle({ color: MUTED2 })}>VKN {t.taxNumber}</span>}
                   </span>
-                  {on && <CheckCircle2 size={15} style={{ color: NAVY }} />}
+                  {on && <CheckCircle2 size={15} style={portalStyle({ color: NAVY })} />}
                 </button>
               );
             })}
           </div>
-          <div className="px-3 py-1.5 text-[10px] text-center" style={{ borderTop: `1px solid ${BORDER}`, color: MUTED2 }}>
+          <div className="px-3 py-1.5 text-[10px] text-center" style={portalStyle({ borderTop: `1px solid ${BORDER}`, color: MUTED2 })}>
             {filtered.length} / {taxpayers.length} bilanço mükellefi
           </div>
         </div>,
@@ -753,12 +755,12 @@ export default function EDefterAgentPage() {
       <Kart renk={NAVY} serit>
         <div className="px-5 pt-4 pb-4 flex flex-wrap items-start gap-4">
           <div className="flex items-center gap-3.5 flex-1 min-w-[320px]">
-            <span className="grid h-12 w-12 place-items-center rounded-2xl shrink-0" style={ikonStili(NAVY)}>
+            <span className="grid h-12 w-12 place-items-center rounded-2xl shrink-0" style={portalStyle(ikonStili(NAVY))}>
               <BookOpen size={22} />
             </span>
             <div className="min-w-0 flex-1">
-              <div className="text-[10px] uppercase font-bold tracking-[.22em] mb-0.5" style={{ color: NAVY }}>e-Defter Ön Kontrol</div>
-              <h1 className="truncate" style={{ fontFamily: 'Fraunces, serif', fontSize: 22, fontWeight: 600, color: TEXT, lineHeight: 1.2 }}>
+              <div className="text-[10px] uppercase font-bold tracking-[.22em] mb-0.5" style={portalStyle({ color: NAVY })}>e-Defter Ön Kontrol</div>
+              <h1 className="truncate" style={portalStyle({ fontFamily: 'Fraunces, serif', fontSize: 22, fontWeight: 600, color: TEXT, lineHeight: 1.2 })}>
                 {taxpayerName(selectedTp)}
               </h1>
               <div className="flex items-center gap-1.5 flex-wrap mt-2">
@@ -774,21 +776,21 @@ export default function EDefterAgentPage() {
           </div>
           {/* Eylemler: ana düğme + ikincil grup (her zaman görünür) */}
           <div className="flex items-center gap-2 flex-wrap">
-            <button disabled={!taxpayerId || fetchMut.isPending || !!lucaJobId} onClick={() => fetchMut.mutate()} className="h-10 pl-2 pr-4 rounded-xl text-[13px] font-semibold inline-flex items-center gap-2.5 disabled:opacity-50" style={{ background: 'linear-gradient(135deg,#3b82f6,#2563eb)', color: '#fff', boxShadow: '0 6px 18px rgba(59,130,246,.38)' }}>
-              <span className="grid place-items-center w-[26px] h-[26px] rounded-lg" style={{ background: 'rgba(255,255,255,.18)' }}>{fetchMut.isPending || lucaJobId ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}</span> Luca'dan Çek
+            <button disabled={!taxpayerId || fetchMut.isPending || !!lucaJobId} onClick={() => fetchMut.mutate()} className="h-10 pl-2 pr-4 rounded-xl text-[13px] font-semibold inline-flex items-center gap-2.5 disabled:opacity-50" style={portalStyle({ background: 'linear-gradient(135deg,#3b82f6,#2563eb)', color: '#fff', boxShadow: '0 6px 18px rgba(59,130,246,.38)' })}>
+              <span className="grid place-items-center w-[26px] h-[26px] rounded-lg" style={portalStyle({ background: 'rgba(255,255,255,.18)' })}>{fetchMut.isPending || lucaJobId ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}</span> Luca'dan Çek
             </button>
-            <div className="inline-flex h-10 rounded-xl overflow-hidden" style={{ border: `1px solid ${BORDER_STRONG}`, background: 'rgba(255,255,255,.04)' }}>
-              <button disabled={!activeSessionId || exportMut.isPending} onClick={() => exportMut.mutate()} className="px-3 text-[12.5px] font-semibold inline-flex items-center gap-1.5 disabled:opacity-40" style={{ color: 'rgba(250,250,249,.85)' }} title="Bulguları Excel olarak indir">
-                {exportMut.isPending ? <Loader2 size={13} className="animate-spin" style={{ color: NAVY }} /> : <Download size={13} style={{ color: NAVY }} />} Excel
+            <div className="inline-flex h-10 rounded-xl overflow-hidden" style={portalStyle({ border: `1px solid ${BORDER_STRONG}`, background: 'rgba(255,255,255,.04)' })}>
+              <button disabled={!activeSessionId || exportMut.isPending} onClick={() => exportMut.mutate()} className="px-3 text-[12.5px] font-semibold inline-flex items-center gap-1.5 disabled:opacity-40" style={portalStyle({ color: 'rgba(250,250,249,.85)' })} title="Bulguları Excel olarak indir">
+                {exportMut.isPending ? <Loader2 size={13} className="animate-spin" style={portalStyle({ color: NAVY })} /> : <Download size={13} style={portalStyle({ color: NAVY })} />} Excel
               </button>
-              <button disabled={!activeSessionId} onClick={printReport} className="px-3 text-[12.5px] font-semibold inline-flex items-center gap-1.5 disabled:opacity-40" style={{ color: 'rgba(250,250,249,.85)', borderLeft: `1px solid ${BORDER}` }} title="Müşteri raporu (yazdır / PDF)">
-                <FileText size={13} style={{ color: NAVY }} /> PDF Rapor
+              <button disabled={!activeSessionId} onClick={printReport} className="px-3 text-[12.5px] font-semibold inline-flex items-center gap-1.5 disabled:opacity-40" style={portalStyle({ color: 'rgba(250,250,249,.85)', borderLeft: `1px solid ${BORDER}` })} title="Müşteri raporu (yazdır / PDF)">
+                <FileText size={13} style={portalStyle({ color: NAVY })} /> PDF Rapor
               </button>
-              <button disabled={!activeSessionId || reanalyzeMut.isPending} onClick={() => reanalyzeMut.mutate()} className="px-3 text-[12.5px] font-semibold inline-flex items-center gap-1.5 disabled:opacity-40" style={{ color: 'rgba(250,250,249,.85)', borderLeft: `1px solid ${BORDER}` }} title="Kayıtlı Excel'i tüm kurallarla yeniden analiz et">
-                {reanalyzeMut.isPending ? <Loader2 size={13} className="animate-spin" style={{ color: NAVY }} /> : <RotateCcw size={13} style={{ color: NAVY }} />} Yeniden Analiz
+              <button disabled={!activeSessionId || reanalyzeMut.isPending} onClick={() => reanalyzeMut.mutate()} className="px-3 text-[12.5px] font-semibold inline-flex items-center gap-1.5 disabled:opacity-40" style={portalStyle({ color: 'rgba(250,250,249,.85)', borderLeft: `1px solid ${BORDER}` })} title="Kayıtlı Excel'i tüm kurallarla yeniden analiz et">
+                {reanalyzeMut.isPending ? <Loader2 size={13} className="animate-spin" style={portalStyle({ color: NAVY })} /> : <RotateCcw size={13} style={portalStyle({ color: NAVY })} />} Yeniden Analiz
               </button>
-              <label className="px-3 text-[12.5px] font-semibold inline-flex items-center gap-1.5 cursor-pointer" style={{ color: 'rgba(250,250,249,.85)', borderLeft: `1px solid ${BORDER}` }} title="Detay Fiş Listesi Excel'i elle yükle">
-                <UploadCloud size={13} style={{ color: NAVY }} /> Yükle
+              <label className="px-3 text-[12.5px] font-semibold inline-flex items-center gap-1.5 cursor-pointer" style={portalStyle({ color: 'rgba(250,250,249,.85)', borderLeft: `1px solid ${BORDER}` })} title="Detay Fiş Listesi Excel'i elle yükle">
+                <UploadCloud size={13} style={portalStyle({ color: NAVY })} /> Yükle
                 <input type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => { const file = e.target.files?.[0]; if (file) uploadMut.mutate(file); e.currentTarget.value = ''; }} />
               </label>
             </div>
@@ -796,24 +798,24 @@ export default function EDefterAgentPage() {
         </div>
 
         {/* Seçici bandı — etiketli, hizalı kontroller */}
-        <div className="px-5 py-3.5 flex flex-wrap items-end gap-x-4 gap-y-3" style={{ background: 'rgba(0,0,0,.24)', borderTop: `1px solid ${BORDER}` }}>
+        <div className="px-5 py-3.5 flex flex-wrap items-end gap-x-4 gap-y-3" style={portalStyle({ background: 'rgba(0,0,0,.24)', borderTop: `1px solid ${BORDER}` })}>
           <label className="flex flex-col gap-1.5 flex-1 min-w-[260px]">
-            <span className="text-[9px] uppercase tracking-[.16em] font-bold" style={{ color: MUTED2 }}>Mükellef <span style={{ color: NAVY }}>· {taxpayers.length} bilanço</span></span>
+            <span className="text-[9px] uppercase tracking-[.16em] font-bold" style={portalStyle({ color: MUTED2 })}>Mükellef <span style={portalStyle({ color: NAVY })}>· {taxpayers.length} bilanço</span></span>
             <TaxpayerSelect taxpayers={taxpayers} value={taxpayerId} onChange={(id) => { setTaxpayerId(id); setSelectedSessionId(null); }} />
           </label>
           <label className="flex flex-col gap-1.5">
-            <span className="text-[9px] uppercase tracking-[.16em] font-bold" style={{ color: MUTED2 }}>Yıl</span>
-            <select value={year} onChange={(e) => { setYear(Number(e.target.value)); setSelectedSessionId(null); }} className="h-11 rounded-xl px-3 text-[13px] tabular-nums appearance-none cursor-pointer" style={selectStyle()}>
-              {Array.from({ length: 7 }, (_, i) => now.getFullYear() + 1 - i).map((y) => (<option key={y} value={y} style={{ background: '#1a1a17', color: TEXT }}>{y}</option>))}
+            <span className="text-[9px] uppercase tracking-[.16em] font-bold" style={portalStyle({ color: MUTED2 })}>Yıl</span>
+            <select value={year} onChange={(e) => { setYear(Number(e.target.value)); setSelectedSessionId(null); }} className="h-11 rounded-xl px-3 text-[13px] tabular-nums appearance-none cursor-pointer" style={portalStyle(selectStyle())}>
+              {Array.from({ length: 7 }, (_, i) => now.getFullYear() + 1 - i).map((y) => (<option key={y} value={y} style={portalStyle({ background: '#1a1a17', color: TEXT })}>{y}</option>))}
             </select>
           </label>
           <div className="flex flex-col gap-1.5">
-            <span className="text-[9px] uppercase tracking-[.16em] font-bold" style={{ color: MUTED2 }}>Dönem Türü</span>
-            <div className="inline-flex h-11 p-1 rounded-xl" style={{ background: 'rgba(255,255,255,.04)', border: `1px solid ${BORDER}` }}>
+            <span className="text-[9px] uppercase tracking-[.16em] font-bold" style={portalStyle({ color: MUTED2 })}>Dönem Türü</span>
+            <div className="inline-flex h-11 p-1 rounded-xl" style={portalStyle({ background: 'rgba(255,255,255,.04)', border: `1px solid ${BORDER}` })}>
               {(['GECICI', 'AYLIK', 'YILLIK'] as PeriodMode[]).map((mode) => {
                 const on = periodMode === mode;
                 return (
-                  <button key={mode} onClick={() => { setPeriodMode(mode); setSelectedSessionId(null); }} className="px-4 rounded-lg text-[13px] font-semibold transition-all" style={{ background: on ? 'linear-gradient(135deg,#3b82f6,#2563eb)' : 'transparent', color: on ? '#fff' : 'rgba(250,250,249,.6)', boxShadow: on ? '0 4px 12px rgba(59,130,246,.4)' : 'none' }}>
+                  <button key={mode} onClick={() => { setPeriodMode(mode); setSelectedSessionId(null); }} className="px-4 rounded-lg text-[13px] font-semibold transition-all" style={portalStyle({ background: on ? 'linear-gradient(135deg,#3b82f6,#2563eb)' : 'transparent', color: on ? '#fff' : 'rgba(250,250,249,.6)', boxShadow: on ? '0 4px 12px rgba(59,130,246,.4)' : 'none' })}>
                     {mode === 'GECICI' ? 'Geçici' : mode === 'AYLIK' ? 'Aylık' : 'Yıllık'}
                   </button>
                 );
@@ -822,12 +824,12 @@ export default function EDefterAgentPage() {
           </div>
           {periodMode === 'GECICI' && (
             <div className="flex flex-col gap-1.5">
-              <span className="text-[9px] uppercase tracking-[.16em] font-bold" style={{ color: MUTED2 }}>Çeyrek</span>
-              <div className="inline-flex h-11 p-1 rounded-xl" style={{ background: 'rgba(255,255,255,.04)', border: `1px solid ${BORDER}` }}>
+              <span className="text-[9px] uppercase tracking-[.16em] font-bold" style={portalStyle({ color: MUTED2 })}>Çeyrek</span>
+              <div className="inline-flex h-11 p-1 rounded-xl" style={portalStyle({ background: 'rgba(255,255,255,.04)', border: `1px solid ${BORDER}` })}>
                 {[1, 2, 3, 4].map((q) => {
                   const on = quarter === q;
                   return (
-                    <button key={q} onClick={() => { setQuarter(q); setSelectedSessionId(null); }} className="w-11 rounded-lg text-[13px] font-semibold transition-all" style={{ background: on ? 'linear-gradient(135deg,#3b82f6,#2563eb)' : 'transparent', color: on ? '#fff' : 'rgba(250,250,249,.65)', boxShadow: on ? '0 4px 12px rgba(59,130,246,.4)' : 'none' }}>
+                    <button key={q} onClick={() => { setQuarter(q); setSelectedSessionId(null); }} className="w-11 rounded-lg text-[13px] font-semibold transition-all" style={portalStyle({ background: on ? 'linear-gradient(135deg,#3b82f6,#2563eb)' : 'transparent', color: on ? '#fff' : 'rgba(250,250,249,.65)', boxShadow: on ? '0 4px 12px rgba(59,130,246,.4)' : 'none' })}>
                       {q}
                     </button>
                   );
@@ -837,51 +839,51 @@ export default function EDefterAgentPage() {
           )}
           {periodMode === 'AYLIK' && (
             <label className="flex flex-col gap-1.5">
-              <span className="text-[9px] uppercase tracking-[.16em] font-bold" style={{ color: MUTED2 }}>Ay</span>
-              <select value={month} onChange={(e) => { setMonth(Number(e.target.value)); setSelectedSessionId(null); }} className="h-11 rounded-xl px-3 text-[13px] appearance-none cursor-pointer" style={selectStyle()}>
-                {MONTH_LABELS.map((label, i) => (<option key={i + 1} value={i + 1} style={{ background: '#1a1a17', color: TEXT }}>{label}</option>))}
+              <span className="text-[9px] uppercase tracking-[.16em] font-bold" style={portalStyle({ color: MUTED2 })}>Ay</span>
+              <select value={month} onChange={(e) => { setMonth(Number(e.target.value)); setSelectedSessionId(null); }} className="h-11 rounded-xl px-3 text-[13px] appearance-none cursor-pointer" style={portalStyle(selectStyle())}>
+                {MONTH_LABELS.map((label, i) => (<option key={i + 1} value={i + 1} style={portalStyle({ background: '#1a1a17', color: TEXT })}>{label}</option>))}
               </select>
             </label>
           )}
           {periodSessions.length > 1 && (
             <label className="flex flex-col gap-1.5 ml-auto">
-              <span className="text-[9px] uppercase tracking-[.16em] font-bold" style={{ color: MUTED2 }}>Versiyon</span>
-              <select value={activeSessionId || ''} onChange={(e) => setSelectedSessionId(e.target.value)} className="h-11 rounded-xl px-3 text-[13px] appearance-none cursor-pointer" style={selectStyle(true)}>
+              <span className="text-[9px] uppercase tracking-[.16em] font-bold" style={portalStyle({ color: MUTED2 })}>Versiyon</span>
+              <select value={activeSessionId || ''} onChange={(e) => setSelectedSessionId(e.target.value)} className="h-11 rounded-xl px-3 text-[13px] appearance-none cursor-pointer" style={portalStyle(selectStyle(true))}>
                 {periodSessions.map((s: any, i: number) => (
-                  <option key={s.id} value={s.id} style={{ background: '#1a1a17', color: TEXT }}>{i === 0 ? '★ ' : ''}v{periodSessions.length - i} · {fmtDateTime(s.createdAt)} · {s.findingCount} bulgu</option>
+                  <option key={s.id} value={s.id} style={portalStyle({ background: '#1a1a17', color: TEXT })}>{i === 0 ? '★ ' : ''}v{periodSessions.length - i} · {fmtDateTime(s.createdAt)} · {s.findingCount} bulgu</option>
                 ))}
               </select>
             </label>
           )}
         </div>
         {lucaStatus && (
-          <div className="px-5 py-2.5 text-xs flex items-center gap-2" style={{ background: 'rgba(91,141,239,.08)', borderTop: '1px solid rgba(91,141,239,.20)', color: '#bfd4ff' }}>
+          <div className="px-5 py-2.5 text-xs flex items-center gap-2" style={portalStyle({ background: 'rgba(91,141,239,.08)', borderTop: '1px solid rgba(91,141,239,.20)', color: '#bfd4ff' })}>
             <Loader2 size={13} className="animate-spin shrink-0" /> {lucaStatus}
           </div>
         )}
       </Kart>
 
       {/* ════════ KAHRAMAN KART — denetim özeti (tek kart: skor · şiddet · durum) ════════ */}
-      <section className="rounded-2xl" style={kahramanKartStili(hasData ? scoreColor : NAVY)}>
+      <section className="rounded-2xl" style={portalStyle(kahramanKartStili(hasData ? scoreColor : NAVY))}>
         <div className="px-5 py-4 flex flex-wrap items-center gap-x-8 gap-y-4">
           <div className="flex items-center gap-4 min-w-[250px]">
             <Gauge score={score} color={scoreColor} hasData={hasData} />
             <div className="flex flex-col gap-1.5">
-              <span className="text-[11px] font-extrabold uppercase tracking-[.08em] px-2.5 py-1 rounded-lg w-fit" style={{ background: `${hasData ? scoreColor : GRAY}22`, color: hasData ? scoreColor : GRAY, border: `1px solid ${hasData ? scoreColor : GRAY}44` }}>
+              <span className="text-[11px] font-extrabold uppercase tracking-[.08em] px-2.5 py-1 rounded-lg w-fit" style={portalStyle({ background: `${hasData ? scoreColor : GRAY}22`, color: hasData ? scoreColor : GRAY, border: `1px solid ${hasData ? scoreColor : GRAY}44` })}>
                 {scoreLabel}
               </span>
-              <span className="text-[11.5px] leading-snug max-w-[220px]" style={{ color: MUTED }}>{scoreHint}</span>
+              <span className="text-[11.5px] leading-snug max-w-[220px]" style={portalStyle({ color: MUTED })}>{scoreHint}</span>
             </div>
           </div>
           <div className="flex-1 min-w-[280px]">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-[10px] uppercase tracking-[.18em] font-bold" style={{ color: MUTED2 }}>Şiddet dağılımı</span>
-              <span className="text-[11px] tabular-nums" style={{ color: MUTED }}>{sevTotal} açık bulgu · {groupedFindings.length} alan</span>
+              <span className="text-[10px] uppercase tracking-[.18em] font-bold" style={portalStyle({ color: MUTED2 })}>Şiddet dağılımı</span>
+              <span className="text-[11px] tabular-nums" style={portalStyle({ color: MUTED })}>{sevTotal} açık bulgu · {groupedFindings.length} alan</span>
             </div>
-            <div className="h-2.5 rounded-full overflow-hidden flex" style={{ background: 'rgba(255,255,255,.06)' }}>
-              <div style={{ width: `${pct(stats.error)}%`, background: ERR, transition: 'width .3s' }} />
-              <div style={{ width: `${pct(stats.warn)}%`, background: WARN, transition: 'width .3s' }} />
-              <div style={{ width: `${pct(stats.info)}%`, background: INFO, transition: 'width .3s' }} />
+            <div className="h-2.5 rounded-full overflow-hidden flex" style={portalStyle({ background: 'rgba(255,255,255,.06)' })}>
+              <div style={portalStyle({ width: `${pct(stats.error)}%`, background: ERR, transition: 'width .3s' })} />
+              <div style={portalStyle({ width: `${pct(stats.warn)}%`, background: WARN, transition: 'width .3s' })} />
+              <div style={portalStyle({ width: `${pct(stats.info)}%`, background: INFO, transition: 'width .3s' })} />
             </div>
             <div className="flex items-center gap-5 mt-2.5 flex-wrap">
               <LegendItem color={ERR} label="Hata" value={stats.error} active={severityFilter === 'ERROR'} onClick={() => toggleSeverity('ERROR')} />
@@ -890,14 +892,14 @@ export default function EDefterAgentPage() {
             </div>
           </div>
           <div className="flex flex-col gap-2 min-w-[230px]">
-            <span className="text-[10px] uppercase tracking-[.18em] font-bold" style={{ color: MUTED2 }}>Bulgu durumu</span>
+            <span className="text-[10px] uppercase tracking-[.18em] font-bold" style={portalStyle({ color: MUTED2 })}>Bulgu durumu</span>
             <div className="flex items-center gap-1.5 flex-wrap">
               <Hap renk={NAVY} dolu={statusFilter === 'OPEN'} onClick={() => pickStatus('OPEN')}>Açık {stats.open}</Hap>
               <Hap renk={OK} dolu={statusFilter === 'RESOLVED'} onClick={() => pickStatus('RESOLVED')}>Çözüldü {stats.resolved}</Hap>
               <Hap renk={GRAY} dolu={statusFilter === 'IGNORED'} onClick={() => pickStatus('IGNORED')}>Görmezden {stats.ignored}</Hap>
               <Hap renk={GRAY} dolu={statusFilter === 'ALL'} onClick={() => pickStatus('ALL')}>Tümü {stats.total}</Hap>
             </div>
-            <span className="text-[11px]" style={{ color: MUTED2 }}>
+            <span className="text-[11px]" style={portalStyle({ color: MUTED2 })}>
               {!hasData ? 'Dönem seçip Luca’dan çekince özet burada.' : stats.open === 0 ? 'Açık bulgu kalmadı.' : 'Hap rozete tıkla → liste süzülür.'}
             </span>
           </div>
@@ -949,47 +951,47 @@ export default function EDefterAgentPage() {
       {activeTab === 'MIZAN' && (
         <div className="space-y-3">
           {!mizan ? (
-            <div className="rounded-2xl p-12 text-center" style={{ background: PANEL, border: `1px dashed ${BORDER_STRONG}` }}>
-              <div className="inline-flex h-14 w-14 rounded-full items-center justify-center mb-3" style={{ background: NAVY_SOFT, color: NAVY }}>
+            <div className="rounded-2xl p-12 text-center" style={portalStyle({ background: PANEL, border: `1px dashed ${BORDER_STRONG}` })}>
+              <div className="inline-flex h-14 w-14 rounded-full items-center justify-center mb-3" style={portalStyle({ background: NAVY_SOFT, color: NAVY })}>
                 <FileSpreadsheet size={26} />
               </div>
-              <div className="text-base font-semibold mb-1" style={{ color: TEXT }}>Mizan henüz çekilmedi</div>
-              <div className="text-xs" style={{ color: MUTED }}>"Luca'dan Çek" butonunu kullandığında aynı dönemin mizanı otomatik olarak buraya gelir.</div>
+              <div className="text-base font-semibold mb-1" style={portalStyle({ color: TEXT })}>Mizan henüz çekilmedi</div>
+              <div className="text-xs" style={portalStyle({ color: MUTED })}>"Luca'dan Çek" butonunu kullandığında aynı dönemin mizanı otomatik olarak buraya gelir.</div>
             </div>
           ) : (
             <>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
                 <BigStat label="Toplam Hesap" value={mizan.hesapCount || 0} color={TEXT} />
                 <BigStat label="Mizan Bulgusu" value={mizanBulgulari.length} color={TEXT} />
-                <div className="rounded-xl p-3" style={{ background: PANEL, border: `1px solid ${BORDER}` }}>
-                  <div className="text-[9px] uppercase tracking-[.18em] mb-1" style={{ color: MUTED2 }}>Durum</div>
-                  <div className="text-sm font-semibold" style={{ color: String(mizan.status || '').toUpperCase() === 'READY' ? OK : NAVY }}>{mizanDurumLabel(mizan.status)}</div>
+                <div className="rounded-xl p-3" style={portalStyle({ background: PANEL, border: `1px solid ${BORDER}` })}>
+                  <div className="text-[9px] uppercase tracking-[.18em] mb-1" style={portalStyle({ color: MUTED2 })}>Durum</div>
+                  <div className="text-sm font-semibold" style={portalStyle({ color: String(mizan.status || '').toUpperCase() === 'READY' ? OK : NAVY })}>{mizanDurumLabel(mizan.status)}</div>
                 </div>
-                <div className="rounded-xl p-3" style={{ background: PANEL, border: `1px solid ${BORDER}` }}>
-                  <div className="text-[9px] uppercase tracking-[.18em] mb-1" style={{ color: MUTED2 }}>Güncelleme</div>
-                  <div className="text-xs font-semibold tabular-nums" style={{ color: TEXT }}>{fmtDateTime(mizan.updatedAt || mizan.createdAt)}</div>
+                <div className="rounded-xl p-3" style={portalStyle({ background: PANEL, border: `1px solid ${BORDER}` })}>
+                  <div className="text-[9px] uppercase tracking-[.18em] mb-1" style={portalStyle({ color: MUTED2 })}>Güncelleme</div>
+                  <div className="text-xs font-semibold tabular-nums" style={portalStyle({ color: TEXT })}>{fmtDateTime(mizan.updatedAt || mizan.createdAt)}</div>
                 </div>
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[11.5px]" style={{ color: MUTED2 }}>
+                <span className="text-[11.5px]" style={portalStyle({ color: MUTED2 })}>
                   Mizan bakiyesine dayanan kontroller — e-Defter kuralları ({mizanBulgulari.filter((f: any) => !f.saltGorunum).length}) ve Mizan modülünün kendi kontrolü ({mizanLeafAnomalies.length}); ana hesap toplamları (örn. 10, 100) gizlenir.
                 </span>
                 {mizanAlanlar.length > 0 && (
-                  <div className="ml-auto inline-flex h-9 p-0.5 rounded-lg gap-0.5" style={{ background: 'rgba(255,255,255,.035)', border: `1px solid ${BORDER}` }}>
-                    <button onClick={() => setMizanKapaliKurallar({})} className="px-2.5 rounded-md text-[11px] font-semibold" style={{ color: 'rgba(250,250,249,.7)' }} title="Tüm kural bloklarını aç">Genişlet</button>
-                    <button onClick={() => setMizanKapaliKurallar(tumKurallariDaralt(mizanAlanlar))} className="px-2.5 rounded-md text-[11px] font-semibold" style={{ color: 'rgba(250,250,249,.7)' }} title="Yalnız kural başlıkları kalsın">Daralt</button>
+                  <div className="ml-auto inline-flex h-9 p-0.5 rounded-lg gap-0.5" style={portalStyle({ background: 'rgba(255,255,255,.035)', border: `1px solid ${BORDER}` })}>
+                    <button onClick={() => setMizanKapaliKurallar({})} className="px-2.5 rounded-md text-[11px] font-semibold" style={portalStyle({ color: 'rgba(250,250,249,.7)' })} title="Tüm kural bloklarını aç">Genişlet</button>
+                    <button onClick={() => setMizanKapaliKurallar(tumKurallariDaralt(mizanAlanlar))} className="px-2.5 rounded-md text-[11px] font-semibold" style={portalStyle({ color: 'rgba(250,250,249,.7)' })} title="Yalnız kural başlıkları kalsın">Daralt</button>
                   </div>
                 )}
               </div>
 
               {mizanAlanlar.length === 0 ? (
-                <div className="rounded-2xl p-10 text-center" style={{ background: 'rgba(92,191,138,.05)', border: '1px dashed rgba(92,191,138,.2)' }}>
-                  <div className="inline-flex h-12 w-12 rounded-full items-center justify-center mb-3" style={{ background: 'rgba(92,191,138,.15)', color: OK }}>
+                <div className="rounded-2xl p-10 text-center" style={portalStyle({ background: 'rgba(92,191,138,.05)', border: '1px dashed rgba(92,191,138,.2)' })}>
+                  <div className="inline-flex h-12 w-12 rounded-full items-center justify-center mb-3" style={portalStyle({ background: 'rgba(92,191,138,.15)', color: OK })}>
                     <CheckCircle2 size={24} />
                   </div>
-                  <div className="text-base font-semibold mb-1" style={{ color: '#aeddc4' }}>Mizan kontrolünde bulgu yok</div>
-                  <div className="text-xs" style={{ color: MUTED }}>{mizan.hesapCount || 0} hesap kontrol edildi, mizana dayanan kurallar ve mizan disiplini açısından temiz.</div>
+                  <div className="text-base font-semibold mb-1" style={portalStyle({ color: '#aeddc4' })}>Mizan kontrolünde bulgu yok</div>
+                  <div className="text-xs" style={portalStyle({ color: MUTED })}>{mizan.hesapCount || 0} hesap kontrol edildi, mizana dayanan kurallar ve mizan disiplini açısından temiz.</div>
                 </div>
               ) : (
                 <BulguTablosu
@@ -1010,20 +1012,20 @@ export default function EDefterAgentPage() {
       {activeTab === 'SATIRLAR' && (
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
-            <div className="h-10 rounded-lg px-3 flex items-center gap-2 flex-1 min-w-[300px]" style={{ background: PANEL, border: `1px solid ${BORDER}`, color: 'rgba(250,250,249,.75)' }}>
+            <div className="h-10 rounded-lg px-3 flex items-center gap-2 flex-1 min-w-[300px]" style={portalStyle({ background: PANEL, border: `1px solid ${BORDER}`, color: 'rgba(250,250,249,.75)' })}>
               <Search size={14} />
-              <input value={lineSearch} onChange={(e) => setLineSearch(e.target.value)} placeholder="Satır, fiş, evrak, hesap veya açıklama ara..." className="bg-transparent outline-none text-sm w-full" style={{ color: TEXT }} />
+              <input value={lineSearch} onChange={(e) => setLineSearch(e.target.value)} placeholder="Satır, fiş, evrak, hesap veya açıklama ara..." className="bg-transparent outline-none text-sm w-full" style={portalStyle({ color: TEXT })} />
             </div>
-            <span className="text-xs tabular-nums" style={{ color: MUTED }}>{visibleLines.length}/{lines.length}</span>
+            <span className="text-xs tabular-nums" style={portalStyle({ color: MUTED })}>{visibleLines.length}/{lines.length}</span>
             {focusedFinding && (
-              <button onClick={() => setFocusedFinding(null)} className="h-10 px-3 rounded-lg text-xs font-semibold inline-flex items-center gap-1" style={{ background: NAVY_SOFT, color: NAVY, border: `1px solid ${BORDER_STRONG}` }}>
+              <button onClick={() => setFocusedFinding(null)} className="h-10 px-3 rounded-lg text-xs font-semibold inline-flex items-center gap-1" style={portalStyle({ background: NAVY_SOFT, color: NAVY, border: `1px solid ${BORDER_STRONG}` })}>
                 <XCircle size={12} /> Bulgu filtresini temizle
               </button>
             )}
           </div>
 
-          {session && visibleLines.length === 0 && (<div className="rounded-2xl p-12 text-center" style={{ background: PANEL, border: `1px dashed ${BORDER_STRONG}`, color: MUTED }}>Bu filtreyle satır bulunamadı.</div>)}
-          {!session && (<div className="rounded-2xl p-12 text-center" style={{ background: PANEL, border: `1px dashed ${BORDER_STRONG}`, color: MUTED }}>Bir dönem seç veya Luca'dan Detay Fiş Listesi çek.</div>)}
+          {session && visibleLines.length === 0 && (<div className="rounded-2xl p-12 text-center" style={portalStyle({ background: PANEL, border: `1px dashed ${BORDER_STRONG}`, color: MUTED })}>Bu filtreyle satır bulunamadı.</div>)}
+          {!session && (<div className="rounded-2xl p-12 text-center" style={portalStyle({ background: PANEL, border: `1px dashed ${BORDER_STRONG}`, color: MUTED })}>Bir dönem seç veya Luca'dan Detay Fiş Listesi çek.</div>)}
 
           <div className="space-y-3 max-h-[720px] overflow-auto pr-1">
             {(() => {
@@ -1051,32 +1053,32 @@ export default function EDefterAgentPage() {
                 const dengesiz = fark > 0.01 && g.lines.length >= 2;
                 const focusedHere = focusedFinding?.rowIndex && g.lines.some((l: any) => Number(l.rowIndex) === Number(focusedFinding.rowIndex));
                 return (
-                  <div key={g.key} className="rounded-xl border overflow-hidden" style={{ background: PANEL, borderColor: focusedHere ? 'rgba(91,141,239,.45)' : (dengesiz ? 'rgba(226,112,111,.35)' : BORDER), borderLeftWidth: '3px', borderLeftColor: focusedHere ? NAVY : (dengesiz ? ERR : 'rgba(92,191,138,.5)') }}>
-                    <div className="flex flex-wrap items-center gap-3 px-3 py-2" style={{ background: focusedHere ? 'rgba(91,141,239,.10)' : 'rgba(0,0,0,.18)', borderBottom: `1px solid ${BORDER}` }}>
+                  <div key={g.key} className="rounded-xl border overflow-hidden" style={portalStyle({ background: PANEL, borderColor: focusedHere ? 'rgba(91,141,239,.45)' : (dengesiz ? 'rgba(226,112,111,.35)' : BORDER), borderLeftWidth: '3px', borderLeftColor: focusedHere ? NAVY : (dengesiz ? ERR : 'rgba(92,191,138,.5)') })}>
+                    <div className="flex flex-wrap items-center gap-3 px-3 py-2" style={portalStyle({ background: focusedHere ? 'rgba(91,141,239,.10)' : 'rgba(0,0,0,.18)', borderBottom: `1px solid ${BORDER}` })}>
                       <div className="flex items-center gap-2">
-                        <span className="text-[10px] uppercase tracking-wider" style={{ color: MUTED2 }}>Yevmiye</span>
-                        <span className="text-base font-bold" style={{ color: TEXT, fontFamily: 'monospace' }}>{g.first.yevmiyeNo || g.first.fisNo || '-'}</span>
+                        <span className="text-[10px] uppercase tracking-wider" style={portalStyle({ color: MUTED2 })}>Yevmiye</span>
+                        <span className="text-base font-bold" style={portalStyle({ color: TEXT, fontFamily: 'monospace' })}>{g.first.yevmiyeNo || g.first.fisNo || '-'}</span>
                       </div>
-                      <span className="text-xs" style={{ color: MUTED }}>{fmtDate(g.first.fisTarihi)}</span>
-                      {g.first.evrakNo && (<span className="text-xs px-2 py-0.5 rounded" style={{ background: 'rgba(255,255,255,.05)', color: 'rgba(250,250,249,.65)' }}>Evrak: {g.first.evrakNo}</span>)}
-                      <span className="text-xs tabular-nums ml-auto" style={{ color: MUTED }}>{g.lines.length} satır</span>
-                      <span className="text-xs tabular-nums px-2 py-0.5 rounded font-mono" style={{ background: 'rgba(255,255,255,.04)', color: 'rgba(250,250,249,.8)' }}>
+                      <span className="text-xs" style={portalStyle({ color: MUTED })}>{fmtDate(g.first.fisTarihi)}</span>
+                      {g.first.evrakNo && (<span className="text-xs px-2 py-0.5 rounded" style={portalStyle({ background: 'rgba(255,255,255,.05)', color: 'rgba(250,250,249,.65)' })}>Evrak: {g.first.evrakNo}</span>)}
+                      <span className="text-xs tabular-nums ml-auto" style={portalStyle({ color: MUTED })}>{g.lines.length} satır</span>
+                      <span className="text-xs tabular-nums px-2 py-0.5 rounded font-mono" style={portalStyle({ background: 'rgba(255,255,255,.04)', color: 'rgba(250,250,249,.8)' })}>
                         B: {fmtTRY(g.borcSum)} · A: {fmtTRY(g.alacakSum)}
                       </span>
-                      {dengesiz && (<span className="text-[10px] font-bold px-2 py-0.5 rounded" style={{ background: 'rgba(226,112,111,.18)', color: ERR }}>DENGESİZ {fmtTRY(fark)}</span>)}
+                      {dengesiz && (<span className="text-[10px] font-bold px-2 py-0.5 rounded" style={portalStyle({ background: 'rgba(226,112,111,.18)', color: ERR })}>DENGESİZ {fmtTRY(fark)}</span>)}
                     </div>
                     <table className="w-full text-xs">
                       <tbody>
                         {g.lines.map((line: any, idx: number) => (
-                          <tr key={line.id} ref={focusedFinding?.rowIndex && Number(focusedFinding.rowIndex) === Number(line.rowIndex) ? focusedLineRef : undefined} style={{ borderBottom: idx < g.lines.length - 1 ? `1px solid ${BORDER}` : undefined, color: 'rgba(250,250,249,.82)', background: focusedFinding?.rowIndex && Number(focusedFinding.rowIndex) === Number(line.rowIndex) ? NAVY_SOFT : 'transparent' }}>
-                            <td className="py-2 px-3 tabular-nums w-12" style={{ color: MUTED2 }}>{line.rowIndex || '-'}</td>
+                          <tr key={line.id} ref={focusedFinding?.rowIndex && Number(focusedFinding.rowIndex) === Number(line.rowIndex) ? focusedLineRef : undefined} style={portalStyle({ borderBottom: idx < g.lines.length - 1 ? `1px solid ${BORDER}` : undefined, color: 'rgba(250,250,249,.82)', background: focusedFinding?.rowIndex && Number(focusedFinding.rowIndex) === Number(line.rowIndex) ? NAVY_SOFT : 'transparent' })}>
+                            <td className="py-2 px-3 tabular-nums w-12" style={portalStyle({ color: MUTED2 })}>{line.rowIndex || '-'}</td>
                             <td className="py-2 px-3 whitespace-nowrap w-44">
-                              <span className="font-semibold" style={{ color: TEXT }}>{line.hesapKodu || '-'}</span>
+                              <span className="font-semibold" style={portalStyle({ color: TEXT })}>{line.hesapKodu || '-'}</span>
                             </td>
-                            <td className="py-2 px-3" style={{ color: 'rgba(250,250,249,.7)' }}>{line.hesapAdi || ''}</td>
-                            <td className="py-2 px-3 min-w-[180px]" style={{ color: 'rgba(250,250,249,.65)' }}>{line.aciklama || '-'}</td>
-                            <td className="py-2 px-3 text-right tabular-nums font-mono w-32" style={{ color: Number(line.borc) > 0 ? TEXT : MUTED2 }}>{Number(line.borc) > 0 ? fmtTRY(line.borc) : '-'}</td>
-                            <td className="py-2 px-3 text-right tabular-nums font-mono w-32" style={{ color: Number(line.alacak) > 0 ? TEXT : MUTED2 }}>{Number(line.alacak) > 0 ? fmtTRY(line.alacak) : '-'}</td>
+                            <td className="py-2 px-3" style={portalStyle({ color: 'rgba(250,250,249,.7)' })}>{line.hesapAdi || ''}</td>
+                            <td className="py-2 px-3 min-w-[180px]" style={portalStyle({ color: 'rgba(250,250,249,.65)' })}>{line.aciklama || '-'}</td>
+                            <td className="py-2 px-3 text-right tabular-nums font-mono w-32" style={portalStyle({ color: Number(line.borc) > 0 ? TEXT : MUTED2 })}>{Number(line.borc) > 0 ? fmtTRY(line.borc) : '-'}</td>
+                            <td className="py-2 px-3 text-right tabular-nums font-mono w-32" style={portalStyle({ color: Number(line.alacak) > 0 ? TEXT : MUTED2 })}>{Number(line.alacak) > 0 ? fmtTRY(line.alacak) : '-'}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -1096,18 +1098,18 @@ export default function EDefterAgentPage() {
       {activeTab === 'GECMIS' && (
         <div className="space-y-3">
           {periodSessions.length === 0 ? (
-            <div className="rounded-2xl p-12 text-center" style={{ background: PANEL, border: `1px dashed ${BORDER_STRONG}` }}>
-              <div className="inline-flex h-14 w-14 rounded-full items-center justify-center mb-3" style={{ background: NAVY_SOFT, color: NAVY }}>
+            <div className="rounded-2xl p-12 text-center" style={portalStyle({ background: PANEL, border: `1px dashed ${BORDER_STRONG}` })}>
+              <div className="inline-flex h-14 w-14 rounded-full items-center justify-center mb-3" style={portalStyle({ background: NAVY_SOFT, color: NAVY })}>
                 <Clock size={26} />
               </div>
-              <div className="text-base font-semibold mb-1" style={{ color: TEXT }}>Henüz Detay Fiş Listesi çekilmedi</div>
-              <div className="text-xs" style={{ color: MUTED }}>"Luca'dan Çek" butonu ile başlat veya manuel Excel yükle.</div>
+              <div className="text-base font-semibold mb-1" style={portalStyle({ color: TEXT })}>Henüz Detay Fiş Listesi çekilmedi</div>
+              <div className="text-xs" style={portalStyle({ color: MUTED })}>"Luca'dan Çek" butonu ile başlat veya manuel Excel yükle.</div>
             </div>
           ) : (
-            <div className="rounded-xl border overflow-hidden" style={{ background: PANEL, borderColor: BORDER }}>
+            <div className="rounded-xl border overflow-hidden" style={portalStyle({ background: PANEL, borderColor: BORDER })}>
               <table className="w-full text-sm">
-                <thead style={{ background: 'rgba(0,0,0,.18)' }}>
-                  <tr style={{ color: MUTED, borderBottom: `1px solid ${BORDER}` }}>
+                <thead style={portalStyle({ background: 'rgba(0,0,0,.18)' })}>
+                  <tr style={portalStyle({ color: MUTED, borderBottom: `1px solid ${BORDER}` })}>
                     <th className="text-left py-2.5 px-4 font-semibold text-xs uppercase tracking-wider">Versiyon</th>
                     <th className="text-left py-2.5 px-4 font-semibold text-xs uppercase tracking-wider">Tarih</th>
                     <th className="text-right py-2.5 px-4 font-semibold text-xs uppercase tracking-wider">Fiş</th>
@@ -1120,18 +1122,18 @@ export default function EDefterAgentPage() {
                   {periodSessions.map((s: any, i: number) => {
                     const isActive = activeSessionId === s.id;
                     return (
-                      <tr key={s.id} onClick={() => { setSelectedSessionId(s.id); setActiveTab('BULGULAR'); }} className="cursor-pointer" style={{ borderBottom: `1px solid ${BORDER}`, background: isActive ? NAVY_SOFT : 'transparent', color: TEXT }}>
-                        <td className="py-3 px-4 font-bold" style={{ color: isActive ? NAVY : TEXT }}>
+                      <tr key={s.id} onClick={() => { setSelectedSessionId(s.id); setActiveTab('BULGULAR'); }} className="cursor-pointer" style={portalStyle({ borderBottom: `1px solid ${BORDER}`, background: isActive ? NAVY_SOFT : 'transparent', color: TEXT })}>
+                        <td className="py-3 px-4 font-bold" style={portalStyle({ color: isActive ? NAVY : TEXT })}>
                           {i === 0 ? '★ ' : ''}v{periodSessions.length - i}
                         </td>
-                        <td className="py-3 px-4" style={{ color: 'rgba(250,250,249,.7)' }}>{fmtDateTime(s.createdAt)}</td>
+                        <td className="py-3 px-4" style={portalStyle({ color: 'rgba(250,250,249,.7)' })}>{fmtDateTime(s.createdAt)}</td>
                         <td className="py-3 px-4 text-right tabular-nums">{s.totalVouchers}</td>
                         <td className="py-3 px-4 text-right tabular-nums">{s.totalLines}</td>
                         <td className="py-3 px-4 text-right tabular-nums">
-                          <span className="font-semibold" style={{ color: s.findingCount ? WARN : OK }}>{s.findingCount || 0}</span>
+                          <span className="font-semibold" style={portalStyle({ color: s.findingCount ? WARN : OK })}>{s.findingCount || 0}</span>
                         </td>
                         <td className="py-3 px-4 text-right">
-                          <span className="text-[10px] px-2 py-1 rounded-full font-bold uppercase tracking-wider" style={{ background: s.findingCount ? 'rgba(212,168,95,.14)' : 'rgba(92,191,138,.14)', color: s.findingCount ? WARN : OK }}>
+                          <span className="text-[10px] px-2 py-1 rounded-full font-bold uppercase tracking-wider" style={portalStyle({ background: s.findingCount ? 'rgba(212,168,95,.14)' : 'rgba(92,191,138,.14)', color: s.findingCount ? WARN : OK })}>
                             {s.findingCount ? `${s.findingCount} bulgu` : 'temiz'}
                           </span>
                         </td>
@@ -1153,11 +1155,11 @@ function Gauge({ score, color, hasData }: { score: number | null; color: string;
   const p = hasData && score != null ? score : 0;
   const ring = hasData ? color : 'rgba(255,255,255,.16)';
   return (
-    <div className="relative shrink-0" style={{ width: 92, height: 92, borderRadius: '50%', background: `conic-gradient(${ring} 0 ${p}%, rgba(255,255,255,.07) ${p}% 100%)` }}>
-      <div className="absolute rounded-full" style={{ inset: 9, background: '#0e1116' }} />
+    <div className="relative shrink-0" style={portalStyle({ width: 92, height: 92, borderRadius: '50%', background: `conic-gradient(${ring} 0 ${p}%, rgba(255,255,255,.07) ${p}% 100%)` })}>
+      <div className="absolute rounded-full" style={portalStyle({ inset: 9, background: '#0e1116' })} />
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <div className="text-[27px] font-bold leading-none tabular-nums" style={{ color: hasData ? TEXT : MUTED2 }}>{hasData && score != null ? score : '—'}</div>
-        <div className="text-[8px] uppercase tracking-[.18em] mt-1" style={{ color: MUTED }}>Skor</div>
+        <div className="text-[27px] font-bold leading-none tabular-nums" style={portalStyle({ color: hasData ? TEXT : MUTED2 })}>{hasData && score != null ? score : '—'}</div>
+        <div className="text-[8px] uppercase tracking-[.18em] mt-1" style={portalStyle({ color: MUTED })}>Skor</div>
       </div>
     </div>
   );
@@ -1165,20 +1167,20 @@ function Gauge({ score, color, hasData }: { score: number | null; color: string;
 
 function Metric({ label, value, color, active, lead, onClick }: { label: string; value: number; color: string; active: boolean; lead?: boolean; onClick: () => void }) {
   return (
-    <button onClick={onClick} className="rounded-xl p-3 text-left transition-all" style={{ border: `1px solid ${active ? 'rgba(91,141,239,.34)' : BORDER}`, background: active || lead ? LEAD_GRAD : 'rgba(255,255,255,.012)' }}>
-      <div className="text-[9px] uppercase tracking-[.16em] mb-1.5" style={{ color: active || lead ? 'rgba(91,141,239,.9)' : MUTED2 }}>{label}</div>
-      <div className="text-[24px] font-bold tabular-nums leading-none" style={{ color }}>{value}</div>
+    <button onClick={onClick} className="rounded-xl p-3 text-left transition-all" style={portalStyle({ border: `1px solid ${active ? 'rgba(91,141,239,.34)' : BORDER}`, background: active || lead ? LEAD_GRAD : 'rgba(255,255,255,.012)' })}>
+      <div className="text-[9px] uppercase tracking-[.16em] mb-1.5" style={portalStyle({ color: active || lead ? 'rgba(91,141,239,.9)' : MUTED2 })}>{label}</div>
+      <div className="text-[24px] font-bold tabular-nums leading-none" style={portalStyle({ color })}>{value}</div>
     </button>
   );
 }
 
 function LegendItem({ color, label, value, active, onClick }: { color: string; label: string; value: number; active: boolean; onClick: () => void }) {
   return (
-    <button onClick={onClick} className="flex items-center gap-2.5 rounded-lg px-1.5 py-1 transition-all" style={{ background: active ? `${color}1a` : 'transparent', outline: active ? `1px solid ${color}55` : 'none' }}>
-      <span className="w-2.5 h-2.5 rounded-sm" style={{ background: color }} />
+    <button onClick={onClick} className="flex items-center gap-2.5 rounded-lg px-1.5 py-1 transition-all" style={portalStyle({ background: active ? `${color}1a` : 'transparent', outline: active ? `1px solid ${color}55` : 'none' })}>
+      <span className="w-2.5 h-2.5 rounded-sm" style={portalStyle({ background: color })} />
       <span className="flex flex-col items-start leading-none">
-        <span className="text-[19px] font-bold tabular-nums" style={{ color }}>{value}</span>
-        <span className="text-[11px] mt-1" style={{ color: active ? color : MUTED }}>{label}</span>
+        <span className="text-[19px] font-bold tabular-nums" style={portalStyle({ color })}>{value}</span>
+        <span className="text-[11px] mt-1" style={portalStyle({ color: active ? color : MUTED })}>{label}</span>
       </span>
     </button>
   );
@@ -1186,9 +1188,9 @@ function LegendItem({ color, label, value, active, onClick }: { color: string; l
 
 function BigStat({ label, value, color }: { label: string; value: number; color: string }) {
   return (
-    <div className="rounded-xl p-3" style={{ background: PANEL, border: `1px solid ${BORDER}` }}>
-      <div className="text-[9px] uppercase tracking-[.18em] mb-1" style={{ color: MUTED2 }}>{label}</div>
-      <div className="text-2xl font-bold tabular-nums leading-none" style={{ color }}>{value}</div>
+    <div className="rounded-xl p-3" style={portalStyle({ background: PANEL, border: `1px solid ${BORDER}` })}>
+      <div className="text-[9px] uppercase tracking-[.18em] mb-1" style={portalStyle({ color: MUTED2 })}>{label}</div>
+      <div className="text-2xl font-bold tabular-nums leading-none" style={portalStyle({ color })}>{value}</div>
     </div>
   );
 }
@@ -1199,14 +1201,14 @@ function HapSekme({ active, onClick, icon: Icon, label, badge }: { active: boole
     <button
       onClick={onClick}
       className="h-9 px-3.5 rounded-full inline-flex items-center gap-2 text-[12.5px] font-semibold transition-[transform,filter] duration-150 hover:-translate-y-px"
-      style={active
+      style={portalStyle(active
         ? { background: `linear-gradient(135deg, ${NAVY}, ${NAVY}bb)`, color: '#0b1218', border: '1px solid transparent', boxShadow: '0 6px 16px rgba(91,141,239,.30)' }
-        : { background: 'rgba(255,255,255,.035)', color: 'rgba(250,250,249,.72)', border: `1px solid ${BORDER}` }}
+        : { background: 'rgba(255,255,255,.035)', color: 'rgba(250,250,249,.72)', border: `1px solid ${BORDER}` })}
     >
       <Icon size={14} />
       {label}
       {badge != null && badge > 0 && (
-        <span className="text-[10.5px] tabular-nums px-1.5 py-px rounded-full" style={{ background: active ? 'rgba(11,18,24,.18)' : 'rgba(255,255,255,.06)', color: active ? '#0b1218' : 'rgba(250,250,249,.6)' }}>{badge}</span>
+        <span className="text-[10.5px] tabular-nums px-1.5 py-px rounded-full" style={portalStyle({ background: active ? 'rgba(11,18,24,.18)' : 'rgba(255,255,255,.06)', color: active ? '#0b1218' : 'rgba(250,250,249,.6)' })}>{badge}</span>
       )}
     </button>
   );
@@ -1214,11 +1216,11 @@ function HapSekme({ active, onClick, icon: Icon, label, badge }: { active: boole
 
 function TabButton({ active, onClick, icon: Icon, label, badge }: { active: boolean; onClick: () => void; icon: any; label: string; badge?: number }) {
   return (
-    <button onClick={onClick} className="h-10 px-4 inline-flex items-center gap-2 text-sm font-semibold border-b-2 transition-colors" style={{ borderColor: active ? NAVY : 'transparent', color: active ? NAVY : 'rgba(250,250,249,.55)' }}>
+    <button onClick={onClick} className="h-10 px-4 inline-flex items-center gap-2 text-sm font-semibold border-b-2 transition-colors" style={portalStyle({ borderColor: active ? NAVY : 'transparent', color: active ? NAVY : 'rgba(250,250,249,.55)' })}>
       <Icon size={15} />
       {label}
       {badge != null && badge > 0 && (
-        <span className="text-[10px] tabular-nums px-1.5 py-0.5 rounded-full" style={{ background: active ? NAVY_SOFT : 'rgba(255,255,255,.05)', color: active ? NAVY : 'rgba(250,250,249,.55)' }}>{badge}</span>
+        <span className="text-[10px] tabular-nums px-1.5 py-0.5 rounded-full" style={portalStyle({ background: active ? NAVY_SOFT : 'rgba(255,255,255,.05)', color: active ? NAVY : 'rgba(250,250,249,.55)' })}>{badge}</span>
       )}
     </button>
   );
@@ -1226,7 +1228,7 @@ function TabButton({ active, onClick, icon: Icon, label, badge }: { active: bool
 
 function SeverityPill({ count, color, label }: { count: number; color: string; label?: string }) {
   return (
-    <span className="text-[10px] font-bold px-2 py-0.5 rounded tabular-nums inline-flex items-center gap-1" style={{ background: `${color}1c`, color }}>
+    <span className="text-[10px] font-bold px-2 py-0.5 rounded tabular-nums inline-flex items-center gap-1" style={portalStyle({ background: `${color}1c`, color })}>
       {count}{label ? ` ${label}` : ''}
     </span>
   );
@@ -1234,7 +1236,7 @@ function SeverityPill({ count, color, label }: { count: number; color: string; l
 
 function Severity({ value }: { value: string }) {
   const color = sevColor(value);
-  return (<span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ background: `${color}1c`, color }}>{sevLabel(value)}</span>);
+  return (<span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={portalStyle({ background: `${color}1c`, color })}>{sevLabel(value)}</span>);
 }
 
 type KuralDef = { kod: string; ad: string; aciklama: string; severity: 'ERROR' | 'WARN' | 'INFO'; grup: string; aktif: boolean };
@@ -1381,11 +1383,11 @@ function KurallarTab() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="h-10 rounded-lg px-3 flex items-center gap-2 flex-1 min-w-[280px]" style={{ background: PANEL, border: `1px solid ${BORDER}`, color: 'rgba(250,250,249,.75)' }}>
+        <div className="h-10 rounded-lg px-3 flex items-center gap-2 flex-1 min-w-[280px]" style={portalStyle({ background: PANEL, border: `1px solid ${BORDER}`, color: 'rgba(250,250,249,.75)' })}>
           <Search size={14} />
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Kural ara..." className="bg-transparent outline-none text-sm w-full" style={{ color: TEXT }} />
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Kural ara..." className="bg-transparent outline-none text-sm w-full" style={portalStyle({ color: TEXT })} />
         </div>
-        <span className="text-xs tabular-nums" style={{ color: MUTED }}>{kuralListesi.length} standart · {manuelSayisi} ofis kuralı</span>
+        <span className="text-xs tabular-nums" style={portalStyle({ color: MUTED })}>{kuralListesi.length} standart · {manuelSayisi} ofis kuralı</span>
       </div>
 
       {/* Ofis (manuel) kuralları — sunucuda saklanır, analizde çalışır */}
@@ -1393,33 +1395,33 @@ function KurallarTab() {
 
       <div className="space-y-3">
         {[...byGroup.entries()].map(([grupAd, kurallar]) => (
-          <div key={grupAd} className="rounded-xl overflow-hidden" style={{ background: PANEL, border: `1px solid ${BORDER}` }}>
-            <div className="px-4 py-2.5" style={{ background: PANEL_HOVER, borderBottom: `1px solid ${BORDER}` }}>
-              <span className="text-xs font-bold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,.85)' }}>{grupAd}</span>
-              <span className="text-xs tabular-nums ml-2" style={{ color: MUTED }}>{kurallar.length}</span>
+          <div key={grupAd} className="rounded-xl overflow-hidden" style={portalStyle({ background: PANEL, border: `1px solid ${BORDER}` })}>
+            <div className="px-4 py-2.5" style={portalStyle({ background: PANEL_HOVER, borderBottom: `1px solid ${BORDER}` })}>
+              <span className="text-xs font-bold uppercase tracking-wider" style={portalStyle({ color: 'rgba(250,250,249,.85)' })}>{grupAd}</span>
+              <span className="text-xs tabular-nums ml-2" style={portalStyle({ color: MUTED })}>{kurallar.length}</span>
             </div>
-            <div className="divide-y" style={{ borderColor: BORDER }}>
+            <div className="divide-y" style={portalStyle({ borderColor: BORDER })}>
               {kurallar.map((k) => {
                 const active = ruleActive(k);
                 return (
-                <div key={k.kod} className="px-4 py-3 flex items-start gap-3" style={{ borderColor: BORDER }}>
+                <div key={k.kod} className="px-4 py-3 flex items-start gap-3" style={portalStyle({ borderColor: BORDER })}>
                   <Severity value={k.severity} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-0.5">
-                      <span className="text-sm font-semibold" style={{ color: TEXT }}>{k.ad}</span>
-                      <span className="text-[10px] tabular-nums px-1.5 py-0.5 rounded font-mono" style={{ background: 'rgba(255,255,255,.04)', color: MUTED2 }}>{k.kod}</span>
+                      <span className="text-sm font-semibold" style={portalStyle({ color: TEXT })}>{k.ad}</span>
+                      <span className="text-[10px] tabular-nums px-1.5 py-0.5 rounded font-mono" style={portalStyle({ background: 'rgba(255,255,255,.04)', color: MUTED2 })}>{k.kod}</span>
                     </div>
-                    <div className="text-xs" style={{ color: 'rgba(250,250,249,.65)' }}>{k.aciklama}</div>
+                    <div className="text-xs" style={portalStyle({ color: 'rgba(250,250,249,.65)' })}>{k.aciklama}</div>
                   </div>
                   <button
                     disabled={ruleMut.isPending}
                     onClick={() => ruleMut.mutate({ code: k.kod, active: !active })}
                     className="h-8 px-3 rounded-md text-[10px] uppercase tracking-wider font-bold inline-flex items-center gap-1.5 disabled:opacity-50"
-                    style={{
+                    style={portalStyle({
                       background: active ? 'rgba(92,191,138,.12)' : 'rgba(226,112,111,.10)',
                       color: active ? OK : ERR,
                       border: `1px solid ${active ? 'rgba(92,191,138,.24)' : 'rgba(226,112,111,.22)'}`,
-                    }}
+                    })}
                     title={active ? 'Bu kuralı pasif yap' : 'Bu kuralı aktif yap'}
                   >
                     {active ? <CheckCircle2 size={13} /> : <EyeOff size={13} />}

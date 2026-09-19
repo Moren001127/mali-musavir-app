@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -197,22 +199,22 @@ export function MukellefiyetlerCard({
 
   return (
     <div className="space-y-4">
-      <div className="overflow-x-auto" style={{ border: `1px solid ${CIZGI}`, borderRadius: 8 }}>
-        <table className="w-full border-collapse" style={{ minWidth: 640 }}>
+      <div className="overflow-x-auto" style={portalStyle({ border: `1px solid ${CIZGI}`, borderRadius: 8 })}>
+        <table className="w-full border-collapse" style={portalStyle({ minWidth: 640 })}>
           <colgroup>
             <col />
-            <col style={{ width: 360 }} />
+            <col style={portalStyle({ width: 360 })} />
           </colgroup>
           <thead>
             <tr>
-              <th style={BASLIK_HUCRE}>Beyanname</th>
-              <th style={BASLIK_HUCRE}>Dönem</th>
+              <th style={portalStyle(BASLIK_HUCRE)}>Beyanname</th>
+              <th style={portalStyle(BASLIK_HUCRE)}>Dönem</th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td style={{ ...HUCRE, color: form.incomeTaxType ? TEXT : MUTED, fontWeight: form.incomeTaxType ? 600 : 500 }}>Yıllık vergi türü</td>
-              <td style={HUCRE}>
+              <td style={portalStyle({ ...HUCRE, color: form.incomeTaxType ? TEXT : MUTED, fontWeight: form.incomeTaxType ? 600 : 500 })}>Yıllık vergi türü</td>
+              <td style={portalStyle(HUCRE)}>
                 <Secici
                   boy="kucuk"
                   value={form.incomeTaxType ?? 'YOK'}
@@ -234,13 +236,13 @@ export function MukellefiyetlerCard({
                   const isActive = aktifMi(item);
                   return (
                     <tr key={item.key as string}>
-                      <td style={{ ...HUCRE, color: isActive ? TEXT : MUTED, fontWeight: isActive ? 600 : 500 }}>{gosterAd(item)}</td>
-                      <td style={HUCRE}>
+                      <td style={portalStyle({ ...HUCRE, color: isActive ? TEXT : MUTED, fontWeight: isActive ? 600 : 500 })}>{gosterAd(item)}</td>
+                      <td style={portalStyle(HUCRE)}>
                         {item.tip === 'toggle' ? (
                           <label className="flex cursor-pointer items-center gap-2.5">
                             <input type="checkbox" className="sr-only" checked={isActive} onChange={() => setForm({ ...form, [item.key]: !value } as BeyanConfig)} />
                             <Salter checked={isActive} />
-                            <span className="text-[13.5px] font-medium" style={{ color: isActive ? GOOD : MUTED }}>{isActive ? 'Açık' : 'Kapalı'}</span>
+                            <span className="text-[13.5px] font-medium" style={portalStyle({ color: isActive ? GOOD : MUTED })}>{isActive ? 'Açık' : 'Kapalı'}</span>
                           </label>
                         ) : (
                           <PeriodSegment value={value} full15={item.tip === 'period_15gun'} onChange={(v) => setForm({ ...form, [item.key]: v } as BeyanConfig)} />

@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import React, { useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -80,19 +82,19 @@ export function MaliYorumKutusu({
 
   return (
     <div
-      style={{
+      style={portalStyle({
         border: `1px solid ${hexA(accent, 0.28)}`,
         background: `linear-gradient(180deg, ${hexA(accent, 0.06)} 0%, rgba(255,255,255,0.012) 100%)`,
         borderRadius: 16,
         padding: 20,
         marginTop: 20,
-      }}
+      })}
     >
       {/* Başlık */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <div style={portalStyle({ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' })}>
+        <div style={portalStyle({ display: 'flex', alignItems: 'center', gap: 10 })}>
           <div
-            style={{
+            style={portalStyle({
               width: 34,
               height: 34,
               borderRadius: 10,
@@ -101,26 +103,26 @@ export function MaliYorumKutusu({
               background: hexA(accent, 0.16),
               border: `1px solid ${hexA(accent, 0.4)}`,
               fontSize: 18,
-            }}
+            })}
             aria-hidden
           >
             🤖
           </div>
           <div>
-            <div style={{ fontWeight: 700, color: '#f5efe3', fontSize: 15, letterSpacing: 0.2 }}>
+            <div style={portalStyle({ fontWeight: 700, color: '#f5efe3', fontSize: 15, letterSpacing: 0.2 })}>
               MOREN MALİ MÜŞAVİRLİK AI Değerlendirmesi
             </div>
-            <div style={{ fontSize: 12, color: 'rgba(245,239,227,0.55)' }}>
+            <div style={portalStyle({ fontSize: 12, color: 'rgba(245,239,227,0.55)' })}>
               Bir mali müşavir gözüyle otomatik yorum
             </div>
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div style={portalStyle({ display: 'flex', gap: 8, flexWrap: 'wrap' })}>
           <button
             onClick={() => uretMut.mutate({ force: !!yorum, derin: false })}
             disabled={uretiliyor}
-            style={{
+            style={portalStyle({
               padding: '8px 16px',
               borderRadius: 10,
               border: `1px solid ${hexA(accent, 0.5)}`,
@@ -130,7 +132,7 @@ export function MaliYorumKutusu({
               fontSize: 13.5,
               cursor: uretiliyor ? 'wait' : 'pointer',
               whiteSpace: 'nowrap',
-            }}
+            })}
           >
             {uretiliyor && !derinPending ? 'İnceleniyor…' : yorum ? '↻ Yenile' : '✨ Değerlendir'}
           </button>
@@ -138,7 +140,7 @@ export function MaliYorumKutusu({
             onClick={() => uretMut.mutate({ force: true, derin: true })}
             disabled={uretiliyor}
             title="Güçlü model (Sonnet) ile daha derin inceleme — normalden biraz daha çok limit yer"
-            style={{
+            style={portalStyle({
               padding: '8px 14px',
               borderRadius: 10,
               border: '1px solid rgba(168,85,247,0.5)',
@@ -148,7 +150,7 @@ export function MaliYorumKutusu({
               fontSize: 13.5,
               cursor: uretiliyor ? 'wait' : 'pointer',
               whiteSpace: 'nowrap',
-            }}
+            })}
           >
             {derinPending ? 'Derin inceleniyor…' : '🔬 Derin Analiz'}
           </button>
@@ -156,43 +158,43 @@ export function MaliYorumKutusu({
       </div>
 
       {/* Gövde */}
-      <div style={{ marginTop: 16 }}>
+      <div style={portalStyle({ marginTop: 16 })}>
         {isLoading ? (
-          <p style={{ color: 'rgba(245,239,227,0.55)', fontSize: 13.5 }}>Yükleniyor…</p>
+          <p style={portalStyle({ color: 'rgba(245,239,227,0.55)', fontSize: 13.5 })}>Yükleniyor…</p>
         ) : uretiliyor && !yorum ? (
-          <p style={{ color: 'rgba(245,239,227,0.7)', fontSize: 13.5 }}>
+          <p style={portalStyle({ color: 'rgba(245,239,227,0.7)', fontSize: 13.5 })}>
             Bütün hesaplar mali müşavir gözüyle inceleniyor, birkaç saniye…
           </p>
         ) : yorum ? (
           <>
             <YorumMetni ozet={yorum.ozet} accent={accent} />
             {zaman && (
-              <div style={{ marginTop: 14, fontSize: 11.5, color: 'rgba(245,239,227,0.4)' }}>
+              <div style={portalStyle({ marginTop: 14, fontSize: 11.5, color: 'rgba(245,239,227,0.4)' })}>
                 {zaman} · {yorum.model}
               </div>
             )}
           </>
         ) : hataMesaj ? (
           <div
-            style={{
+            style={portalStyle({
               border: '1px solid rgba(244,63,94,0.35)',
               background: 'rgba(244,63,94,0.06)',
               borderRadius: 12,
               padding: 14,
-            }}
+            })}
           >
-            <div style={{ color: '#fca5a5', fontWeight: 700, fontSize: 13.5, marginBottom: 4 }}>
+            <div style={portalStyle({ color: '#fca5a5', fontWeight: 700, fontSize: 13.5, marginBottom: 4 })}>
               Değerlendirme yapılamadı
             </div>
-            <div style={{ color: 'rgba(245,239,227,0.8)', fontSize: 13, lineHeight: 1.55 }}>
+            <div style={portalStyle({ color: 'rgba(245,239,227,0.8)', fontSize: 13, lineHeight: 1.55 })}>
               {hataMesaj}
             </div>
-            <div style={{ color: 'rgba(245,239,227,0.5)', fontSize: 12, marginTop: 8 }}>
+            <div style={portalStyle({ color: 'rgba(245,239,227,0.5)', fontSize: 12, marginTop: 8 })}>
               Tekrar denemek için yukarıdaki <b>Değerlendir</b> düğmesine basın.
             </div>
           </div>
         ) : (
-          <p style={{ color: 'rgba(245,239,227,0.6)', fontSize: 13.5, lineHeight: 1.6 }}>
+          <p style={portalStyle({ color: 'rgba(245,239,227,0.6)', fontSize: 13.5, lineHeight: 1.6 })}>
             Bu tabloyu yapay zeka mali müşavir gözüyle değerlendirsin — güçlü/zayıf
             yönleri, dikkat çeken hesapları ve önerileri sade dille özetler.
             <br />
@@ -210,21 +212,21 @@ function YorumMetni({ ozet, accent }: { ozet: string; accent: string }) {
   const basliklar = /^(genel durum|dikkat çekenler|öneri|öneriler|değerlendirme|özet)\s*:?/i;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+    <div style={portalStyle({ display: 'flex', flexDirection: 'column', gap: 4 })}>
       {lines.map((raw, i) => {
         const line = raw.trim();
-        if (!line) return <div key={i} style={{ height: 6 }} />;
+        if (!line) return <div key={i} style={portalStyle({ height: 6 })} />;
 
         const baslikMatch = line.match(basliklar);
         if (baslikMatch) {
           const kalan = line.slice(baslikMatch[0].length).trim();
           return (
-            <div key={i} style={{ marginTop: i === 0 ? 0 : 10 }}>
-              <span style={{ fontWeight: 700, color: accent, fontSize: 13.5 }}>
+            <div key={i} style={portalStyle({ marginTop: i === 0 ? 0 : 10 })}>
+              <span style={portalStyle({ fontWeight: 700, color: accent, fontSize: 13.5 })}>
                 {baslikMatch[0].replace(/:\s*$/, '')}
               </span>
               {kalan && (
-                <span style={{ color: 'rgba(245,239,227,0.85)', fontSize: 13.5, lineHeight: 1.65 }}>
+                <span style={portalStyle({ color: 'rgba(245,239,227,0.85)', fontSize: 13.5, lineHeight: 1.65 })}>
                   {' '}
                   {kalan}
                 </span>
@@ -236,9 +238,9 @@ function YorumMetni({ ozet, accent }: { ozet: string; accent: string }) {
         const madde = /^[-•*]\s+/.test(line);
         if (madde) {
           return (
-            <div key={i} style={{ display: 'flex', gap: 8, paddingLeft: 4 }}>
-              <span style={{ color: accent, lineHeight: 1.65 }}>•</span>
-              <span style={{ color: 'rgba(245,239,227,0.85)', fontSize: 13.5, lineHeight: 1.65 }}>
+            <div key={i} style={portalStyle({ display: 'flex', gap: 8, paddingLeft: 4 })}>
+              <span style={portalStyle({ color: accent, lineHeight: 1.65 })}>•</span>
+              <span style={portalStyle({ color: 'rgba(245,239,227,0.85)', fontSize: 13.5, lineHeight: 1.65 })}>
                 {line.replace(/^[-•*]\s+/, '')}
               </span>
             </div>
@@ -246,7 +248,7 @@ function YorumMetni({ ozet, accent }: { ozet: string; accent: string }) {
         }
 
         return (
-          <p key={i} style={{ color: 'rgba(245,239,227,0.85)', fontSize: 13.5, lineHeight: 1.65 }}>
+          <p key={i} style={portalStyle({ color: 'rgba(245,239,227,0.85)', fontSize: 13.5, lineHeight: 1.65 })}>
             {line}
           </p>
         );

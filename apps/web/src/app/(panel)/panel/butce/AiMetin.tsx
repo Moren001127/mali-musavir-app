@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import React from 'react';
 import { GOLD, MUTED, TEXT, ROW_SEP } from './ui';
@@ -18,7 +20,7 @@ function satirParcala(satir: string, anahtar: string): React.ReactNode {
     <>
       {parcalar.map((p, i) =>
         /^\*\*[^*]+\*\*$/.test(p) ? (
-          <strong key={`${anahtar}-${i}`} style={{ color: TEXT, fontWeight: 600 }}>
+          <strong key={`${anahtar}-${i}`} style={portalStyle({ color: TEXT, fontWeight: 600 })}>
             {p.slice(2, -2)}
           </strong>
         ) : (
@@ -129,7 +131,7 @@ export default function AiMetin({ metin, soluk }: { metin: string; soluk?: boole
             <h4
               key={bi}
               className="pt-1 text-[12px] font-semibold uppercase tracking-wider"
-              style={{ color: GOLD }}
+              style={portalStyle({ color: GOLD })}
             >
               {b.metin}
             </h4>
@@ -140,8 +142,8 @@ export default function AiMetin({ metin, soluk }: { metin: string; soluk?: boole
           return (
             <ul key={bi} className="space-y-1.5">
               {b.maddeler.map((m, mi) => (
-                <li key={mi} className="flex gap-2.5 text-[12.5px] leading-[1.7]" style={{ color: renk }}>
-                  <span className="mt-[7px] h-1 w-1 flex-shrink-0 rounded-full" style={{ background: GOLD }} />
+                <li key={mi} className="flex gap-2.5 text-[12.5px] leading-[1.7]" style={portalStyle({ color: renk })}>
+                  <span className="mt-[7px] h-1 w-1 flex-shrink-0 rounded-full" style={portalStyle({ background: GOLD })} />
                   <span>{satirParcala(m, `${bi}-${mi}`)}</span>
                 </li>
               ))}
@@ -154,7 +156,7 @@ export default function AiMetin({ metin, soluk }: { metin: string; soluk?: boole
             <div key={bi} className="overflow-x-auto">
               <table className="w-full text-[12px]">
                 <thead>
-                  <tr className="text-left text-[10.5px] uppercase tracking-wider" style={{ color: MUTED }}>
+                  <tr className="text-left text-[10.5px] uppercase tracking-wider" style={portalStyle({ color: MUTED })}>
                     {b.basliklar.map((h, hi) => (
                       <th key={hi} className={`pb-1.5 font-medium ${hi > 0 ? 'text-right' : ''}`}>
                         {h.replace(/\*/g, '')}
@@ -164,12 +166,12 @@ export default function AiMetin({ metin, soluk }: { metin: string; soluk?: boole
                 </thead>
                 <tbody>
                   {b.satirlar.map((r, ri) => (
-                    <tr key={ri} className="border-t" style={{ borderColor: ROW_SEP }}>
+                    <tr key={ri} className="border-t" style={portalStyle({ borderColor: ROW_SEP })}>
                       {r.map((h, hi) => (
                         <td
                           key={hi}
                           className={`py-1.5 ${hi > 0 ? 'text-right tabular-nums' : ''}`}
-                          style={{ color: hi > 0 ? renk : MUTED }}
+                          style={portalStyle({ color: hi > 0 ? renk : MUTED })}
                         >
                           {satirParcala(h, `${bi}-${ri}-${hi}`)}
                         </td>
@@ -183,7 +185,7 @@ export default function AiMetin({ metin, soluk }: { metin: string; soluk?: boole
         }
 
         return (
-          <p key={bi} className="text-[12.5px] leading-[1.75]" style={{ color: renk }}>
+          <p key={bi} className="text-[12.5px] leading-[1.75]" style={portalStyle({ color: renk })}>
             {b.satirlar.map((s, si) => (
               <React.Fragment key={si}>
                 {si > 0 && <br />}

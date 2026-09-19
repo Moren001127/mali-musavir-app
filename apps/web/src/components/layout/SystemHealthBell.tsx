@@ -1,4 +1,5 @@
 'use client';
+import { ownedThemeStyle } from '@/components/layout/owned-theme';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, ShieldCheck, X, RefreshCw, Lock, ExternalLink } from 'lucide-react';
@@ -121,13 +122,13 @@ export default function SystemHealthBell() {
       {/* v1.36.44: Kilitli modül drift banner — sayfa üstünde sabit, dismiss edilebilir.
           Yeni drift gelirse otomatik tekrar görünür. */}
       {driftCount > 0 && !bannerDismissed && (
-        <div
+        <div data-moren-owned="surface"
           className="fixed top-0 left-0 right-0 z-[200] px-4 py-2.5 flex items-center justify-between gap-3 shadow-lg"
-          style={{
+          style={ownedThemeStyle({
             background: 'linear-gradient(90deg, rgba(244,63,94,0.92), rgba(220,38,38,0.92))',
             color: '#fff',
             borderBottom: '1px solid rgba(0,0,0,0.3)',
-          }}
+          })}
         >
           <div className="flex items-center gap-2.5 min-w-0">
             <Lock size={16} className="shrink-0" />
@@ -141,7 +142,7 @@ export default function SystemHealthBell() {
             <Link
               href="/panel/sistem/kilitli-moduller"
               className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-[12px] font-semibold transition-all hover:opacity-90"
-              style={{ background: '#fff', color: '#dc2626' }}
+              style={ownedThemeStyle({ background: '#fff', color: '#dc2626' })}
             >
               <ExternalLink size={12} /> Kontrol Et
             </Link>
@@ -158,20 +159,20 @@ export default function SystemHealthBell() {
 
       {/* v1.36.78: Sağ üst sistem sağlık göstergesi — TIKLANMAZ.
           Sadece görsel uyarı; detay için Gösterge Paneli'ndeki Kritik Uyarı kartı kullanılır. */}
-      <div
+      <div data-moren-owned="surface"
         className="relative w-9 h-9 rounded-lg flex items-center justify-center cursor-default"
-        style={{
+        style={ownedThemeStyle({
           border: `1px solid ${isCritical ? 'rgba(244,63,94,0.5)' : 'rgba(255,255,255,0.05)'}`,
           background: isCritical ? 'rgba(244,63,94,0.1)' : 'transparent',
           animation: isCritical ? 'morenHealthPulse 1.5s infinite' : 'none',
-        }}
+        })}
         aria-label={healthStatusLabel}
       >
-        <Icon size={16} style={{ color: buttonColor }} />
+        <Icon size={16} style={ownedThemeStyle({ color: buttonColor })} />
         {total > 0 && (
           <span
             className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full flex items-center justify-center text-[10px] font-bold text-white"
-            style={{ background: isCritical ? '#f43f5e' : '#f59e0b' }}
+            style={ownedThemeStyle({ background: isCritical ? '#f43f5e' : '#f59e0b' })}
           >
             {total > 9 ? '9+' : total}
           </span>
@@ -180,32 +181,32 @@ export default function SystemHealthBell() {
 
       {/* MODAL */}
       {open && (
-        <div
+        <div data-moren-owned="surface"
           className="fixed inset-0 z-[100] flex items-start justify-center p-4 pt-16"
-          style={{ background: 'rgba(0,0,0,0.6)' }}
+          style={ownedThemeStyle({ background: 'rgba(0,0,0,0.6)' })}
           onClick={() => setOpen(false)}
         >
           <div
             onClick={(e) => e.stopPropagation()}
             className="w-full max-w-2xl rounded-2xl overflow-hidden"
-            style={{
+            style={ownedThemeStyle({
               background: 'rgb(15,13,11)',
               border: '1px solid rgba(255,255,255,0.08)',
               boxShadow: '0 20px 60px rgba(0,0,0,0.6)',
-            }}
+            })}
           >
             {/* Header */}
             <div
               className="flex items-center justify-between px-5 py-4"
-              style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
+              style={ownedThemeStyle({ borderBottom: '1px solid rgba(255,255,255,0.05)' })}
             >
               <div className="flex items-center gap-3">
-                <Icon size={18} style={{ color: buttonColor }} />
+                <Icon size={18} style={ownedThemeStyle({ color: buttonColor })} />
                 <div>
-                  <h3 className="text-[15px] font-semibold" style={{ color: '#fafaf9' }}>
+                  <h3 className="text-[15px] font-semibold" style={ownedThemeStyle({ color: '#fafaf9' })}>
                     Sistem Sağlık Durumu
                   </h3>
-                  <p className="text-xs" style={{ color: 'rgba(250,250,249,0.5)' }}>
+                  <p className="text-xs" style={ownedThemeStyle({ color: 'rgba(250,250,249,0.5)' })}>
                     {isOk
                       ? 'Tüm sistemler sağlıklı'
                       : `${critical} kritik · ${warning} uyarı`}
@@ -227,11 +228,11 @@ export default function SystemHealthBell() {
                   onClick={() => runNow.mutate()}
                   disabled={runNow.isPending}
                   className="h-8 px-3 rounded-lg flex items-center gap-1.5 text-xs font-medium transition-colors hover:opacity-80"
-                  style={{
+                  style={ownedThemeStyle({
                     background: 'rgba(212,184,118,0.15)',
                     border: '1px solid rgba(212,184,118,0.3)',
                     color: '#d4b876',
-                  }}
+                  })}
                 >
                   <RefreshCw
                     size={12}
@@ -242,9 +243,9 @@ export default function SystemHealthBell() {
                 <button
                   onClick={() => setOpen(false)}
                   className="w-8 h-8 rounded-lg flex items-center justify-center hover:opacity-80"
-                  style={{ background: 'rgba(255,255,255,0.03)' }}
+                  style={ownedThemeStyle({ background: 'rgba(255,255,255,0.03)' })}
                 >
-                  <X size={14} style={{ color: 'rgba(250,250,249,0.7)' }} />
+                  <X size={14} style={ownedThemeStyle({ color: 'rgba(250,250,249,0.7)' })} />
                 </button>
               </div>
             </div>
@@ -252,7 +253,7 @@ export default function SystemHealthBell() {
             {/* İçerik */}
             <div className="max-h-[70vh] overflow-y-auto">
               {isLoading && !data && (
-                <div className="px-5 py-12 text-center text-sm" style={{ color: 'rgba(250,250,249,0.5)' }}>
+                <div className="px-5 py-12 text-center text-sm" style={ownedThemeStyle({ color: 'rgba(250,250,249,0.5)' })}>
                   Yükleniyor...
                 </div>
               )}
@@ -260,18 +261,18 @@ export default function SystemHealthBell() {
                 <div className="px-5 py-12 text-center">
                   <ShieldCheck
                     size={48}
-                    style={{ color: '#10b981', margin: '0 auto 12px' }}
+                    style={ownedThemeStyle({ color: '#10b981', margin: '0 auto 12px' })}
                   />
-                  <h4 className="text-[14px] font-semibold" style={{ color: '#fafaf9' }}>
+                  <h4 className="text-[14px] font-semibold" style={ownedThemeStyle({ color: '#fafaf9' })}>
                     Tüm sistemler sağlıklı
                   </h4>
-                  <p className="text-xs mt-1" style={{ color: 'rgba(250,250,249,0.5)' }}>
+                  <p className="text-xs mt-1" style={ownedThemeStyle({ color: 'rgba(250,250,249,0.5)' })}>
                     Aktif uyarı yok. Sistem her 5 dakikada bir kontrol ediliyor.
                   </p>
                 </div>
               )}
               {sorted.length > 0 && (
-                <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+                <div className="divide-y" style={ownedThemeStyle({ borderColor: 'rgba(255,255,255,0.05)' })}>
                   {sorted.map((c) => (
                     <CheckRow key={c.id} check={c} />
                   ))}
@@ -305,37 +306,37 @@ function CheckRow({ check: c }: { check: any }) {
   };
 
   return (
-    <div className="px-5 py-3" style={{ background: bg }}>
+    <div data-moren-owned="surface" className="px-5 py-3" style={ownedThemeStyle({ background: bg })}>
       <div className="flex items-start gap-3">
         <span
           className="text-[10px] font-bold px-2 py-0.5 rounded"
-          style={{
+          style={ownedThemeStyle({
             color,
             background: `${color}1a`,
             border: `1px solid ${color}40`,
             flexShrink: 0,
             marginTop: 2,
-          }}
+          })}
         >
           {label}
         </span>
         <div className="flex-1 min-w-0">
-          <p className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>
+          <p className="text-[13px] font-semibold" style={ownedThemeStyle({ color: '#fafaf9' })}>
             {TYPE_LABEL[c.type] || c.type}
           </p>
-          <p className="text-[12px] mt-0.5" style={{ color: 'rgba(250,250,249,0.7)' }}>
+          <p className="text-[12px] mt-0.5" style={ownedThemeStyle({ color: 'rgba(250,250,249,0.7)' })}>
             {c.message}
           </p>
           {c.acilTavsiye && (
             <p
               className="text-[11px] mt-1.5 italic"
-              style={{ color: 'rgba(250,250,249,0.5)' }}
+              style={ownedThemeStyle({ color: 'rgba(250,250,249,0.5)' })}
             >
               → {c.acilTavsiye}
             </p>
           )}
           {c.detail?.mismatches && Array.isArray(c.detail.mismatches) && (
-            <ul className="text-[11px] mt-1.5 ml-3 space-y-0.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
+            <ul className="text-[11px] mt-1.5 ml-3 space-y-0.5" style={ownedThemeStyle({ color: 'rgba(250,250,249,0.5)' })}>
               {c.detail.mismatches.slice(0, 5).map((m: string, i: number) => (
                 <li key={i}>• {m}</li>
               ))}

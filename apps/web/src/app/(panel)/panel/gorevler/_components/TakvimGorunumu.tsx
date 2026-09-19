@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import { useMemo } from 'react';
 import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -121,16 +123,16 @@ export function TakvimGorunumu({
     <div className="flex flex-col gap-3">
       <Kart renk={TAKVIM_RENK} serit>
         {/* Başlık: ay/hafta adı · ileri/geri · Bugün · mod */}
-        <div className="flex flex-wrap items-center gap-2 px-3.5 py-2.5" style={{ borderBottom: `1px solid ${KENAR}` }}>
-          <CalendarDays size={14} style={{ color: TAKVIM_RENK }} />
-          <h3 className="text-[13.5px] font-bold" style={{ color: METIN, fontFamily: 'Fraunces, Georgia, serif' }}>
+        <div className="flex flex-wrap items-center gap-2 px-3.5 py-2.5" style={portalStyle({ borderBottom: `1px solid ${KENAR}` })}>
+          <CalendarDays size={14} style={portalStyle({ color: TAKVIM_RENK })} />
+          <h3 className="text-[13.5px] font-bold" style={portalStyle({ color: METIN, fontFamily: 'Fraunces, Georgia, serif' })}>
             {baslik}
           </h3>
           <div className="ml-1 inline-flex items-center gap-0.5">
-            <button type="button" onClick={() => ileriGeri(-1)} className={dugme} style={{ color: IKINCIL, border: '1px solid rgba(255,255,255,0.10)' }} title={mod === 'hafta' ? 'Önceki hafta' : 'Önceki ay'}>
+            <button type="button" onClick={() => ileriGeri(-1)} className={dugme} style={portalStyle({ color: IKINCIL, border: '1px solid rgba(255,255,255,0.10)' })} title={mod === 'hafta' ? 'Önceki hafta' : 'Önceki ay'}>
               <ChevronLeft size={14} />
             </button>
-            <button type="button" onClick={() => ileriGeri(1)} className={dugme} style={{ color: IKINCIL, border: '1px solid rgba(255,255,255,0.10)' }} title={mod === 'hafta' ? 'Sonraki hafta' : 'Sonraki ay'}>
+            <button type="button" onClick={() => ileriGeri(1)} className={dugme} style={portalStyle({ color: IKINCIL, border: '1px solid rgba(255,255,255,0.10)' })} title={mod === 'hafta' ? 'Sonraki hafta' : 'Sonraki ay'}>
               <ChevronRight size={14} />
             </button>
             <button
@@ -140,15 +142,15 @@ export function TakvimGorunumu({
                 onAy(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
               }}
               className={dugme}
-              style={{ color: GOLD, border: `1px solid ${GOLD}44` }}
+              style={portalStyle({ color: GOLD, border: `1px solid ${GOLD}44` })}
               title="Bugüne dön"
             >
               Bugün
             </button>
           </div>
-          <div className="ml-auto inline-flex items-center rounded-full p-[2px]" style={{ background: 'rgba(0,0,0,0.32)', border: '1px solid rgba(255,255,255,0.08)' }}>
+          <div className="ml-auto inline-flex items-center rounded-full p-[2px]" style={portalStyle({ background: 'rgba(0,0,0,0.32)', border: '1px solid rgba(255,255,255,0.08)' })}>
             {(['hafta', 'ay'] as TakvimModu[]).map((m) => (
-              <button key={m} type="button" onClick={() => onMod(m)} aria-pressed={mod === m} className="rounded-full px-3 py-0.5 text-[11px] font-semibold transition-[background-color,color]" style={mod === m ? { background: `${TAKVIM_RENK}22`, color: TAKVIM_RENK } : { color: IKINCIL }}>
+              <button key={m} type="button" onClick={() => onMod(m)} aria-pressed={mod === m} className="rounded-full px-3 py-0.5 text-[11px] font-semibold transition-[background-color,color]" style={portalStyle(mod === m ? { background: `${TAKVIM_RENK}22`, color: TAKVIM_RENK } : { color: IKINCIL })}>
                 {m === 'hafta' ? 'Hafta' : 'Ay'}
               </button>
             ))}
@@ -159,7 +161,7 @@ export function TakvimGorunumu({
         <div className="p-2">
           <div className="grid grid-cols-7 gap-1">
             {GUN_ADLARI.map((g) => (
-              <div key={g} className="px-1 py-1 text-center text-[10.5px] font-bold uppercase tracking-[.12em]" style={{ color: IKINCIL }}>
+              <div key={g} className="px-1 py-1 text-center text-[10.5px] font-bold uppercase tracking-[.12em]" style={portalStyle({ color: IKINCIL })}>
                 {g}
               </div>
             ))}
@@ -178,19 +180,19 @@ export function TakvimGorunumu({
                   aria-pressed={secildi}
                   title={`${uzunTarih(`${k}T00:00:00`)} — ${v?.gorevler.length || 0} görev`}
                   className="flex flex-col items-stretch gap-1 rounded-lg p-1.5 text-left transition-[background-color,border-color]"
-                  style={{
+                  style={portalStyle({
                     minHeight: mod === 'hafta' ? 150 : 76,
                     background: secildi ? `${TAKVIM_RENK}1f` : buAy ? 'rgba(255,255,255,0.025)' : 'transparent',
                     border: `1px solid ${secildi ? `${TAKVIM_RENK}88` : bugunMu ? `${GOLD}77` : 'rgba(255,255,255,0.06)'}`,
                     opacity: buAy ? 1 : 0.45,
-                  }}
+                  })}
                 >
                   <span className="flex items-center justify-between">
-                    <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-md px-1 text-[11.5px] font-bold tabular-nums" style={bugunMu ? { background: GOLD, color: '#0f0d0b' } : { color: gecmis ? SONUK : METIN }}>
+                    <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-md px-1 text-[11.5px] font-bold tabular-nums" style={portalStyle(bugunMu ? { background: GOLD, color: '#0f0d0b' } : { color: gecmis ? SONUK : METIN })}>
                       {d.getDate()}
                     </span>
                     {(v?.gorevler.length || 0) > 0 && (
-                      <span className="text-[10px] font-bold tabular-nums" style={{ color: IKINCIL }}>
+                      <span className="text-[10px] font-bold tabular-nums" style={portalStyle({ color: IKINCIL })}>
                         {v!.gorevler.length}
                       </span>
                     )}
@@ -199,20 +201,20 @@ export function TakvimGorunumu({
                     <>
                       <span className="flex flex-wrap gap-[3px]">
                         {(v?.gorevler || []).slice(0, 8).map((t) => (
-                          <span key={t.id} className="h-[6px] w-[6px] rounded-full" style={{ background: oncelikRengi(t.priority), opacity: t.status === 'DONE' ? 0.4 : 1 }} />
+                          <span key={t.id} className="h-[6px] w-[6px] rounded-full" style={portalStyle({ background: oncelikRengi(t.priority), opacity: t.status === 'DONE' ? 0.4 : 1 })} />
                         ))}
                       </span>
                     </>
                   ) : (
                     <>
                       {(v?.gorevler || []).slice(0, 6).map((t) => (
-                        <span key={t.id} className="flex items-center gap-1 truncate text-[10.5px] leading-4" style={{ color: 'rgba(250,250,249,0.85)' }} title={t.title}>
-                          <span className="h-[6px] w-[6px] flex-shrink-0 rounded-full" style={{ background: oncelikRengi(t.priority) }} />
+                        <span key={t.id} className="flex items-center gap-1 truncate text-[10.5px] leading-4" style={portalStyle({ color: 'rgba(250,250,249,0.85)' })} title={t.title}>
+                          <span className="h-[6px] w-[6px] flex-shrink-0 rounded-full" style={portalStyle({ background: oncelikRengi(t.priority) })} />
                           <span className="truncate">{t.title}</span>
                         </span>
                       ))}
                       {(v?.gorevler.length || 0) > 6 && (
-                        <span className="text-[10px]" style={{ color: IKINCIL }}>
+                        <span className="text-[10px]" style={portalStyle({ color: IKINCIL })}>
                           +{v!.gorevler.length - 6} görev
                         </span>
                       )}
@@ -222,11 +224,11 @@ export function TakvimGorunumu({
               );
             })}
           </div>
-          <div className="mt-2 flex flex-wrap items-center gap-3 px-1 text-[10.5px]" style={{ color: IKINCIL }}>
-            <span className="inline-flex items-center gap-1"><span className="h-[6px] w-[6px] rounded-full" style={{ background: oncelikRengi('URGENT') }} /> ACİL</span>
-            <span className="inline-flex items-center gap-1"><span className="h-[6px] w-[6px] rounded-full" style={{ background: oncelikRengi('HIGH') }} /> Yüksek</span>
-            <span className="inline-flex items-center gap-1"><span className="h-[6px] w-[6px] rounded-full" style={{ background: oncelikRengi('MEDIUM') }} /> Orta</span>
-            <span className="inline-flex items-center gap-1"><span className="h-[6px] w-[6px] rounded-full" style={{ background: oncelikRengi('LOW') }} /> Düşük</span>
+          <div className="mt-2 flex flex-wrap items-center gap-3 px-1 text-[10.5px]" style={portalStyle({ color: IKINCIL })}>
+            <span className="inline-flex items-center gap-1"><span className="h-[6px] w-[6px] rounded-full" style={portalStyle({ background: oncelikRengi('URGENT') })} /> ACİL</span>
+            <span className="inline-flex items-center gap-1"><span className="h-[6px] w-[6px] rounded-full" style={portalStyle({ background: oncelikRengi('HIGH') })} /> Yüksek</span>
+            <span className="inline-flex items-center gap-1"><span className="h-[6px] w-[6px] rounded-full" style={portalStyle({ background: oncelikRengi('MEDIUM') })} /> Orta</span>
+            <span className="inline-flex items-center gap-1"><span className="h-[6px] w-[6px] rounded-full" style={portalStyle({ background: oncelikRengi('LOW') })} /> Düşük</span>
           </div>
         </div>
       </Kart>
@@ -234,11 +236,11 @@ export function TakvimGorunumu({
       {/* Seçili günün listesi */}
       <div>
         <div className="mb-2 flex items-center gap-2 px-1">
-          <span className="text-[12.5px] font-bold" style={{ color: METIN }}>
+          <span className="text-[12.5px] font-bold" style={portalStyle({ color: METIN })}>
             {seciliGun ? uzunTarih(`${seciliGun}T00:00:00`) : 'Gün seçin'}
           </span>
           {seciliGun === bugun && (
-            <span className="rounded-md px-1.5 text-[10px] font-extrabold leading-4" style={{ background: GOLD, color: '#0f0d0b' }}>
+            <span className="rounded-md px-1.5 text-[10px] font-extrabold leading-4" style={portalStyle({ background: GOLD, color: '#0f0d0b' })}>
               BUGÜN
             </span>
           )}

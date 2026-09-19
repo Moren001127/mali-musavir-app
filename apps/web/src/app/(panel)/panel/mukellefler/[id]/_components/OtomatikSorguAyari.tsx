@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 import React, { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { BadgeAlert, Landmark, Mail, Receipt, ScanSearch, Search, ShieldAlert, type LucideIcon } from 'lucide-react';
@@ -126,8 +128,8 @@ export function OtomatikSorguAyari({ taxpayerId, deger }: { taxpayerId: string; 
               title={kilitli ? KILIT_IPUCU : `${s.ad} gece sorgusunu ${acik ? 'kapat' : 'aç'}`}
               className={`grid min-h-9 grid-cols-[200px_minmax(0,1fr)] items-center gap-x-3 text-left ${kilitli ? 'cursor-not-allowed' : ''}`}
             >
-              <span className="flex items-center gap-2 text-[13px] font-medium" style={{ color: kilitli ? FAINT : 'rgba(250,250,249,0.72)' }}>
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center" style={{ ...ikonRozeti(kilitli ? 'rgba(250,250,249,0.35)' : STEEL), borderRadius: 6 }}>
+              <span className="flex items-center gap-2 text-[13px] font-medium" style={portalStyle({ color: kilitli ? FAINT : 'rgba(250,250,249,0.72)' })}>
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center" style={portalStyle({ ...ikonRozeti(kilitli ? 'rgba(250,250,249,0.35)' : STEEL), borderRadius: 6 })}>
                   <Ikon size={13} />
                 </span>
                 <span className="truncate">{s.ad}</span>
@@ -135,16 +137,16 @@ export function OtomatikSorguAyari({ taxpayerId, deger }: { taxpayerId: string; 
               <span className="flex min-w-0 items-center gap-2.5">
                 <Salter checked={acik && !kilitli} disabled={kilitli || mesgul} />
                 {kilitli ? (
-                  <span className="text-[13px] font-medium" style={{ color: FAINT }}>Yakında</span>
+                  <span className="text-[13px] font-medium" style={portalStyle({ color: FAINT })}>Yakında</span>
                 ) : (
-                  <span className="text-[13px] font-medium" style={{ color: acik ? GREEN : MUTED }}>{mesgul ? 'Kaydediliyor…' : acik ? 'Açık' : 'Kapalı'}</span>
+                  <span className="text-[13px] font-medium" style={portalStyle({ color: acik ? GREEN : MUTED })}>{mesgul ? 'Kaydediliyor…' : acik ? 'Açık' : 'Kapalı'}</span>
                 )}
               </span>
             </button>
           );
         })}
       </FormGrup>
-      <p className="text-[11.5px]" style={{ color: FAINT }}>
+      <p className="text-[11.5px]" style={portalStyle({ color: FAINT })}>
         Şalter değişince anında kaydedilir; üstteki Kaydet düğmesine gerek yoktur. "Yakında" olanlar: {KILIT_IPUCU}
       </p>
     </div>

@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 import { useQuery } from '@tanstack/react-query';
 import { taxpayerApi } from '@/lib/taxpayer-api';
 import { Section, Empty, Spinner, PageTitle, openBelge } from '../_lib/shared';
@@ -36,23 +38,23 @@ export default function MukellefEvraklar() {
           {liste.length === 0 ? (
             <div className="px-4 py-6"><Empty>Kartınıza yüklenmiş belge bulunmuyor.</Empty></div>
           ) : (
-            <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.055)' }}>
+            <div className="divide-y" style={portalStyle({ borderColor: 'rgba(255,255,255,0.055)' })}>
               {liste.map((e) => {
                 const boyut = fmtBoyut(e.sizeBytes);
                 return (
                   <div key={e.id} className="grid gap-3 px-4 py-3 md:grid-cols-[minmax(0,1fr)_200px_56px] md:items-center">
                     <div className="min-w-0">
-                      <div className="truncate text-[13px] font-semibold" style={{ color: '#fafaf9' }}>{e.title}</div>
-                      <div className="mt-0.5 truncate text-[11.5px]" style={{ color: e.notes ? 'rgba(250,250,249,0.5)' : 'rgba(250,250,249,0.3)' }}>{e.notes || 'Açıklama yok'}</div>
+                      <div className="truncate text-[13px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>{e.title}</div>
+                      <div className="mt-0.5 truncate text-[11.5px]" style={portalStyle({ color: e.notes ? 'rgba(250,250,249,0.5)' : 'rgba(250,250,249,0.3)' })}>{e.notes || 'Açıklama yok'}</div>
                     </div>
-                    <div className="text-[11.5px]" style={{ color: 'rgba(250,250,249,0.5)' }}>
+                    <div className="text-[11.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
                       <div>{KATEGORI[e.category] || 'Belge'}{boyut ? ` · ${boyut}` : ''}</div>
                       <div className="mt-0.5">{fmtTarih(e.updatedAt || e.createdAt)}</div>
                     </div>
                     <div className="flex md:justify-end">
                       {e.goruntulenebilir
-                        ? <button type="button" onClick={() => openBelge('evrak', e.id)} title="Görüntüle" className="flex h-9 w-9 items-center justify-center rounded-lg transition hover:bg-white/[0.06]" style={{ border: `1px solid ${STEEL}40`, color: STEEL }}><Eye size={15} /></button>
-                        : <span className="text-[11px]" style={{ color: 'rgba(250,250,249,0.25)' }}>—</span>}
+                        ? <button type="button" onClick={() => openBelge('evrak', e.id)} title="Görüntüle" className="flex h-9 w-9 items-center justify-center rounded-lg transition hover:bg-white/[0.06]" style={portalStyle({ border: `1px solid ${STEEL}40`, color: STEEL })}><Eye size={15} /></button>
+                        : <span className="text-[11px]" style={portalStyle({ color: 'rgba(250,250,249,0.25)' })}>—</span>}
                     </div>
                   </div>
                 );

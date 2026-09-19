@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle, portalCss } from '@/lib/portal-theme';
+
 
 // e-Tebligat / SGK ortak parçaları (2026-09-14, sayfalama sözleşmesi §6):
 //   iletim rozeti · tebliğ rozeti · mükellef seçici · PDF önizleme modalı · gece sorgu hatası modalı
@@ -88,7 +90,7 @@ export function Hap({ ton, title, children, className = '', sar = false }: { ton
     <span
       title={title}
       className={`inline-flex items-center gap-1 px-2 py-[2px] rounded-md text-[11px] font-semibold ${sar ? 'whitespace-normal text-center leading-snug max-w-[150px]' : 'whitespace-nowrap'} ${className}`}
-      style={{ background: t.bg, border: `1px solid ${t.bd}`, color: t.fg }}
+      style={portalStyle({ background: t.bg, border: `1px solid ${t.bd}`, color: t.fg })}
     >
       {children}
     </span>
@@ -102,7 +104,7 @@ export function IletimRozeti({ iletim }: { iletim?: IletimBilgisi[] | null }) {
   const map = new Map<IletimBilgisi['channel'], IletimBilgisi>();
   for (const i of iletim || []) if (!map.has(i.channel)) map.set(i.channel, i);
   const kayitlar = (['WHATSAPP', 'EMAIL'] as const).map((k) => map.get(k)).filter((x): x is IletimBilgisi => !!x);
-  if (!kayitlar.length) return <span className="text-[11.5px]" style={{ color: 'rgba(250,250,249,0.25)' }}>—</span>;
+  if (!kayitlar.length) return <span className="text-[11.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.25)' })}>—</span>;
   return (
     <span className="inline-flex items-center gap-1">
       {kayitlar.map((k) => {
@@ -119,9 +121,9 @@ export function IletimRozeti({ iletim }: { iletim?: IletimBilgisi[] | null }) {
               : { bg: 'rgba(255,255,255,0.05)', bd: 'rgba(255,255,255,0.14)', fg: 'rgba(250,250,249,0.45)' };
         return (
           <span key={k.channel} className="relative inline-flex h-7 w-7 items-center justify-center rounded-full" title={ipucu} aria-label={ipucu}
-            style={{ background: renk.bg, border: `1px solid ${renk.bd}`, color: renk.fg }}>
+            style={portalStyle({ background: renk.bg, border: `1px solid ${renk.bd}`, color: renk.fg })}>
             <Ikon size={13} strokeWidth={2.3} />
-            {k.testMode && <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full" title="test modu" style={{ background: '#d4b876', boxShadow: '0 0 0 2px #0f0d0b' }} />}
+            {k.testMode && <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full" title="test modu" style={portalStyle({ background: '#d4b876', boxShadow: '0 0 0 2px #0f0d0b' })} />}
           </span>
         );
       })}
@@ -158,7 +160,7 @@ export function MukellefSecici({ value, onChange, rows, yukleniyor = false, clas
         onChange={(e) => onChange(e.target.value)}
         aria-label="Mükellef"
         className="h-[38px] w-full pl-9 pr-8 rounded-[10px] text-[13px] outline-none border appearance-none truncate"
-        style={ALAN_STILI}
+        style={portalStyle(ALAN_STILI)}
       >
         <option value="">{yukleniyor && rows.length === 0 ? 'Mükellefler yükleniyor…' : `Tüm mükellefler (${rows.length})`}</option>
         {rows.map((m) => (
@@ -167,8 +169,8 @@ export function MukellefSecici({ value, onChange, rows, yukleniyor = false, clas
           </option>
         ))}
       </select>
-      <Users size={13} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'rgba(250,250,249,0.45)' }} />
-      <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'rgba(250,250,249,0.45)' }} />
+      <Users size={13} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })} />
+      <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })} />
     </div>
   );
 }
@@ -182,17 +184,17 @@ export function PdfOnizlemeModali({ modal, onClose }: { modal: PdfModalDurumu; o
     <div
       onClick={onClose}
       className="fixed inset-0 z-[1000] flex items-center justify-center p-3 md:p-8"
-      style={{ background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(4px)' }}
+      style={portalStyle({ background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(4px)' })}
     >
       <div
         onClick={(e) => e.stopPropagation()}
         className="relative w-full max-w-5xl h-[90vh] rounded-2xl overflow-hidden border shadow-2xl"
-        style={{ background: '#1a1410', borderColor: 'rgba(212,184,118,0.25)', animation: 'belgeZoom .22s ease-out' }}
+        style={portalStyle({ background: '#1a1410', borderColor: 'rgba(212,184,118,0.25)', animation: 'belgeZoom .22s ease-out' })}
       >
-        <div className="flex items-center justify-between px-4 py-2.5 border-b" style={{ borderColor: 'rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.03)' }}>
+        <div className="flex items-center justify-between px-4 py-2.5 border-b" style={portalStyle({ borderColor: 'rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.03)' })}>
           <div className="flex items-center gap-2 min-w-0">
-            <FileText size={15} style={{ color: GOLD, flexShrink: 0 }} />
-            <span className="text-[13px] font-semibold truncate" style={{ color: METIN }}>{modal.title}</span>
+            <FileText size={15} style={portalStyle({ color: GOLD, flexShrink: 0 })} />
+            <span className="text-[13px] font-semibold truncate" style={portalStyle({ color: METIN })}>{modal.title}</span>
           </div>
           <div className="flex items-center gap-1.5 flex-shrink-0">
             <a
@@ -200,23 +202,23 @@ export function PdfOnizlemeModali({ modal, onClose }: { modal: PdfModalDurumu; o
               target="_blank"
               rel="noopener noreferrer"
               className="h-8 px-2.5 rounded-lg text-[12px] font-semibold flex items-center gap-1.5 border hover:brightness-110"
-              style={{ borderColor: 'rgba(255,255,255,0.12)', color: 'rgba(250,250,249,0.85)' }}
+              style={portalStyle({ borderColor: 'rgba(255,255,255,0.12)', color: 'rgba(250,250,249,0.85)' })}
             >
               <Download size={13} /> İndir
             </a>
             <button
               onClick={onClose}
               className="h-8 w-8 grid place-items-center rounded-lg border hover:brightness-110"
-              style={{ borderColor: 'rgba(255,255,255,0.12)', color: METIN }}
+              style={portalStyle({ borderColor: 'rgba(255,255,255,0.12)', color: METIN })}
               aria-label="Kapat"
             >
               <X size={16} />
             </button>
           </div>
         </div>
-        <iframe src={modal.url} title={modal.title} className="w-full" style={{ height: 'calc(90vh - 45px)', border: 'none', background: '#fff' }} />
+        <iframe src={modal.url} title={modal.title} className="w-full" style={portalStyle({ height: 'calc(90vh - 45px)', border: 'none', background: '#fff' })} />
       </div>
-      <style>{`@keyframes belgeZoom { from { transform: scale(.9); opacity: 0 } to { transform: scale(1); opacity: 1 } }`}</style>
+      <style>{portalCss(`@keyframes belgeZoom { from { transform: scale(.9); opacity: 0 } to { transform: scale(1); opacity: 1 } }`)}</style>
     </div>,
     document.body,
   );
@@ -228,24 +230,24 @@ function GeceHataSatiri({ h }: { h: PortalGeceHatasi }) {
   const sade = h.hata?.metin || h.reason || 'Sorgu başarısız (sebep belirtilmedi).';
   const ham = h.hata?.ham && h.hata.ham !== sade ? h.hata.ham : '';
   return (
-    <div className="px-3 py-2.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+    <div className="px-3 py-2.5" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.05)' })}>
       <div className="flex items-baseline justify-between gap-2">
-        <div className="font-semibold text-[13px]" style={{ color: METIN }}>{h.name}</div>
-        {h.taxNumber && <div className="text-[10.5px] tabular-nums flex-shrink-0" style={{ color: 'rgba(250,250,249,0.4)' }}>{h.taxNumber}</div>}
+        <div className="font-semibold text-[13px]" style={portalStyle({ color: METIN })}>{h.name}</div>
+        {h.taxNumber && <div className="text-[10.5px] tabular-nums flex-shrink-0" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>{h.taxNumber}</div>}
       </div>
-      <div className="text-[12px] mt-1" style={{ color: h.hata?.tur === 'sifre' ? '#ef9a9a' : 'rgba(250,250,249,0.75)' }}>{sade}</div>
+      <div className="text-[12px] mt-1" style={portalStyle({ color: h.hata?.tur === 'sifre' ? '#ef9a9a' : 'rgba(250,250,249,0.75)' })}>{sade}</div>
       {ham && (
         <div className="mt-1">
           <button
             type="button"
             onClick={() => setHamAcik((o) => !o)}
             className="text-[10.5px] hover:brightness-125"
-            style={{ color: 'rgba(250,250,249,0.38)' }}
+            style={portalStyle({ color: 'rgba(250,250,249,0.38)' })}
           >
             {hamAcik ? 'ham hatayı gizle' : 'ham hatayı göster'}
           </button>
           {hamAcik && (
-            <pre className="mt-1 whitespace-pre-wrap break-words text-[10.5px] leading-snug rounded-md px-2 py-1.5" style={{ color: 'rgba(250,250,249,0.45)', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', fontFamily: 'ui-monospace, monospace' }}>
+            <pre className="mt-1 whitespace-pre-wrap break-words text-[10.5px] leading-snug rounded-md px-2 py-1.5" style={portalStyle({ color: 'rgba(250,250,249,0.45)', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', fontFamily: 'ui-monospace, monospace' })}>
               {ham}
             </pre>
           )}
@@ -268,54 +270,54 @@ export function GeceHataModali({ acik, onClose, hatalar, sifreBekleyen, altNot }
     <div
       onClick={onClose}
       className="fixed inset-0 z-[1000] flex items-center justify-center p-4"
-      style={{ background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(4px)' }}
+      style={portalStyle({ background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(4px)' })}
     >
       <div
         onClick={(e) => e.stopPropagation()}
         className="relative w-full max-w-lg max-h-[80vh] rounded-2xl overflow-hidden border shadow-2xl flex flex-col"
-        style={{ background: '#1a1410', borderColor: 'rgba(226,112,111,0.3)', animation: 'belgeZoom .22s ease-out' }}
+        style={portalStyle({ background: '#1a1410', borderColor: 'rgba(226,112,111,0.3)', animation: 'belgeZoom .22s ease-out' })}
       >
-        <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: 'rgba(255,255,255,0.08)', background: 'rgba(226,112,111,0.06)' }}>
+        <div className="flex items-center justify-between px-4 py-3 border-b" style={portalStyle({ borderColor: 'rgba(255,255,255,0.08)', background: 'rgba(226,112,111,0.06)' })}>
           <div className="flex items-center gap-2">
-            <AlertTriangle size={15} style={{ color: TON.kirmizi.fg }} />
-            <span className="text-[13px] font-semibold" style={{ color: METIN }}>Gece sorgusunda sorun</span>
+            <AlertTriangle size={15} style={portalStyle({ color: TON.kirmizi.fg })} />
+            <span className="text-[13px] font-semibold" style={portalStyle({ color: METIN })}>Gece sorgusunda sorun</span>
           </div>
-          <button onClick={onClose} className="h-8 w-8 grid place-items-center rounded-lg border hover:brightness-110" style={{ borderColor: 'rgba(255,255,255,0.12)', color: METIN }} aria-label="Kapat"><X size={16} /></button>
+          <button onClick={onClose} className="h-8 w-8 grid place-items-center rounded-lg border hover:brightness-110" style={portalStyle({ borderColor: 'rgba(255,255,255,0.12)', color: METIN })} aria-label="Kapat"><X size={16} /></button>
         </div>
         <div className="overflow-y-auto p-2">
           {sifreBekleyen.length > 0 && (
-            <div className="mb-2 rounded-xl border" style={{ borderColor: 'rgba(212,168,95,0.3)', background: 'rgba(212,168,95,0.06)' }}>
-              <div className="px-3 pt-2.5 pb-1.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[.1em]" style={{ color: TON.sari.fg }}>
+            <div className="mb-2 rounded-xl border" style={portalStyle({ borderColor: 'rgba(212,168,95,0.3)', background: 'rgba(212,168,95,0.06)' })}>
+              <div className="px-3 pt-2.5 pb-1.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[.1em]" style={portalStyle({ color: TON.sari.fg })}>
                 <KeyRound size={12} /> Şifre bekliyor ({sifreBekleyen.length})
               </div>
               {sifreBekleyen.map((s, i) => (
-                <div key={`${s.provider}-${s.taxpayerId || i}`} className="px-3 py-2 flex flex-wrap items-center gap-x-3 gap-y-1" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                  <span className="font-semibold text-[13px]" style={{ color: METIN }}>{s.ad}</span>
-                  <span className="text-[11.5px]" style={{ color: 'rgba(250,250,249,0.55)' }}>{s.geceSayisi} gecedir sorgu dışı</span>
+                <div key={`${s.provider}-${s.taxpayerId || i}`} className="px-3 py-2 flex flex-wrap items-center gap-x-3 gap-y-1" style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.05)' })}>
+                  <span className="font-semibold text-[13px]" style={portalStyle({ color: METIN })}>{s.ad}</span>
+                  <span className="text-[11.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>{s.geceSayisi} gecedir sorgu dışı</span>
                   <Link
                     href={s.taxpayerId ? `/panel/mukellefler/${s.taxpayerId}` : '/panel/ayarlar/entegrasyonlar'}
                     className="ml-auto text-[11.5px] font-semibold hover:brightness-125"
-                    style={{ color: GOLD }}
+                    style={portalStyle({ color: GOLD })}
                   >
                     Şifre Ayarları →
                   </Link>
-                  {s.hata?.metin && <div className="w-full text-[11px]" style={{ color: 'rgba(250,250,249,0.5)' }}>{s.hata.metin}</div>}
+                  {s.hata?.metin && <div className="w-full text-[11px]" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>{s.hata.metin}</div>}
                 </div>
               ))}
-              <div className="px-3 py-1.5 text-[10.5px]" style={{ color: 'rgba(250,250,249,0.4)', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+              <div className="px-3 py-1.5 text-[10.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.4)', borderTop: '1px solid rgba(255,255,255,0.05)' })}>
                 3 gece üst üste şifre hatası; şifre güncellenince gece sorgusu kendiliğinden yeniden başlar. "Şimdi sorgula" bu kuraldan bağımsızdır.
               </div>
             </div>
           )}
           {hatalar.length === 0 ? (
-            <div className="px-3 py-8 text-center text-[12px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
+            <div className="px-3 py-8 text-center text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
               {sifreBekleyen.length > 0 ? 'Son gece başka hata yok.' : 'Hata kaydı yok.'}
             </div>
           ) : hatalar.map((h, i) => <GeceHataSatiri key={h.taxpayerId || i} h={h} />)}
         </div>
-        <div className="px-4 py-2 text-[11px] border-t flex-shrink-0" style={{ borderColor: 'rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.4)' }}>{altNot}</div>
+        <div className="px-4 py-2 text-[11px] border-t flex-shrink-0" style={portalStyle({ borderColor: 'rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.4)' })}>{altNot}</div>
       </div>
-      <style>{`@keyframes belgeZoom { from { transform: scale(.9); opacity: 0 } to { transform: scale(1); opacity: 1 } }`}</style>
+      <style>{portalCss(`@keyframes belgeZoom { from { transform: scale(.9); opacity: 0 } to { transform: scale(1); opacity: 1 } }`)}</style>
     </div>,
     document.body,
   );
@@ -332,11 +334,11 @@ export function HataSeridi({ hataSayisi, sifreBekleyenSayisi, onClick }: { hataS
       type="button"
       onClick={onClick}
       className="w-full rounded-2xl border px-4 py-3 flex items-center gap-2.5 text-left hover:brightness-110 transition"
-      style={{ background: 'rgba(226,112,111,0.1)', borderColor: 'rgba(226,112,111,0.4)' }}
+      style={portalStyle({ background: 'rgba(226,112,111,0.1)', borderColor: 'rgba(226,112,111,0.4)' })}
     >
-      <AlertTriangle size={18} style={{ color: TON.kirmizi.fg, flexShrink: 0 }} />
-      <span className="text-[13px] font-semibold" style={{ color: '#ef9a9a' }}>{parcalar.join(' · ')}</span>
-      <span className="text-[12px]" style={{ color: 'rgba(239,154,154,0.7)' }}>— görmek için tıkla</span>
+      <AlertTriangle size={18} style={portalStyle({ color: TON.kirmizi.fg, flexShrink: 0 })} />
+      <span className="text-[13px] font-semibold" style={portalStyle({ color: '#ef9a9a' })}>{parcalar.join(' · ')}</span>
+      <span className="text-[12px]" style={portalStyle({ color: 'rgba(239,154,154,0.7)' })}>— görmek için tıkla</span>
     </button>
   );
 }

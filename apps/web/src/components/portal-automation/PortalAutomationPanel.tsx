@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -134,12 +136,12 @@ export default function PortalAutomationPanel({ focus = 'all' }: { focus?: Focus
 
       <div
         className="rounded-xl p-4 space-y-4"
-        style={{ background: 'rgba(255,255,255,0.025)', border: `1px solid ${LINE}` }}
+        style={portalStyle({ background: 'rgba(255,255,255,0.025)', border: `1px solid ${LINE}` })}
       >
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
-            <h2 className="text-[15px] font-semibold" style={{ color: '#fafaf9' }}>Portal Otomasyon Merkezi</h2>
-            <p className="text-[12.5px] mt-1 max-w-3xl" style={{ color: 'rgba(250,250,249,.52)' }}>
+            <h2 className="text-[15px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>Portal Otomasyon Merkezi</h2>
+            <p className="text-[12.5px] mt-1 max-w-3xl" style={portalStyle({ color: 'rgba(250,250,249,.52)' })}>
               e-Beyanname, e-Tebligat ve SGK indirmeleri ayni kuyrukta izlenir. Gece calisir; gerekirse buradan manuel tetiklenir.
             </p>
           </div>
@@ -147,7 +149,7 @@ export default function PortalAutomationPanel({ focus = 'all' }: { focus?: Focus
             <Link
               href="/panel/ayarlar"
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-[9px] text-[12.5px] font-semibold"
-              style={{ background: 'rgba(255,255,255,.04)', border: `1px solid ${LINE}`, color: 'rgba(250,250,249,.78)' }}
+              style={portalStyle({ background: 'rgba(255,255,255,.04)', border: `1px solid ${LINE}`, color: 'rgba(250,250,249,.78)' })}
             >
               Mali musavir sifresi
             </Link>
@@ -155,7 +157,7 @@ export default function PortalAutomationPanel({ focus = 'all' }: { focus?: Focus
               <Link
                 href={`/panel/mukellefler/${selectedTaxpayer}`}
                 className="inline-flex items-center gap-1.5 px-3 py-2 rounded-[9px] text-[12.5px] font-semibold"
-                style={{ background: 'rgba(255,255,255,.04)', border: `1px solid ${LINE}`, color: 'rgba(250,250,249,.78)' }}
+                style={portalStyle({ background: 'rgba(255,255,255,.04)', border: `1px solid ${LINE}`, color: 'rgba(250,250,249,.78)' })}
               >
                 Mukellef sifreleri
               </Link>
@@ -165,7 +167,7 @@ export default function PortalAutomationPanel({ focus = 'all' }: { focus?: Focus
               disabled={nightlyMut.isPending}
               onClick={() => nightlyMut.mutate()}
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-[9px] text-[12.5px] font-bold disabled:opacity-50"
-              style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}
+              style={portalStyle({ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' })}
             >
               {nightlyMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
               Gece akisini simdi calistir
@@ -176,7 +178,7 @@ export default function PortalAutomationPanel({ focus = 'all' }: { focus?: Focus
         <div className={needsTaxpayerTarget ? 'grid lg:grid-cols-[minmax(240px,360px),1fr] gap-3' : 'grid gap-3'}>
           {needsTaxpayerTarget && (
             <div>
-              <label className="block text-[11px] uppercase font-semibold tracking-[.12em] mb-1.5" style={{ color: 'rgba(250,250,249,.45)' }}>
+              <label className="block text-[11px] uppercase font-semibold tracking-[.12em] mb-1.5" style={portalStyle({ color: 'rgba(250,250,249,.45)' })}>
                 Hedef mukellef
               </label>
               <TaxpayerSelect
@@ -192,7 +194,7 @@ export default function PortalAutomationPanel({ focus = 'all' }: { focus?: Focus
           <div className={showBeyanname && !showTebligat && !showSgk ? 'grid lg:grid-cols-[minmax(320px,520px),minmax(220px,320px)] gap-3' : 'grid sm:grid-cols-3 gap-2'}>
             {showBeyanname && (
               <>
-                <div className="grid sm:grid-cols-2 gap-2 rounded-xl p-3" style={{ background: 'rgba(255,255,255,.035)', border: `1px solid ${LINE}` }}>
+                <div className="grid sm:grid-cols-2 gap-2 rounded-xl p-3" style={portalStyle({ background: 'rgba(255,255,255,.035)', border: `1px solid ${LINE}` })}>
                   <DateField label="Baslangic" value={beyanFrom} onChange={setBeyanFrom} />
                   <DateField label="Bitis" value={beyanTo} onChange={setBeyanTo} />
                 </div>
@@ -237,14 +239,14 @@ export default function PortalAutomationPanel({ focus = 'all' }: { focus?: Focus
 
 function Metric({ icon: Icon, label, value, sub, danger }: { icon: any; label: string; value: string | number; sub: string; danger?: boolean }) {
   return (
-    <div className="rounded-xl p-3 flex items-center gap-3" style={{ background: 'rgba(255,255,255,.025)', border: `1px solid ${danger ? 'rgba(239,68,68,.25)' : LINE}` }}>
-      <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ background: danger ? 'rgba(239,68,68,.10)' : 'rgba(212,184,118,.10)', color: danger ? '#ef4444' : GOLD }}>
+    <div className="rounded-xl p-3 flex items-center gap-3" style={portalStyle({ background: 'rgba(255,255,255,.025)', border: `1px solid ${danger ? 'rgba(239,68,68,.25)' : LINE}` })}>
+      <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={portalStyle({ background: danger ? 'rgba(239,68,68,.10)' : 'rgba(212,184,118,.10)', color: danger ? '#ef4444' : GOLD })}>
         <Icon size={17} />
       </div>
       <div className="min-w-0">
-        <div className="text-[10.5px] uppercase tracking-[.12em]" style={{ color: 'rgba(250,250,249,.45)' }}>{label}</div>
-        <div className="text-[17px] font-semibold tabular-nums truncate" style={{ color: danger ? '#fca5a5' : '#fafaf9' }}>{value}</div>
-        <div className="text-[11px] truncate" style={{ color: 'rgba(250,250,249,.42)' }}>{sub}</div>
+        <div className="text-[10.5px] uppercase tracking-[.12em]" style={portalStyle({ color: 'rgba(250,250,249,.45)' })}>{label}</div>
+        <div className="text-[17px] font-semibold tabular-nums truncate" style={portalStyle({ color: danger ? '#fca5a5' : '#fafaf9' })}>{value}</div>
+        <div className="text-[11px] truncate" style={portalStyle({ color: 'rgba(250,250,249,.42)' })}>{sub}</div>
       </div>
     </div>
   );
@@ -253,7 +255,7 @@ function Metric({ icon: Icon, label, value, sub, danger }: { icon: any; label: s
 function DateField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
   return (
     <label className="block">
-      <span className="block text-[10.5px] uppercase tracking-[.12em] font-semibold mb-1.5" style={{ color: 'rgba(250,250,249,.45)' }}>
+      <span className="block text-[10.5px] uppercase tracking-[.12em] font-semibold mb-1.5" style={portalStyle({ color: 'rgba(250,250,249,.45)' })}>
         {label}
       </span>
       <input
@@ -261,12 +263,12 @@ function DateField({ label, value, onChange }: { label: string; value: string; o
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className="w-full h-10 rounded-[9px] px-3 text-[13px] font-semibold outline-none"
-        style={{
+        style={portalStyle({
           background: 'rgba(0,0,0,.18)',
           border: `1px solid ${LINE}`,
           color: '#fafaf9',
           colorScheme: 'dark',
-        }}
+        })}
       />
     </label>
   );
@@ -279,27 +281,27 @@ function ActionButton({ icon: Icon, title, desc, loading, onClick }: { icon: any
       disabled={loading}
       onClick={onClick}
       className="text-left rounded-xl p-3 transition-all disabled:opacity-50"
-      style={{ background: 'rgba(255,255,255,.035)', border: `1px solid ${LINE}`, color: '#fafaf9' }}
+      style={portalStyle({ background: 'rgba(255,255,255,.035)', border: `1px solid ${LINE}`, color: '#fafaf9' })}
     >
       <div className="flex items-center gap-2 mb-2">
-        {loading ? <Loader2 size={16} className="animate-spin" style={{ color: GOLD }} /> : <Icon size={16} style={{ color: GOLD }} />}
+        {loading ? <Loader2 size={16} className="animate-spin" style={portalStyle({ color: GOLD })} /> : <Icon size={16} style={portalStyle({ color: GOLD })} />}
         <span className="text-[13px] font-semibold">{title}</span>
       </div>
-      <p className="text-[11.5px] leading-5" style={{ color: 'rgba(250,250,249,.48)' }}>{desc}</p>
+      <p className="text-[11.5px] leading-5" style={portalStyle({ color: 'rgba(250,250,249,.48)' })}>{desc}</p>
     </button>
   );
 }
 
 function JobList({ jobs, isLoading }: { jobs: PortalJob[]; isLoading: boolean }) {
   return (
-    <div className="rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,.025)', border: `1px solid ${LINE}` }}>
-      <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: `1px solid ${LINE}` }}>
-        <h3 className="text-[13.5px] font-semibold" style={{ color: '#fafaf9' }}>Son isler</h3>
-        {isLoading && <Loader2 size={14} className="animate-spin" style={{ color: GOLD }} />}
+    <div className="rounded-xl overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,.025)', border: `1px solid ${LINE}` })}>
+      <div className="px-4 py-3 flex items-center justify-between" style={portalStyle({ borderBottom: `1px solid ${LINE}` })}>
+        <h3 className="text-[13.5px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>Son isler</h3>
+        {isLoading && <Loader2 size={14} className="animate-spin" style={portalStyle({ color: GOLD })} />}
       </div>
-      <div className="divide-y" style={{ borderColor: LINE }}>
+      <div className="divide-y" style={portalStyle({ borderColor: LINE })}>
         {jobs.length === 0 && (
-          <div className="p-6 text-center text-[12.5px]" style={{ color: 'rgba(250,250,249,.45)' }}>
+          <div className="p-6 text-center text-[12.5px]" style={portalStyle({ color: 'rgba(250,250,249,.45)' })}>
             Henuz portal otomasyon isi yok.
           </div>
         )}
@@ -308,19 +310,19 @@ function JobList({ jobs, isLoading }: { jobs: PortalJob[]; isLoading: boolean })
           return (
             <div key={job.id} className="px-4 py-3 flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <div className="text-[13px] font-semibold truncate" style={{ color: '#fafaf9' }}>
+                <div className="text-[13px] font-semibold truncate" style={portalStyle({ color: '#fafaf9' })}>
                   {PORTAL_JOB_LABEL[job.jobType] || job.jobType}
                 </div>
-                <div className="text-[11px] mt-1 truncate" style={{ color: 'rgba(250,250,249,.45)' }}>
+                <div className="text-[11px] mt-1 truncate" style={portalStyle({ color: 'rgba(250,250,249,.45)' })}>
                   {taxpayerName(job.taxpayer)} · {job.source === 'nightly' ? 'gece' : 'manuel'} · {fmtDate(job.createdAt)}
                 </div>
                 {job.errorMessage && (
-                  <div className="text-[11px] mt-1 flex items-center gap-1.5" style={{ color: '#fca5a5' }}>
+                  <div className="text-[11px] mt-1 flex items-center gap-1.5" style={portalStyle({ color: '#fca5a5' })}>
                     <AlertCircle size={12} /> {job.errorMessage.slice(0, 120)}
                   </div>
                 )}
               </div>
-              <span className="text-[10.5px] font-bold px-2 py-1 rounded-md whitespace-nowrap" style={{ color: st.color, background: st.bg }}>
+              <span className="text-[10.5px] font-bold px-2 py-1 rounded-md whitespace-nowrap" style={portalStyle({ color: st.color, background: st.bg })}>
                 {st.label}
               </span>
             </div>
@@ -333,30 +335,30 @@ function JobList({ jobs, isLoading }: { jobs: PortalJob[]; isLoading: boolean })
 
 function DocumentList({ docs }: { docs: any[] }) {
   return (
-    <div className="rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,.025)', border: `1px solid ${LINE}` }}>
-      <div className="px-4 py-3" style={{ borderBottom: `1px solid ${LINE}` }}>
-        <h3 className="text-[13.5px] font-semibold" style={{ color: '#fafaf9' }}>Son indirilen belgeler</h3>
+    <div className="rounded-xl overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,.025)', border: `1px solid ${LINE}` })}>
+      <div className="px-4 py-3" style={portalStyle({ borderBottom: `1px solid ${LINE}` })}>
+        <h3 className="text-[13.5px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>Son indirilen belgeler</h3>
       </div>
-      <div className="divide-y" style={{ borderColor: LINE }}>
+      <div className="divide-y" style={portalStyle({ borderColor: LINE })}>
         {docs.length === 0 && (
-          <div className="p-6 text-center text-[12.5px]" style={{ color: 'rgba(250,250,249,.45)' }}>
+          <div className="p-6 text-center text-[12.5px]" style={portalStyle({ color: 'rgba(250,250,249,.45)' })}>
             Henuz indirilen e-Tebligat veya SGK belgesi yok.
           </div>
         )}
         {docs.map((doc) => (
           <div key={doc.id} className="px-4 py-3 flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <div className="text-[13px] font-semibold truncate" style={{ color: '#fafaf9' }}>{doc.title}</div>
-              <div className="text-[11px] mt-1 truncate" style={{ color: 'rgba(250,250,249,.45)' }}>
+              <div className="text-[13px] font-semibold truncate" style={portalStyle({ color: '#fafaf9' })}>{doc.title}</div>
+              <div className="text-[11px] mt-1 truncate" style={portalStyle({ color: 'rgba(250,250,249,.45)' })}>
                 {taxpayerName(doc.taxpayer)} · {doc.belgeTuru} · {fmtDate(doc.createdAt)}
               </div>
             </div>
             {doc.documentId ? (
-              <a href={`/panel/evraklar`} className="text-[11px] font-semibold" style={{ color: GOLD }}>
+              <a href={`/panel/evraklar`} className="text-[11px] font-semibold" style={portalStyle({ color: GOLD })}>
                 Evrakta
               </a>
             ) : (
-              <span className="text-[11px]" style={{ color: 'rgba(250,250,249,.35)' }}>metadata</span>
+              <span className="text-[11px]" style={portalStyle({ color: 'rgba(250,250,249,.35)' })}>metadata</span>
             )}
           </div>
         ))}

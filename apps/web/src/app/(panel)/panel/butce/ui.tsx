@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import React from 'react';
 import { X, Loader2 } from 'lucide-react';
@@ -37,27 +39,27 @@ export function Kutu({
   style?: React.CSSProperties;
 }) {
   return (
-    <section
+    <section data-portal-card
       className={`relative overflow-hidden rounded-2xl ${className}`}
-      style={{
+      style={portalStyle({
         background: CARD_BG,
         border: `1px solid ${CARD_BORDER}`,
         boxShadow: '0 18px 44px rgba(0,0,0,0.24)',
         ...style,
-      }}
+      })}
     >
       <div
         className="pointer-events-none absolute inset-x-0 top-0 h-px"
-        style={{ background: `linear-gradient(90deg, transparent, ${renk}66, transparent)` }}
+        style={portalStyle({ background: `linear-gradient(90deg, transparent, ${renk}66, transparent)` })}
       />
       {baslik && (
-        <header className="flex items-start justify-between gap-3 px-5 pt-4 pb-3">
+        <header data-portal-band className="flex items-start justify-between gap-3 px-5 pt-4 pb-3" style={{ '--band-tone': renk } as React.CSSProperties}>
           <div>
-            <h3 className="text-[13px] font-semibold tracking-wide" style={{ color: TEXT }}>
+            <h3 className="text-[13px] font-semibold tracking-wide" style={portalStyle({ color: TEXT })}>
               {baslik}
             </h3>
             {aciklama && (
-              <p className="mt-0.5 text-[11px]" style={{ color: MUTED }}>
+              <p className="mt-0.5 text-[11px]" style={portalStyle({ color: MUTED })}>
                 {aciklama}
               </p>
             )}
@@ -88,30 +90,31 @@ export function KPI({
 }) {
   return (
     <div
-      className="relative overflow-hidden rounded-2xl px-4 py-3.5"
-      style={{
+      data-portal-kpi className="relative overflow-hidden rounded-2xl px-4 py-3.5"
+      style={portalStyle({
+        ...({ '--kpi-tone': portalStyle({ color: renk }).color } as React.CSSProperties),
         background: vurgu
           ? `linear-gradient(140deg, ${renk}1f, rgba(255,255,255,0.01) 60%)`
           : CARD_BG,
         border: `1px solid ${vurgu ? `${renk}3d` : CARD_BORDER}`,
         boxShadow: '0 14px 32px rgba(0,0,0,0.20)',
-      }}
+      })}
     >
       <div
         className="pointer-events-none absolute -right-6 -top-8 h-24 w-24 rounded-full opacity-[0.16]"
-        style={{ background: `radial-gradient(circle, ${renk}, transparent 68%)` }}
+        style={portalStyle({ background: `radial-gradient(circle, ${renk}, transparent 68%)` })}
       />
       <div className="flex items-center gap-2">
-        {ikon && <span style={{ color: renk }}>{ikon}</span>}
-        <span className="text-[11px] uppercase tracking-wider" style={{ color: MUTED }}>
+        {ikon && <span style={portalStyle({ color: renk })}>{ikon}</span>}
+        <span className="text-[11px] uppercase tracking-wider" style={portalStyle({ color: MUTED })}>
           {etiket}
         </span>
       </div>
-      <div className="mt-1.5 text-[21px] font-semibold tabular-nums" style={{ color: renk }}>
+      <div className="mt-1.5 text-[21px] font-semibold tabular-nums" style={portalStyle({ color: renk })}>
         {deger}
       </div>
       {altBilgi && (
-        <div className="mt-0.5 text-[11px]" style={{ color: MUTED }}>
+        <div className="mt-0.5 text-[11px]" style={portalStyle({ color: MUTED })}>
           {altBilgi}
         </div>
       )}
@@ -124,7 +127,7 @@ export function Rozet({ metin, renk = GOLD }: { metin: string; renk?: string }) 
   return (
     <span
       className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium"
-      style={{ background: `${renk}1f`, border: `1px solid ${renk}44`, color: renk }}
+      style={portalStyle({ background: `${renk}1f`, border: `1px solid ${renk}44`, color: renk })}
     >
       {metin}
     </span>
@@ -164,7 +167,7 @@ export function Dugme({
       onClick={onClick}
       disabled={disabled || yukleniyor}
       className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[12px] font-medium transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
-      style={stiller}
+      style={portalStyle(stiller)}
     >
       {yukleniyor && <Loader2 size={13} className="animate-spin" />}
       {children}
@@ -186,12 +189,12 @@ export function Alan({
 }) {
   return (
     <label className={`block ${genis ? 'sm:col-span-2' : ''}`}>
-      <span className="mb-1 block text-[11px] font-medium" style={{ color: MUTED }}>
+      <span className="mb-1 block text-[11px] font-medium" style={portalStyle({ color: MUTED })}>
         {etiket}
       </span>
       {children}
       {ipucu && (
-        <span className="mt-1 block text-[10px]" style={{ color: 'rgba(113,113,122,0.85)' }}>
+        <span className="mt-1 block text-[10px]" style={portalStyle({ color: 'rgba(113,113,122,0.85)' })}>
           {ipucu}
         </span>
       )}
@@ -211,14 +214,14 @@ export const girdiStil: React.CSSProperties = {
 };
 
 export function Girdi(props: React.InputHTMLAttributes<HTMLInputElement>) {
-  return <input {...props} style={{ ...girdiStil, ...(props.style || {}) }} />;
+  return <input {...props} style={portalStyle({ ...girdiStil, ...(props.style || {}) })} />;
 }
 
 export function Secim(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
   return (
     <select
       {...props}
-      style={{ ...girdiStil, ...(props.style || {}) }}
+      style={portalStyle({ ...girdiStil, ...(props.style || {}) })}
       className={`[&>option]:bg-[#0c0c0e] ${props.className || ''}`}
     />
   );
@@ -241,30 +244,30 @@ export function Modal({
   return (
     <div
       className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 sm:p-8"
-      style={{ background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(3px)' }}
+      style={portalStyle({ background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(3px)' })}
       onClick={kapat}
     >
       <div
         className="relative w-full rounded-2xl"
-        style={{
+        style={portalStyle({
           maxWidth: genislik,
           background: 'linear-gradient(160deg, #0f0f12, #0a0a0c)',
           border: `1px solid ${CARD_BORDER}`,
           boxShadow: '0 30px 80px rgba(0,0,0,0.55)',
-        }}
+        })}
         onClick={(e) => e.stopPropagation()}
       >
         <div
           className="pointer-events-none absolute inset-x-0 top-0 h-px"
-          style={{ background: `linear-gradient(90deg, transparent, ${GOLD}55, transparent)` }}
+          style={portalStyle({ background: `linear-gradient(90deg, transparent, ${GOLD}55, transparent)` })}
         />
         <header className="flex items-start justify-between gap-4 px-5 pt-4 pb-3">
           <div>
-            <h3 className="text-[14px] font-semibold" style={{ color: TEXT }}>
+            <h3 className="text-[14px] font-semibold" style={portalStyle({ color: TEXT })}>
               {baslik}
             </h3>
             {aciklama && (
-              <p className="mt-0.5 text-[11px]" style={{ color: MUTED }}>
+              <p className="mt-0.5 text-[11px]" style={portalStyle({ color: MUTED })}>
                 {aciklama}
               </p>
             )}
@@ -272,7 +275,7 @@ export function Modal({
           <button
             onClick={kapat}
             className="rounded-lg p-1 transition hover:bg-white/[0.06]"
-            style={{ color: MUTED }}
+            style={portalStyle({ color: MUTED })}
             aria-label="Kapat"
           >
             <X size={16} />
@@ -289,7 +292,7 @@ export function Bos({ metin, ikon }: { metin: string; ikon?: React.ReactNode }) 
   return (
     <div
       className="flex flex-col items-center justify-center gap-2 rounded-xl py-10 text-center"
-      style={{ border: `1px dashed ${CARD_BORDER}`, color: MUTED }}
+      style={portalStyle({ border: `1px dashed ${CARD_BORDER}`, color: MUTED })}
     >
       {ikon}
       <span className="text-[12px]">{metin}</span>
@@ -300,7 +303,7 @@ export function Bos({ metin, ikon }: { metin: string; ikon?: React.ReactNode }) 
 /* ===== Yükleniyor ===== */
 export function Yukleniyor({ metin = 'Yükleniyor…' }: { metin?: string }) {
   return (
-    <div className="flex items-center justify-center gap-2 py-10 text-[12px]" style={{ color: MUTED }}>
+    <div className="flex items-center justify-center gap-2 py-10 text-[12px]" style={portalStyle({ color: MUTED })}>
       <Loader2 size={15} className="animate-spin" />
       {metin}
     </div>
@@ -319,7 +322,7 @@ export function TrendGrafik({
   const genislikBirim = 100 / Math.max(veri.length, 1);
   return (
     <div className="w-full">
-      <svg viewBox={`0 0 100 ${yukseklik}`} preserveAspectRatio="none" style={{ width: '100%', height: yukseklik }}>
+      <svg viewBox={`0 0 100 ${yukseklik}`} preserveAspectRatio="none" style={portalStyle({ width: '100%', height: yukseklik })}>
         {[0.25, 0.5, 0.75].map((o) => (
           <line
             key={o}
@@ -360,19 +363,19 @@ export function TrendGrafik({
           );
         })}
       </svg>
-      <div className="mt-1 flex justify-between text-[9.5px]" style={{ color: MUTED }}>
+      <div className="mt-1 flex justify-between text-[9.5px]" style={portalStyle({ color: MUTED })}>
         {veri.map((v) => (
           <span key={v.donem} className="flex-1 text-center">
             {v.donem.slice(5)}.{v.donem.slice(2, 4)}
           </span>
         ))}
       </div>
-      <div className="mt-2 flex items-center justify-center gap-4 text-[10px]" style={{ color: MUTED }}>
+      <div className="mt-2 flex items-center justify-center gap-4 text-[10px]" style={portalStyle({ color: MUTED })}>
         <span className="flex items-center gap-1">
-          <i className="inline-block h-2 w-2 rounded-sm" style={{ background: OK }} /> Gelir
+          <i className="inline-block h-2 w-2 rounded-sm" style={portalStyle({ background: OK })} /> Gelir
         </span>
         <span className="flex items-center gap-1">
-          <i className="inline-block h-2 w-2 rounded-sm" style={{ background: KIRMIZI }} /> Gider
+          <i className="inline-block h-2 w-2 rounded-sm" style={portalStyle({ background: KIRMIZI })} /> Gider
         </span>
       </div>
     </div>
@@ -388,9 +391,9 @@ export function OranCubugu({
   const toplam = kalemler.reduce((t, k) => t + k.tutar, 0) || 1;
   return (
     <div className="space-y-2">
-      <div className="flex h-2.5 w-full overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.04)' }}>
+      <div className="flex h-2.5 w-full overflow-hidden rounded-full" style={portalStyle({ background: 'rgba(255,255,255,0.04)' })}>
         {kalemler.map((k) => (
-          <div key={k.ad} style={{ width: `${(k.tutar / toplam) * 100}%`, background: k.renk }} title={k.ad} />
+          <div key={k.ad} style={portalStyle({ width: `${(k.tutar / toplam) * 100}%`, background: k.renk })} title={k.ad} />
         ))}
       </div>
     </div>
@@ -450,11 +453,11 @@ export function ParaGirdi({
         inputMode="decimal"
         autoFocus={autoFocus}
         disabled={disabled}
-        style={{ ...girdiStil, paddingRight: 26, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+        style={portalStyle({ ...girdiStil, paddingRight: 26, textAlign: 'right', fontVariantNumeric: 'tabular-nums' })}
       />
       <span
         className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[12px]"
-        style={{ color: MUTED }}
+        style={portalStyle({ color: MUTED })}
       >
         ₺
       </span>
@@ -479,18 +482,18 @@ export function Anahtar({
       aria-checked={acik}
       onClick={() => degistir(!acik)}
       className="relative inline-flex h-[22px] w-[40px] flex-shrink-0 items-center rounded-full transition-colors"
-      style={{
+      style={portalStyle({
         background: acik ? renk + '33' : 'rgba(255,255,255,0.06)',
         border: '1px solid ' + (acik ? renk + '66' : CARD_BORDER),
-      }}
+      })}
     >
       <span
         className="absolute h-[15px] w-[15px] rounded-full transition-all"
-        style={{
+        style={portalStyle({
           left: acik ? 21 : 3,
           background: acik ? renk : '#6b6b73',
           boxShadow: acik ? '0 0 10px ' + renk + '88' : 'none',
-        }}
+        })}
       />
     </button>
   );
@@ -508,15 +511,15 @@ export function RenkSecici({ deger, degistir }: { deger: string; degistir: (v: s
           type="button"
           onClick={() => degistir(r)}
           className="h-5 w-5 rounded-full transition-transform hover:scale-110"
-          style={{
+          style={portalStyle({
             background: r,
             border: deger === r ? '2px solid #fff' : '1px solid rgba(255,255,255,0.15)',
             boxShadow: deger === r ? '0 0 0 2px ' + r + '55' : 'none',
-          }}
+          })}
           aria-label={r}
         />
       ))}
-      <label className="relative h-5 w-5 cursor-pointer overflow-hidden rounded-full" style={{ border: '1px dashed rgba(255,255,255,0.28)' }}>
+      <label className="relative h-5 w-5 cursor-pointer overflow-hidden rounded-full" style={portalStyle({ border: '1px dashed rgba(255,255,255,0.28)' })}>
         <input
           type="color"
           value={deger}
@@ -525,7 +528,7 @@ export function RenkSecici({ deger, degistir }: { deger: string; degistir: (v: s
         />
         <span
           className="pointer-events-none absolute inset-0"
-          style={{ background: 'conic-gradient(#e6c878,#5ad18a,#8cbde8,#b0a0e0,#e0697a,#e6c878)', opacity: 0.75 }}
+          style={portalStyle({ background: 'conic-gradient(#e6c878,#5ad18a,#8cbde8,#b0a0e0,#e0697a,#e6c878)', opacity: 0.75 })}
         />
       </label>
     </div>

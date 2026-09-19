@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import React from 'react';
 import { AlertTriangle, RotateCcw } from 'lucide-react';
@@ -39,28 +41,28 @@ export default class HataSiniri extends React.Component<
     return (
       <div
         className="rounded-2xl px-5 py-4"
-        style={{ background: `${KIRMIZI}0d`, border: `1px solid ${KIRMIZI}33` }}
+        style={portalStyle({ background: `${KIRMIZI}0d`, border: `1px solid ${KIRMIZI}33` })}
       >
         <div className="flex items-start gap-3">
-          <AlertTriangle size={18} style={{ color: KIRMIZI }} className="mt-0.5 flex-shrink-0" />
+          <AlertTriangle size={18} style={portalStyle({ color: KIRMIZI })} className="mt-0.5 flex-shrink-0" />
           <div className="min-w-0 flex-1">
-            <div className="text-[13.5px] font-semibold" style={{ color: KIRMIZI }}>
+            <div className="text-[13.5px] font-semibold" style={portalStyle({ color: KIRMIZI })}>
               {this.props.ad ? `${this.props.ad} ekranı açılamadı` : 'Ekran açılamadı'}
             </div>
-            <p className="mt-1 text-[12px] leading-relaxed" style={{ color: MUTED }}>
+            <p className="mt-1 text-[12px] leading-relaxed" style={portalStyle({ color: MUTED })}>
               Diğer sekmeler çalışmaya devam ediyor. Sunucu yeni sürüme geçerken bu ekran geçici olarak
               hata verebilir; birkaç dakika sonra yenilemeyi deneyin.
             </p>
             <pre
               className="mt-2 max-h-[160px] overflow-auto whitespace-pre-wrap rounded-lg px-3 py-2 text-[11px]"
-              style={{ background: 'rgba(0,0,0,0.35)', border: `1px solid ${CARD_BORDER}`, color: TEXT }}
+              style={portalStyle({ background: 'rgba(0,0,0,0.35)', border: `1px solid ${CARD_BORDER}`, color: TEXT })}
             >
               {String(hata?.message || hata)}
             </pre>
             <button
               onClick={() => this.setState({ hata: null })}
               className="mt-2.5 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11.5px] transition hover:brightness-110"
-              style={{ background: `${KIRMIZI}16`, border: `1px solid ${KIRMIZI}3d`, color: KIRMIZI }}
+              style={portalStyle({ background: `${KIRMIZI}16`, border: `1px solid ${KIRMIZI}3d`, color: KIRMIZI })}
             >
               <RotateCcw size={12} /> Tekrar dene
             </button>

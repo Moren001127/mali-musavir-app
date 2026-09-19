@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 // =====================================================================
 // AYLIK ÖDEME LİSTESİ — Vergi & Beyanname > Aylık Ödeme Listesi
@@ -237,27 +239,27 @@ export default function AylikOdemePage() {
       {/* Başlık */}
       <header
         className="relative overflow-hidden rounded-[18px] border px-5 py-4"
-        style={{
+        style={portalStyle({
           background: 'radial-gradient(120% 140% at 0% 0%, rgba(212,184,118,0.16), transparent 46%), radial-gradient(120% 140% at 100% 0%, rgba(139,118,73,0.12), transparent 48%), #0f0d0b',
           borderColor: 'rgba(255,255,255,0.06)',
           boxShadow: '0 16px 42px rgba(0,0,0,0.28)',
-        }}
+        })}
       >
-        <div className="absolute inset-x-0 top-0 h-1" style={{ background: 'linear-gradient(90deg, #8b7649, #b8a06f, #d4b876, #e7cf95, #d4b876, #b8a06f)' }} />
+        <div className="absolute inset-x-0 top-0 h-1" style={portalStyle({ background: 'linear-gradient(90deg, #8b7649, #b8a06f, #d4b876, #e7cf95, #d4b876, #b8a06f)' })} />
         <div className="mb-3 flex items-center gap-2.5">
-          <span className="h-px w-[26px]" style={{ background: GOLD }} />
-          <span className="text-[10px] font-bold uppercase tracking-[.18em]" style={{ color: GOLD_SOFT }}>Vergi & Beyanname</span>
+          <span className="h-px w-[26px]" style={portalStyle({ background: GOLD })} />
+          <span className="text-[10px] font-bold uppercase tracking-[.18em]" style={portalStyle({ color: GOLD_SOFT })}>Vergi & Beyanname</span>
         </div>
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex min-w-0 items-center gap-3.5">
-            <span className="grid shrink-0 place-items-center rounded-xl" style={{ width: 46, height: 46, background: `linear-gradient(135deg, ${GOLD}, ${GOLD_SOFT})`, boxShadow: '0 8px 22px rgba(212,184,118,0.30)' }}>
-              <Wallet size={24} style={{ color: '#1a1410' }} />
+            <span className="grid shrink-0 place-items-center rounded-xl" style={portalStyle({ width: 46, height: 46, background: `linear-gradient(135deg, ${GOLD}, ${GOLD_SOFT})`, boxShadow: '0 8px 22px rgba(212,184,118,0.30)' })}>
+              <Wallet size={24} style={portalStyle({ color: '#1a1410' })} />
             </span>
             <div className="min-w-0">
-              <h1 style={{ fontFamily: 'Fraunces, Georgia, serif', fontSize: 30, fontWeight: 600, color: METIN, letterSpacing: '-.03em', lineHeight: 1.05 }}>
+              <h1 style={portalStyle({ fontFamily: 'Fraunces, Georgia, serif', fontSize: 30, fontWeight: 600, color: METIN, letterSpacing: '-.03em', lineHeight: 1.05 })}>
                 Aylık Ödeme Listesi
               </h1>
-              <p className="mt-2 text-[13px] font-semibold" style={{ color: 'rgba(250,250,249,0.48)' }}>
+              <p className="mt-2 text-[13px] font-semibold" style={portalStyle({ color: 'rgba(250,250,249,0.48)' })}>
                 Mükellefin bu ay ödeyeceği vergi tahakkukları ve SGK primleri tek cetvelde — WhatsApp/e-posta ile gönderilir, sonuç İletim Raporu&apos;na işlenir.
               </p>
             </div>
@@ -265,8 +267,8 @@ export default function AylikOdemePage() {
 
           <div className="flex flex-wrap items-center gap-2">
             {/* Ay gezinme: ‹ › + Bu ay + ay seçici */}
-            <div className="inline-flex items-center rounded-[10px]" style={{ border: `1px solid ${KENAR_NOTR}`, background: 'rgba(255,255,255,0.03)' }} role="group" aria-label="Ay seçimi">
-              <button type="button" onClick={() => ayDegistir(ayKaydir(month, -1))} title="Önceki ay" aria-label="Önceki ay" className="flex h-9 w-8 items-center justify-center rounded-l-[10px] transition hover:bg-white/[0.06]" style={{ color: IKINCIL }}>
+            <div className="inline-flex items-center rounded-[10px]" style={portalStyle({ border: `1px solid ${KENAR_NOTR}`, background: 'rgba(255,255,255,0.03)' })} role="group" aria-label="Ay seçimi">
+              <button type="button" onClick={() => ayDegistir(ayKaydir(month, -1))} title="Önceki ay" aria-label="Önceki ay" className="flex h-9 w-8 items-center justify-center rounded-l-[10px] transition hover:bg-white/[0.06]" style={portalStyle({ color: IKINCIL })}>
                 <ChevronLeft size={15} />
               </button>
               <input
@@ -276,10 +278,10 @@ export default function AylikOdemePage() {
                 onChange={(e) => e.target.value && ayDegistir(e.target.value)}
                 onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch { /* tarayıcı desteklemiyorsa elle yazılır */ } }}
                 className="h-9 cursor-pointer bg-transparent px-1 text-center text-[12.5px] font-semibold outline-none [&::-webkit-calendar-picker-indicator]:hidden"
-                style={{ color: METIN, colorScheme: 'dark', width: 112 }}
+                style={portalStyle({ color: METIN, colorScheme: 'dark', width: 112 })}
                 title={ayAdi(month)}
               />
-              <button type="button" onClick={() => ayDegistir(ayKaydir(month, 1))} title="Sonraki ay" aria-label="Sonraki ay" className="flex h-9 w-8 items-center justify-center transition hover:bg-white/[0.06]" style={{ color: IKINCIL }}>
+              <button type="button" onClick={() => ayDegistir(ayKaydir(month, 1))} title="Sonraki ay" aria-label="Sonraki ay" className="flex h-9 w-8 items-center justify-center transition hover:bg-white/[0.06]" style={portalStyle({ color: IKINCIL })}>
                 <ChevronRight size={15} />
               </button>
               <button
@@ -288,7 +290,7 @@ export default function AylikOdemePage() {
                 disabled={buAyMi}
                 title={buAyMi ? 'Bu ay görüntüleniyor' : 'Bu aya dön'}
                 className="inline-flex h-9 items-center gap-1 rounded-r-[10px] px-2.5 text-[11.5px] font-semibold transition hover:bg-white/[0.06] disabled:opacity-45"
-                style={{ color: buAyMi ? IKINCIL : METIN, borderLeft: `1px solid ${KENAR_NOTR}` }}
+                style={portalStyle({ color: buAyMi ? IKINCIL : METIN, borderLeft: `1px solid ${KENAR_NOTR}` })}
               >
                 <CalendarDays size={12} /> Bu ay
               </button>
@@ -298,7 +300,7 @@ export default function AylikOdemePage() {
               href="/panel/iletim-raporu"
               title="Gönderim sonuçları — İletim Raporu"
               className="inline-flex h-9 flex-shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[10px] px-3 text-[12.5px] font-semibold transition hover:-translate-y-px"
-              style={{ background: 'rgba(255,255,255,0.03)', border: `1px solid ${KENAR_NOTR}`, color: 'rgba(250,250,249,0.78)' }}
+              style={portalStyle({ background: 'rgba(255,255,255,0.03)', border: `1px solid ${KENAR_NOTR}`, color: 'rgba(250,250,249,0.78)' })}
             >
               <ListChecks size={13} /> İletim Raporu
             </Link>
@@ -326,7 +328,7 @@ export default function AylikOdemePage() {
                     aria-label="Gönderim kanalı seç"
                     title="Yalnız bir kanalla gönder"
                     className="inline-flex h-9 w-7 flex-shrink-0 items-center justify-center rounded-r-[10px] transition-[filter] hover:brightness-110 disabled:opacity-45"
-                    style={{ background: `linear-gradient(135deg, ${GOLD_SOFT}, ${GOLD_SOFT})`, color: '#0f0d0b', borderLeft: '1px solid rgba(15,13,11,0.30)', filter: acik ? 'brightness(1.12)' : undefined }}
+                    style={portalStyle({ background: `linear-gradient(135deg, ${GOLD_SOFT}, ${GOLD_SOFT})`, color: '#0f0d0b', borderLeft: '1px solid rgba(15,13,11,0.30)', filter: acik ? 'brightness(1.12)' : undefined })}
                   >
                     <ChevronDown size={13} />
                   </button>
@@ -352,7 +354,7 @@ export default function AylikOdemePage() {
               tetik={({ ref, ac, acik }) => (
                 <GriDugme refDis={ref} onClick={ac} aktif={acik} ariaExpanded={acik} title="Diğer işlemler" className="px-2.5">
                   <MoreHorizontal size={15} />
-                  <ChevronDown size={11} style={{ opacity: 0.7 }} />
+                  <ChevronDown size={11} style={portalStyle({ opacity: 0.7 })} />
                 </GriDugme>
               )}
             >
@@ -374,8 +376,8 @@ export default function AylikOdemePage() {
                     Tüm mükellefler PDF
                   </MenuSatiri>
                   <MenuAyrac />
-                  <Link href="/panel/ayarlar/akilli-bildirim" onClick={kapat} className="flex w-full items-center gap-2.5 px-3 py-2 text-[12.5px] font-medium transition hover:bg-white/[0.05]" style={{ color: 'rgba(250,250,249,0.85)' }}>
-                    <span className="flex w-4 justify-center" style={{ color: IKINCIL }}><Settings2 size={13} /></span>
+                  <Link href="/panel/ayarlar/akilli-bildirim" onClick={kapat} className="flex w-full items-center gap-2.5 px-3 py-2 text-[12.5px] font-medium transition hover:bg-white/[0.05]" style={portalStyle({ color: 'rgba(250,250,249,0.85)' })}>
+                    <span className="flex w-4 justify-center" style={portalStyle({ color: IKINCIL })}><Settings2 size={13} /></span>
                     Akıllı Bildirim ayarları
                   </Link>
                 </div>
@@ -390,13 +392,13 @@ export default function AylikOdemePage() {
 
       {/* TEST MODU bandı */}
       {testMode && (
-        <div className="flex flex-wrap items-center gap-2 rounded-xl px-4 py-2.5 text-[12.5px]" style={{ background: AMBER_ZEMIN, border: `1px solid ${AMBER_KENAR}`, color: METIN }} role="status" data-testid="test-bandi">
-          <FlaskConical size={14} style={{ color: AMBER }} />
+        <div className="flex flex-wrap items-center gap-2 rounded-xl px-4 py-2.5 text-[12.5px]" style={portalStyle({ background: AMBER_ZEMIN, border: `1px solid ${AMBER_KENAR}`, color: METIN })} role="status" data-testid="test-bandi">
+          <FlaskConical size={14} style={portalStyle({ color: AMBER })} />
           <span>
-            <b style={{ color: AMBER }}>TEST MODU açık</b> — gönderimler mükellefe değil test alıcısına gider
+            <b style={portalStyle({ color: AMBER })}>TEST MODU açık</b> — gönderimler mükellefe değil test alıcısına gider
             {ozet?.testPhone || ozet?.testEmail ? ` (${[ozet?.testPhone, ozet?.testEmail].filter(Boolean).join(', ')})` : ''}.
           </span>
-          <Link href="/panel/ayarlar/akilli-bildirim" className="ml-auto inline-flex items-center gap-1 whitespace-nowrap text-[12px] font-semibold hover:underline" style={{ color: AMBER }}>
+          <Link href="/panel/ayarlar/akilli-bildirim" className="ml-auto inline-flex items-center gap-1 whitespace-nowrap text-[12px] font-semibold hover:underline" style={portalStyle({ color: AMBER })}>
             Ayarlar → Akıllı Bildirim <ArrowRight size={12} />
           </Link>
         </div>
@@ -423,11 +425,11 @@ export default function AylikOdemePage() {
         />
         <div className="min-w-0 space-y-4">
           {listeQ.isLoading ? (
-            <div className="p-8 text-[13px]" style={{ ...KART, color: IKINCIL }}>Yükleniyor…</div>
+            <div className="p-8 text-[13px]" style={portalStyle({ ...KART, color: IKINCIL })}>Yükleniyor…</div>
           ) : listeQ.isError ? (
-            <div className="p-8 text-[13px]" style={{ ...KART, color: IKINCIL }}>
+            <div className="p-8 text-[13px]" style={portalStyle({ ...KART, color: IKINCIL })}>
               Liste alınamadı.{' '}
-              <button type="button" onClick={yenile} className="font-semibold hover:underline" style={{ color: METIN }}>Yeniden dene</button>
+              <button type="button" onClick={yenile} className="font-semibold hover:underline" style={portalStyle({ color: METIN })}>Yeniden dene</button>
             </div>
           ) : active ? (
             <Cetvel
@@ -442,8 +444,8 @@ export default function AylikOdemePage() {
               onYazdir={yazdir}
             />
           ) : (
-            <div className="flex flex-col items-center gap-2 p-10 text-center text-[13px]" style={{ ...KART, color: IKINCIL }}>
-              <Inbox size={22} style={{ color: 'rgba(250,250,249,0.3)' }} />
+            <div className="flex flex-col items-center gap-2 p-10 text-center text-[13px]" style={portalStyle({ ...KART, color: IKINCIL })}>
+              <Inbox size={22} style={portalStyle({ color: 'rgba(250,250,249,0.3)' })} />
               {rows.length === 0
                 ? `${ayAdi(month)} için tahakkuk verisi bulunamadı. Tahakkuklar gece otomasyonuyla çekildikçe burada listelenir.`
                 : 'Süzgece uyan mükellef yok.'}

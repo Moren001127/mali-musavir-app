@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 // Ortak sayfalama şeridi — Beyanname İndirme / e-Tebligat / SGK (2026-09-14).
 //   "1–50 / 2.567" · sayfa boyutu (25/50/100) · ilk / önceki / 1 2 … 7 / sonraki / son.
@@ -70,21 +72,21 @@ export function Sayfalama({
   });
 
   return (
-    <div className={`flex flex-wrap items-center justify-between gap-3 px-4 py-3 ${className}`} style={{ borderTop: `1px solid ${KENAR}` }}>
-      <div className="flex items-center gap-3 text-[12px]" style={{ color: IKINCIL }}>
+    <div className={`flex flex-wrap items-center justify-between gap-3 px-4 py-3 ${className}`} style={portalStyle({ borderTop: `1px solid ${KENAR}` })}>
+      <div className="flex items-center gap-3 text-[12px]" style={portalStyle({ color: IKINCIL })}>
         <span className="tabular-nums">
-          {toplam === 0 ? `0 ${birim}` : <><b style={{ color: METIN }}>{bas.toLocaleString('tr-TR')}–{son.toLocaleString('tr-TR')}</b> / {toplam.toLocaleString('tr-TR')} {birim}</>}
-          {yukleniyor && <span style={{ color: SONUK }}> · yükleniyor…</span>}
+          {toplam === 0 ? `0 ${birim}` : <><b style={portalStyle({ color: METIN })}>{bas.toLocaleString('tr-TR')}–{son.toLocaleString('tr-TR')}</b> / {toplam.toLocaleString('tr-TR')} {birim}</>}
+          {yukleniyor && <span style={portalStyle({ color: SONUK })}> · yükleniyor…</span>}
         </span>
         {onSayfaBoyutu && (
-          <label className="inline-flex items-center gap-1.5" style={{ color: SONUK }}>
+          <label className="inline-flex items-center gap-1.5" style={portalStyle({ color: SONUK })}>
             Sayfada
             <select
               value={sayfaBoyutu}
               onChange={(e) => onSayfaBoyutu(Number(e.target.value) as SayfaBoyutu)}
               aria-label="Sayfa boyutu"
               className="h-7 appearance-none rounded-md text-[12px] font-semibold outline-none"
-              style={{ width: 'auto', padding: '0 22px 0 8px', background: `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%238a8a86' stroke-width='2'><polyline points='6 9 12 15 18 9'/></svg>") no-repeat right 6px center, ${ZEMIN}`, border: `1px solid ${KENAR}`, color: METIN, borderRadius: 6, fontSize: 12 }}
+              style={portalStyle({ width: 'auto', padding: '0 22px 0 8px', background: `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%238a8a86' stroke-width='2'><polyline points='6 9 12 15 18 9'/></svg>") no-repeat right 6px center, ${ZEMIN}`, border: `1px solid ${KENAR}`, color: METIN, borderRadius: 6, fontSize: 12 })}
             >
               {SAYFA_BOYUTLARI.map((b) => <option key={b} value={b}>{b}</option>)}
             </select>
@@ -94,21 +96,21 @@ export function Sayfalama({
 
       {toplamSayfa > 1 && (
         <nav className="flex items-center gap-1" aria-label="Sayfalar">
-          <button type="button" onClick={() => git(1)} disabled={aktif === 1} title="İlk sayfa" className="flex h-7 w-7 items-center justify-center rounded-md disabled:opacity-35" style={dugme()}><ChevronsLeft size={14} /></button>
-          <button type="button" onClick={() => git(aktif - 1)} disabled={aktif === 1} title="Önceki sayfa" className="flex h-7 w-7 items-center justify-center rounded-md disabled:opacity-35" style={dugme()}><ChevronLeft size={14} /></button>
+          <button type="button" onClick={() => git(1)} disabled={aktif === 1} title="İlk sayfa" className="flex h-7 w-7 items-center justify-center rounded-md disabled:opacity-35" style={portalStyle(dugme())}><ChevronsLeft size={14} /></button>
+          <button type="button" onClick={() => git(aktif - 1)} disabled={aktif === 1} title="Önceki sayfa" className="flex h-7 w-7 items-center justify-center rounded-md disabled:opacity-35" style={portalStyle(dugme())}><ChevronLeft size={14} /></button>
           {sayfaNumaralari(aktif, toplamSayfa).map((n, i) =>
             n === null ? (
-              <span key={`b${i}`} className="px-1 text-[12px]" style={{ color: SONUK }}>…</span>
+              <span key={`b${i}`} className="px-1 text-[12px]" style={portalStyle({ color: SONUK })}>…</span>
             ) : (
               <button key={n} type="button" onClick={() => git(n)} aria-current={n === aktif ? 'page' : undefined}
                 className="flex h-7 min-w-[28px] items-center justify-center rounded-md px-1.5 text-[12px] font-semibold tabular-nums"
-                style={dugme(n === aktif)}>
+                style={portalStyle(dugme(n === aktif))}>
                 {n}
               </button>
             ),
           )}
-          <button type="button" onClick={() => git(aktif + 1)} disabled={aktif === toplamSayfa} title="Sonraki sayfa" className="flex h-7 w-7 items-center justify-center rounded-md disabled:opacity-35" style={dugme()}><ChevronRight size={14} /></button>
-          <button type="button" onClick={() => git(toplamSayfa)} disabled={aktif === toplamSayfa} title="Son sayfa" className="flex h-7 w-7 items-center justify-center rounded-md disabled:opacity-35" style={dugme()}><ChevronsRight size={14} /></button>
+          <button type="button" onClick={() => git(aktif + 1)} disabled={aktif === toplamSayfa} title="Sonraki sayfa" className="flex h-7 w-7 items-center justify-center rounded-md disabled:opacity-35" style={portalStyle(dugme())}><ChevronRight size={14} /></button>
+          <button type="button" onClick={() => git(toplamSayfa)} disabled={aktif === toplamSayfa} title="Son sayfa" className="flex h-7 w-7 items-center justify-center rounded-md disabled:opacity-35" style={portalStyle(dugme())}><ChevronsRight size={14} /></button>
         </nav>
       )}
     </div>

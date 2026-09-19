@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import type { ReactNode } from 'react';
 
@@ -46,7 +48,7 @@ export function AracCubugu({
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-2">
       {/* Görünüm sekmeleri */}
-      <div className="inline-flex flex-shrink-0 items-center rounded-full p-[3px]" style={{ background: 'rgba(0,0,0,0.32)', border: '1px solid rgba(255,255,255,0.08)' }} role="tablist">
+      <div className="inline-flex flex-shrink-0 items-center rounded-full p-[3px]" style={portalStyle({ background: 'rgba(0,0,0,0.32)', border: '1px solid rgba(255,255,255,0.08)' })} role="tablist">
         {GORUNUMLER.map((g) => {
           const Ikon = g.ikon;
           const aktif = gorunum === g.key;
@@ -59,7 +61,7 @@ export function AracCubugu({
               onClick={() => onGorunum(g.key)}
               title={`${g.ad} görünümü`}
               className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1 text-[11.5px] font-semibold transition-[background-color,color] duration-150"
-              style={aktif ? { background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' } : { background: 'transparent', color: IKINCIL }}
+              style={portalStyle(aktif ? { background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' } : { background: 'transparent', color: IKINCIL })}
             >
               <Ikon size={12} /> {g.ad}
             </button>
@@ -67,7 +69,7 @@ export function AracCubugu({
         })}
       </div>
 
-      <span className="mx-0.5 hidden h-4 w-px flex-shrink-0 sm:block" style={{ background: 'rgba(255,255,255,0.12)' }} />
+      <span className="mx-0.5 hidden h-4 w-px flex-shrink-0 sm:block" style={portalStyle({ background: 'rgba(255,255,255,0.12)' })} />
 
       {/* Kategori */}
       <HapMenu ikon={<Tag size={11} />} etiket={suzgec.kategori ? kategoriEtiketi(suzgec.kategori) : 'Kategori'} aktif={!!suzgec.kategori} renk={suzgec.kategori ? kategoriRengi(suzgec.kategori) : GOLD} title="Kategoriye göre süz">
@@ -77,7 +79,7 @@ export function AracCubugu({
             <MenuSatiri aktif={!suzgec.kategori} onClick={() => { onSuzgec({ ...suzgec, kategori: '' }); kapat(); }}>Tümü</MenuSatiri>
             <MenuAyrac />
             {CATEGORY_OPTIONS.map((c) => (
-              <MenuSatiri key={c.value} aktif={suzgec.kategori === c.value} ikon={<span className="h-2 w-2 rounded-full" style={{ background: c.color }} />} onClick={() => { onSuzgec({ ...suzgec, kategori: c.value }); kapat(); }}>
+              <MenuSatiri key={c.value} aktif={suzgec.kategori === c.value} ikon={<span className="h-2 w-2 rounded-full" style={portalStyle({ background: c.color })} />} onClick={() => { onSuzgec({ ...suzgec, kategori: c.value }); kapat(); }}>
                 {c.label}
               </MenuSatiri>
             ))}
@@ -109,7 +111,7 @@ export function AracCubugu({
             <MenuSatiri aktif={!suzgec.kaynak} onClick={() => { onSuzgec({ ...suzgec, kaynak: '' }); kapat(); }}>Tümü</MenuSatiri>
             <MenuAyrac />
             {KAYNAK_OPTIONS.map((k) => (
-              <MenuSatiri key={k.value} aktif={suzgec.kaynak === k.value} ikon={k.value === 'EKIP' ? <Users size={12} /> : <span className="h-2 w-2 rounded-full" style={{ background: KAYNAK_COLOR[k.value] }} />} renk={KAYNAK_COLOR[k.value]} onClick={() => { onSuzgec({ ...suzgec, kaynak: k.value }); kapat(); }}>
+              <MenuSatiri key={k.value} aktif={suzgec.kaynak === k.value} ikon={k.value === 'EKIP' ? <Users size={12} /> : <span className="h-2 w-2 rounded-full" style={portalStyle({ background: KAYNAK_COLOR[k.value] })} />} renk={KAYNAK_COLOR[k.value]} onClick={() => { onSuzgec({ ...suzgec, kaynak: k.value }); kapat(); }}>
                 {k.label}
               </MenuSatiri>
             ))}
@@ -133,7 +135,7 @@ export function AracCubugu({
 
       {/* Arama */}
       <div className="relative min-w-[160px] flex-1 sm:max-w-[280px]">
-        <Search size={13} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" style={{ color: IKINCIL }} />
+        <Search size={13} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" style={portalStyle({ color: IKINCIL })} />
         <input
           type="search"
           value={suzgec.arama}
@@ -141,7 +143,7 @@ export function AracCubugu({
           placeholder="Ara — başlık, açıklama, mükellef"
           aria-label="Görev ara"
           className="h-8 w-full rounded-full text-[12px] [&::-webkit-search-cancel-button]:hidden"
-          style={{ ...GIRDI, borderRadius: 999, paddingLeft: 32, paddingRight: 12, WebkitAppearance: 'none', appearance: 'none' }}
+          style={portalStyle({ ...GIRDI, borderRadius: 999, paddingLeft: 32, paddingRight: 12, WebkitAppearance: 'none', appearance: 'none' })}
         />
       </div>
 
@@ -151,7 +153,7 @@ export function AracCubugu({
           onClick={() => onSuzgec({ kategori: '', oncelik: '', kaynak: '', mukellefId: '', arama: '' })}
           title="Süzgeçleri temizle"
           className="inline-flex h-8 flex-shrink-0 items-center gap-1 rounded-full px-2.5 text-[11.5px] font-semibold transition hover:brightness-125"
-          style={{ color: IKINCIL, border: '1px solid rgba(255,255,255,0.10)' }}
+          style={portalStyle({ color: IKINCIL, border: '1px solid rgba(255,255,255,0.10)' })}
         >
           <X size={12} /> Temizle
         </button>
@@ -174,11 +176,11 @@ function HapMenu({ ikon, etiket, aktif, renk, title, genislik = 230, children }:
           title={title}
           aria-expanded={acik}
           className="inline-flex max-w-[220px] flex-shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-[11.5px] font-semibold transition-[transform,filter] hover:-translate-y-px hover:brightness-125"
-          style={aktif ? { background: `${renk}18`, border: `1px solid ${renk}66`, color: renk } : { background: 'transparent', border: `1px solid rgba(255,255,255,${acik ? '0.24' : '0.12'})`, color: acik ? METIN : IKINCIL }}
+          style={portalStyle(aktif ? { background: `${renk}18`, border: `1px solid ${renk}66`, color: renk } : { background: 'transparent', border: `1px solid rgba(255,255,255,${acik ? '0.24' : '0.12'})`, color: acik ? METIN : IKINCIL })}
         >
           {ikon}
           <span className="truncate">{etiket}</span>
-          <ChevronDown size={11} style={{ opacity: 0.7 }} />
+          <ChevronDown size={11} style={portalStyle({ opacity: 0.7 })} />
         </button>
       )}
     >

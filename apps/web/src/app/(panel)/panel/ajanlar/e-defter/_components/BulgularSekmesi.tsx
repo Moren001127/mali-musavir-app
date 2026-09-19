@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import { useMemo, useState } from 'react';
 import { CheckCircle2, RotateCcw, Search, Sparkles } from 'lucide-react';
@@ -67,39 +69,39 @@ export function BulgularSekmesi(p: BulgularProps) {
 
       {/* Filtre satırı: arama + şiddet + durum, hepsi bir arada */}
       <div className="flex flex-wrap items-center gap-2">
-        <div className="h-9 rounded-lg px-3 flex items-center gap-2 flex-1 min-w-[240px]" style={{ background: PANEL, border: `1px solid ${BORDER}`, color: 'rgba(250,250,249,.75)' }}>
+        <div className="h-9 rounded-lg px-3 flex items-center gap-2 flex-1 min-w-[240px]" style={portalStyle({ background: PANEL, border: `1px solid ${BORDER}`, color: 'rgba(250,250,249,.75)' })}>
           <Search size={14} />
-          <input value={p.findingSearch} onChange={(e) => p.setFindingSearch(e.target.value)} placeholder="Bulgu, hesap kodu, fiş veya satır ara..." className="bg-transparent outline-none text-[13px] w-full" style={{ color: TEXT }} />
+          <input value={p.findingSearch} onChange={(e) => p.setFindingSearch(e.target.value)} placeholder="Bulgu, hesap kodu, fiş veya satır ara..." className="bg-transparent outline-none text-[13px] w-full" style={portalStyle({ color: TEXT })} />
         </div>
-        <div className="inline-flex h-9 p-0.5 rounded-lg gap-0.5" style={{ background: 'rgba(255,255,255,.035)', border: `1px solid ${BORDER}` }}>
+        <div className="inline-flex h-9 p-0.5 rounded-lg gap-0.5" style={portalStyle({ background: 'rgba(255,255,255,.035)', border: `1px solid ${BORDER}` })}>
           {([['ERROR', 'Hata', stats.error, ERR], ['WARN', 'Uyarı', stats.warn, WARN], ['INFO', 'Bilgi', stats.info, INFO]] as const).map(([k, ad, n, renk]) => {
             const on = p.severityFilter === k;
             return (
-              <button key={k} onClick={() => p.setSeverityFilter(on ? 'ALL' : k)} className="px-2.5 rounded-md text-[11.5px] font-semibold inline-flex items-center gap-1.5 tabular-nums" style={{ background: on ? `${renk}22` : 'transparent', color: on ? renk : 'rgba(250,250,249,.7)' }}>
-                <span className="w-[7px] h-[7px] rounded-full" style={{ background: renk }} />{ad} {n}
+              <button key={k} onClick={() => p.setSeverityFilter(on ? 'ALL' : k)} className="px-2.5 rounded-md text-[11.5px] font-semibold inline-flex items-center gap-1.5 tabular-nums" style={portalStyle({ background: on ? `${renk}22` : 'transparent', color: on ? renk : 'rgba(250,250,249,.7)' })}>
+                <span className="w-[7px] h-[7px] rounded-full" style={portalStyle({ background: renk })} />{ad} {n}
               </button>
             );
           })}
         </div>
-        <div className="inline-flex h-9 p-0.5 rounded-lg gap-0.5" style={{ background: 'rgba(255,255,255,.035)', border: `1px solid ${BORDER}` }}>
+        <div className="inline-flex h-9 p-0.5 rounded-lg gap-0.5" style={portalStyle({ background: 'rgba(255,255,255,.035)', border: `1px solid ${BORDER}` })}>
           {([['OPEN', 'Açık', stats.open], ['RESOLVED', 'Çözüldü', stats.resolved], ['IGNORED', 'Görmezden', stats.ignored], ['ALL', 'Tümü', stats.total]] as const).map(([k, ad, n]) => {
             const on = p.statusFilter === k;
             return (
-              <button key={k} onClick={() => p.setStatusFilter(k)} className="px-2.5 rounded-md text-[11.5px] font-semibold tabular-nums" style={{ background: on ? NAVY_SOFT : 'transparent', color: on ? NAVY : 'rgba(250,250,249,.7)' }}>
-                {ad} <span style={{ opacity: .7 }}>{n}</span>
+              <button key={k} onClick={() => p.setStatusFilter(k)} className="px-2.5 rounded-md text-[11.5px] font-semibold tabular-nums" style={portalStyle({ background: on ? NAVY_SOFT : 'transparent', color: on ? NAVY : 'rgba(250,250,249,.7)' })}>
+                {ad} <span style={portalStyle({ opacity: .7 })}>{n}</span>
               </button>
             );
           })}
         </div>
-        <span className="text-[11.5px] tabular-nums" style={{ color: MUTED }}>{visibleFindings.length} / {stats.total}</span>
+        <span className="text-[11.5px] tabular-nums" style={portalStyle({ color: MUTED })}>{visibleFindings.length} / {stats.total}</span>
         {alanlar.length > 0 && (
-          <div className="inline-flex h-9 p-0.5 rounded-lg gap-0.5" style={{ background: 'rgba(255,255,255,.035)', border: `1px solid ${BORDER}` }}>
-            <button onClick={() => setKapaliKurallar({})} className="px-2.5 rounded-md text-[11px] font-semibold" style={{ color: 'rgba(250,250,249,.7)' }} title="Tüm kural bloklarını aç">Genişlet</button>
-            <button onClick={() => setKapaliKurallar(tumKurallariDaralt(alanlar))} className="px-2.5 rounded-md text-[11px] font-semibold" style={{ color: 'rgba(250,250,249,.7)' }} title="Yalnız kural başlıkları kalsın">Daralt</button>
+          <div className="inline-flex h-9 p-0.5 rounded-lg gap-0.5" style={portalStyle({ background: 'rgba(255,255,255,.035)', border: `1px solid ${BORDER}` })}>
+            <button onClick={() => setKapaliKurallar({})} className="px-2.5 rounded-md text-[11px] font-semibold" style={portalStyle({ color: 'rgba(250,250,249,.7)' })} title="Tüm kural bloklarını aç">Genişlet</button>
+            <button onClick={() => setKapaliKurallar(tumKurallariDaralt(alanlar))} className="px-2.5 rounded-md text-[11px] font-semibold" style={portalStyle({ color: 'rgba(250,250,249,.7)' })} title="Yalnız kural başlıkları kalsın">Daralt</button>
           </div>
         )}
         {filtreAktif && (
-          <button onClick={() => { p.setSeverityFilter('ALL'); p.setStatusFilter('OPEN'); p.setFindingSearch(''); }} className="h-9 px-3 rounded-lg text-[11.5px] font-semibold inline-flex items-center gap-1" style={{ background: PANEL, color: 'rgba(250,250,249,.75)', border: `1px solid ${BORDER}` }}>
+          <button onClick={() => { p.setSeverityFilter('ALL'); p.setStatusFilter('OPEN'); p.setFindingSearch(''); }} className="h-9 px-3 rounded-lg text-[11.5px] font-semibold inline-flex items-center gap-1" style={portalStyle({ background: PANEL, color: 'rgba(250,250,249,.75)', border: `1px solid ${BORDER}` })}>
             <RotateCcw size={12} /> Sıfırla
           </button>
         )}
@@ -107,19 +109,19 @@ export function BulgularSekmesi(p: BulgularProps) {
 
       {/* Boş durumlar */}
       {!session && (
-        <div className="rounded-2xl p-12 text-center" style={{ background: PANEL, border: `1px dashed ${BORDER_STRONG}` }}>
-          <div className="inline-flex h-14 w-14 rounded-full items-center justify-center mb-3" style={{ background: NAVY_SOFT, color: NAVY }}><Sparkles size={26} /></div>
-          <div className="text-base font-semibold mb-1" style={{ color: TEXT }}>Henüz veri yok</div>
-          <div className="text-xs" style={{ color: MUTED }}>Bir dönem seç veya Luca'dan Detay Fiş Listesi çek.</div>
+        <div className="rounded-2xl p-12 text-center" style={portalStyle({ background: PANEL, border: `1px dashed ${BORDER_STRONG}` })}>
+          <div className="inline-flex h-14 w-14 rounded-full items-center justify-center mb-3" style={portalStyle({ background: NAVY_SOFT, color: NAVY })}><Sparkles size={26} /></div>
+          <div className="text-base font-semibold mb-1" style={portalStyle({ color: TEXT })}>Henüz veri yok</div>
+          <div className="text-xs" style={portalStyle({ color: MUTED })}>Bir dönem seç veya Luca'dan Detay Fiş Listesi çek.</div>
         </div>
       )}
       {session && alanlar.length === 0 && (
-        <div className="rounded-2xl p-10 text-center" style={{ background: stats.total === 0 ? 'rgba(92,191,138,.05)' : PANEL, border: `1px dashed ${stats.total === 0 ? 'rgba(92,191,138,.25)' : BORDER_STRONG}` }}>
-          <div className="inline-flex h-14 w-14 rounded-full items-center justify-center mb-3" style={{ background: stats.total === 0 ? 'rgba(92,191,138,.15)' : NAVY_SOFT, color: stats.total === 0 ? OK : NAVY }}>
+        <div className="rounded-2xl p-10 text-center" style={portalStyle({ background: stats.total === 0 ? 'rgba(92,191,138,.05)' : PANEL, border: `1px dashed ${stats.total === 0 ? 'rgba(92,191,138,.25)' : BORDER_STRONG}` })}>
+          <div className="inline-flex h-14 w-14 rounded-full items-center justify-center mb-3" style={portalStyle({ background: stats.total === 0 ? 'rgba(92,191,138,.15)' : NAVY_SOFT, color: stats.total === 0 ? OK : NAVY })}>
             {stats.total === 0 ? <CheckCircle2 size={26} /> : <Search size={26} />}
           </div>
-          <div className="text-base font-semibold mb-1" style={{ color: TEXT }}>{stats.total === 0 ? 'Bu dönem temiz görünüyor' : 'Filtreyle eşleşen bulgu yok'}</div>
-          <div className="text-xs" style={{ color: MUTED }}>{stats.total === 0 ? 'Tüm kontroller çalıştı, bulgu üretmedi.' : 'Filtreleri sıfırlayarak tüm bulguları görebilirsiniz.'}</div>
+          <div className="text-base font-semibold mb-1" style={portalStyle({ color: TEXT })}>{stats.total === 0 ? 'Bu dönem temiz görünüyor' : 'Filtreyle eşleşen bulgu yok'}</div>
+          <div className="text-xs" style={portalStyle({ color: MUTED })}>{stats.total === 0 ? 'Tüm kontroller çalıştı, bulgu üretmedi.' : 'Filtreleri sıfırlayarak tüm bulguları görebilirsiniz.'}</div>
         </div>
       )}
 
@@ -135,11 +137,11 @@ export function BulgularSekmesi(p: BulgularProps) {
 
       {/* Bakıldı, temiz alanlar */}
       {session && temizAlanlar.length > 0 && (
-        <div className="rounded-xl px-3.5 py-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5" style={{ background: 'rgba(92,191,138,.05)', border: '1px solid rgba(92,191,138,.16)' }}>
-          <span className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold" style={{ color: OK }}><CheckCircle2 size={13} /> Sorun bulunmayan alanlar</span>
+        <div className="rounded-xl px-3.5 py-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5" style={portalStyle({ background: 'rgba(92,191,138,.05)', border: '1px solid rgba(92,191,138,.16)' })}>
+          <span className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold" style={portalStyle({ color: OK })}><CheckCircle2 size={13} /> Sorun bulunmayan alanlar</span>
           {temizAlanlar.map((t) => (
-            <span key={t.alan} className="text-[11px] tabular-nums px-2 py-0.5 rounded-md" style={{ background: 'rgba(255,255,255,.04)', color: 'rgba(250,250,249,.72)' }}>
-              {ALAN_IKON[t.alan] || '•'} {t.alan} <span style={{ color: MUTED2 }}>· {t.adet} kontrol</span>
+            <span key={t.alan} className="text-[11px] tabular-nums px-2 py-0.5 rounded-md" style={portalStyle({ background: 'rgba(255,255,255,.04)', color: 'rgba(250,250,249,.72)' })}>
+              {ALAN_IKON[t.alan] || '•'} {t.alan} <span style={portalStyle({ color: MUTED2 })}>· {t.adet} kontrol</span>
             </span>
           ))}
         </div>

@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 import React from 'react';
 import { FIELD_CLS } from '../../_lib/tema';
 
@@ -8,7 +10,7 @@ export function InputBase({ className = '', style, ...props }: React.InputHTMLAt
     <input
       {...props}
       className={`${FIELD_CLS} ${className}`}
-      style={{ colorScheme: 'dark', ...(style || {}) }}
+      style={portalStyle({ colorScheme: 'dark', ...(style || {}) })}
     />
   );
 }

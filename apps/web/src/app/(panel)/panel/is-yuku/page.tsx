@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -123,50 +125,50 @@ export default function IsYukuPage() {
     <div className="space-y-6 max-w-7xl">
       <header
         className="relative overflow-hidden rounded-[18px] border px-5 py-3"
-        style={{
+        style={portalStyle({
           background:
             'radial-gradient(120% 140% at 0% 0%, rgba(212,184,118,0.16), transparent 46%), radial-gradient(120% 140% at 100% 0%, rgba(139,118,73,0.12), transparent 48%), #0f0d0b',
           borderColor: 'rgba(255,255,255,0.06)',
           boxShadow: '0 16px 42px rgba(0,0,0,0.28)',
-        }}
+        })}
       >
         <div
           className="absolute inset-x-0 top-0 h-1"
-          style={{ background: 'linear-gradient(90deg, #8b7649, #b8a06f, #d4b876, #e7cf95, #d4b876, #b8a06f)' }}
+          style={portalStyle({ background: 'linear-gradient(90deg, #8b7649, #b8a06f, #d4b876, #e7cf95, #d4b876, #b8a06f)' })}
         />
         <div className="mb-2 flex items-center gap-2.5">
-          <span className="h-px w-[26px]" style={{ background: GOLD }} />
-          <span className="text-[10px] font-bold uppercase tracking-[.18em]" style={{ color: GOLD_SOFT }}>Ofis Akışı</span>
+          <span className="h-px w-[26px]" style={portalStyle({ background: GOLD })} />
+          <span className="text-[10px] font-bold uppercase tracking-[.18em]" style={portalStyle({ color: GOLD_SOFT })}>Ofis Akışı</span>
         </div>
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex min-w-0 items-center gap-3.5">
             <span
               className="grid shrink-0 place-items-center rounded-xl"
-              style={{
+              style={portalStyle({
                 width: 40,
                 height: 40,
                 background: `linear-gradient(135deg, ${GOLD}, ${GOLD_SOFT})`,
                 boxShadow: '0 8px 22px rgba(212,184,118,0.30)',
-              }}
+              })}
             >
-              <Workflow size={20} style={{ color: '#1a1410' }} />
+              <Workflow size={20} style={portalStyle({ color: '#1a1410' })} />
             </span>
             <div className="min-w-0">
-              <h1 style={{ fontFamily: 'Fraunces, Georgia, serif', fontSize: 24, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em', lineHeight: 1.05 }}>
+              <h1 style={portalStyle({ fontFamily: 'Fraunces, Georgia, serif', fontSize: 24, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em', lineHeight: 1.05 })}>
                 İş Akışı
               </h1>
-              <p className="mt-1 text-[12.5px] font-semibold" style={{ color: 'rgba(250,250,249,0.48)' }}>
+              <p className="mt-1 text-[12.5px] font-semibold" style={portalStyle({ color: 'rgba(250,250,249,0.48)' })}>
                 Sabah aç, sırasıyla yap — sistem hangi mükellefin işini önce yapacağını söylüyor
               </p>
               {(stageFilter || lateOnly) && (
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   {stageFilter && (
-                    <span className="rounded-full px-2.5 py-1 text-[11px]" style={{ background: 'rgba(212,184,118,0.12)', border: '1px solid rgba(212,184,118,0.25)', color: GOLD }}>
+                    <span className="rounded-full px-2.5 py-1 text-[11px]" style={portalStyle({ background: 'rgba(212,184,118,0.12)', border: '1px solid rgba(212,184,118,0.25)', color: GOLD })}>
                       {STAGE_CONFIG[stageFilter].label}
                     </span>
                   )}
                   {lateOnly && (
-                    <span className="rounded-full px-2.5 py-1 text-[11px]" style={{ background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.24)', color: '#fca5a5' }}>
+                    <span className="rounded-full px-2.5 py-1 text-[11px]" style={portalStyle({ background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.24)', color: '#fca5a5' })}>
                       5+ gün bekleyen
                     </span>
                   )}
@@ -174,7 +176,7 @@ export default function IsYukuPage() {
                     type="button"
                     onClick={() => { setStageFilter(null); setLateOnly(false); }}
                     className="rounded-full px-2.5 py-1 text-[11px]"
-                    style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(250,250,249,0.55)' }}
+                    style={portalStyle({ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(250,250,249,0.55)' })}
                   >
                     Filtreyi temizle
                   </button>
@@ -182,28 +184,28 @@ export default function IsYukuPage() {
               )}
             </div>
           </div>
-          <div className="flex shrink-0 items-center gap-2 rounded-[10px] p-1" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
+          <div className="flex shrink-0 items-center gap-2 rounded-[10px] p-1" style={portalStyle({ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' })}>
             <select value={month} onChange={(e) => setMonth(Number(e.target.value))}
               className="cursor-pointer bg-transparent px-2 py-1.5 text-[12.5px] font-medium outline-none"
-              style={{ color: '#fafaf9' }}>
-              {AYLAR.map((a, i) => <option key={i} value={i + 1} style={{ background: '#0f0d0b' }}>{a}</option>)}
+              style={portalStyle({ color: '#fafaf9' })}>
+              {AYLAR.map((a, i) => <option key={i} value={i + 1} style={portalStyle({ background: '#0f0d0b' })}>{a}</option>)}
             </select>
-            <span style={{ width: 1, height: 18, background: 'rgba(255,255,255,0.08)' }} />
+            <span style={portalStyle({ width: 1, height: 18, background: 'rgba(255,255,255,0.08)' })} />
             <select value={year} onChange={(e) => setYear(Number(e.target.value))}
               className="cursor-pointer bg-transparent px-2 py-1.5 text-[12.5px] font-medium outline-none"
-              style={{ color: '#fafaf9' }}>
-              {[year - 1, year, year + 1].map((y) => <option key={y} value={y} style={{ background: '#0f0d0b' }}>{y}</option>)}
+              style={portalStyle({ color: '#fafaf9' })}>
+              {[year - 1, year, year + 1].map((y) => <option key={y} value={y} style={portalStyle({ background: '#0f0d0b' })}>{y}</option>)}
             </select>
           </div>
         </div>
       </header>
 
       {isLoading ? (
-        <div className="text-center py-16" style={{ color: 'rgba(250,250,249,0.4)' }}>
+        <div className="text-center py-16" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>
           <Loader2 className="inline animate-spin mr-2" size={16} /> Yükleniyor...
         </div>
       ) : !data ? (
-        <div className="text-center py-16" style={{ color: 'rgba(250,250,249,0.4)' }}>Veri yok</div>
+        <div className="text-center py-16" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>Veri yok</div>
       ) : (
         <>
           <WorkflowSummary data={data} evrakPct={evrakPct} />
@@ -228,10 +230,10 @@ export default function IsYukuPage() {
           {nextItems.length > 0 && (
             <div>
               <div className="flex items-center gap-2 mb-3">
-                <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={{ color: GOLD_SOFT }}>
+                <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={portalStyle({ color: GOLD_SOFT })}>
                   Sıradakiler
                 </span>
-                <span className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.05)' }} />
+                <span className="flex-1 h-px" style={portalStyle({ background: 'rgba(255,255,255,0.05)' })} />
               </div>
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                 {nextItems.map((item, idx) => (
@@ -244,10 +246,10 @@ export default function IsYukuPage() {
           {/* PIPELINE — Yatay 5 sütun */}
           <div>
             <div className="flex items-center gap-2 mb-3">
-              <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={{ color: GOLD_SOFT }}>
+              <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={portalStyle({ color: GOLD_SOFT })}>
                 Aşamalara Göre Akış
               </span>
-              <span className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.05)' }} />
+              <span className="flex-1 h-px" style={portalStyle({ background: 'rgba(255,255,255,0.05)' })} />
             </div>
             <div id="pipeline" className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
               {visibleStages.map((stage) => (
@@ -263,22 +265,22 @@ export default function IsYukuPage() {
           {/* GEÇ KALANLAR — uyarı kartı */}
           {gecKalanlar.length > 0 && (
             <div className="rounded-2xl overflow-hidden"
-              style={{
+              style={portalStyle({
                 background: 'linear-gradient(135deg, rgba(239,68,68,0.06), rgba(239,68,68,0.02))',
                 border: '1px solid rgba(239,68,68,0.25)',
-              }}>
+              })}>
               <div className="flex items-center gap-2.5 px-5 py-4"
-                style={{ borderBottom: '1px solid rgba(239,68,68,0.20)' }}>
-                <Flame size={16} style={{ color: '#ef4444' }} />
-                <h3 className="text-[14px] font-bold" style={{ color: '#fafaf9', fontFamily: 'Fraunces, serif' }}>
+                style={portalStyle({ borderBottom: '1px solid rgba(239,68,68,0.20)' })}>
+                <Flame size={16} style={portalStyle({ color: '#ef4444' })} />
+                <h3 className="text-[14px] font-bold" style={portalStyle({ color: '#fafaf9', fontFamily: 'Fraunces, serif' })}>
                   Geç Kalanlar
                 </h3>
                 <span className="text-[10.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ml-1"
-                  style={{ background: 'rgba(239,68,68,0.18)', color: '#ef4444' }}>
+                  style={portalStyle({ background: 'rgba(239,68,68,0.18)', color: '#ef4444' })}>
                   {gecKalanlar.length} mükellef · 5+ gün
                 </span>
               </div>
-              <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
+              <div className="divide-y" style={portalStyle({ borderColor: 'rgba(255,255,255,0.04)' })}>
                 {gecKalanlar.map((item) => <GecKalanSatir key={item.statusId} item={item} />)}
               </div>
             </div>
@@ -298,31 +300,31 @@ function WorkflowSummary({ data, evrakPct }: { data: WorkflowData; evrakPct: num
   return (
     <div
       className="rounded-3xl overflow-hidden"
-      style={{
+      style={portalStyle({
         background: 'radial-gradient(circle at 0% 0%, rgba(212,184,118,0.14), transparent 46%), linear-gradient(135deg, rgba(255,255,255,0.035), rgba(255,255,255,0.012))',
         border: '1px solid rgba(212,184,118,0.24)',
         boxShadow: '0 12px 36px rgba(0,0,0,0.22)',
-      }}
+      })}
     >
       <div className="grid grid-cols-1 lg:grid-cols-[1.15fr_2fr]">
-        <div className="p-4 flex flex-col justify-center" style={{ borderRight: '1px solid rgba(212,184,118,0.16)' }}>
-          <div className="text-[10px] uppercase font-bold tracking-[.18em] mb-2" style={{ color: GOLD_SOFT }}>
+        <div className="p-4 flex flex-col justify-center" style={portalStyle({ borderRight: '1px solid rgba(212,184,118,0.16)' })}>
+          <div className="text-[10px] uppercase font-bold tracking-[.18em] mb-2" style={portalStyle({ color: GOLD_SOFT })}>
             Aylık Akış Özeti
           </div>
           <div className="flex items-end gap-4">
             <div>
-              <div className="tabular-nums" style={{ fontFamily: 'Fraunces, serif', fontSize: 36, fontWeight: 700, color: '#fafaf9', lineHeight: 1 }}>
+              <div className="tabular-nums" style={portalStyle({ fontFamily: 'Fraunces, serif', fontSize: 36, fontWeight: 700, color: '#fafaf9', lineHeight: 1 })}>
                 {data.total}
               </div>
-              <div className="text-[12px] mt-1" style={{ color: 'rgba(250,250,249,0.48)' }}>
+              <div className="text-[12px] mt-1" style={portalStyle({ color: 'rgba(250,250,249,0.48)' })}>
                 {data.donem} döneminde aktif mükellef
               </div>
             </div>
             <div className="pb-1">
-              <div className="text-[13px] font-semibold" style={{ color: aktifIs > 0 ? GOLD : '#86efac' }}>
+              <div className="text-[13px] font-semibold" style={portalStyle({ color: aktifIs > 0 ? GOLD : '#86efac' })}>
                 {aktifIs} aktif iş
               </div>
-              <div className="text-[12px]" style={{ color: 'rgba(250,250,249,0.48)' }}>
+              <div className="text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.48)' })}>
                 {data.counts.tamam} tamamlandı
               </div>
             </div>
@@ -340,20 +342,20 @@ function WorkflowSummary({ data, evrakPct }: { data: WorkflowData; evrakPct: num
                 key={stage}
                 href="#pipeline"
                 className="p-3 transition hover:bg-white/[0.03]"
-                style={{ borderLeft: '1px solid rgba(255,255,255,0.055)' }}
+                style={portalStyle({ borderLeft: '1px solid rgba(255,255,255,0.055)' })}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: cfg.gradient, border: `1px solid ${cfg.color}30` }}>
-                    <Icon size={15} style={{ color: cfg.color }} />
+                  <span className="w-8 h-8 rounded-xl flex items-center justify-center" style={portalStyle({ background: cfg.gradient, border: `1px solid ${cfg.color}30` })}>
+                    <Icon size={15} style={portalStyle({ color: cfg.color })} />
                   </span>
-                  <span className="text-[11px] tabular-nums" style={{ color: stage === 'EVRAK_BEKLIYOR' ? GOLD : 'rgba(250,250,249,0.44)' }}>
+                  <span className="text-[11px] tabular-nums" style={portalStyle({ color: stage === 'EVRAK_BEKLIYOR' ? GOLD : 'rgba(250,250,249,0.44)' })}>
                     {stage === 'EVRAK_BEKLIYOR' ? `%${evrakPct}` : `%${pct}`}
                   </span>
                 </div>
-                <div className="mt-2 tabular-nums" style={{ fontFamily: 'Fraunces, serif', fontSize: 25, fontWeight: 700, color: cfg.color, lineHeight: 1 }}>
+                <div className="mt-2 tabular-nums" style={portalStyle({ fontFamily: 'Fraunces, serif', fontSize: 25, fontWeight: 700, color: cfg.color, lineHeight: 1 })}>
                   {count}
                 </div>
-                <div className="text-[11px] uppercase font-bold tracking-[.08em] mt-1" style={{ color: 'rgba(250,250,249,0.55)' }}>
+                <div className="text-[11px] uppercase font-bold tracking-[.08em] mt-1" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>
                   {cfg.short}
                 </div>
               </Link>
@@ -377,28 +379,28 @@ function HeroCard({
 
   return (
     <div className="rounded-3xl overflow-hidden relative"
-      style={{
+      style={portalStyle({
         background: `radial-gradient(circle at 30% 0%, ${cfg.gradient}, transparent 70%), linear-gradient(135deg, rgba(212,184,118,0.08), rgba(212,184,118,0.02))`,
         border: '1px solid rgba(212,184,118,0.30)',
         boxShadow: '0 12px 48px rgba(0,0,0,0.3)',
-      }}>
+      })}>
       {/* Üst etiket bandı */}
       <div className="flex items-center justify-between px-6 pt-4 pb-2">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
-            <Sparkles size={14} style={{ color: GOLD }} />
-            <span className="text-[10px] uppercase font-bold tracking-[.22em]" style={{ color: GOLD_SOFT }}>
+            <Sparkles size={14} style={portalStyle({ color: GOLD })} />
+            <span className="text-[10px] uppercase font-bold tracking-[.22em]" style={portalStyle({ color: GOLD_SOFT })}>
               ŞİMDİ YAPILACAK
             </span>
           </div>
           {isUrgent && (
             <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded"
-              style={{ background: 'rgba(239,68,68,0.18)', color: '#ef4444' }}>
+              style={portalStyle({ background: 'rgba(239,68,68,0.18)', color: '#ef4444' })}>
               <Flame size={10} /> ACIL
             </span>
           )}
         </div>
-        <div className="text-[11px] tabular-nums" style={{ color: 'rgba(250,250,249,0.45)' }}>
+        <div className="text-[11px] tabular-nums" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
           Sıra {sira}/{total}
         </div>
       </div>
@@ -406,28 +408,28 @@ function HeroCard({
       {/* Mükellef adı — serif */}
       <div className="px-6 pt-1 pb-3">
         <div className="flex items-baseline gap-3 flex-wrap">
-          <Building2 size={18} style={{ color: 'rgba(250,250,249,0.4)' }} />
-          <h2 style={{
+          <Building2 size={18} style={portalStyle({ color: 'rgba(250,250,249,0.4)' })} />
+          <h2 style={portalStyle({
             fontFamily: 'Fraunces, serif',
             fontSize: 30,
             fontWeight: 600,
             color: '#fafaf9',
             letterSpacing: '-.03em',
             lineHeight: 1.05,
-          }}>
+          })}>
             {item.taxpayerName}
           </h2>
         </div>
         <div className="flex items-center gap-3 mt-3 flex-wrap">
           <span className="inline-flex items-center gap-1.5 text-[11.5px] font-bold uppercase tracking-wider px-2.5 py-1 rounded"
-            style={{ background: cfg.gradient, color: cfg.color, border: `1px solid ${cfg.color}33` }}>
+            style={portalStyle({ background: cfg.gradient, color: cfg.color, border: `1px solid ${cfg.color}33` })}>
             <Icon size={11} /> {cfg.label}
           </span>
-          <span className="text-[12.5px]" style={{ color: 'rgba(250,250,249,0.55)' }}>
+          <span className="text-[12.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>
             <Clock size={12} className="inline mr-1" />
             {item.bekleyenGun} gündür bekliyor
           </span>
-          <span className="text-[12px] font-mono" style={{ color: 'rgba(250,250,249,0.35)' }}>
+          <span className="text-[12px] font-mono" style={portalStyle({ color: 'rgba(250,250,249,0.35)' })}>
             {item.taxNumber}
           </span>
         </div>
@@ -438,27 +440,27 @@ function HeroCard({
         <Link
           href={item.actionPath}
           className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-[14px] font-bold transition-all hover:scale-[1.02]"
-          style={{
+          style={portalStyle({
             background: `linear-gradient(135deg, ${GOLD}, ${GOLD_SOFT})`,
             color: '#0f0d0b',
             boxShadow: `0 8px 24px ${GOLD}33`,
-          }}
+          })}
         >
           {item.actionLabel} <ArrowRight size={16} />
         </Link>
         <button onClick={onSkip}
           className="inline-flex items-center gap-2 px-4 py-3 rounded-xl text-[12.5px] font-medium transition"
-          style={{
+          style={portalStyle({
             background: 'rgba(255,255,255,0.04)',
             color: 'rgba(250,250,249,0.7)',
             border: '1px solid rgba(255,255,255,0.08)',
-          }}>
+          })}>
           Sonraki <SkipForward size={13} />
         </button>
         {canGoBack && (
           <button onClick={onBack}
             className="text-[11.5px] underline-offset-2 hover:underline"
-            style={{ color: 'rgba(250,250,249,0.5)' }}>
+            style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
             ← Önceki
           </button>
         )}
@@ -470,15 +472,15 @@ function HeroCard({
 function EmptyHero() {
   return (
     <div className="rounded-3xl py-16 px-8 text-center"
-      style={{
+      style={portalStyle({
         background: 'linear-gradient(135deg, rgba(34,197,94,0.06), rgba(34,197,94,0.02))',
         border: '1px solid rgba(34,197,94,0.20)',
-      }}>
-      <CheckCircle2 size={36} className="mx-auto mb-4" style={{ color: '#22c55e' }} />
-      <h2 style={{ fontFamily: 'Fraunces, serif', fontSize: 28, fontWeight: 600, color: '#fafaf9' }}>
+      })}>
+      <CheckCircle2 size={36} className="mx-auto mb-4" style={portalStyle({ color: '#22c55e' })} />
+      <h2 style={portalStyle({ fontFamily: 'Fraunces, serif', fontSize: 28, fontWeight: 600, color: '#fafaf9' })}>
         Sıra boş
       </h2>
-      <p className="text-[13.5px] mt-2 max-w-md mx-auto" style={{ color: 'rgba(250,250,249,0.5)' }}>
+      <p className="text-[13.5px] mt-2 max-w-md mx-auto" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
         Şu an işlenmeyi bekleyen veya kontrol bekleyen iş yok. Mükellef evrakları geldikçe burada görünür.
       </p>
     </div>
@@ -488,16 +490,16 @@ function EmptyHero() {
 function AllDoneCard({ total }: { total: number }) {
   return (
     <div className="rounded-3xl py-12 px-8 text-center"
-      style={{
+      style={portalStyle({
         background: 'linear-gradient(135deg, rgba(34,197,94,0.10), rgba(34,197,94,0.04))',
         border: '1px solid rgba(34,197,94,0.30)',
-      }}>
-      <Sparkles size={36} className="mx-auto mb-4" style={{ color: '#22c55e' }} />
-      <h2 style={{ fontFamily: 'Fraunces, serif', fontSize: 32, fontWeight: 600, color: '#fafaf9' }}>
+      })}>
+      <Sparkles size={36} className="mx-auto mb-4" style={portalStyle({ color: '#22c55e' })} />
+      <h2 style={portalStyle({ fontFamily: 'Fraunces, serif', fontSize: 32, fontWeight: 600, color: '#fafaf9' })}>
         Bu ay tamamen kapandı 🎉
       </h2>
-      <p className="text-[14px] mt-2" style={{ color: 'rgba(250,250,249,0.55)' }}>
-        Tüm <strong style={{ color: '#22c55e' }}>{total} mükellefin</strong> beyannameleri verildi.
+      <p className="text-[14px] mt-2" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>
+        Tüm <strong style={portalStyle({ color: '#22c55e' })}>{total} mükellefin</strong> beyannameleri verildi.
       </p>
     </div>
   );
@@ -511,24 +513,24 @@ function MiniSiraKart({ item, sira }: { item: QueueItem; sira: number }) {
   return (
     <Link href={item.actionPath}
       className="rounded-xl p-3.5 transition-all hover:scale-[1.02] block"
-      style={{
+      style={portalStyle({
         background: 'rgba(255,255,255,0.02)',
         border: '1px solid rgba(255,255,255,0.05)',
-      }}>
+      })}>
       <div className="flex items-baseline gap-2 mb-1.5">
-        <span className="tabular-nums" style={{
+        <span className="tabular-nums" style={portalStyle({
           fontFamily: 'Fraunces, serif', fontSize: 24, fontWeight: 700, color: GOLD, lineHeight: 1,
-        }}>
+        })}>
           {sira}
         </span>
-        <span className="text-[10px] uppercase font-bold tracking-wider" style={{ color: cfg.color }}>
+        <span className="text-[10px] uppercase font-bold tracking-wider" style={portalStyle({ color: cfg.color })}>
           {cfg.short}
         </span>
       </div>
-      <div className="text-[13px] font-semibold truncate" style={{ color: '#fafaf9' }}>
+      <div className="text-[13px] font-semibold truncate" style={portalStyle({ color: '#fafaf9' })}>
         {item.taxpayerName}
       </div>
-      <div className="text-[11px] mt-1" style={{ color: 'rgba(250,250,249,0.5)' }}>
+      <div className="text-[11px] mt-1" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
         {item.bekleyenGun} gün · {item.actionLabel}
       </div>
     </Link>
@@ -548,32 +550,32 @@ function PipelineSutun({ stage, items }: { stage: Stage; items: QueueItem[] }) {
 
   return (
     <div className="rounded-2xl overflow-hidden flex flex-col"
-      style={{
+      style={portalStyle({
         background: `linear-gradient(180deg, ${cfg.gradient} 0%, ${cfg.bg} 100%)`,
         border: `1px solid ${cfg.color}38`,
         minHeight: 240,
         boxShadow: isEmpty ? 'none' : `0 4px 16px ${cfg.color}10`,
-      }}>
+      })}>
       {/* Header — büyük rakam + ikon */}
       <div className="px-4 pt-4 pb-3 flex items-start justify-between"
-        style={{ borderBottom: `1px solid ${cfg.color}28` }}>
+        style={portalStyle({ borderBottom: `1px solid ${cfg.color}28` })}>
         <div className="flex flex-col gap-1.5">
           <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md"
-            style={{ background: `${cfg.color}22`, width: 'fit-content' }}>
-            <Icon size={11} style={{ color: cfg.color }} />
-            <span className="text-[10px] uppercase font-bold tracking-wider" style={{ color: cfg.color }}>
+            style={portalStyle({ background: `${cfg.color}22`, width: 'fit-content' })}>
+            <Icon size={11} style={portalStyle({ color: cfg.color })} />
+            <span className="text-[10px] uppercase font-bold tracking-wider" style={portalStyle({ color: cfg.color })}>
               {cfg.short}
             </span>
           </div>
         </div>
         <span className="tabular-nums leading-none"
-          style={{
+          style={portalStyle({
             fontFamily: 'Fraunces, serif',
             fontSize: 28,
             fontWeight: 700,
             color: isEmpty ? `${cfg.color}55` : cfg.color,
             letterSpacing: '-0.03em',
-          }}>
+          })}>
           {items.length}
         </span>
       </div>
@@ -582,9 +584,9 @@ function PipelineSutun({ stage, items }: { stage: Stage; items: QueueItem[] }) {
       <div className="p-2 space-y-1.5 flex-1">
         {isEmpty ? (
           <div className="flex flex-col items-center justify-center h-full py-8 gap-2"
-            style={{ opacity: 0.4 }}>
-            <Icon size={18} style={{ color: cfg.color }} />
-            <span className="text-[10.5px] uppercase tracking-wider" style={{ color: cfg.color }}>
+            style={portalStyle({ opacity: 0.4 })}>
+            <Icon size={18} style={portalStyle({ color: cfg.color })} />
+            <span className="text-[10.5px] uppercase tracking-wider" style={portalStyle({ color: cfg.color })}>
               boş
             </span>
           </div>
@@ -592,15 +594,15 @@ function PipelineSutun({ stage, items }: { stage: Stage; items: QueueItem[] }) {
           sirali.slice(0, 5).map((item) => (
             <Link key={item.statusId} href={item.actionPath}
               className="block rounded-lg px-3 py-2.5 transition-all hover:translate-y-[-1px]"
-              style={{
+              style={portalStyle({
                 background: 'rgba(255,255,255,0.04)',
                 border: `1px solid ${cfg.color}1a`,
-              }}>
-              <div className="text-[12.5px] font-semibold truncate" style={{ color: '#fafaf9', letterSpacing: '-0.01em' }}>
+              })}>
+              <div className="text-[12.5px] font-semibold truncate" style={portalStyle({ color: '#fafaf9', letterSpacing: '-0.01em' })}>
                 {item.taxpayerName}
               </div>
               <div className="flex items-center gap-1.5 mt-1 text-[10.5px]"
-                style={{ color: item.bekleyenGun >= 5 ? '#ef4444' : 'rgba(250,250,249,0.55)' }}>
+                style={portalStyle({ color: item.bekleyenGun >= 5 ? '#ef4444' : 'rgba(250,250,249,0.55)' })}>
                 <Clock size={9} />
                 <span className="tabular-nums">{item.bekleyenGun}gün</span>
                 {item.bekleyenGun >= 5 && <Flame size={9} />}
@@ -610,7 +612,7 @@ function PipelineSutun({ stage, items }: { stage: Stage; items: QueueItem[] }) {
         )}
         {sirali.length > 5 && (
           <div className="text-center text-[11px] py-1.5 font-medium"
-            style={{ color: cfg.color, opacity: 0.7 }}>
+            style={portalStyle({ color: cfg.color, opacity: 0.7 })}>
             +{sirali.length - 5} daha
           </div>
         )}
@@ -627,23 +629,23 @@ function GecKalanSatir({ item }: { item: QueueItem }) {
   return (
     <Link href={item.actionPath}
       className="flex items-center gap-3 px-5 py-3 hover:bg-white/[0.03] transition group">
-      <Flame size={14} style={{ color: '#ef4444' }} />
+      <Flame size={14} style={portalStyle({ color: '#ef4444' })} />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <span className="text-[13px] font-semibold truncate" style={{ color: '#fafaf9' }}>
+          <span className="text-[13px] font-semibold truncate" style={portalStyle({ color: '#fafaf9' })}>
             {item.taxpayerName}
           </span>
           <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded"
-            style={{ background: 'rgba(239,68,68,0.18)', color: '#ef4444' }}>
+            style={portalStyle({ background: 'rgba(239,68,68,0.18)', color: '#ef4444' })}>
             {item.bekleyenGun}gün
           </span>
         </div>
-        <div className="text-[11px] mt-0.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
+        <div className="text-[11px] mt-0.5" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
           {cfg.label} · {item.actionLabel}
         </div>
       </div>
       <ChevronRight size={14} className="opacity-30 group-hover:opacity-100 transition"
-        style={{ color: GOLD }} />
+        style={portalStyle({ color: GOLD })} />
     </Link>
   );
 }

@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle, portalPaint } from '@/lib/portal-theme';
+
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { createPortal } from 'react-dom';
@@ -77,7 +79,7 @@ function ElapsedTimer({ startTime }: { startTime: number }) {
   const min = Math.floor(elapsed / 60);
   const sec = elapsed % 60;
   return (
-    <span className="text-xs" style={{ color: 'rgba(255,255,255,.4)' }}>
+    <span className="text-xs" style={portalStyle({ color: 'rgba(255,255,255,.4)' })}>
       {min > 0 ? `${min}dk ${sec}s` : `${sec}s`} geçti
     </span>
   );
@@ -721,31 +723,31 @@ export default function FisYazdirmaPage() {
       {/* HEADER — AI Maliyet imzası: üst renk şeridi + radial parıltı + degrade ikon kutusu */}
       <div
         className="relative overflow-hidden rounded-2xl border p-5"
-        style={{
+        style={portalStyle({
           borderColor: 'rgba(255,255,255,0.06)',
           background:
             'radial-gradient(120% 140% at 0% 0%, rgba(212,184,118,0.16), transparent 46%), radial-gradient(120% 140% at 100% 0%, rgba(139,118,73,0.12), transparent 48%), #0f0d0b',
-        }}
+        })}
       >
         <div
           className="absolute inset-x-0 top-0 h-1"
-          style={{ background: 'linear-gradient(90deg, #8b7649, #b8a06f, #d4b876, #e7cf95, #d4b876, #b8a06f)' }}
+          style={portalStyle({ background: 'linear-gradient(90deg, #8b7649, #b8a06f, #d4b876, #e7cf95, #d4b876, #b8a06f)' })}
         />
         <div className="flex items-center gap-2.5 mb-3">
-          <span className="w-[26px] h-px" style={{ background: '#d4b876' }} />
-          <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>Kontrol</span>
+          <span className="w-[26px] h-px" style={portalStyle({ background: '#d4b876' })} />
+          <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={portalStyle({ color: '#b8a06f' })}>Kontrol</span>
         </div>
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3.5">
             <span
               className="grid place-items-center rounded-xl flex-shrink-0"
-              style={{ width: 46, height: 46, background: 'linear-gradient(135deg, #d4b876, #b8a06f)', boxShadow: '0 8px 22px rgba(212,184,118,0.32)' }}
+              style={portalStyle({ width: 46, height: 46, background: 'linear-gradient(135deg, #d4b876, #b8a06f)', boxShadow: '0 8px 22px rgba(212,184,118,0.32)' })}
             >
-              <Printer size={24} style={{ color: '#1a1410' }} />
+              <Printer size={24} style={portalStyle({ color: '#1a1410' })} />
             </span>
             <div>
-              <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 30, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em', lineHeight: 1.05 }}>Fiş Yazdırma</h1>
-              <p className="text-[13px] mt-1.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
+              <h1 style={portalStyle({ fontFamily: 'Fraunces, serif', fontSize: 30, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em', lineHeight: 1.05 })}>Fiş Yazdırma</h1>
+              <p className="text-[13px] mt-1.5" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                 ÖKC fişi görsellerini yükleyin — OCR ile tarih okunur, Word belgesi oluşturulur
               </p>
             </div>
@@ -753,7 +755,7 @@ export default function FisYazdirmaPage() {
           {outputs.length > 0 && (
             <span
               className="hidden sm:inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-semibold flex-shrink-0"
-              style={{ background: 'rgba(212,184,118,0.10)', border: '1px solid rgba(212,184,118,0.28)', color: '#d4b876' }}
+              style={portalStyle({ background: 'rgba(212,184,118,0.10)', border: '1px solid rgba(212,184,118,0.28)', color: '#d4b876' })}
             >
               <Clock size={15} />
               {outputs.length} arşiv çıktısı
@@ -768,22 +770,22 @@ export default function FisYazdirmaPage() {
           {/* Faturalardan Çek butonu */}
           <div
             className="rounded-xl border p-4 flex flex-col sm:flex-row sm:items-center gap-3"
-            style={{
+            style={portalStyle({
               background: 'linear-gradient(135deg, rgba(212,184,118,.085) 0%, rgba(212,184,118,.02) 100%)',
               borderColor: 'rgba(212,184,118,.22)',
-            }}
+            })}
           >
             <span
               className="grid place-items-center rounded-xl flex-shrink-0"
-              style={{ width: 40, height: 40, background: 'rgba(212,184,118,0.13)' }}
+              style={portalStyle({ width: 40, height: 40, background: 'rgba(212,184,118,0.13)' })}
             >
-              <Download size={19} style={{ color: '#d4b876' }} />
+              <Download size={19} style={portalStyle({ color: '#d4b876' })} />
             </span>
             <div className="flex-1">
-              <p className="text-sm font-semibold" style={{ color: '#fafaf9' }}>
+              <p className="text-sm font-semibold" style={portalStyle({ color: '#fafaf9' })}>
                 Faturalardan Otomatik Çek
               </p>
-              <p className="text-xs mt-0.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
+              <p className="text-xs mt-0.5" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                 Mükellef ve dönem seçip daha önce MIHSAP'tan indirilmiş fişleri otomatik yükleyin.
               </p>
             </div>
@@ -791,7 +793,7 @@ export default function FisYazdirmaPage() {
               type="button"
               onClick={() => setShowFetchModal(true)}
               className="px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 flex-shrink-0"
-              style={{ background: 'linear-gradient(135deg, #d4b876, #b8a06f)', color: '#1a1410', boxShadow: '0 6px 18px rgba(212,184,118,0.28)' }}
+              style={portalStyle({ background: 'linear-gradient(135deg, #d4b876, #b8a06f)', color: '#1a1410', boxShadow: '0 6px 18px rgba(212,184,118,0.28)' })}
             >
               <Download size={15} />
               Faturalardan Çek
@@ -801,42 +803,42 @@ export default function FisYazdirmaPage() {
           {/* Kapak bilgileri kartı */}
           <div
             className="rounded-xl border p-4"
-            style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
+            style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' })}
           >
-            <h3 className="text-sm font-semibold mb-3 flex items-center gap-2.5" style={{ color: '#fafaf9' }}>
-              <span className="grid place-items-center rounded-lg flex-shrink-0" style={{ width: 30, height: 30, background: 'rgba(212,184,118,0.12)' }}>
-                <FileText size={16} style={{ color: '#d4b876' }} />
+            <h3 className="text-sm font-semibold mb-3 flex items-center gap-2.5" style={portalStyle({ color: '#fafaf9' })}>
+              <span className="grid place-items-center rounded-lg flex-shrink-0" style={portalStyle({ width: 30, height: 30, background: 'rgba(212,184,118,0.12)' })}>
+                <FileText size={16} style={portalStyle({ color: '#d4b876' })} />
               </span>
-              Kapak Sayfası Bilgileri <span className="font-medium" style={{ color: 'rgba(250,250,249,0.45)' }}>(opsiyonel)</span>
+              Kapak Sayfası Bilgileri <span className="font-medium" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>(opsiyonel)</span>
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div>
-                <label className="block text-xs mb-1" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                <label className="block text-xs mb-1" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                   Mükellef
                 </label>
                 <button
                   type="button"
                   onClick={() => setMukellefPickerOpen(true)}
                   className="w-full px-3 py-2 rounded-lg text-sm border outline-none flex items-center gap-2 text-left hover:brightness-110 transition"
-                  style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)', color: '#fafaf9' }}
+                  style={portalStyle({ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)', color: '#fafaf9' })}
                 >
-                  <span className="flex-1 truncate" style={{ color: mukellefName ? '#fafaf9' : 'rgba(250,250,249,0.45)' }}>
+                  <span className="flex-1 truncate" style={portalStyle({ color: mukellefName ? '#fafaf9' : 'rgba(250,250,249,0.45)' })}>
                     {mukellefName || 'Mükellef seç ya da boş bırakın'}
                   </span>
                   {mukellefName && (
                     <span
                       onClick={(e) => { e.stopPropagation(); setMukellefName(''); }}
                       className="p-0.5 rounded hover:bg-white/10"
-                      style={{ color: 'rgba(250,250,249,0.5)' }}
+                      style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}
                     >
                       <X size={13} />
                     </span>
                   )}
-                  <ChevronDown size={14} style={{ color: 'rgba(250,250,249,0.45)' }} />
+                  <ChevronDown size={14} style={portalStyle({ color: 'rgba(250,250,249,0.45)' })} />
                 </button>
               </div>
               <div>
-                <label className="block text-xs mb-1" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                <label className="block text-xs mb-1" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                   Dönem
                 </label>
                 <input
@@ -844,11 +846,11 @@ export default function FisYazdirmaPage() {
                   value={donem}
                   onChange={(e) => setDonem(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
-                  style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)', color: '#fafaf9' }}
+                  style={portalStyle({ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)', color: '#fafaf9' })}
                 />
               </div>
               <div>
-                <label className="block text-xs mb-1" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                <label className="block text-xs mb-1" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                   Fiş Boyutu
                 </label>
                 <div className="flex gap-1">
@@ -867,11 +869,11 @@ export default function FisYazdirmaPage() {
                       onClick={() => setPagesPerSheet(n as any)}
                       title={`Fiş genişliği ${cm} — büyük seçim daha okunaklı, küçük seçim daha az sayfa`}
                       className="flex-1 rounded-lg border px-2 py-2 text-sm font-medium leading-tight"
-                      style={{
+                      style={portalStyle({
                         background: pagesPerSheet === n ? 'rgba(184,160,111,.15)' : 'rgba(255,255,255,0.03)',
                         borderColor: pagesPerSheet === n ? '#b8a06f' : 'rgba(255,255,255,0.05)',
                         color: pagesPerSheet === n ? '#b8a06f' : '#fafaf9',
-                      }}
+                      })}
                     >
                       {ad}
                       <span className="block text-[10px] opacity-60">{cm}</span>
@@ -888,27 +890,27 @@ export default function FisYazdirmaPage() {
             onDragLeave={() => setDragging(false)}
             onClick={() => inputRef.current?.click()}
             className="rounded-xl border-2 border-dashed p-12 text-center cursor-pointer transition-all duration-200"
-            style={{
+            style={portalStyle({
               borderColor: dragging ? '#d4b876' : 'rgba(212,184,118,0.28)',
               background: dragging
                 ? 'rgba(212,184,118,0.12)'
                 : 'radial-gradient(60% 80% at 50% 0%, rgba(212,184,118,0.05), transparent 60%), rgba(255,255,255,0.015)',
-            }}
+            })}
           >
             <div
               className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 border"
-              style={{
+              style={portalStyle({
                 background: dragging ? '#d4b876' : 'linear-gradient(135deg, rgba(212,184,118,0.18), rgba(212,184,118,0.06))',
                 borderColor: dragging ? 'transparent' : 'rgba(212,184,118,0.2)',
-              }}
+              })}
             >
-              <Upload size={28} style={{ color: dragging ? '#1a1410' : '#d4b876' }} />
+              <Upload size={28} style={portalStyle({ color: dragging ? '#1a1410' : '#d4b876' })} />
             </div>
-            <p className="font-bold text-sm" style={{ color: '#fafaf9', fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
+            <p className="font-bold text-sm" style={portalStyle({ color: '#fafaf9', fontFamily: 'Plus Jakarta Sans, sans-serif' })}>
               Fiş görsellerini buraya sürükleyin
             </p>
-            <p className="text-xs mt-1" style={{ color: 'rgba(250,250,249,0.45)' }}>
-              ya da <span style={{ color: '#d4b876', fontWeight: 600 }}>tıklayarak seçin</span> — JPEG, PNG · Çoklu seçim
+            <p className="text-xs mt-1" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
+              ya da <span style={portalStyle({ color: '#d4b876', fontWeight: 600 })}>tıklayarak seçin</span> — JPEG, PNG · Çoklu seçim
             </p>
             <input ref={inputRef} type="file" accept="image/*" multiple className="hidden"
               onChange={(e) => e.target.files && addFiles(e.target.files)} />
@@ -918,23 +920,23 @@ export default function FisYazdirmaPage() {
             <div className="card p-4">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
-                  <FileImage size={15} style={{ color: '#d4b876' }} />
-                  <span className="text-sm font-semibold" style={{ color: '#fafaf9' }}>
+                  <FileImage size={15} style={portalStyle({ color: '#d4b876' })} />
+                  <span className="text-sm font-semibold" style={portalStyle({ color: '#fafaf9' })}>
                     {files.length} görsel seçildi
                   </span>
                 </div>
-                <button onClick={reset} className="text-xs" style={{ color: '#f43f5e' }}>Temizle</button>
+                <button onClick={reset} className="text-xs" style={portalStyle({ color: '#f43f5e' })}>Temizle</button>
               </div>
               <div className="grid grid-cols-6 gap-2 max-h-48 overflow-y-auto">
                 {files.map((f, i) => (
                   <div key={i} className="text-center">
                     <div
                       className="w-full h-16 rounded-lg flex items-center justify-center"
-                      style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}
+                      style={portalStyle({ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' })}
                     >
-                      <FileImage size={20} style={{ color: 'rgba(250,250,249,0.45)' }} />
+                      <FileImage size={20} style={portalStyle({ color: 'rgba(250,250,249,0.45)' })} />
                     </div>
-                    <p className="text-[10px] mt-0.5 truncate" style={{ color: 'rgba(250,250,249,0.45)' }}>{f.name}</p>
+                    <p className="text-[10px] mt-0.5 truncate" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>{f.name}</p>
                   </div>
                 ))}
               </div>
@@ -943,7 +945,7 @@ export default function FisYazdirmaPage() {
 
           {error && (
             <div className="rounded-xl px-4 py-3 text-sm flex items-start gap-2"
-              style={{ background: 'rgba(244,63,94,0.1)', border: '1px solid rgba(244,63,94,0.28)', color: '#fb7185' }}>
+              style={portalStyle({ background: 'rgba(244,63,94,0.1)', border: '1px solid rgba(244,63,94,0.28)', color: '#fb7185' })}>
               <AlertCircle size={16} className="flex-shrink-0 mt-0.5" />
               {error}
             </div>
@@ -953,13 +955,13 @@ export default function FisYazdirmaPage() {
             disabled={files.length === 0}
             onClick={handleScan}
             className="btn-primary w-full py-3 text-sm"
-            style={{
+            style={portalStyle({
               background: 'linear-gradient(135deg, #e7cf95, #d4b876 55%, #b8a06f)',
               borderColor: 'transparent',
               color: '#1a1410',
               fontWeight: 700,
               boxShadow: files.length === 0 ? 'none' : '0 8px 24px rgba(212,184,118,0.3)',
-            }}
+            })}
           >
             <ScanLine size={16} />
             OCR ile Tara ({files.length} görsel)
@@ -968,7 +970,7 @@ export default function FisYazdirmaPage() {
           {/* Geçmiş Çıktılar */}
           <div
             className="rounded-xl border mt-2"
-            style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
+            style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' })}
           >
             <button
               type="button"
@@ -976,13 +978,13 @@ export default function FisYazdirmaPage() {
               className="w-full flex items-center justify-between px-4 py-3"
             >
               <div className="flex items-center gap-2">
-                <Clock size={15} style={{ color: 'rgba(250,250,249,0.45)' }} />
-                <span className="text-sm font-semibold" style={{ color: '#fafaf9' }}>
+                <Clock size={15} style={portalStyle({ color: 'rgba(250,250,249,0.45)' })} />
+                <span className="text-sm font-semibold" style={portalStyle({ color: '#fafaf9' })}>
                   Geçmiş Word Çıktıları
                 </span>
                 <span
                   className="text-xs px-2 py-0.5 rounded-full font-semibold"
-                  style={{ background: 'rgba(184,160,111,.15)', color: '#b8a06f' }}
+                  style={portalStyle({ background: 'rgba(184,160,111,.15)', color: '#b8a06f' })}
                 >
                   {outputs.length}
                 </span>
@@ -990,28 +992,28 @@ export default function FisYazdirmaPage() {
                   <div className="hidden sm:flex items-center gap-1.5">
                     <span
                       className="text-[10px] px-2 py-0.5 rounded-full font-semibold"
-                      style={{ background: 'rgba(34,197,94,0.12)', color: '#22c55e' }}
+                      style={portalStyle({ background: 'rgba(34,197,94,0.12)', color: '#22c55e' })}
                     >
                       {printSummary.printed} yazdırıldı
                     </span>
                     <span
                       className="text-[10px] px-2 py-0.5 rounded-full font-semibold"
-                      style={{ background: 'rgba(255,255,255,0.045)', color: 'rgba(250,250,249,0.55)' }}
+                      style={portalStyle({ background: 'rgba(255,255,255,0.045)', color: 'rgba(250,250,249,0.55)' })}
                     >
                       {printSummary.unprinted} bekliyor
                     </span>
                   </div>
                 )}
               </div>
-              <span className="text-xs" style={{ color: 'rgba(250,250,249,0.45)' }}>
+              <span className="text-xs" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                 {showOutputs ? 'Gizle' : 'Göster'}
               </span>
             </button>
 
             {showOutputs && (
-              <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+              <div style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.05)' })}>
                 {outputsLoading ? (
-                  <div className="px-4 py-8 text-center text-xs" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                  <div className="px-4 py-8 text-center text-xs" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                     Yükleniyor...
                   </div>
                 ) : outputs.length === 0 ? (
@@ -1019,12 +1021,12 @@ export default function FisYazdirmaPage() {
                     <FileText
                       size={28}
                       className="mx-auto mb-2"
-                      style={{ color: 'rgba(250,250,249,0.45)' }}
+                      style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}
                     />
-                    <p className="text-sm" style={{ color: '#fafaf9' }}>
+                    <p className="text-sm" style={portalStyle({ color: '#fafaf9' })}>
                       Henüz arşivlenmiş Word çıktısı yok.
                     </p>
-                    <p className="text-xs mt-1" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                    <p className="text-xs mt-1" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                       Oluşturduğunuz her Word belgesi buraya otomatik kaydedilir.
                     </p>
                   </div>
@@ -1039,25 +1041,25 @@ export default function FisYazdirmaPage() {
                         <div
                           key={o.id}
                           className="px-4 py-3 flex flex-col gap-3 sm:flex-row sm:items-center"
-                          style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
+                          style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.05)' })}
                         >
                           <div className="flex items-center gap-3 min-w-0 flex-1">
                             <div
                               className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
-                              style={{ background: 'rgba(184,160,111,.12)' }}
+                              style={portalStyle({ background: 'rgba(184,160,111,.12)' })}
                             >
-                              <FileText size={16} style={{ color: '#b8a06f' }} />
+                              <FileText size={16} style={portalStyle({ color: '#b8a06f' })} />
                             </div>
                             <div className="flex-1 min-w-0">
                               <p
                                 className="text-sm font-medium truncate"
-                                style={{ color: '#fafaf9' }}
+                                style={portalStyle({ color: '#fafaf9' })}
                               >
                                 {o.mukellefName || '(mükellef yok)'}
                                 {o.donem && (
                                   <span
                                     className="ml-2 text-xs font-normal"
-                                    style={{ color: 'rgba(250,250,249,0.45)' }}
+                                    style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}
                                   >
                                     · {o.donem}
                                   </span>
@@ -1065,7 +1067,7 @@ export default function FisYazdirmaPage() {
                               </p>
                               <p
                                 className="text-[11px] mt-0.5 truncate"
-                                style={{ color: 'rgba(250,250,249,0.45)' }}
+                                style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}
                               >
                                 {o.fileCount} fiş · {formatSize(o.fileSize)} ·{' '}
                                 {formatDateTime(o.createdAt)}
@@ -1076,7 +1078,7 @@ export default function FisYazdirmaPage() {
                           <div className="flex flex-wrap items-center gap-2 sm:justify-end sm:flex-shrink-0">
                             <span
                               className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold"
-                              style={{ background: info.bg, borderColor: info.border, color: info.color }}
+                              style={portalStyle({ background: info.bg, borderColor: info.border, color: info.color })}
                               title={info.detail}
                             >
                               <StatusIcon size={13} className={o.printStatus === 'PRINTING' ? 'animate-spin' : ''} />
@@ -1092,11 +1094,11 @@ export default function FisYazdirmaPage() {
                               disabled={isMarking}
                               className="h-8 px-3 rounded-lg inline-flex items-center gap-1.5 text-[11px] font-semibold transition-colors disabled:opacity-50"
                               title={isPrinted ? 'Yazdırılmadı olarak işaretle' : 'Yazdırıldı olarak işaretle'}
-                              style={{
+                              style={portalStyle({
                                 color: isPrinted ? 'rgba(250,250,249,0.65)' : '#d4b876',
                                 background: isPrinted ? 'rgba(255,255,255,0.045)' : 'rgba(212,184,118,0.08)',
                                 border: `1px solid ${isPrinted ? 'rgba(255,255,255,0.08)' : 'rgba(212,184,118,0.22)'}`,
-                              }}
+                              })}
                             >
                               {isMarking ? <Loader2 size={13} className="animate-spin" /> : isPrinted ? <X size={13} /> : <CheckCircle2 size={13} />}
                               {isPrinted ? 'Geri al' : 'İşaretle'}
@@ -1105,7 +1107,7 @@ export default function FisYazdirmaPage() {
                               onClick={() => downloadOutput(o.id, o.filename)}
                               className="h-8 w-8 rounded-lg inline-flex items-center justify-center hover:bg-white/5 transition-colors"
                               title="İndir"
-                              style={{ color: '#b8a06f' }}
+                              style={portalStyle({ color: '#b8a06f' })}
                             >
                               <Download size={15} />
                             </button>
@@ -1113,7 +1115,7 @@ export default function FisYazdirmaPage() {
                               onClick={() => removeOutput(o.id)}
                               className="h-8 w-8 rounded-lg inline-flex items-center justify-center hover:bg-white/5 transition-colors"
                               title="Sil"
-                              style={{ color: '#f43f5e' }}
+                              style={portalStyle({ color: '#f43f5e' })}
                             >
                               <Trash2 size={14} />
                             </button>
@@ -1133,39 +1135,39 @@ export default function FisYazdirmaPage() {
       {stage === 'scanning' && (
         <div
           className="relative overflow-hidden rounded-2xl border p-8 flex flex-col items-center gap-6"
-          style={{
+          style={portalStyle({
             borderColor: 'rgba(212,184,118,0.2)',
             background: 'radial-gradient(90% 120% at 50% 0%, rgba(212,184,118,0.1), transparent 60%), #0f0d0b',
             boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
-          }}
+          })}
         >
           <div
             className="absolute inset-x-0 top-0 h-1"
-            style={{ background: 'linear-gradient(90deg, #8b7649, #b8a06f, #d4b876, #e7cf95, #d4b876, #b8a06f)' }}
+            style={portalStyle({ background: 'linear-gradient(90deg, #8b7649, #b8a06f, #d4b876, #e7cf95, #d4b876, #b8a06f)' })}
           />
           {/* Pulsing halka animasyonu */}
           <div className="relative w-28 h-28 flex items-center justify-center">
             <div
               className="absolute inset-0 rounded-full opacity-20 animate-ping"
-              style={{ background: '#d4b876' }}
+              style={portalStyle({ background: '#d4b876' })}
             />
             <div
               className="absolute inset-2 rounded-full opacity-30 animate-ping"
-              style={{ background: '#d4b876', animationDelay: '0.4s' }}
+              style={portalStyle({ background: '#d4b876', animationDelay: '0.4s' })}
             />
             <div
               className="w-20 h-20 rounded-full border-4 border-transparent animate-spin"
-              style={{ borderTopColor: '#d4b876', borderRightColor: 'rgba(212,184,118,.2)' }}
+              style={portalStyle({ borderTopColor: '#d4b876', borderRightColor: 'rgba(212,184,118,.2)' })}
             />
-            <ScanLine size={28} className="absolute" style={{ color: '#d4b876' }} />
+            <ScanLine size={28} className="absolute" style={portalStyle({ color: '#d4b876' })} />
           </div>
 
           {/* Başlık */}
           <div className="text-center space-y-1">
-            <p className="text-lg font-bold" style={{ color: '#fafaf9', fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
+            <p className="text-lg font-bold" style={portalStyle({ color: '#fafaf9', fontFamily: 'Plus Jakarta Sans, sans-serif' })}>
               OCR Tarama Devam Ediyor
             </p>
-            <p className="text-sm" style={{ color: 'rgba(250,250,249,.5)' }}>
+            <p className="text-sm" style={portalStyle({ color: 'rgba(250,250,249,.5)' })}>
               {files.length} fiş için yaklaşık {Math.ceil(files.length * 4 / 60)} dakika sürebilir
             </p>
             {scanStartTime > 0 && <ElapsedTimer startTime={scanStartTime} />}
@@ -1173,17 +1175,17 @@ export default function FisYazdirmaPage() {
 
           {/* Progress Bar */}
           <div className="w-full max-w-md">
-            <div className="flex justify-between text-xs mb-1.5" style={{ color: 'rgba(250,250,249,.45)' }}>
+            <div className="flex justify-between text-xs mb-1.5" style={portalStyle({ color: 'rgba(250,250,249,.45)' })}>
               <span>İlerleme</span>
               <span>%{Math.round((simScanned / Math.max(files.length, 1)) * 100)}</span>
             </div>
-            <div className="h-2 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,.08)' }}>
+            <div className="h-2 rounded-full overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,.08)' })}>
               <div
                 className="h-full rounded-full transition-all duration-500"
-                style={{
+                style={portalStyle({
                   width: `${(simScanned / Math.max(files.length, 1)) * 100}%`,
                   background: 'linear-gradient(90deg, #b8a06f 0%, #d4b876 60%, #e7cf95 100%)',
-                }}
+                })}
               />
             </div>
           </div>
@@ -1198,12 +1200,12 @@ export default function FisYazdirmaPage() {
               <div
                 key={label}
                 className="rounded-xl py-3 text-center border"
-                style={{ background: 'rgba(255,255,255,.025)', borderColor: 'rgba(255,255,255,.06)' }}
+                style={portalStyle({ background: 'rgba(255,255,255,.025)', borderColor: 'rgba(255,255,255,.06)' })}
               >
-                <p className="text-2xl font-extrabold" style={{ color, fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
+                <p className="text-2xl font-extrabold" style={portalStyle({ color, fontFamily: 'Plus Jakarta Sans, sans-serif' })}>
                   {value}
                 </p>
-                <p className="text-[10px] mt-0.5" style={{ color: 'rgba(250,250,249,.45)' }}>{label}</p>
+                <p className="text-[10px] mt-0.5" style={portalStyle({ color: 'rgba(250,250,249,.45)' })}>{label}</p>
               </div>
             ))}
           </div>
@@ -1223,13 +1225,13 @@ export default function FisYazdirmaPage() {
               <div
                 key={label}
                 className="relative overflow-hidden rounded-2xl border p-5"
-                style={{ background: bg, borderColor: border }}
+                style={portalStyle({ background: bg, borderColor: border })}
               >
-                <span className="absolute left-0 top-0 bottom-0" style={{ width: 3, background: color }} />
-                <p className="text-3xl font-extrabold" style={{ color, fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
+                <span className="absolute left-0 top-0 bottom-0" style={portalStyle({ width: 3, background: color })} />
+                <p className="text-3xl font-extrabold" style={portalStyle({ color, fontFamily: 'Plus Jakarta Sans, sans-serif' })}>
                   {value}
                 </p>
-                <p className="text-xs mt-1" style={{ color: 'rgba(250,250,249,0.45)' }}>{label}</p>
+                <p className="text-xs mt-1" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>{label}</p>
               </div>
             ))}
           </div>
@@ -1239,21 +1241,21 @@ export default function FisYazdirmaPage() {
             {scanResult.detected.length > 0 && (
               <div className="lg:col-span-2">
                 <div className="card overflow-hidden">
-                  <div className="px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', background: 'rgba(255,255,255,0.03)' }}>
-                    <p className="text-xs font-bold uppercase tracking-widest" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                  <div className="px-4 py-3" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.05)', background: 'rgba(255,255,255,0.03)' })}>
+                    <p className="text-xs font-bold uppercase tracking-widest" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                       Tarih Okundu ({scanResult.detected.length})
                     </p>
                   </div>
-                  <div className="overflow-y-auto" style={{ maxHeight: '600px' }}>
+                  <div className="overflow-y-auto" style={portalStyle({ maxHeight: '600px' })}>
                     {scanResult.detected.map((d) => (
                       <div
                         key={d.filename}
                         className="flex items-start gap-3 px-4 py-2.5"
-                        style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
+                        style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.05)' })}
                       >
-                        <CheckCircle2 size={14} style={{ color: '#34d399', flexShrink: 0, marginTop: 2 }} />
+                        <CheckCircle2 size={14} style={portalStyle({ color: '#34d399', flexShrink: 0, marginTop: 2 })} />
                         <div className="flex-1 min-w-0">
-                          <p className="text-xs truncate" style={{ color: 'rgba(250,250,249,0.7)' }}>{d.filename}</p>
+                          <p className="text-xs truncate" style={portalStyle({ color: 'rgba(250,250,249,0.7)' })}>{d.filename}</p>
                           {editingFile === d.filename ? (
                             <div className="flex items-center gap-1 mt-0.5">
                               <input
@@ -1261,37 +1263,37 @@ export default function FisYazdirmaPage() {
                                 value={allDates[d.filename] ?? d.date}
                                 onChange={(e) => setAllDates((p) => ({ ...p, [d.filename]: e.target.value }))}
                                 className="input-base py-0.5 text-xs"
-                                style={{ maxWidth: 130 }}
+                                style={portalStyle({ maxWidth: 130 })}
                               />
                               <button onClick={() => setEditingFile(null)} className="p-1">
-                                <Check size={12} style={{ color: '#34d399' }} />
+                                <Check size={12} style={portalStyle({ color: '#34d399' })} />
                               </button>
                             </div>
                           ) : (
                             <div className="flex items-center gap-1 mt-0.5 flex-wrap">
                               <span
                                 className="text-xs font-semibold px-1.5 py-0.5 rounded"
-                                style={{ background: 'rgba(52,211,153,0.12)', color: '#34d399' }}
+                                style={portalStyle({ background: 'rgba(52,211,153,0.12)', color: '#34d399' })}
                               >
                                 {isoToDisplay(allDates[d.filename] ?? d.date)}
                               </span>
                               {knownDates[d.filename] && (
                                 <span
                                   className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
-                                  style={{ background: 'rgba(96,165,250,0.14)', color: '#60a5fa' }}
+                                  style={portalStyle({ background: 'rgba(96,165,250,0.14)', color: '#60a5fa' })}
                                   title="MIHSAP'ta işlendiği kabul tarihi (muhasebe açısından doğru olan)"
                                 >
                                   DB
                                 </span>
                               )}
                               <button onClick={() => setEditingFile(d.filename)}>
-                                <Pencil size={10} style={{ color: 'rgba(250,250,249,0.45)' }} />
+                                <Pencil size={10} style={portalStyle({ color: 'rgba(250,250,249,0.45)' })} />
                               </button>
                             </div>
                           )}
                           {/* Ek alanlar (varsa) */}
                           {(d.belge_no || d.cari || d.toplam) && (
-                            <p className="text-[10px] mt-1 truncate" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                            <p className="text-[10px] mt-1 truncate" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                               {[d.belge_no && `No: ${d.belge_no}`, d.toplam && `Top: ${d.toplam}`]
                                 .filter(Boolean).join(' | ')}
                             </p>
@@ -1308,21 +1310,21 @@ export default function FisYazdirmaPage() {
             <div className={scanResult.detected.length > 0 ? 'lg:col-span-3' : 'lg:col-span-5'}>
               {scanResult.unread.length === 0 ? (
                 <div className="card flex flex-col items-center py-12 text-center">
-                  <CheckCircle2 size={40} style={{ color: '#34d399' }} />
-                  <p className="font-bold mt-3" style={{ color: '#fafaf9', fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
+                  <CheckCircle2 size={40} style={portalStyle({ color: '#34d399' })} />
+                  <p className="font-bold mt-3" style={portalStyle({ color: '#fafaf9', fontFamily: 'Plus Jakarta Sans, sans-serif' })}>
                     Tüm fişlerden tarih okundu!
                   </p>
-                  <p className="text-sm mt-1" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                  <p className="text-sm mt-1" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                     Doğrudan Word belgesi oluşturabilirsiniz.
                   </p>
                 </div>
               ) : (
                 <div>
                   <div className="flex items-center justify-between mb-3">
-                    <p className="text-xs font-bold uppercase tracking-widest" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                    <p className="text-xs font-bold uppercase tracking-widest" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                       Teyit Gereken ({scanResult.unread.length})
                     </p>
-                    <p className="text-xs" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                    <p className="text-xs" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                       Her fiş için tarih seçin · "Öncekinden kopyala" ile hızlandırın
                     </p>
                   </div>
@@ -1342,7 +1344,7 @@ export default function FisYazdirmaPage() {
                         });
                       }}
                       className="px-3 py-1.5 rounded-lg text-xs font-medium"
-                      style={{ background: 'rgba(184,160,111,.12)', color: '#b8a06f' }}
+                      style={portalStyle({ background: 'rgba(184,160,111,.12)', color: '#b8a06f' })}
                     >
                       Hepsine Dönem Başı ({donem}-01)
                     </button>
@@ -1362,12 +1364,12 @@ export default function FisYazdirmaPage() {
                         });
                       }}
                       className="px-3 py-1.5 rounded-lg text-xs font-medium"
-                      style={{ background: 'rgba(255,255,255,0.05)', color: '#fafaf9' }}
+                      style={portalStyle({ background: 'rgba(255,255,255,0.05)', color: '#fafaf9' })}
                     >
                       Boşları Son Tarihle Doldur
                     </button>
                   </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3 overflow-y-auto" style={{ maxHeight: '600px' }}>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3 overflow-y-auto" style={portalStyle({ maxHeight: '600px' })}>
                     {scanResult.unread.map((u, idx) => {
                       const prev = idx > 0 ? scanResult.unread[idx - 1] : null;
                       const prevDate = prev ? allDates[prev.filename] : '';
@@ -1375,21 +1377,21 @@ export default function FisYazdirmaPage() {
                         <div
                           key={u.filename}
                           className="rounded-xl overflow-hidden"
-                          style={{
+                          style={portalStyle({
                             border: allDates[u.filename] ? '2px solid #34d399' : '2px solid rgba(255,255,255,0.05)',
                             background: 'rgba(255,255,255,0.03)',
                             boxShadow: '0 2px 6px rgba(0,0,0,0.15)',
-                          }}
+                          })}
                         >
                           {u.thumbnail ? (
-                            <img src={u.thumbnail} alt={u.filename} className="w-full object-cover" style={{ height: 180 }} />
+                            <img src={u.thumbnail} alt={u.filename} className="w-full object-cover" style={portalStyle({ height: 180 })} />
                           ) : (
-                            <div className="w-full flex items-center justify-center" style={{ height: 180, background: 'rgba(255,255,255,0.03)' }}>
-                              <FileImage size={32} style={{ color: 'rgba(250,250,249,0.45)' }} />
+                            <div className="w-full flex items-center justify-center" style={portalStyle({ height: 180, background: 'rgba(255,255,255,0.03)' })}>
+                              <FileImage size={32} style={portalStyle({ color: 'rgba(250,250,249,0.45)' })} />
                             </div>
                           )}
                           <div className="p-2.5 space-y-2">
-                            <p className="text-xs font-medium truncate" style={{ color: 'rgba(250,250,249,0.7)' }}>
+                            <p className="text-xs font-medium truncate" style={portalStyle({ color: 'rgba(250,250,249,0.7)' })}>
                               {u.filename}
                             </p>
                             <input
@@ -1397,14 +1399,14 @@ export default function FisYazdirmaPage() {
                               value={allDates[u.filename] ?? ''}
                               onChange={(e) => setAllDates((prev) => ({ ...prev, [u.filename]: e.target.value }))}
                               className="input-base w-full text-xs py-1.5"
-                              style={{ borderColor: allDates[u.filename] ? '#34d399' : 'rgba(255,255,255,0.05)' }}
+                              style={portalStyle({ borderColor: allDates[u.filename] ? '#34d399' : 'rgba(255,255,255,0.05)' })}
                             />
                             {prevDate && !allDates[u.filename] && (
                               <button
                                 type="button"
                                 onClick={() => setAllDates((p) => ({ ...p, [u.filename]: prevDate }))}
                                 className="w-full text-[10px] py-1 rounded"
-                                style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.45)' }}
+                                style={portalStyle({ background: 'rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.45)' })}
                               >
                                 ⬆ Önceki: {isoToDisplay(prevDate)}
                               </button>
@@ -1427,13 +1429,13 @@ export default function FisYazdirmaPage() {
             <button
               onClick={handleGenerate}
               className="btn-primary flex-1 py-3"
-              style={{
+              style={portalStyle({
                 background: 'linear-gradient(135deg, #e7cf95, #d4b876 55%, #b8a06f)',
                 borderColor: 'transparent',
                 color: '#1a1410',
                 fontWeight: 700,
                 boxShadow: '0 8px 24px rgba(212,184,118,0.3)',
-              }}
+              })}
             >
               {scanResult.unread.filter((u) => !allDates[u.filename]).length > 0 ? (
                 <><AlertCircle size={15} />Word Oluştur ({scanResult.unread.filter((u) => !allDates[u.filename]).length} teyit bekliyor)</>
@@ -1450,13 +1452,13 @@ export default function FisYazdirmaPage() {
         <div className="card flex flex-col items-center py-16 gap-5">
           <div
             className="w-16 h-16 rounded-full border-4 border-transparent animate-spin"
-            style={{ borderTopColor: '#d4b876', borderRightColor: '#d4b876' }}
+            style={portalStyle({ borderTopColor: '#d4b876', borderRightColor: '#d4b876' })}
           />
           <div className="text-center">
-            <p className="font-bold" style={{ color: '#fafaf9', fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
+            <p className="font-bold" style={portalStyle({ color: '#fafaf9', fontFamily: 'Plus Jakarta Sans, sans-serif' })}>
               Word belgesi hazırlanıyor...
             </p>
-            <p className="text-sm mt-1" style={{ color: 'rgba(250,250,249,0.45)' }}>
+            <p className="text-sm mt-1" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
               Fişler tarihe göre sıralanıyor ve belgeye aktarılıyor.
             </p>
           </div>
@@ -1466,14 +1468,14 @@ export default function FisYazdirmaPage() {
       {/* ── DONE ── */}
       {stage === 'done' && (
         <div className="card flex flex-col items-center py-16 gap-4 text-center">
-          <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ background: 'rgba(52,211,153,0.12)' }}>
-            <CheckCircle2 size={36} style={{ color: '#34d399' }} />
+          <div className="w-16 h-16 rounded-full flex items-center justify-center" style={portalStyle({ background: 'rgba(52,211,153,0.12)' })}>
+            <CheckCircle2 size={36} style={portalStyle({ color: '#34d399' })} />
           </div>
           <div>
-            <h2 className="text-xl font-bold" style={{ color: '#fafaf9', fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
+            <h2 className="text-xl font-bold" style={portalStyle({ color: '#fafaf9', fontFamily: 'Plus Jakarta Sans, sans-serif' })}>
               Word Belgesi İndirildi!
             </h2>
-            <p className="text-sm mt-1" style={{ color: 'rgba(250,250,249,0.45)' }}>
+            <p className="text-sm mt-1" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
               {wordTotal} fiş tarih sırasında düzenlenerek Word'e aktarıldı.
             </p>
           </div>
@@ -1481,13 +1483,13 @@ export default function FisYazdirmaPage() {
             <button
               onClick={reset}
               className="btn-primary px-8"
-              style={{
+              style={portalStyle({
                 background: 'linear-gradient(135deg, #e7cf95, #d4b876 55%, #b8a06f)',
                 borderColor: 'transparent',
                 color: '#1a1410',
                 fontWeight: 700,
                 boxShadow: '0 8px 24px rgba(212,184,118,0.3)',
-              }}
+              })}
             >
               Yeni İşlem Başlat
             </button>
@@ -1499,32 +1501,32 @@ export default function FisYazdirmaPage() {
       {showFetchModal && typeof document !== 'undefined' && createPortal(
         <div
           className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
-          style={{
+          style={portalStyle({
             background: 'rgba(0,0,0,.85)',
             position: 'fixed',
             top: 0,
             left: 0,
             right: 0,
             bottom: 0,
-          }}
+          })}
           onClick={() => !fetchLoading && setShowFetchModal(false)}
         >
           <div
             className="rounded-2xl max-w-lg w-full p-6 space-y-4"
-            style={{
+            style={portalStyle({
               background: '#12100c',
               border: '1px solid rgba(184,160,111,0.18)',
               boxShadow: '0 25px 50px -12px rgba(0,0,0,.7)',
               color: '#fafaf9',
-            }}
+            })}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between">
               <div>
-                <h3 className="text-lg font-bold" style={{ color: '#fafaf9', fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
+                <h3 className="text-lg font-bold" style={portalStyle({ color: '#fafaf9', fontFamily: 'Plus Jakarta Sans, sans-serif' })}>
                   Faturalardan Fiş Çek
                 </h3>
-                <p className="text-xs mt-0.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                <p className="text-xs mt-0.5" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                   Seçtiğiniz mükellefin ilgili dönemindeki JPEG fişler yüklenir.
                 </p>
               </div>
@@ -1532,7 +1534,7 @@ export default function FisYazdirmaPage() {
                 onClick={() => !fetchLoading && setShowFetchModal(false)}
                 disabled={fetchLoading}
                 className="p-1 rounded hover:bg-white/5"
-                style={{ color: 'rgba(250,250,249,0.45)' }}
+                style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}
               >
                 <X size={18} />
               </button>
@@ -1540,7 +1542,7 @@ export default function FisYazdirmaPage() {
 
             <div className="space-y-3">
               <div>
-                <label className="block text-xs mb-1" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                <label className="block text-xs mb-1" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                   Mükellef *
                 </label>
                 <TaxpayerSelect
@@ -1557,7 +1559,7 @@ export default function FisYazdirmaPage() {
               </div>
 
               <div>
-                <label className="block text-xs mb-1" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                <label className="block text-xs mb-1" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                   Dönem *
                 </label>
                 <input
@@ -1566,7 +1568,7 @@ export default function FisYazdirmaPage() {
                   onChange={(e) => setFetchDonem(e.target.value)}
                   disabled={fetchLoading}
                   className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
-                  style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)', color: '#fafaf9' }}
+                  style={portalStyle({ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)', color: '#fafaf9' })}
                 />
               </div>
             </div>
@@ -1574,10 +1576,10 @@ export default function FisYazdirmaPage() {
             {fetchStatus && (
               <div
                 className="rounded-lg px-3 py-2 text-xs flex items-center gap-2"
-                style={{
+                style={portalStyle({
                   background: fetchStatus.startsWith('Hata') ? 'rgba(244,63,94,0.1)' : 'rgba(212,184,118,.08)',
                   color: fetchStatus.startsWith('Hata') ? '#fb7185' : '#fafaf9',
-                }}
+                })}
               >
                 {fetchLoading && <Loader2 size={14} className="animate-spin flex-shrink-0" />}
                 <span>{fetchStatus}</span>
@@ -1586,19 +1588,19 @@ export default function FisYazdirmaPage() {
 
             {fetchProgress && (
               <div>
-                <div className="flex justify-between text-xs mb-1" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                <div className="flex justify-between text-xs mb-1" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                   <span>İndiriliyor</span>
                   <span>
                     {fetchProgress.current} / {fetchProgress.total}
                   </span>
                 </div>
-                <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.05)' }}>
+                <div className="h-1.5 rounded-full overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.05)' })}>
                   <div
                     className="h-full transition-all duration-300"
-                    style={{
+                    style={portalStyle({
                       width: `${(fetchProgress.current / Math.max(fetchProgress.total, 1)) * 100}%`,
                       background: '#b8a06f',
-                    }}
+                    })}
                   />
                 </div>
               </div>
@@ -1609,7 +1611,7 @@ export default function FisYazdirmaPage() {
                 onClick={() => setShowFetchModal(false)}
                 disabled={fetchLoading}
                 className="flex-1 px-4 py-2 rounded-lg text-sm font-medium border"
-                style={{ borderColor: 'rgba(255,255,255,0.05)', color: '#fafaf9' }}
+                style={portalStyle({ borderColor: 'rgba(255,255,255,0.05)', color: '#fafaf9' })}
               >
                 İptal
               </button>
@@ -1617,7 +1619,7 @@ export default function FisYazdirmaPage() {
                 onClick={handleFetchFromInvoices}
                 disabled={fetchLoading || !fetchMukellefId || !fetchDonem}
                 className="flex-1 px-4 py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-50"
-                style={{ background: 'linear-gradient(135deg, #d4b876, #b8a06f)', color: '#1a1410' }}
+                style={portalStyle({ background: 'linear-gradient(135deg, #d4b876, #b8a06f)', color: '#1a1410' })}
               >
                 {fetchLoading ? (
                   <>
@@ -1641,48 +1643,48 @@ export default function FisYazdirmaPage() {
       {mukellefPickerOpen && typeof document !== 'undefined' && createPortal(
         <div
           className="fixed inset-0 z-[60] flex items-start justify-center p-4 pt-[8vh]"
-          style={{ background: 'rgba(0,0,0,.6)', backdropFilter: 'blur(6px)' }}
+          style={portalStyle({ background: 'rgba(0,0,0,.6)', backdropFilter: 'blur(6px)' })}
           onClick={() => setMukellefPickerOpen(false)}
         >
           <div
             className="w-full max-w-xl rounded-2xl border shadow-2xl flex flex-col overflow-hidden"
-            style={{ background: 'rgba(17,14,12,0.98)', borderColor: 'rgba(255,255,255,0.05)', maxHeight: '84vh' }}
+            style={portalStyle({ background: 'rgba(17,14,12,0.98)', borderColor: 'rgba(255,255,255,0.05)', maxHeight: '84vh' })}
             onClick={(e) => e.stopPropagation()}
           >
             <div
               className="flex items-center justify-between px-5 py-4 border-b"
-              style={{ borderColor: 'rgba(255,255,255,0.05)', background: 'linear-gradient(135deg, rgba(184,160,111,.08), transparent)' }}
+              style={portalStyle({ borderColor: 'rgba(255,255,255,0.05)', background: 'linear-gradient(135deg, rgba(184,160,111,.08), transparent)' })}
             >
               <div>
-                <h3 className="text-lg font-bold" style={{ color: '#fafaf9' }}>Mükellef Seç</h3>
-                <p className="text-xs mt-0.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                <h3 className="text-lg font-bold" style={portalStyle({ color: '#fafaf9' })}>Mükellef Seç</h3>
+                <p className="text-xs mt-0.5" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                   {taxpayers.length} mükellef · kapak sayfası için
                 </p>
               </div>
               <button
                 onClick={() => setMukellefPickerOpen(false)}
                 className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/5"
-                style={{ color: 'rgba(250,250,249,0.45)' }}
+                style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}
               >
                 <X size={16} />
               </button>
             </div>
-            <div className="px-5 py-3 border-b" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+            <div className="px-5 py-3 border-b" style={portalStyle({ borderColor: 'rgba(255,255,255,0.05)' })}>
               <div
                 className="flex items-center gap-2 px-3 py-2.5 rounded-lg border"
-                style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)' }}
+                style={portalStyle({ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)' })}
               >
-                <Search size={14} style={{ color: 'rgba(250,250,249,0.45)' }} />
+                <Search size={14} style={portalStyle({ color: 'rgba(250,250,249,0.45)' })} />
                 <input
                   value={mukellefPickerSearch}
                   onChange={(e) => setMukellefPickerSearch(e.target.value)}
                   placeholder="Mükellef adı ara…"
                   autoFocus
                   className="flex-1 bg-transparent outline-none text-sm"
-                  style={{ color: '#fafaf9' }}
+                  style={portalStyle({ color: '#fafaf9' })}
                 />
                 {mukellefPickerSearch && (
-                  <button onClick={() => setMukellefPickerSearch('')} style={{ color: 'rgba(250,250,249,0.45)' }}>
+                  <button onClick={() => setMukellefPickerSearch('')} style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                     <X size={13} />
                   </button>
                 )}
@@ -1690,7 +1692,7 @@ export default function FisYazdirmaPage() {
             </div>
             <div className="flex-1 overflow-y-auto p-2">
               {taxpayers.filter((t) => t.name.toLowerCase().includes(mukellefPickerSearch.toLowerCase())).length === 0 ? (
-                <div className="text-sm p-8 text-center" style={{ color: 'rgba(250,250,249,0.45)' }}>Sonuç yok</div>
+                <div className="text-sm p-8 text-center" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>Sonuç yok</div>
               ) : (
                 taxpayers
                   .filter((t) => t.name.toLowerCase().includes(mukellefPickerSearch.toLowerCase()))
@@ -1707,16 +1709,16 @@ export default function FisYazdirmaPage() {
                           setMukellefPickerSearch('');
                         }}
                         className="w-full flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg text-left transition-colors"
-                        style={{ background: checked ? 'rgba(184,160,111,.08)' : 'transparent', color: '#fafaf9' }}
-                        onMouseEnter={(e) => { if (!checked) (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,.03)'; }}
-                        onMouseLeave={(e) => { if (!checked) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+                        style={portalStyle({ background: checked ? 'rgba(184,160,111,.08)' : 'transparent', color: '#fafaf9' })}
+                        onMouseEnter={(e) => { if (!checked) (e.currentTarget as HTMLElement).style.background = portalPaint('rgba(255,255,255,.03)', 'background'); }}
+                        onMouseLeave={(e) => { if (!checked) (e.currentTarget as HTMLElement).style.background = portalPaint('transparent', 'background'); }}
                       >
                         <div
                           className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0"
-                          style={{
+                          style={portalStyle({
                             background: checked ? 'linear-gradient(135deg, #b8a06f, #8b7649)' : 'rgba(255,255,255,0.05)',
                             color: checked ? '#0f0d0b' : 'rgba(250,250,249,0.45)',
-                          }}
+                          })}
                         >
                           {initial}
                         </div>

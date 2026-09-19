@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { mizanApi, bilancoApi, fmtTRY } from '@/lib/mizan';
@@ -158,39 +160,39 @@ export default function BilancoPage() {
       {/* Header — Fiş Yazdırma imzası: kart + üst renk şeridi + radial parıltı + degrade ikon kutusu */}
       <div
         className="relative overflow-hidden rounded-2xl border p-5"
-        style={{
+        style={portalStyle({
           borderColor: 'rgba(255,255,255,0.06)',
           background:
             'radial-gradient(120% 140% at 0% 0%, rgba(212,184,118,0.16), transparent 46%), radial-gradient(120% 140% at 100% 0%, rgba(139,118,73,0.12), transparent 48%), #0f0d0b',
-        }}
+        })}
       >
         <div
           className="absolute inset-x-0 top-0 h-1"
-          style={{ background: 'linear-gradient(90deg, #8b7649, #b8a06f, #d4b876, #e7cf95, #d4b876, #b8a06f)' }}
+          style={portalStyle({ background: 'linear-gradient(90deg, #8b7649, #b8a06f, #d4b876, #e7cf95, #d4b876, #b8a06f)' })}
         />
         <div className="flex items-center gap-2.5 mb-3">
-          <span className="w-[26px] h-px" style={{ background: GOLD }} />
-          <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>
+          <span className="w-[26px] h-px" style={portalStyle({ background: GOLD })} />
+          <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={portalStyle({ color: '#b8a06f' })}>
             <Sparkles size={10} className="inline mr-1" /> Mali Rapor
           </span>
         </div>
         <div className="flex items-center gap-3.5">
           <span
             className="grid place-items-center rounded-xl flex-shrink-0"
-            style={{ width: 46, height: 46, background: 'linear-gradient(135deg, #d4b876, #b8a06f)', boxShadow: '0 8px 22px rgba(212,184,118,0.32)' }}
+            style={portalStyle({ width: 46, height: 46, background: 'linear-gradient(135deg, #d4b876, #b8a06f)', boxShadow: '0 8px 22px rgba(212,184,118,0.32)' })}
           >
-            <Scale size={24} style={{ color: '#1a1410' }} />
+            <Scale size={24} style={portalStyle({ color: '#1a1410' })} />
           </span>
           <div className="min-w-0">
-            <h1 style={{ fontFamily: REPORT_FONT, fontSize: 30, fontWeight: 700, color: '#fafaf9', letterSpacing: 0, lineHeight: 1.05 }}>
+            <h1 style={portalStyle({ fontFamily: REPORT_FONT, fontSize: 30, fontWeight: 700, color: '#fafaf9', letterSpacing: 0, lineHeight: 1.05 })}>
               Bilanço
               {selectedTp && (
-                <span style={{ color: GOLD, fontWeight: 700, fontSize: 22, marginLeft: 12 }}>
+                <span style={portalStyle({ color: GOLD, fontWeight: 700, fontSize: 22, marginLeft: 12 })}>
                   · {taxpayerName(selectedTp)}
                 </span>
               )}
             </h1>
-            <p className="text-[13px] mt-1.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
+            <p className="text-[13px] mt-1.5" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
               Aktif ve Pasif hesap kalemlerini mizandan otomatik türet. Geçmiş dönemlerle karşılaştırma.
             </p>
           </div>
@@ -198,18 +200,18 @@ export default function BilancoPage() {
       </div>
 
       {/* Komut barı */}
-      <div className="rounded-xl border p-5" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}>
+      <div className="rounded-xl border p-5" style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' })}>
         <div className="flex flex-wrap gap-3 items-end">
           <div className="flex-1 min-w-[260px]">
-            <label className="text-[11px] uppercase font-bold tracking-[.12em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
+            <label className="text-[11px] uppercase font-bold tracking-[.12em] block mb-1.5" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
               <Users size={11} className="inline mr-1" /> Mükellef
             </label>
             <button
               onClick={() => setPickerOpen(true)}
               className="w-full px-3 py-2.5 rounded-lg text-sm border outline-none flex items-center gap-2 text-left"
-              style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}
+              style={portalStyle({ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' })}
             >
-              <span className="flex-1 truncate" style={{ color: selectedTp ? '#fafaf9' : 'rgba(250,250,249,0.45)' }}>
+              <span className="flex-1 truncate" style={portalStyle({ color: selectedTp ? '#fafaf9' : 'rgba(250,250,249,0.45)' })}>
                 {selectedTp ? taxpayerName(selectedTp) : 'Mükellef seç…'}
               </span>
               {selectedTp && (
@@ -222,7 +224,7 @@ export default function BilancoPage() {
           </div>
 
           <div className="flex-1 min-w-[240px]">
-            <label className="text-[11px] uppercase font-bold tracking-[.12em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
+            <label className="text-[11px] uppercase font-bold tracking-[.12em] block mb-1.5" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
               <Calendar size={11} className="inline mr-1" /> Kaynak Mizan
             </label>
             <select
@@ -230,13 +232,13 @@ export default function BilancoPage() {
               onChange={(e) => setSelectedMizan(e.target.value)}
               disabled={!taxpayerId || mizanList.length === 0}
               className="w-full px-3 py-2.5 rounded-lg text-sm border outline-none"
-              style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}
+              style={portalStyle({ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' })}
             >
-              <option value="" style={{ background: '#0f0d0b' }}>
+              <option value="" style={portalStyle({ background: '#0f0d0b' })}>
                 {!taxpayerId ? 'Önce mükellef seçin' : mizanList.length === 0 ? 'Mizan yok' : '— Mizan seçin —'}
               </option>
               {mizanList.map((m: any) => (
-                <option key={m.id} value={m.id} style={{ background: '#0f0d0b' }}>{formatDonemRangeLabel(m.donem, m.donemTipi)}</option>
+                <option key={m.id} value={m.id} style={portalStyle({ background: '#0f0d0b' })}>{formatDonemRangeLabel(m.donem, m.donemTipi)}</option>
               ))}
             </select>
           </div>
@@ -245,7 +247,7 @@ export default function BilancoPage() {
             onClick={() => { if (!selectedMizan) return toast.error('Mizan seçin'); generateMut.mutate(); }}
             disabled={generateMut.isPending || !selectedMizan}
             className="px-5 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 disabled:opacity-50"
-            style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}
+            style={portalStyle({ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' })}
           >
             {generateMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
             Mizandan Oluştur
@@ -263,21 +265,21 @@ export default function BilancoPage() {
             <Kpi label={denk ? '✓ Bilanço Denk' : `Fark: ${fmtTRY(fark)}`} val={fmtTRY(Math.abs(fark))} color={denk ? TOTAL_COLOR : '#f43f5e'} />
           </div>
           {/* Kesin Kayıt ribbon */}
-          <div className="flex items-center justify-between rounded-xl p-3" style={{
+          <div className="flex items-center justify-between rounded-xl p-3" style={portalStyle({
             background: bilanco.locked ? 'rgba(34,197,94,0.08)' : 'rgba(255,255,255,0.02)',
             border: `1px solid ${bilanco.locked ? 'rgba(34,197,94,0.25)' : 'rgba(255,255,255,0.05)'}`,
-          }}>
+          })}>
             {bilanco.locked ? (
               <div className="flex items-center gap-2">
-                <Lock size={14} style={{ color: '#22c55e' }} />
-                <span className="text-[13px] font-semibold" style={{ color: '#22c55e' }}>Kesin Kayıt</span>
-                <span className="text-[11.5px]" style={{ color: 'rgba(250,250,249,0.65)' }}>
+                <Lock size={14} style={portalStyle({ color: '#22c55e' })} />
+                <span className="text-[13px] font-semibold" style={portalStyle({ color: '#22c55e' })}>Kesin Kayıt</span>
+                <span className="text-[11.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.65)' })}>
                   · {bilanco.lockedAt ? new Date(bilanco.lockedAt).toLocaleString('tr-TR') : ''}
                   {bilanco.lockNote && ` · ${bilanco.lockNote}`}
                 </span>
               </div>
             ) : (
-              <div className="text-[12px]" style={{ color: 'rgba(250,250,249,0.55)' }}>
+              <div className="text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>
                 Bilanço değişikliklere açık. Kesin kayıt için bilanço denk olmalı (fark = 0).
               </div>
             )}
@@ -286,11 +288,11 @@ export default function BilancoPage() {
                 onClick={() => exportMut.mutate(bilanco.id)}
                 disabled={exportMut.isPending}
                 className="px-3 py-1.5 rounded-lg text-[12px] font-bold flex items-center gap-1.5 disabled:opacity-40"
-                style={{
+                style={portalStyle({
                   background: 'rgba(96,165,250,0.10)',
                   color: '#93c5fd',
                   border: '1px solid rgba(96,165,250,0.28)',
-                }}
+                })}
               >
                 <Download size={12} /> Excel
               </button>
@@ -299,11 +301,11 @@ export default function BilancoPage() {
                 disabled={lockMut.isPending || unlockMut.isPending || (!bilanco.locked && !denk)}
                 title={!bilanco.locked && !denk ? 'Bilanço denk değil, önce eşitle' : ''}
                 className="px-3 py-1.5 rounded-lg text-[12px] font-bold flex items-center gap-1.5 disabled:opacity-40"
-                style={{
+                style={portalStyle({
                   background: bilanco.locked ? 'rgba(244,63,94,0.12)' : 'rgba(184,160,111,0.15)',
                   color: bilanco.locked ? '#f43f5e' : GOLD,
                   border: `1px solid ${bilanco.locked ? 'rgba(244,63,94,0.3)' : 'rgba(184,160,111,0.35)'}`,
-                }}
+                })}
               >
                 {bilanco.locked ? <><Unlock size={12} /> Kilidi Aç</> : <><Lock size={12} /> Kesin Kayıt</>}
               </button>
@@ -315,16 +317,16 @@ export default function BilancoPage() {
       {/* Aktif / Pasif iki sütun */}
       {bilanco && (
         <>
-          <h3 className="text-[14px] font-semibold mb-3 flex items-center gap-2.5 flex-wrap" style={{ color: '#fafaf9' }}>
-            <span className="w-[3px] h-4 rounded-sm" style={{ background: GOLD }} />
+          <h3 className="text-[14px] font-semibold mb-3 flex items-center gap-2.5 flex-wrap" style={portalStyle({ color: '#fafaf9' })}>
+            <span className="w-[3px] h-4 rounded-sm" style={portalStyle({ background: GOLD })} />
             Bilanço · {bilanco.tarih ? new Date(bilanco.tarih).toLocaleDateString('tr-TR') : formatDonemLabel(bilanco.donem, bilanco.donemTipi)}
             {selectedTp && (
               <>
-                <span style={{ color: GOLD, fontWeight: 700, fontFamily: REPORT_FONT }}>
+                <span style={portalStyle({ color: GOLD, fontWeight: 700, fontFamily: REPORT_FONT })}>
                   · {taxpayerName(selectedTp)}
                 </span>
                 {selectedTp.taxNumber && (
-                  <span className="text-[12px]" style={{ color: 'rgba(250,250,249,0.58)', fontFamily: REPORT_FONT, fontWeight: 500 }}>
+                  <span className="text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.58)', fontFamily: REPORT_FONT, fontWeight: 500 })}>
                     · VKN/TCKN: {selectedTp.taxNumber}
                   </span>
                 )}
@@ -386,34 +388,34 @@ export default function BilancoPage() {
             return (
               <div
                 className="rounded-lg px-3 py-2 flex items-center flex-wrap gap-2 text-[12px]"
-                style={{
+                style={portalStyle({
                   background: 'rgba(184,160,111,0.04)',
                   border: '1px solid rgba(184,160,111,0.18)',
-                }}
+                })}
               >
                 {/* Başlık + rozetler */}
                 <div className="flex items-center gap-1.5">
-                  <Scale size={12} style={{ color: GOLD }} />
-                  <strong className="text-[12px]" style={{ color: GOLD }}>59 Net Kâr/Zarar</strong>
+                  <Scale size={12} style={portalStyle({ color: GOLD })} />
+                  <strong className="text-[12px]" style={portalStyle({ color: GOLD })}>59 Net Kâr/Zarar</strong>
                   {isGecici && (
-                    <span className="text-[9.5px] font-bold px-1.5 py-[1px] rounded" style={{ background: 'rgba(184,160,111,0.15)', color: GOLD, letterSpacing: '.06em' }}>
+                    <span className="text-[9.5px] font-bold px-1.5 py-[1px] rounded" style={portalStyle({ background: 'rgba(184,160,111,0.15)', color: GOLD, letterSpacing: '.06em' })}>
                       GEÇ.VERGİ
                     </span>
                   )}
                   {otomatikKaynak && !manuelVar && (
-                    <span className="text-[9.5px] font-bold px-1.5 py-[1px] rounded flex items-center gap-0.5" style={{ background: 'rgba(34,197,94,0.14)', color: '#22c55e' }}>
+                    <span className="text-[9.5px] font-bold px-1.5 py-[1px] rounded flex items-center gap-0.5" style={portalStyle({ background: 'rgba(34,197,94,0.14)', color: '#22c55e' })}>
                       <CheckCircle2 size={9} /> OTOMATİK
                     </span>
                   )}
                   {manuelVar && (
-                    <span className="text-[9.5px] font-bold px-1.5 py-[1px] rounded" style={{ background: 'rgba(184,160,111,0.15)', color: GOLD }}>MANUEL</span>
+                    <span className="text-[9.5px] font-bold px-1.5 py-[1px] rounded" style={portalStyle({ background: 'rgba(184,160,111,0.15)', color: GOLD })}>MANUEL</span>
                   )}
                 </div>
 
                 {/* Gelir tablosu link — inline */}
                 {gelirBagli && (
                   <>
-                    <span className="text-[11.5px] font-mono font-bold flex items-center gap-1" style={{ color: gelirBagli.donemNetKari >= 0 ? '#22c55e' : '#f43f5e' }}>
+                    <span className="text-[11.5px] font-mono font-bold flex items-center gap-1" style={portalStyle({ color: gelirBagli.donemNetKari >= 0 ? '#22c55e' : '#f43f5e' })}>
                       <Zap size={10} />
                       {gelirBagli.donemNetKari >= 0 ? 'Kâr' : 'Zarar'}: {fmtTRY(Math.abs(gelirBagli.donemNetKari))}
                     </span>
@@ -421,7 +423,7 @@ export default function BilancoPage() {
                       onClick={getirGelirTablosu}
                       disabled={bilanco.locked}
                       className="px-2 py-0.5 rounded text-[10.5px] font-semibold"
-                      style={{ background: 'rgba(34,197,94,0.15)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.3)' }}
+                      style={portalStyle({ background: 'rgba(34,197,94,0.15)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.3)' })}
                     >
                       ↓ Getir
                     </button>
@@ -433,7 +435,7 @@ export default function BilancoPage() {
 
                 {/* 590 input */}
                 <label className="flex items-center gap-1">
-                  <span className="text-[9.5px] font-bold uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.5)' }}>590</span>
+                  <span className="text-[9.5px] font-bold uppercase tracking-[.08em]" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>590</span>
                   <input
                     type="text"
                     placeholder={mevcutKar > 0 ? fmtTRY(mevcutKar) : (gelirBagli?.onerilenKar > 0 ? fmtTRY(gelirBagli.onerilenKar) : '0,00')}
@@ -441,13 +443,13 @@ export default function BilancoPage() {
                     onChange={(e) => setManuelKar(e.target.value)}
                     disabled={bilanco.locked || duzeltmelerMut.isPending}
                     className="w-28 px-2 py-1 rounded text-[12px] border outline-none font-mono text-right"
-                    style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(34,197,94,0.25)', color: '#22c55e' }}
+                    style={portalStyle({ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(34,197,94,0.25)', color: '#22c55e' })}
                   />
                 </label>
 
                 {/* 591 input */}
                 <label className="flex items-center gap-1">
-                  <span className="text-[9.5px] font-bold uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.5)' }}>591</span>
+                  <span className="text-[9.5px] font-bold uppercase tracking-[.08em]" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>591</span>
                   <input
                     type="text"
                     placeholder={mevcutZarar > 0 ? fmtTRY(mevcutZarar) : (gelirBagli?.onerilenZarar > 0 ? fmtTRY(gelirBagli.onerilenZarar) : '0,00')}
@@ -455,7 +457,7 @@ export default function BilancoPage() {
                     onChange={(e) => setManuelZarar(e.target.value)}
                     disabled={bilanco.locked || duzeltmelerMut.isPending}
                     className="w-28 px-2 py-1 rounded text-[12px] border outline-none font-mono text-right"
-                    style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(244,63,94,0.25)', color: '#f43f5e' }}
+                    style={portalStyle({ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(244,63,94,0.25)', color: '#f43f5e' })}
                   />
                 </label>
 
@@ -468,7 +470,7 @@ export default function BilancoPage() {
                   })}
                   disabled={bilanco.locked || duzeltmelerMut.isPending}
                   className="px-3 py-1 rounded text-[11.5px] font-semibold"
-                  style={{ background: GOLD, color: '#0a0906', opacity: bilanco.locked ? 0.5 : 1 }}
+                  style={portalStyle({ background: GOLD, color: '#0a0906', opacity: bilanco.locked ? 0.5 : 1 })}
                   title="Kaydet & Yeniden Hesapla"
                 >
                   {duzeltmelerMut.isPending ? <Loader2 size={12} className="animate-spin" /> : 'Kaydet'}
@@ -480,19 +482,19 @@ export default function BilancoPage() {
           {/* Denklik */}
           <div
             className="rounded-xl p-4 flex items-center justify-between"
-            style={{
+            style={portalStyle({
               background: denk ? 'rgba(34,197,94,0.06)' : 'rgba(244,63,94,0.06)',
               border: `1px solid ${denk ? 'rgba(34,197,94,0.2)' : 'rgba(244,63,94,0.2)'}`,
-            }}
+            })}
           >
             <div className="flex items-center gap-2 text-[13px]">
-              {denk ? <CheckCircle2 size={16} style={{ color: '#22c55e' }} /> : <XCircle size={16} style={{ color: '#f43f5e' }} />}
-              <strong style={{ color: denk ? '#22c55e' : '#f43f5e' }}>{denk ? 'Bilanço Denk' : 'Bilanço Denk Değil'}</strong>
-              <span style={{ color: 'rgba(250,250,249,0.65)' }}>
+              {denk ? <CheckCircle2 size={16} style={portalStyle({ color: '#22c55e' })} /> : <XCircle size={16} style={portalStyle({ color: '#f43f5e' })} />}
+              <strong style={portalStyle({ color: denk ? '#22c55e' : '#f43f5e' })}>{denk ? 'Bilanço Denk' : 'Bilanço Denk Değil'}</strong>
+              <span style={portalStyle({ color: 'rgba(250,250,249,0.65)' })}>
                 · Aktif ({fmtTRY(bilanco.aktifToplami)}) = Pasif ({fmtTRY(bilanco.pasifToplami)})
               </span>
             </div>
-            <span className="font-mono font-bold" style={{ color: denk ? '#22c55e' : '#f43f5e' }}>
+            <span className="font-mono font-bold" style={portalStyle({ color: denk ? '#22c55e' : '#f43f5e' })}>
               Fark: {fmtTRY(fark)}
             </span>
           </div>
@@ -500,16 +502,16 @@ export default function BilancoPage() {
           {/* ─── Finansal Oranlar ve Yorumlama ───────────────────── */}
           {bilanco.finansalOranlar && (
             <div>
-              <h3 className="text-[14px] font-semibold mb-3 flex items-center gap-2.5 flex-wrap" style={{ color: '#fafaf9' }}>
-                <span className="w-[3px] h-4 rounded-sm" style={{ background: GOLD }} />
+              <h3 className="text-[14px] font-semibold mb-3 flex items-center gap-2.5 flex-wrap" style={portalStyle({ color: '#fafaf9' })}>
+                <span className="w-[3px] h-4 rounded-sm" style={portalStyle({ background: GOLD })} />
                 Finansal Oranlar
                 {bilanco.oncekiDonemBilgi && (
-                  <span className="text-[10.5px] font-medium px-2 py-[2px] rounded-md" style={{ background: 'rgba(96,165,250,0.12)', color: '#60a5fa' }}>
+                  <span className="text-[10.5px] font-medium px-2 py-[2px] rounded-md" style={portalStyle({ background: 'rgba(96,165,250,0.12)', color: '#60a5fa' })}>
                     Önceki: {bilanco.oncekiDonemBilgi.donem}
                   </span>
                 )}
                 {bilanco.finansalOzet && (
-                  <span className="text-[11.5px] italic ml-auto" style={{ color: 'rgba(250,250,249,0.65)' }}>
+                  <span className="text-[11.5px] italic ml-auto" style={portalStyle({ color: 'rgba(250,250,249,0.65)' })}>
                     {bilanco.finansalOzet}
                   </span>
                 )}
@@ -546,8 +548,8 @@ export default function BilancoPage() {
                       if (oranlar.length === 0) return null;
                       return (
                         <div key={kat.kod}>
-                          <div className="text-[11px] uppercase font-bold tracking-[.2em] mb-2 flex items-center gap-2" style={{ color: kat.renk }}>
-                            <span className="w-1.5 h-1.5 rounded-full" style={{ background: kat.renk }} />
+                          <div className="text-[11px] uppercase font-bold tracking-[.2em] mb-2 flex items-center gap-2" style={portalStyle({ color: kat.renk })}>
+                            <span className="w-1.5 h-1.5 rounded-full" style={portalStyle({ background: kat.renk })} />
                             {kat.baslik}
                           </div>
                           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -555,37 +557,37 @@ export default function BilancoPage() {
                               <div
                                 key={o.kod}
                                 className="rounded-xl p-4"
-                                style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}
+                                style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' })}
                               >
                                 <div className="flex items-center justify-between mb-1.5">
-                                  <span className="text-[11px] uppercase font-bold tracking-[.1em]" style={{ color: 'rgba(250,250,249,0.5)' }}>
+                                  <span className="text-[11px] uppercase font-bold tracking-[.1em]" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
                                     {o.ad}
                                   </span>
-                                  <span className="text-[10px] font-mono" style={{ color: 'rgba(250,250,249,0.35)' }}>
+                                  <span className="text-[10px] font-mono" style={portalStyle({ color: 'rgba(250,250,249,0.35)' })}>
                                     ideal {o.ideal}
                                   </span>
                                 </div>
                                 <div className="flex items-baseline justify-between mt-2">
-                                  <span className="tabular-nums" style={{ fontFamily: FINANCIAL_FONT, fontSize: 26, fontWeight: 700, color: kat.renk, letterSpacing: 0 }}>
+                                  <span className="tabular-nums" style={portalStyle({ fontFamily: FINANCIAL_FONT, fontSize: 26, fontWeight: 700, color: kat.renk, letterSpacing: 0 })}>
                                     {o.degerFmt}
                                   </span>
                                   {o.trend && (
                                     <div className="flex items-center gap-1">
-                                      <span className="text-[13px] font-bold" style={{ color: trendRenk(o.trend, o.kod) }}>
+                                      <span className="text-[13px] font-bold" style={portalStyle({ color: trendRenk(o.trend, o.kod) })}>
                                         {trendIcon(o.trend)}
                                       </span>
-                                      <span className="text-[11px] font-mono" style={{ color: trendRenk(o.trend, o.kod) }}>
+                                      <span className="text-[11px] font-mono" style={portalStyle({ color: trendRenk(o.trend, o.kod) })}>
                                         {o.degisimYuzde > 0 ? '+' : ''}{o.degisimYuzde?.toFixed(1)}%
                                       </span>
                                     </div>
                                   )}
                                 </div>
                                 {o.oncekiFmt && (
-                                  <div className="text-[10px] mt-1 font-mono" style={{ color: 'rgba(250,250,249,0.4)' }}>
+                                  <div className="text-[10px] mt-1 font-mono" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>
                                     Önceki: {o.oncekiFmt}
                                   </div>
                                 )}
-                                <div className="text-[11.5px] mt-2 font-semibold" style={{ color: yorumRenk(o.yorum) }}>
+                                <div className="text-[11.5px] mt-2 font-semibold" style={portalStyle({ color: yorumRenk(o.yorum) })}>
                                   {o.yorum}
                                 </div>
                               </div>
@@ -604,57 +606,57 @@ export default function BilancoPage() {
 
       {/* Geçmiş Bilançolar */}
       <div>
-        <h3 className="text-[14px] font-semibold mb-3 flex items-center gap-2.5" style={{ color: '#fafaf9' }}>
-          <span className="w-[3px] h-4 rounded-sm" style={{ background: GOLD }} />
+        <h3 className="text-[14px] font-semibold mb-3 flex items-center gap-2.5" style={portalStyle({ color: '#fafaf9' })}>
+          <span className="w-[3px] h-4 rounded-sm" style={portalStyle({ background: GOLD })} />
           Kayıtlı Bilançolar
-          <span className="text-[10.5px] font-medium px-2 py-[2px] rounded-md" style={{ background: 'rgba(184,160,111,0.12)', color: GOLD }}>
+          <span className="text-[10.5px] font-medium px-2 py-[2px] rounded-md" style={portalStyle({ background: 'rgba(184,160,111,0.12)', color: GOLD })}>
             {bilancoList.length}
           </span>
         </h3>
         {bilancoList.length === 0 ? (
-          <div className="rounded-xl py-10 text-center" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
-            <Scale size={24} style={{ color: 'rgba(250,250,249,0.3)', margin: '0 auto 8px' }} />
-            <p className="text-[13px]" style={{ color: 'rgba(250,250,249,0.5)' }}>Henüz kayıtlı bilanço yok</p>
+          <div className="rounded-xl py-10 text-center" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' })}>
+            <Scale size={24} style={portalStyle({ color: 'rgba(250,250,249,0.3)', margin: '0 auto 8px' })} />
+            <p className="text-[13px]" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>Henüz kayıtlı bilanço yok</p>
           </div>
         ) : (
-          <div className="rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+          <div className="rounded-xl overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' })}>
             <table className="w-full text-left text-[13px]">
               <thead>
-                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                  <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.45)' }}>Oluşturma</th>
-                  <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.45)' }}>Mükellef</th>
-                  <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.45)' }}>Dönem</th>
-                  <th className="px-4 py-3 text-right text-[10.5px] font-bold uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.45)' }}>Aktif</th>
-                  <th className="px-4 py-3 text-right text-[10.5px] font-bold uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.45)' }}>Özkaynak</th>
-                  <th className="px-4 py-3 text-right text-[10.5px] font-bold uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.45)' }}>İşlem</th>
+                <tr style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.05)' })}>
+                  <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-[.08em]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>Oluşturma</th>
+                  <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-[.08em]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>Mükellef</th>
+                  <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-[.08em]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>Dönem</th>
+                  <th className="px-4 py-3 text-right text-[10.5px] font-bold uppercase tracking-[.08em]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>Aktif</th>
+                  <th className="px-4 py-3 text-right text-[10.5px] font-bold uppercase tracking-[.08em]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>Özkaynak</th>
+                  <th className="px-4 py-3 text-right text-[10.5px] font-bold uppercase tracking-[.08em]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>İşlem</th>
                 </tr>
               </thead>
               <tbody>
                 {bilancoList.map((b: any, idx: number) => {
                   const dk = Math.abs(Number(b.aktifToplami) - Number(b.pasifToplami)) < 0.01;
                   return (
-                    <tr key={b.id} style={{ borderTop: idx === 0 ? 'none' : '1px solid rgba(255,255,255,0.03)' }}>
-                      <td className="px-4 py-3 font-mono text-[12px]" style={{ color: 'rgba(250,250,249,0.7)' }}>{new Date(b.createdAt).toLocaleDateString('tr-TR')}</td>
+                    <tr key={b.id} style={portalStyle({ borderTop: idx === 0 ? 'none' : '1px solid rgba(255,255,255,0.03)' })}>
+                      <td className="px-4 py-3 font-mono text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.7)' })}>{new Date(b.createdAt).toLocaleDateString('tr-TR')}</td>
                       <td className="px-4 py-3 font-medium">
-                        {b.locked && <Lock size={11} style={{ color: '#22c55e', display: 'inline', marginRight: 6, verticalAlign: 'middle' }} />}
+                        {b.locked && <Lock size={11} style={portalStyle({ color: '#22c55e', display: 'inline', marginRight: 6, verticalAlign: 'middle' })} />}
                         {b.taxpayer ? taxpayerName(b.taxpayer) : '—'}
                       </td>
                       <td className="px-4 py-3 font-mono">
                         {b.tarih ? new Date(b.tarih).toLocaleDateString('tr-TR') : formatDonemLabel(b.donem, b.donemTipi)}
-                        {b.locked && <span className="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: 'rgba(34,197,94,0.15)', color: '#22c55e' }}>KESİN</span>}
+                        {b.locked && <span className="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded" style={portalStyle({ background: 'rgba(34,197,94,0.15)', color: '#22c55e' })}>KESİN</span>}
                       </td>
-                      <td className="px-4 py-3 text-right font-mono" style={{ color: dk ? GOLD : '#f43f5e', fontWeight: 600 }}>{fmtTRY(b.aktifToplami)}</td>
-                      <td className="px-4 py-3 text-right font-mono" style={{ color: TOTAL_COLOR, fontWeight: 600 }}>{fmtTRY(b.ozkaynaklar)}</td>
+                      <td className="px-4 py-3 text-right font-mono" style={portalStyle({ color: dk ? GOLD : '#f43f5e', fontWeight: 600 })}>{fmtTRY(b.aktifToplami)}</td>
+                      <td className="px-4 py-3 text-right font-mono" style={portalStyle({ color: TOTAL_COLOR, fontWeight: 600 })}>{fmtTRY(b.ozkaynaklar)}</td>
                       <td className="px-4 py-3 text-right">
                         <div className="inline-flex gap-1.5">
-                          <button onClick={() => setViewBilanco(b)} className="p-1.5 rounded-md" style={{ color: GOLD, background: 'rgba(184,160,111,0.08)' }}>
+                          <button onClick={() => setViewBilanco(b)} className="p-1.5 rounded-md" style={portalStyle({ color: GOLD, background: 'rgba(184,160,111,0.08)' })}>
                             <Eye size={14} />
                           </button>
                           <button
                             onClick={() => exportMut.mutate(b.id)}
                             disabled={exportMut.isPending}
                             className="p-1.5 rounded-md disabled:opacity-40"
-                            style={{ color: '#93c5fd', background: 'rgba(96,165,250,0.08)' }}
+                            style={portalStyle({ color: '#93c5fd', background: 'rgba(96,165,250,0.08)' })}
                             title="Excel dışarı aktar"
                           >
                             <Download size={14} />
@@ -663,7 +665,7 @@ export default function BilancoPage() {
                             onClick={() => { if (b.locked) return toast.error('Kesin kayıtlı silinemez'); if (confirm('Silinsin mi?')) deleteMut.mutate(b.id); }}
                             disabled={b.locked}
                             className="p-1.5 rounded-md disabled:opacity-30"
-                            style={{ color: '#f43f5e', background: 'rgba(244,63,94,0.08)' }}
+                            style={portalStyle({ color: '#f43f5e', background: 'rgba(244,63,94,0.08)' })}
                           >
                             <Trash2 size={14} />
                           </button>
@@ -684,21 +686,21 @@ export default function BilancoPage() {
 
       {/* Mükellef Picker */}
       {pickerOpen && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-[8vh]" style={{ background: 'rgba(0,0,0,.6)', backdropFilter: 'blur(6px)' }} onClick={() => setPickerOpen(false)}>
-          <div className="w-full max-w-xl rounded-2xl border flex flex-col overflow-hidden" style={{ background: 'rgba(17,14,12,0.98)', borderColor: 'rgba(255,255,255,0.05)', maxHeight: '84vh' }} onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
-              <h3 className="text-lg font-bold" style={{ color: '#fafaf9' }}>Mükellef Seç</h3>
+        <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-[8vh]" style={portalStyle({ background: 'rgba(0,0,0,.6)', backdropFilter: 'blur(6px)' })} onClick={() => setPickerOpen(false)}>
+          <div className="w-full max-w-xl rounded-2xl border flex flex-col overflow-hidden" style={portalStyle({ background: 'rgba(17,14,12,0.98)', borderColor: 'rgba(255,255,255,0.05)', maxHeight: '84vh' })} onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b" style={portalStyle({ borderColor: 'rgba(255,255,255,0.05)' })}>
+              <h3 className="text-lg font-bold" style={portalStyle({ color: '#fafaf9' })}>Mükellef Seç</h3>
               <button onClick={() => setPickerOpen(false)}><X size={16} /></button>
             </div>
-            <div className="px-5 py-3 border-b" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
-              <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg border" style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)' }}>
-                <Search size={14} /><input value={pickerSearch} onChange={(e) => setPickerSearch(e.target.value)} placeholder="Ara…" autoFocus className="flex-1 bg-transparent outline-none text-sm" style={{ color: '#fafaf9' }} />
+            <div className="px-5 py-3 border-b" style={portalStyle({ borderColor: 'rgba(255,255,255,0.05)' })}>
+              <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg border" style={portalStyle({ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)' })}>
+                <Search size={14} /><input value={pickerSearch} onChange={(e) => setPickerSearch(e.target.value)} placeholder="Ara…" autoFocus className="flex-1 bg-transparent outline-none text-sm" style={portalStyle({ color: '#fafaf9' })} />
               </div>
             </div>
             <div className="flex-1 overflow-y-auto p-2">
               {filteredTp.map((t) => (
-                <button key={t.id} onClick={() => { setTaxpayerId(t.id); setPickerOpen(false); setPickerSearch(''); }} className="w-full flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg text-left" style={{ color: '#fafaf9', background: taxpayerId === t.id ? 'rgba(184,160,111,.08)' : 'transparent' }}>
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold" style={{ background: 'rgba(255,255,255,0.05)' }}>{taxpayerName(t).charAt(0)}</div>
+                <button key={t.id} onClick={() => { setTaxpayerId(t.id); setPickerOpen(false); setPickerSearch(''); }} className="w-full flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg text-left" style={portalStyle({ color: '#fafaf9', background: taxpayerId === t.id ? 'rgba(184,160,111,.08)' : 'transparent' })}>
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold" style={portalStyle({ background: 'rgba(255,255,255,0.05)' })}>{taxpayerName(t).charAt(0)}</div>
                   <span className="flex-1 truncate font-medium">{taxpayerName(t)}</span>
                 </button>
               ))}
@@ -712,9 +714,9 @@ export default function BilancoPage() {
 
 function Kpi({ label, val, color }: { label: string; val: string; color: string }) {
   return (
-    <div className="rounded-xl p-4" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
-      <div className="text-[11px] font-bold uppercase tracking-[.1em] mb-2" style={{ color: 'rgba(250,250,249,0.5)' }}>{label}</div>
-      <p className="leading-none tabular-nums" style={{ fontFamily: FINANCIAL_FONT, fontSize: 22, fontWeight: 700, color, letterSpacing: 0 }}>{val}</p>
+    <div className="rounded-xl p-4" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' })}>
+      <div className="text-[11px] font-bold uppercase tracking-[.1em] mb-2" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>{label}</div>
+      <p className="leading-none tabular-nums" style={portalStyle({ fontFamily: FINANCIAL_FONT, fontSize: 22, fontWeight: 700, color, letterSpacing: 0 })}>{val}</p>
     </div>
   );
 }
@@ -737,7 +739,7 @@ function BilancoAmount({
   return (
     <span
       className="tabular-nums"
-      style={{
+      style={portalStyle({
         display: 'block',
         textAlign: 'right',
         color: zero ? MUTED_AMOUNT_COLOR : (color || (isStrong ? TOTAL_COLOR : AMOUNT_COLOR)),
@@ -748,7 +750,7 @@ function BilancoAmount({
         whiteSpace: 'nowrap',
         fontVariantNumeric: 'tabular-nums',
         letterSpacing: 0,
-      }}
+      })}
     >
       {fmtTRY(value)}
     </span>
@@ -764,26 +766,26 @@ function HesapSatirlari({ hesaplar }: { hesaplar?: Array<{ kod: string; ad: stri
   return (
     <>
       {gosterilen.map((h, hi) => (
-        <div key={hi} className="px-5 py-2 pl-10 grid grid-cols-[1fr_auto] gap-3 text-[13.5px] items-center" style={{
+        <div key={hi} className="px-5 py-2 pl-10 grid grid-cols-[1fr_auto] gap-3 text-[13.5px] items-center" style={portalStyle({
           color: 'rgba(250,250,249,0.82)',
           borderTop: '1px solid rgba(255,255,255,0.10)',
           background: 'rgba(255,255,255,0.006)',
-        }}>
-          <div style={{ fontWeight: 500 }}><span style={{ color: 'rgba(216,193,127,0.82)', fontFamily: REPORT_FONT, fontSize: 12.5, marginRight: 8, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{h.kod}</span>{h.ad}</div>
+        })}>
+          <div style={portalStyle({ fontWeight: 500 })}><span style={portalStyle({ color: 'rgba(216,193,127,0.82)', fontFamily: REPORT_FONT, fontSize: 12.5, marginRight: 8, fontWeight: 700, fontVariantNumeric: 'tabular-nums' })}>{h.kod}</span>{h.ad}</div>
           <BilancoAmount value={h.tutar} variant="account" />
         </div>
       ))}
       {kalan > 0 && (
         <button type="button" onClick={() => setAcik(true)}
           className="w-full text-left px-5 py-1.5 pl-10 text-[12px]"
-          style={{ color: 'rgba(216,193,127,0.9)', background: 'rgba(255,255,255,0.006)', borderTop: '1px solid rgba(255,255,255,0.10)', cursor: 'pointer', fontWeight: 600 }}>
+          style={portalStyle({ color: 'rgba(216,193,127,0.9)', background: 'rgba(255,255,255,0.006)', borderTop: '1px solid rgba(255,255,255,0.10)', cursor: 'pointer', fontWeight: 600 })}>
           + {kalan} hesap daha göster
         </button>
       )}
       {acik && list.length > LIMIT && (
         <button type="button" onClick={() => setAcik(false)}
           className="w-full text-left px-5 py-1.5 pl-10 text-[12px]"
-          style={{ color: 'rgba(250,250,249,0.5)', background: 'rgba(255,255,255,0.006)', borderTop: '1px solid rgba(255,255,255,0.10)', cursor: 'pointer', fontWeight: 600 }}>
+          style={portalStyle({ color: 'rgba(250,250,249,0.5)', background: 'rgba(255,255,255,0.006)', borderTop: '1px solid rgba(255,255,255,0.10)', cursor: 'pointer', fontWeight: 600 })}>
           − Daralt
         </button>
       )}
@@ -801,38 +803,38 @@ function BilancoColumn({
   gruplar: Array<{ label: string; kalemler: Array<{ grup: string; toplam: number; hesaplar: Array<{ kod: string; ad: string; tutar: number }> }> }>;
 }) {
   return (
-    <div className="rounded-xl overflow-hidden" style={{
+    <div className="rounded-xl overflow-hidden" style={portalStyle({
       background: TABLE_BG,
       border: `1px solid ${GRID_LINE_STRONG}`,
       boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.05), 0 16px 34px rgba(0,0,0,0.24)',
       fontFamily: REPORT_FONT,
-    }}>
-      <div className="flex items-center justify-between px-5 py-3.5 border-b" style={{
+    })}>
+      <div className="flex items-center justify-between px-5 py-3.5 border-b" style={portalStyle({
         borderColor: GRID_LINE_STRONG,
         background: 'linear-gradient(180deg, rgba(184,160,111,0.13), rgba(184,160,111,0.045))',
-      }}>
-        <h4 style={{ fontFamily: REPORT_FONT, fontSize: 17, fontWeight: 700, color: TOTAL_COLOR, margin: 0, letterSpacing: 0 }}>{baslik}</h4>
+      })}>
+        <h4 style={portalStyle({ fontFamily: REPORT_FONT, fontSize: 17, fontWeight: 700, color: TOTAL_COLOR, margin: 0, letterSpacing: 0 })}>{baslik}</h4>
         <BilancoAmount value={toplam} variant="total" color={TOTAL_COLOR} />
       </div>
       <div>
         {gruplar.map((g, gi) => (
           <div key={gi}>
-            <div className="px-5 py-2.5 text-[11px] font-bold uppercase tracking-[.1em]" style={{
+            <div className="px-5 py-2.5 text-[11px] font-bold uppercase tracking-[.1em]" style={portalStyle({
               color: '#f5efe3',
               background: 'rgba(184,160,111,0.13)',
               borderTop: gi === 0 ? 'none' : `1px solid ${GRID_LINE_STRONG}`,
               borderBottom: `1px solid ${GRID_LINE}`,
-            }}>
+            })}>
               {g.label}
             </div>
             {g.kalemler.filter((k: any) => k && k.toplam !== 0).map((k: any, ki: number) => (
               <React.Fragment key={ki}>
-                <div className="px-5 py-2.5 grid grid-cols-[1fr_auto] gap-3 text-[14px] items-center" style={{
+                <div className="px-5 py-2.5 grid grid-cols-[1fr_auto] gap-3 text-[14px] items-center" style={portalStyle({
                   minHeight: 40,
                   borderTop: ki === 0 ? 'none' : `1px solid ${GRID_LINE}`,
                   background: ki % 2 === 0 ? 'rgba(255,255,255,0.018)' : 'rgba(0,0,0,0.16)',
-                }}>
-                  <div style={{ color: '#fafaf9', fontWeight: 600 }}>{k.grup}</div>
+                })}>
+                  <div style={portalStyle({ color: '#fafaf9', fontWeight: 600 })}>{k.grup}</div>
                   <BilancoAmount value={k.toplam} variant="group" />
                 </div>
                 <HesapSatirlari hesaplar={k.hesaplar} />

@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import { useMemo, useState } from 'react';
 import { CheckCircle2, ChevronDown, ChevronRight, ListChecks } from 'lucide-react';
@@ -40,36 +42,36 @@ export function KapsamPaneli({ ozet, katalog, bulguSiddeti }: {
   };
 
   return (
-    <div className="rounded-2xl overflow-hidden relative" style={{ background: PANEL, border: `1px solid ${BORDER}` }}>
-      <div className="absolute inset-x-0 top-0 h-px" style={{ background: `linear-gradient(90deg, transparent, ${OK}66, transparent)` }} />
+    <div className="rounded-2xl overflow-hidden relative" style={portalStyle({ background: PANEL, border: `1px solid ${BORDER}` })}>
+      <div className="absolute inset-x-0 top-0 h-px" style={portalStyle({ background: `linear-gradient(90deg, transparent, ${OK}66, transparent)` })} />
       <button onClick={() => setAcik((v) => !v)} className="w-full flex flex-wrap items-center gap-x-4 gap-y-1.5 px-4 py-3 text-left">
-        <span className="inline-flex items-center gap-2 text-[12.5px] font-bold" style={{ color: TEXT }}>
-          <ListChecks size={15} style={{ color: OK }} /> Denetim kapsamı
-          <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md tabular-nums" style={{ background: 'rgba(92,191,138,.12)', color: OK }}>{o.calisti} / {o.kural} kontrol çalıştı</span>
+        <span className="inline-flex items-center gap-2 text-[12.5px] font-bold" style={portalStyle({ color: TEXT })}>
+          <ListChecks size={15} style={portalStyle({ color: OK })} /> Denetim kapsamı
+          <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md tabular-nums" style={portalStyle({ background: 'rgba(92,191,138,.12)', color: OK })}>{o.calisti} / {o.kural} kontrol çalıştı</span>
         </span>
-        <span className="inline-flex items-center gap-3 text-[11.5px] tabular-nums" style={{ color: MUTED }}>
+        <span className="inline-flex items-center gap-3 text-[11.5px] tabular-nums" style={portalStyle({ color: MUTED })}>
           <Nokta renk={OK} /> {o.temiz} temiz
           <Nokta renk={WARN} /> {o.bulgulu} bulgulu
           <Nokta renk={GRAY} /> {o.uygulanmaz} uygulanmaz · {o.veriYok} veri yok
           <Nokta renk="rgba(250,250,249,.22)" /> {o.pasif} kapalı
         </span>
-        <span className="ml-auto inline-flex items-center gap-2 text-[11.5px]" style={{ color: MUTED }}>
+        <span className="ml-auto inline-flex items-center gap-2 text-[11.5px]" style={portalStyle({ color: MUTED })}>
           {o.hesap} hesap incelendi{o.hareketsizHesap ? ` · ${o.hareketsizHesap} hareketsiz` : ''}{o.mizanVar ? ' · Mizan dahil' : ' · Mizan yok'}
           {acik ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </span>
       </button>
 
       {acik && (
-        <div className="px-4 pb-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3" style={{ borderTop: `1px solid ${BORDER}` }}>
+        <div className="px-4 pb-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3" style={portalStyle({ borderTop: `1px solid ${BORDER}` })}>
           {alanlar.map((a) => {
             const bulgulu = a.kurallar.filter((k) => k.durum === 'BULGU').length;
             const temiz = a.kurallar.filter((k) => k.durum === 'TEMIZ').length;
             return (
-              <div key={a.alan} className="rounded-xl p-3 mt-3" style={{ background: 'rgba(255,255,255,.012)', border: `1px solid ${BORDER}` }}>
+              <div key={a.alan} className="rounded-xl p-3 mt-3" style={portalStyle({ background: 'rgba(255,255,255,.012)', border: `1px solid ${BORDER}` })}>
                 <div className="flex items-center gap-2 mb-2">
                   <span className="text-[13px]">{ALAN_IKON[a.alan] || '•'}</span>
-                  <span className="text-[11px] font-bold uppercase tracking-wide truncate" style={{ color: 'rgba(250,250,249,.85)' }}>{a.alan}</span>
-                  <span className="ml-auto text-[10.5px] tabular-nums whitespace-nowrap" style={{ color: bulgulu ? WARN : temiz ? OK : MUTED2 }}>
+                  <span className="text-[11px] font-bold uppercase tracking-wide truncate" style={portalStyle({ color: 'rgba(250,250,249,.85)' })}>{a.alan}</span>
+                  <span className="ml-auto text-[10.5px] tabular-nums whitespace-nowrap" style={portalStyle({ color: bulgulu ? WARN : temiz ? OK : MUTED2 })}>
                     {bulgulu ? `${bulgulu} bulgulu · ` : ''}{temiz} temiz
                   </span>
                 </div>
@@ -80,11 +82,11 @@ export function KapsamPaneli({ ozet, katalog, bulguSiddeti }: {
                     return (
                       <div key={k.kod} className="flex items-center gap-2 text-[11.5px] leading-tight" title={`${k.kod} · ${DURUM_ETIKET[k.durum]}${k.not ? ` · ${k.not}` : ''}`}>
                         {k.durum === 'TEMIZ'
-                          ? <CheckCircle2 size={11} style={{ color: OK, flexShrink: 0 }} />
-                          : <span className="w-[7px] h-[7px] rounded-full shrink-0" style={{ background: renk, outline: k.durum === 'UYGULANMAZ' ? `1px dashed ${GRAY}` : 'none', outlineOffset: 1 }} />}
-                        <span className="truncate" style={{ color: soluk ? MUTED2 : 'rgba(250,250,249,.82)' }}>{k.ad}</span>
-                        {k.durum === 'BULGU' && <span className="ml-auto text-[10px] font-bold tabular-nums px-1.5 rounded" style={{ background: `${renk}22`, color: renk }}>{k.bulgu}</span>}
-                        {k.durum !== 'BULGU' && k.durum !== 'TEMIZ' && <span className="ml-auto text-[9.5px] whitespace-nowrap" style={{ color: MUTED2 }}>{k.durum === 'PASIF' ? 'kapalı' : k.durum === 'UYGULANMAZ' ? 'uygulanmaz' : 'veri yok'}</span>}
+                          ? <CheckCircle2 size={11} style={portalStyle({ color: OK, flexShrink: 0 })} />
+                          : <span className="w-[7px] h-[7px] rounded-full shrink-0" style={portalStyle({ background: renk, outline: k.durum === 'UYGULANMAZ' ? `1px dashed ${GRAY}` : 'none', outlineOffset: 1 })} />}
+                        <span className="truncate" style={portalStyle({ color: soluk ? MUTED2 : 'rgba(250,250,249,.82)' })}>{k.ad}</span>
+                        {k.durum === 'BULGU' && <span className="ml-auto text-[10px] font-bold tabular-nums px-1.5 rounded" style={portalStyle({ background: `${renk}22`, color: renk })}>{k.bulgu}</span>}
+                        {k.durum !== 'BULGU' && k.durum !== 'TEMIZ' && <span className="ml-auto text-[9.5px] whitespace-nowrap" style={portalStyle({ color: MUTED2 })}>{k.durum === 'PASIF' ? 'kapalı' : k.durum === 'UYGULANMAZ' ? 'uygulanmaz' : 'veri yok'}</span>}
                       </div>
                     );
                   })}
@@ -92,7 +94,7 @@ export function KapsamPaneli({ ozet, katalog, bulguSiddeti }: {
               </div>
             );
           })}
-          {!alanlar.length && <div className="text-xs mt-3" style={{ color: MUTED }}>Kapsam bilgisi yok — bu oturum eski sürümde analiz edilmiş; “Yeniden Analiz” çalıştırın.</div>}
+          {!alanlar.length && <div className="text-xs mt-3" style={portalStyle({ color: MUTED })}>Kapsam bilgisi yok — bu oturum eski sürümde analiz edilmiş; “Yeniden Analiz” çalıştırın.</div>}
         </div>
       )}
     </div>
@@ -100,5 +102,5 @@ export function KapsamPaneli({ ozet, katalog, bulguSiddeti }: {
 }
 
 function Nokta({ renk }: { renk: string }) {
-  return <span className="inline-block w-2 h-2 rounded-full mr-1 align-middle" style={{ background: renk }} />;
+  return <span className="inline-block w-2 h-2 rounded-full mr-1 align-middle" style={portalStyle({ background: renk })} />;
 }

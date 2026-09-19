@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import type { CSSProperties, ReactNode } from 'react';
 import { CARD_BORDER, GOLD, KIRMIZI, MAVI, MOR, MUTED, OK, ROW_SEP, TEXT, TURUNCU } from '../../butce/ui';
@@ -47,7 +49,7 @@ export function Avatar({ kisaltma, ton = 'gri', renk: ozelRenk, boyut = 28, nabi
     <span
       title={title}
       className={`inline-flex flex-shrink-0 items-center justify-center rounded-full font-bold ${nabiz ? 'animate-pulse' : ''}`}
-      style={{
+      style={portalStyle({
         width: boyut,
         height: boyut,
         fontSize: Math.max(9, Math.round(boyut * 0.36)),
@@ -55,7 +57,7 @@ export function Avatar({ kisaltma, ton = 'gri', renk: ozelRenk, boyut = 28, nabi
         background: ozelRenk ? `${renk}1a` : 'rgba(255,255,255,0.04)',
         border: `1px solid ${vurgulu ? `${renk}80` : CARD_BORDER}`,
         boxShadow: ton === 'mavi' || (ozelRenk && nabiz) ? `0 0 0 3px ${renk}1f` : 'none',
-      }}
+      })}
     >
       {kisaltma}
     </span>
@@ -67,7 +69,7 @@ export function Sekmeler<T extends string>({ sekmeler, secili, onSec }: { sekmel
   return (
     <nav
       className="flex items-center gap-0.5 overflow-x-auto rounded-2xl p-1.5 [scrollbar-width:thin]"
-      style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.035), rgba(0,0,0,0.25))', border: `1px solid ${CARD_BORDER}` }}
+      style={portalStyle({ background: 'linear-gradient(180deg, rgba(255,255,255,0.035), rgba(0,0,0,0.25))', border: `1px solid ${CARD_BORDER}` })}
       role="tablist"
     >
       {sekmeler.map((s) => {
@@ -80,23 +82,23 @@ export function Sekmeler<T extends string>({ sekmeler, secili, onSec }: { sekmel
             aria-selected={aktif}
             onClick={() => onSec(s.id)}
             className="relative flex flex-shrink-0 items-center gap-1.5 rounded-lg px-3 py-[7px] text-[12.5px] font-medium transition-all duration-150 hover:bg-white/[0.045]"
-            style={{
+            style={portalStyle({
               background: aktif ? `linear-gradient(180deg, ${GOLD}2b, ${GOLD}12)` : 'transparent',
               boxShadow: aktif ? `inset 0 0 0 1px ${GOLD}4d, 0 6px 18px -12px ${GOLD}99` : 'none',
               color: aktif ? GOLD : MUTED,
-            }}
+            })}
           >
-            {s.ikon && <span style={{ opacity: aktif ? 1 : 0.75, display: 'inline-flex' }}>{s.ikon}</span>}
+            {s.ikon && <span style={portalStyle({ opacity: aktif ? 1 : 0.75, display: 'inline-flex' })}>{s.ikon}</span>}
             {s.etiket}
             {s.rozet != null && s.rozet !== 0 && s.rozet !== '' && (
               <span
                 className="rounded-full px-1.5 py-px text-[10px] font-semibold"
-                style={{ background: `${s.dikkat ? GOLD : MUTED}1f`, border: `1px solid ${s.dikkat ? GOLD : MUTED}44`, color: s.dikkat ? GOLD : MUTED }}
+                style={portalStyle({ background: `${s.dikkat ? GOLD : MUTED}1f`, border: `1px solid ${s.dikkat ? GOLD : MUTED}44`, color: s.dikkat ? GOLD : MUTED })}
               >
                 {s.rozet}
               </span>
             )}
-            {aktif && <span className="absolute inset-x-3 -bottom-[1px] h-[2px] rounded-full" style={{ background: `linear-gradient(90deg, transparent, ${GOLD}, transparent)` }} />}
+            {aktif && <span className="absolute inset-x-3 -bottom-[1px] h-[2px] rounded-full" style={portalStyle({ background: `linear-gradient(90deg, transparent, ${GOLD}, transparent)` })} />}
           </button>
         );
       })}
@@ -114,14 +116,14 @@ export function Cip({ aktif, onClick, children, sayi, dikkat = false, title }: {
       title={title}
       className="inline-flex h-7 flex-shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 text-[11.5px] font-medium transition-all hover:brightness-110"
       style={
-        aktif
+        portalStyle(aktif
           ? { background: `${GOLD}1a`, border: `1px solid ${GOLD}59`, color: GOLD }
-          : { background: 'rgba(255,255,255,0.02)', border: `1px solid ${dikkat ? `${GOLD}44` : CARD_BORDER}`, color: dikkat ? GOLD : MUTED }
+          : { background: 'rgba(255,255,255,0.02)', border: `1px solid ${dikkat ? `${GOLD}44` : CARD_BORDER}`, color: dikkat ? GOLD : MUTED })
       }
     >
       {children}
       {sayi != null && (
-        <span className="text-[10.5px] tabular-nums" style={{ color: renk, opacity: aktif || dikkat ? 0.9 : 0.7 }}>
+        <span className="text-[10.5px] tabular-nums" style={portalStyle({ color: renk, opacity: aktif || dikkat ? 0.9 : 0.7 })}>
           {sayi}
         </span>
       )}
@@ -132,21 +134,21 @@ export function Cip({ aktif, onClick, children, sayi, dikkat = false, title }: {
 /** İnce ilerleme çubuğu (mavi gradyan). */
 export function Ilerleme({ yuzde, renk = MAVI, className = '' }: { yuzde: number; renk?: string; className?: string }) {
   return (
-    <span className={`block h-[5px] w-full overflow-hidden rounded-full ${className}`} style={{ background: 'rgba(255,255,255,0.06)' }}>
-      <i className="block h-full rounded-full transition-[width] duration-500" style={{ width: `${Math.max(4, Math.min(100, yuzde))}%`, background: `linear-gradient(90deg, ${renk}80, ${renk})` }} />
+    <span className={`block h-[5px] w-full overflow-hidden rounded-full ${className}`} style={portalStyle({ background: 'rgba(255,255,255,0.06)' })}>
+      <i className="block h-full rounded-full transition-[width] duration-500" style={portalStyle({ width: `${Math.max(4, Math.min(100, yuzde))}%`, background: `linear-gradient(90deg, ${renk}80, ${renk})` })} />
     </span>
   );
 }
 
 /** Durum noktası (kelimenin yanında). */
 export function Nokta({ renk, nabiz = false }: { renk: string; nabiz?: boolean }) {
-  return <span className={`inline-block h-[6px] w-[6px] flex-shrink-0 rounded-full ${nabiz ? 'animate-pulse' : ''}`} style={{ background: renk, boxShadow: `0 0 8px ${renk}66` }} />;
+  return <span className={`inline-block h-[6px] w-[6px] flex-shrink-0 rounded-full ${nabiz ? 'animate-pulse' : ''}`} style={portalStyle({ background: renk, boxShadow: `0 0 8px ${renk}66` })} />;
 }
 
 /** Alıntı bloğu: sol altın çizgi (onay bekleyen mesaj metni). */
 export function Alinti({ children, renk = GOLD, className = '' }: { children: ReactNode; renk?: string; className?: string }) {
   return (
-    <div className={`whitespace-pre-wrap rounded-r-lg px-3 py-2 text-[12.5px] leading-relaxed ${className}`} style={{ borderLeft: `2px solid ${renk}8c`, background: `${renk}0d`, color: TEXT }}>
+    <div className={`whitespace-pre-wrap rounded-r-lg px-3 py-2 text-[12.5px] leading-relaxed ${className}`} style={portalStyle({ borderLeft: `2px solid ${renk}8c`, background: `${renk}0d`, color: TEXT })}>
       {children}
     </div>
   );
@@ -155,9 +157,9 @@ export function Alinti({ children, renk = GOLD, className = '' }: { children: Re
 /** Kutu içi küçük bölüm (Sonuç blokları: Yaptığı iş / Bulgular …). */
 export function IcKutu({ baslik, children, renk = MUTED, className = '', style }: { baslik?: ReactNode; children: ReactNode; renk?: string; className?: string; style?: CSSProperties }) {
   return (
-    <div className={`rounded-xl px-3 py-2.5 ${className}`} style={{ background: 'rgba(255,255,255,0.02)', border: `1px solid ${CARD_BORDER}`, ...style }}>
+    <div className={`rounded-xl px-3 py-2.5 ${className}`} style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: `1px solid ${CARD_BORDER}`, ...style })}>
       {baslik && (
-        <div className="mb-1 text-[10.5px] font-semibold uppercase tracking-[0.08em]" style={{ color: renk }}>
+        <div className="mb-1 text-[10.5px] font-semibold uppercase tracking-[0.08em]" style={portalStyle({ color: renk })}>
           {baslik}
         </div>
       )}
@@ -174,7 +176,7 @@ export const koyuAlan: CSSProperties = { background: 'rgba(0,0,0,0.3)', border: 
 /** Klavye tuşu görünümü */
 export function Kbd({ children }: { children: ReactNode }) {
   return (
-    <kbd className="rounded-md px-1.5 py-px font-mono text-[10px]" style={{ border: `1px solid ${CARD_BORDER}`, background: 'rgba(255,255,255,0.04)', color: MUTED }}>
+    <kbd className="rounded-md px-1.5 py-px font-mono text-[10px]" style={portalStyle({ border: `1px solid ${CARD_BORDER}`, background: 'rgba(255,255,255,0.04)', color: MUTED })}>
       {children}
     </kbd>
   );

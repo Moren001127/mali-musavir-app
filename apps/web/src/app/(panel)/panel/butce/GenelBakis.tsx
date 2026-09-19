@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import React from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
@@ -61,16 +63,16 @@ export default function GenelBakis({
               <div
                 key={i}
                 className="flex items-start gap-3 rounded-xl px-4 py-3"
-                style={{ background: `${renk}12`, border: `1px solid ${renk}33` }}
+                style={portalStyle({ background: `${renk}12`, border: `1px solid ${renk}33` })}
               >
-                <span style={{ color: renk }} className="mt-0.5">
+                <span style={portalStyle({ color: renk })} className="mt-0.5">
                   {u.seviye === 'BILGI' ? <Info size={15} /> : <AlertTriangle size={15} />}
                 </span>
                 <div>
-                  <div className="text-[12.5px] font-semibold" style={{ color: renk }}>
+                  <div className="text-[12.5px] font-semibold" style={portalStyle({ color: renk })}>
                     {u.baslik}
                   </div>
-                  <div className="mt-0.5 text-[11.5px] leading-relaxed" style={{ color: MUTED }}>
+                  <div className="mt-0.5 text-[11.5px] leading-relaxed" style={portalStyle({ color: MUTED })}>
                     {u.mesaj}
                   </div>
                 </div>
@@ -81,9 +83,9 @@ export default function GenelBakis({
       )}
 
       {/* KPI şeridi */}
-      <p className="text-[11px] leading-relaxed" style={{ color: 'rgba(113,113,122,0.9)' }}>
-        Üst sıra <strong style={{ color: MUTED }}>bu ayın hareketini</strong>, alt sıra{' '}
-        <strong style={{ color: MUTED }}>bugünkü durumunuzu</strong> gösterir.
+      <p className="text-[11px] leading-relaxed" style={portalStyle({ color: 'rgba(113,113,122,0.9)' })}>
+        Üst sıra <strong style={portalStyle({ color: MUTED })}>bu ayın hareketini</strong>, alt sıra{' '}
+        <strong style={portalStyle({ color: MUTED })}>bugünkü durumunuzu</strong> gösterir.
       </p>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <div className="space-y-1.5">
@@ -156,14 +158,14 @@ export default function GenelBakis({
 
         {/* Aylık zorunlu ödeme */}
         <Kutu baslik="Bu ayın zorunlu borç ödemesi" aciklama="Kart asgarileri + kredi taksitleri" renk={TURUNCU}>
-          <div className="text-[26px] font-semibold tabular-nums" style={{ color: TURUNCU }}>
+          <div className="text-[26px] font-semibold tabular-nums" style={portalStyle({ color: TURUNCU })}>
             {para(ozet.borcOzet.aylikZorunluOdeme)} ₺
           </div>
           {/* Kapasite ELDEKİ PARADAN okunur — Ödeme Planı ekranıyla aynı hesap */}
-          <div className="mt-2 space-y-1 text-[11.5px]" style={{ color: MUTED }}>
+          <div className="mt-2 space-y-1 text-[11.5px]" style={portalStyle({ color: MUTED })}>
             <div className="flex justify-between">
               <span>Hesaplardaki para</span>
-              <span className="tabular-nums" style={{ color: MOR }}>
+              <span className="tabular-nums" style={portalStyle({ color: MOR })}>
                 {para(ozet.nakitVarlik)} ₺
               </span>
             </div>
@@ -171,9 +173,9 @@ export default function GenelBakis({
               <span>Nakit yastığı</span>
               <span className="tabular-nums">{para(ozet.nakitYastigi)} ₺</span>
             </div>
-            <div className="flex justify-between border-t pt-1" style={{ borderColor: ROW_SEP, color: TEXT }}>
+            <div className="flex justify-between border-t pt-1" style={portalStyle({ borderColor: ROW_SEP, color: TEXT })}>
               <span>Borca ayrılabilir</span>
-              <span className="tabular-nums" style={{ color: GOLD }}>
+              <span className="tabular-nums" style={portalStyle({ color: GOLD })}>
                 {para(ozet.odemeKapasitesi)} ₺
               </span>
             </div>
@@ -187,7 +189,7 @@ export default function GenelBakis({
           baslik="Yaklaşan ödemeler"
           aciklama="Önümüzdeki 30 gün"
           renk={MAVI}
-          sag={<CalendarClock size={14} style={{ color: MAVI }} />}
+          sag={<CalendarClock size={14} style={portalStyle({ color: MAVI })} />}
         >
           {ozet.yaklasanOdemeler.length === 0 ? (
             <Bos metin="30 gün içinde ödemesi gelen kart ekstresi yok." />
@@ -199,18 +201,18 @@ export default function GenelBakis({
                     const d = ekstreDurumBilgi(e.durum);
                     const gecti = (e.kalanGun ?? 0) < 0;
                     return (
-                      <tr key={e.id} className="border-b last:border-0" style={{ borderColor: ROW_SEP }}>
+                      <tr key={e.id} className="border-b last:border-0" style={portalStyle({ borderColor: ROW_SEP })}>
                         <td className="py-2">
-                          <div style={{ color: TEXT }}>
+                          <div style={portalStyle({ color: TEXT })}>
                             {e.kart?.bankaAdi} {e.kart?.kartAdi}
                           </div>
-                          <div className="text-[10.5px]" style={{ color: MUTED }}>
+                          <div className="text-[10.5px]" style={portalStyle({ color: MUTED })}>
                             {e.donem} · son ödeme {tarihTR(e.sonOdemeTarihi)}
                           </div>
                         </td>
-                        <td className="py-2 text-right tabular-nums" style={{ color: TEXT }}>
+                        <td className="py-2 text-right tabular-nums" style={portalStyle({ color: TEXT })}>
                           {e.borcTutari === null ? (
-                            <span style={{ color: TURUNCU }}>tutar girilmedi</span>
+                            <span style={portalStyle({ color: TURUNCU })}>tutar girilmedi</span>
                           ) : (
                             `${para(e.kalanTutar ?? 0)} ₺`
                           )}
@@ -243,8 +245,8 @@ export default function GenelBakis({
                   return (
                     <div key={k.ad} className="flex items-center justify-between gap-3 text-[12px]">
                       <span className="flex min-w-0 items-center gap-2">
-                        <i className="h-2 w-2 flex-shrink-0 rounded-sm" style={{ background: k.renk }} />
-                        <span className="truncate" style={{ color: TEXT }}>
+                        <i className="h-2 w-2 flex-shrink-0 rounded-sm" style={portalStyle({ background: k.renk })} />
+                        <span className="truncate" style={portalStyle({ color: TEXT })}>
                           {k.ad}
                         </span>
                         {/* Mesleki/kişisel ayrımı artık kategori satırında görünür */}
@@ -253,7 +255,7 @@ export default function GenelBakis({
                           renk={k.defter === 'OFIS' ? MAVI : GOLD}
                         />
                       </span>
-                      <span className="flex-shrink-0 tabular-nums" style={{ color: MUTED }}>
+                      <span className="flex-shrink-0 tabular-nums" style={portalStyle({ color: MUTED })}>
                         {para(k.tutar)} ₺ · %{oran}
                       </span>
                     </div>

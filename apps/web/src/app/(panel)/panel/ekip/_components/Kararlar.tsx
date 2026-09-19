@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import { useMemo, useState } from 'react';
 import { Check, Loader2, MessageSquareReply, Send, XCircle } from 'lucide-react';
@@ -74,28 +76,28 @@ export function AcikKalemKarti({
   const altSatir = onayMi && !kararMi ? (hedef ? `→ ${hedef}` : '') : kalem.baslik;
 
   return (
-    <div className="py-3" style={{ borderTop: `1px solid ${ROW_SEP}` }}>
+    <div className="py-3" style={portalStyle({ borderTop: `1px solid ${ROW_SEP}` })}>
       <div className="flex items-start gap-2.5">
         {ajanId && <Avatar kisaltma={ajanKisaltma(ajanId)} ton="gold" boyut={26} title={ajanAd ? ajanTamAd(ajanId, ajanAd(ajanId)) : ajanId} />}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-            <span className="min-w-0 text-[12.8px] font-semibold" style={{ color: TEXT }} title={kalem.baslik}>
+            <span className="min-w-0 text-[12.8px] font-semibold" style={portalStyle({ color: TEXT })} title={kalem.baslik}>
               {baslik}
             </span>
-            <span className="ml-auto text-[11px] tabular-nums" style={{ color: MUTED }}>
+            <span className="ml-auto text-[11px] tabular-nums" style={portalStyle({ color: MUTED })}>
               {onayMi && !kararMi ? `#PRV-${kalem.id.slice(0, 8)}` : ''}
               {kalan && kalan.ms > 0 ? ` · ${kalan.metin} kaldı` : ''}
             </span>
           </div>
           {altSatir && (
-            <div className="mt-0.5 text-[12px] leading-relaxed" style={{ color: onayMi && !kararMi ? MUTED : TEXT }}>
+            <div className="mt-0.5 text-[12px] leading-relaxed" style={portalStyle({ color: onayMi && !kararMi ? MUTED : TEXT })}>
               {altSatir}
             </div>
           )}
           {kalem.confirmationText && !sonuc && <Alinti className="mt-2">{kalem.confirmationText}</Alinti>}
-          {!onayMi && !sonuc && <div className="mt-1 text-[11.5px]" style={{ color: MUTED }}>Yapınca “Yapıldı”ya basın; Koordinatör işe kaldığı yerden devam eder.</div>}
+          {!onayMi && !sonuc && <div className="mt-1 text-[11.5px]" style={portalStyle({ color: MUTED })}>Yapınca “Yapıldı”ya basın; Koordinatör işe kaldığı yerden devam eder.</div>}
           {sonuc ? (
-            <div className="mt-2 text-[12.5px] font-semibold" style={{ color: sonuc.startsWith('Hata') ? KIRMIZI : OK }}>
+            <div className="mt-2 text-[12.5px] font-semibold" style={portalStyle({ color: sonuc.startsWith('Hata') ? KIRMIZI : OK })}>
               {sonuc}
             </div>
           ) : (
@@ -112,7 +114,7 @@ export function AcikKalemKarti({
                   }}
                   placeholder={kararMi ? 'Kararınızı yazın (ör. "kilitle", "beklet")…' : 'İsterseniz not yazın (ör. "görselleri yükledim, devam et")…'}
                   className="h-9 min-w-0 rounded-[10px] px-3 text-[12.5px] outline-none"
-                  style={{ background: 'rgba(255,255,255,0.03)', border: `1px solid ${CARD_BORDER}`, color: TEXT }}
+                  style={portalStyle({ background: 'rgba(255,255,255,0.03)', border: `1px solid ${CARD_BORDER}`, color: TEXT })}
                 />
               )}
               <div className="flex flex-wrap items-center gap-1.5">
@@ -149,7 +151,7 @@ export function AcikKalemKarti({
                     </Dugme>
                   </>
                 )}
-                <span className="ml-auto text-[10.5px]" style={{ color: MUTED }}>
+                <span className="ml-auto text-[10.5px]" style={portalStyle({ color: MUTED })}>
                   {turAd}
                 </span>
               </div>
@@ -184,12 +186,12 @@ export function YerelOnay({ adim, kosu, kosular, onBitti }: { adim: Adim; kosu: 
     }
   };
   return (
-    <div className="py-3" style={{ borderTop: `1px solid ${ROW_SEP}` }}>
+    <div className="py-3" style={portalStyle({ borderTop: `1px solid ${ROW_SEP}` })}>
       <div className="flex items-baseline gap-2">
-        <span className="text-[12.8px] font-semibold" style={{ color: TEXT }}>
+        <span className="text-[12.8px] font-semibold" style={portalStyle({ color: TEXT })}>
           Onayınızı bekliyor — {aracAdi(adim.ad)}
         </span>
-        <span className="ml-auto text-[11px] tabular-nums" style={{ color: MUTED }}>
+        <span className="ml-auto text-[11px] tabular-nums" style={portalStyle({ color: MUTED })}>
           #{adim.previewId}
         </span>
       </div>
@@ -253,28 +255,28 @@ export function SizdenBeklenenKutu({
   const onayHaritasi = useMemo(() => new Map(onaylar.map((o) => [o.previewId, o])), [onaylar]);
   return (
     <section aria-label="Sizden beklenen" className={`mt-3.5 ${className}`}>
-      {!!hata && <p role="alert" className="mb-2 text-[12px]" style={{ color: KIRMIZI }}>Kararlar yenilenemedi. {hata instanceof Error ? hata.message : 'Lütfen yeniden deneyin.'}</p>}
-      {kalemler.length > 0 && <div className="mb-3 flex items-center justify-between border-t pt-3 text-[11px]" style={{ color: GOLD, borderColor: SADE_AYRAC }}><span>Sizden beklenen</span><span>{kalemler.length} bekliyor</span></div>}
+      {!!hata && <p role="alert" className="mb-2 text-[12px]" style={portalStyle({ color: KIRMIZI })}>Kararlar yenilenemedi. {hata instanceof Error ? hata.message : 'Lütfen yeniden deneyin.'}</p>}
+      {kalemler.length > 0 && <div className="mb-3 flex items-center justify-between border-t pt-3 text-[11px]" style={portalStyle({ color: GOLD, borderColor: SADE_AYRAC })}><span>Sizden beklenen</span><span>{kalemler.length} bekliyor</span></div>}
       {yukleniyor && !kalemler.length ? (
-        <div className="py-4 text-[12px]" style={{ color: MUTED }}>
+        <div className="py-4 text-[12px]" style={portalStyle({ color: MUTED })}>
           Yükleniyor…
         </div>
       ) : !kalemler.length ? (
-        <div className="flex items-center gap-2.5 text-[12.5px]" style={{ color: MUTED }}>
-          {!hata && <Check size={18} className="rounded-full p-0.5" style={{ color: OK, background: `${OK}1f`, border: `1px solid ${OK}4d` }} />}
+        <div className="flex items-center gap-2.5 text-[12.5px]" style={portalStyle({ color: MUTED })}>
+          {!hata && <Check size={18} className="rounded-full p-0.5" style={portalStyle({ color: OK, background: `${OK}1f`, border: `1px solid ${OK}4d` })} />}
           {hata ? 'Bekleyen karar bilgisi alınamadı.' : 'Sizden beklenen karar yok.'}
         </div>
       ) : (
         <div className="-mt-3">
           {kalemler.map(({ vaka, kalem, ajanId }) => (
-            <details key={`${vaka.vakaId}-${kalem.tip}-${kalem.id}`} className="group border-t py-1" style={{ borderColor: ROW_SEP }}>
+            <details key={`${vaka.vakaId}-${kalem.tip}-${kalem.id}`} className="group border-t py-1" style={portalStyle({ borderColor: ROW_SEP })}>
               <summary className="flex cursor-pointer list-none items-center gap-3 py-3 [&::-webkit-details-marker]:hidden">
-                <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: GOLD }} />
+                <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={portalStyle({ background: GOLD })} />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[12.5px] font-medium" style={{ color: TEXT }} title={vaka.mukellef?.ad || 'Ofis geneli'}>{vaka.mukellef?.ad || 'Ofis geneli'}</span>
-                  <span className="block truncate text-[11.5px]" style={{ color: MUTED }} title={kalem.baslik}>{kalem.baslik}</span>
+                  <span className="block truncate text-[12.5px] font-medium" style={portalStyle({ color: TEXT })} title={vaka.mukellef?.ad || 'Ofis geneli'}>{vaka.mukellef?.ad || 'Ofis geneli'}</span>
+                  <span className="block truncate text-[11.5px]" style={portalStyle({ color: MUTED })} title={kalem.baslik}>{kalem.baslik}</span>
                 </span>
-                <span className="shrink-0 text-[11px]" style={{ color: GOLD }}><span className="group-open:hidden">İncele</span><span className="hidden group-open:inline">Gizle</span></span>
+                <span className="shrink-0 text-[11px]" style={portalStyle({ color: GOLD })}><span className="group-open:hidden">İncele</span><span className="hidden group-open:inline">Gizle</span></span>
               </summary>
             <AcikKalemKarti
               kalem={kalem}

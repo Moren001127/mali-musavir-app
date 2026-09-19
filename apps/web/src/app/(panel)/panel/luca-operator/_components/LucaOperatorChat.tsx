@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import { useState, useRef, useEffect } from 'react';
 import { Send, Loader2, Mic, MicOff, Volume2, VolumeX, Wrench } from 'lucide-react';
@@ -232,14 +234,14 @@ export function LucaOperatorChat() {
   return (
     <div
       className="flex h-full flex-col overflow-hidden rounded-2xl"
-      style={{ background: 'rgba(15,13,9,0.85)', border: `1px solid ${ACCENT}26`, backdropFilter: 'blur(10px)' }}
+      style={portalStyle({ background: 'rgba(15,13,9,0.85)', border: `1px solid ${ACCENT}26`, backdropFilter: 'blur(10px)' })}
     >
       {/* Başlık — modül adı üstteki başlıkta zaten var; burada yalnız DURUM ve KONTROLLER */}
       <div
         className="flex flex-shrink-0 flex-wrap items-center gap-2 border-b px-4 py-2.5"
-        style={{ borderColor: 'rgba(255,255,255,0.06)' }}
+        style={portalStyle({ borderColor: 'rgba(255,255,255,0.06)' })}
       >
-        <span className="text-xs" style={{ color: 'rgba(250,250,249,0.55)' }}>
+        <span className="text-xs" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>
           {voiceMode
             ? 'Sohbet modu açık — konuş, cevap versin'
             : messages.length === 0
@@ -251,11 +253,11 @@ export function LucaOperatorChat() {
           <button
             onClick={toggleSpeak}
             className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] transition-colors"
-            style={{
+            style={portalStyle({
               background: speakEnabled ? `${ACCENT}1a` : 'rgba(255,255,255,0.04)',
               color: speakEnabled ? ACCENT : 'rgba(250,250,249,0.5)',
               border: `1px solid ${speakEnabled ? `${ACCENT}44` : 'rgba(255,255,255,0.07)'}`,
-            }}
+            })}
             title={speakEnabled ? 'Sesli yanıt açık — kapat' : 'Sesli yanıt — aç'}
           >
             {speakEnabled ? <Volume2 size={11} /> : <VolumeX size={11} />}
@@ -264,11 +266,11 @@ export function LucaOperatorChat() {
           <button
             onClick={toggleVoiceMode}
             className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-semibold transition-colors"
-            style={{
+            style={portalStyle({
               background: voiceMode ? `${ACCENT}22` : 'rgba(255,255,255,0.04)',
               color: voiceMode ? ACCENT : 'rgba(250,250,249,0.5)',
               border: `1px solid ${voiceMode ? `${ACCENT}55` : 'rgba(255,255,255,0.07)'}`,
-            }}
+            })}
             title="Karşılıklı sesli sohbet — konuş, cevap versin, mikrofon tekrar açılsın"
           >
             <Mic size={11} />
@@ -278,7 +280,7 @@ export function LucaOperatorChat() {
             <button
               onClick={durdur}
               className="rounded-lg px-2 py-1 text-[11px] font-semibold transition-colors"
-              style={{ background: 'rgba(248,113,113,0.14)', border: '1px solid rgba(248,113,113,0.32)', color: '#fca5a5' }}
+              style={portalStyle({ background: 'rgba(248,113,113,0.14)', border: '1px solid rgba(248,113,113,0.32)', color: '#fca5a5' })}
               title="Çalışan işi durdur"
             >
               ■ Durdur
@@ -288,7 +290,7 @@ export function LucaOperatorChat() {
             <button
               onClick={clearChat}
               className="rounded-lg px-2 py-1 text-[11px] transition-colors hover:bg-white/5"
-              style={{ color: 'rgba(250,250,249,0.45)', border: '1px solid rgba(255,255,255,0.07)' }}
+              style={portalStyle({ color: 'rgba(250,250,249,0.45)', border: '1px solid rgba(255,255,255,0.07)' })}
               title="Sohbeti temizle"
             >
               Temizle
@@ -301,7 +303,7 @@ export function LucaOperatorChat() {
       <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
         {messages.length === 0 ? (
           <div className="space-y-4 py-10">
-            <div className="text-center text-sm" style={{ color: 'rgba(250,250,249,0.45)' }}>
+            <div className="text-center text-sm" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
               Henüz konuşma yok
             </div>
             <div className="flex flex-col items-center gap-2">
@@ -310,7 +312,7 @@ export function LucaOperatorChat() {
                   key={o}
                   onClick={() => send(o)}
                   className="rounded-lg px-3 py-1.5 text-xs transition-colors"
-                  style={{ background: `${ACCENT}12`, border: `1px solid ${ACCENT}2e`, color: 'rgba(250,250,249,0.8)' }}
+                  style={portalStyle({ background: `${ACCENT}12`, border: `1px solid ${ACCENT}2e`, color: 'rgba(250,250,249,0.8)' })}
                 >
                   {o}
                 </button>
@@ -324,7 +326,7 @@ export function LucaOperatorChat() {
                 <div key={i} className="flex justify-end">
                   <div
                     className="max-w-[80%] rounded-lg px-3 py-2 text-sm"
-                    style={{ background: `${ACCENT}1f`, border: `1px solid ${ACCENT}3a`, color: '#fafaf9' }}
+                    style={portalStyle({ background: `${ACCENT}1f`, border: `1px solid ${ACCENT}3a`, color: '#fafaf9' })}
                   >
                     {m.content}
                   </div>
@@ -334,11 +336,11 @@ export function LucaOperatorChat() {
             const empty = !m.content;
             return (
               <div key={i} className="flex flex-col gap-1">
-                <span className="text-[11px] font-bold tracking-wider" style={{ color: ACCENT }}>
+                <span className="text-[11px] font-bold tracking-wider" style={portalStyle({ color: ACCENT })}>
                   LUCA OPERATÖRÜ
                 </span>
                 {m.tools && m.tools.length > 0 && (
-                  <div className="flex items-center gap-1 text-[10px]" style={{ color: 'rgba(250,250,249,0.4)' }}>
+                  <div className="flex items-center gap-1 text-[10px]" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>
                     <Wrench size={10} />
                     {m.tools.length} veri sorgusu
                   </div>
@@ -346,7 +348,7 @@ export function LucaOperatorChat() {
                 {!empty && (
                   <div
                     className="whitespace-pre-wrap rounded-lg px-3 py-2 text-sm leading-relaxed"
-                    style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(250,250,249,0.92)' }}
+                    style={portalStyle({ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(250,250,249,0.92)' })}
                   >
                     {m.content}
                   </div>
@@ -356,7 +358,7 @@ export function LucaOperatorChat() {
           })
         )}
         {sending && (
-          <div className="flex items-center gap-2 px-2 py-1 text-xs" style={{ color: ACCENT }}>
+          <div className="flex items-center gap-2 px-2 py-1 text-xs" style={portalStyle({ color: ACCENT })}>
             <Loader2 size={12} className="animate-spin" />
             {currentTool ? `${currentTool} çalışıyor...` : 'Düşünüyor...'}
           </div>
@@ -364,17 +366,17 @@ export function LucaOperatorChat() {
       </div>
 
       {/* Girdi + ses */}
-      <div className="flex-shrink-0 border-t px-3 py-3" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+      <div className="flex-shrink-0 border-t px-3 py-3" style={portalStyle({ borderColor: 'rgba(255,255,255,0.06)' })}>
         <div className="flex gap-2">
           <button
             onClick={toggleMic}
             disabled={sending}
             className="rounded-lg px-3 transition-colors disabled:opacity-50"
-            style={{
+            style={portalStyle({
               background: listening ? 'rgba(239,68,68,0.20)' : 'rgba(255,255,255,0.05)',
               border: `1px solid ${listening ? 'rgba(239,68,68,0.45)' : 'rgba(255,255,255,0.08)'}`,
               color: listening ? '#fca5a5' : 'rgba(250,250,249,0.6)',
-            }}
+            })}
             title={listening ? 'Dinlemeyi durdur' : 'Sesli komut için tıkla'}
           >
             {listening ? <MicOff size={16} className="animate-pulse" /> : <Mic size={16} />}
@@ -398,17 +400,17 @@ export function LucaOperatorChat() {
                     : 'Luca operatörüne talimat ver… (Enter ile gönder)'
             }
             className="flex-1 rounded-lg px-3 py-2 text-sm outline-none"
-            style={{
+            style={portalStyle({
               background: 'rgba(0,0,0,0.3)',
               border: `1px solid ${listening ? 'rgba(239,68,68,0.35)' : `${ACCENT}3a`}`,
               color: '#fafaf9',
-            }}
+            })}
           />
           <button
             onClick={submit}
             disabled={!text.trim()}
             className="rounded-lg px-3 disabled:opacity-50"
-            style={{ background: ACCENT, color: '#15110b' }}
+            style={portalStyle({ background: ACCENT, color: '#15110b' })}
           >
             <Send size={16} />
           </button>

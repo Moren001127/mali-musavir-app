@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import { useState } from 'react';
 import { usePathname } from 'next/navigation';
@@ -70,13 +72,13 @@ export function LucaCaptchaOverlay() {
   return (
     <div
       className="fixed bottom-4 right-6 z-[80] w-[420px] max-w-[calc(100vw-2rem)] rounded-xl p-4 shadow-2xl"
-      style={{
+      style={portalStyle({
         background: 'rgba(20,17,13,0.98)',
         border: '1px solid rgba(212,184,118,0.42)',
         boxShadow: '0 22px 70px rgba(0,0,0,0.55)',
-      }}
+      })}
     >
-      <div className="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[.12em]" style={{ color: '#d4b876' }}>
+      <div className="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[.12em]" style={portalStyle({ color: '#d4b876' })}>
         <AlertTriangle size={14} />
         Luca güvenlik kodu
       </div>
@@ -86,16 +88,16 @@ export function LucaCaptchaOverlay() {
           src={challenge.captchaImage}
           alt="Luca güvenlik kodu"
           className="h-16 w-full rounded-md object-contain mb-3"
-          style={{ background: '#fff', border: '1px solid rgba(255,255,255,0.22)' }}
+          style={portalStyle({ background: '#fff', border: '1px solid rgba(255,255,255,0.22)' })}
         />
       ) : (
-        <div className="flex h-16 items-center justify-center rounded-md text-xs mb-3" style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(250,250,249,0.65)' }}>
+        <div className="flex h-16 items-center justify-center rounded-md text-xs mb-3" style={portalStyle({ background: 'rgba(255,255,255,0.06)', color: 'rgba(250,250,249,0.65)' })}>
           Kod görseli bekleniyor...
         </div>
       )}
 
       {autoOcr && (
-        <div className="mb-3 rounded-md px-3 py-2 text-[11.5px]" style={{ background: 'rgba(245,158,11,0.10)', color: 'rgba(250,250,249,0.72)', border: '1px solid rgba(245,158,11,0.22)' }}>
+        <div className="mb-3 rounded-md px-3 py-2 text-[11.5px]" style={portalStyle({ background: 'rgba(245,158,11,0.10)', color: 'rgba(250,250,249,0.72)', border: '1px solid rgba(245,158,11,0.22)' })}>
           {autoOcr.skippedReason
             ? autoOcr.skippedReason
             : autoOcr.ocrKapali
@@ -113,12 +115,12 @@ export function LucaCaptchaOverlay() {
         autoFocus
         placeholder="Kodu yazın..."
         className="h-11 w-full rounded-lg border px-3 text-base font-bold outline-none mb-3"
-        style={{
+        style={portalStyle({
           background: 'rgba(0,0,0,0.28)',
           borderColor: 'rgba(212,184,118,0.35)',
           color: '#fafaf9',
           letterSpacing: '.08em',
-        }}
+        })}
       />
 
       <div className="flex gap-2">
@@ -127,7 +129,7 @@ export function LucaCaptchaOverlay() {
           onClick={() => answerMut.mutate()}
           disabled={answerMut.isPending || !answer.trim()}
           className="flex-1 inline-flex h-10 items-center justify-center rounded-lg px-4 text-sm font-bold disabled:opacity-45"
-          style={{ background: '#d4b876', color: '#15110b' }}
+          style={portalStyle({ background: '#d4b876', color: '#15110b' })}
         >
           {answerMut.isPending ? 'Gönderiliyor...' : 'Kodu Gönder'}
         </button>
@@ -136,7 +138,7 @@ export function LucaCaptchaOverlay() {
           onClick={() => cancelMut.mutate()}
           disabled={cancelMut.isPending}
           className="inline-flex h-10 items-center justify-center gap-2 rounded-lg px-3 text-sm font-bold disabled:opacity-45"
-          style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(250,250,249,0.76)' }}
+          style={portalStyle({ background: 'rgba(255,255,255,0.07)', color: 'rgba(250,250,249,0.76)' })}
           title="Bu Luca işini iptal et"
         >
           <X size={15} /> İptal

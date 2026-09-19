@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
@@ -67,13 +69,13 @@ export function LucaInlineCaptchaPanel({ jobIds, color = '#60a5fa', agentRunning
     return (
       <div
         className="mt-3 flex items-center gap-2 rounded-lg px-3 py-2 text-[12px]"
-        style={{
+        style={portalStyle({
           background: agentRunning ? 'rgba(34,197,94,0.08)' : 'rgba(244,63,94,0.08)',
           border: `1px solid ${agentRunning ? 'rgba(34,197,94,0.20)' : 'rgba(244,63,94,0.22)'}`,
           color: 'rgba(250,250,249,0.70)',
-        }}
+        })}
       >
-        {agentRunning ? <ShieldCheck size={14} style={{ color: '#86efac' }} /> : <AlertTriangle size={14} style={{ color: '#fca5a5' }} />}
+        {agentRunning ? <ShieldCheck size={14} style={portalStyle({ color: '#86efac' })} /> : <AlertTriangle size={14} style={portalStyle({ color: '#fca5a5' })} />}
         <span>
           {agentRunning
             ? 'Arka plan Luca ajanı açık. Güvenlik kodu çıkarsa burada sorulacak.'
@@ -86,10 +88,10 @@ export function LucaInlineCaptchaPanel({ jobIds, color = '#60a5fa', agentRunning
   return (
     <div
       className="mt-3 grid gap-3 rounded-lg p-3 md:grid-cols-[220px_1fr_auto]"
-      style={{ background: 'rgba(96,165,250,0.10)', border: '1px solid rgba(96,165,250,0.30)' }}
+      style={portalStyle({ background: 'rgba(96,165,250,0.10)', border: '1px solid rgba(96,165,250,0.30)' })}
     >
       <div>
-        <div className="mb-2 text-[11px] font-bold uppercase tracking-[.12em]" style={{ color: '#bfdbfe' }}>
+        <div className="mb-2 text-[11px] font-bold uppercase tracking-[.12em]" style={portalStyle({ color: '#bfdbfe' })}>
           Luca Güvenlik Kodu
         </div>
         {challenge.captchaImage ? (
@@ -97,16 +99,16 @@ export function LucaInlineCaptchaPanel({ jobIds, color = '#60a5fa', agentRunning
             src={challenge.captchaImage}
             alt="Luca güvenlik kodu"
             className="h-16 w-full rounded-md object-contain"
-            style={{ background: '#fff', border: '1px solid rgba(255,255,255,0.22)' }}
+            style={portalStyle({ background: '#fff', border: '1px solid rgba(255,255,255,0.22)' })}
           />
         ) : (
-          <div className="flex h-16 items-center justify-center rounded-md text-xs" style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(250,250,249,0.65)' }}>
+          <div className="flex h-16 items-center justify-center rounded-md text-xs" style={portalStyle({ background: 'rgba(255,255,255,0.06)', color: 'rgba(250,250,249,0.65)' })}>
             Kod görseli bekleniyor
           </div>
         )}
       </div>
       <div>
-        <label className="mb-2 block text-[11px] font-bold uppercase tracking-[.12em]" style={{ color: 'rgba(250,250,249,0.68)' }}>
+        <label className="mb-2 block text-[11px] font-bold uppercase tracking-[.12em]" style={portalStyle({ color: 'rgba(250,250,249,0.68)' })}>
           Kodu buraya gir
         </label>
         <input
@@ -117,18 +119,18 @@ export function LucaInlineCaptchaPanel({ jobIds, color = '#60a5fa', agentRunning
           }}
           autoFocus
           className="h-11 w-full rounded-lg border px-3 text-base font-bold outline-none"
-          style={{
+          style={portalStyle({
             background: 'rgba(0,0,0,0.28)',
             borderColor: 'rgba(191,219,254,0.35)',
             color: '#fafaf9',
             letterSpacing: '.08em',
-          }}
+          })}
         />
-        <p className="mt-2 text-[12px]" style={{ color: 'rgba(250,250,249,0.62)' }}>
+        <p className="mt-2 text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.62)' })}>
           Ayrı Luca sekmesi açılmadan, bu kod arka plandaki ajana iletilir.
         </p>
         {autoOcr && (
-          <p className="mt-2 rounded-md px-2 py-1.5 text-[11.5px]" style={{ background: 'rgba(245,158,11,0.10)', color: 'rgba(250,250,249,0.68)', border: '1px solid rgba(245,158,11,0.20)' }}>
+          <p className="mt-2 rounded-md px-2 py-1.5 text-[11.5px]" style={portalStyle({ background: 'rgba(245,158,11,0.10)', color: 'rgba(250,250,249,0.68)', border: '1px solid rgba(245,158,11,0.20)' })}>
             {autoOcr.skippedReason
               ? autoOcr.skippedReason
               : autoOcr.ocrKapali
@@ -142,7 +144,7 @@ export function LucaInlineCaptchaPanel({ jobIds, color = '#60a5fa', agentRunning
           onClick={() => cancelMut.mutate()}
           disabled={cancelMut.isPending}
           className="rounded-lg px-3 py-3 text-sm font-bold disabled:opacity-45"
-          style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(250,250,249,0.70)' }}
+          style={portalStyle({ background: 'rgba(255,255,255,0.06)', color: 'rgba(250,250,249,0.70)' })}
         >
           İptal
         </button>
@@ -150,7 +152,7 @@ export function LucaInlineCaptchaPanel({ jobIds, color = '#60a5fa', agentRunning
           onClick={() => answerMut.mutate()}
           disabled={answerMut.isPending || !answer.trim()}
           className="rounded-lg px-4 py-3 text-sm font-bold disabled:opacity-45"
-          style={{ background: color, color: '#06121f' }}
+          style={portalStyle({ background: color, color: '#06121f' })}
         >
           {answerMut.isPending ? 'Gönderiliyor...' : 'Kodu Gönder'}
         </button>

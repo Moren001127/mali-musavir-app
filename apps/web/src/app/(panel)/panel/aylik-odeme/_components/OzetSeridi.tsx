@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import type { ReactNode } from 'react';
 import { AlertTriangle, CalendarClock, CheckCircle2, Clock, Users } from 'lucide-react';
@@ -32,11 +34,11 @@ export function OzetSeridi({ ozet, aktif, onSec, yeniKalem }: { ozet?: OdemeOzet
         hata
       </Hap>
       {(yukleniyor || typeof yeni === 'number') && (
-        <span className="inline-flex flex-shrink-0 items-center gap-1 whitespace-nowrap px-1.5 text-[11.5px]" style={{ color: yeni ? IKINCIL : SONUK }} title="Henüz hiçbir kanaldan gönderilmemiş ödeme kalemi sayısı (tüm mükellefler)" data-testid="yeni-kalem">
+        <span className="inline-flex flex-shrink-0 items-center gap-1 whitespace-nowrap px-1.5 text-[11.5px]" style={portalStyle({ color: yeni ? IKINCIL : SONUK })} title="Henüz hiçbir kanaldan gönderilmemiş ödeme kalemi sayısı (tüm mükellefler)" data-testid="yeni-kalem">
           {yukleniyor ? (
-            <span className="inline-block h-3 w-5 animate-pulse rounded" style={{ background: 'rgba(255,255,255,0.12)' }} />
+            <span className="inline-block h-3 w-5 animate-pulse rounded" style={portalStyle({ background: 'rgba(255,255,255,0.12)' })} />
           ) : (
-            <span className="font-semibold tabular-nums" style={{ color: yeni ? METIN : SONUK }}>{yeni}</span>
+            <span className="font-semibold tabular-nums" style={portalStyle({ color: yeni ? METIN : SONUK })}>{yeni}</span>
           )}
           yeni kalem
         </span>
@@ -44,7 +46,7 @@ export function OzetSeridi({ ozet, aktif, onSec, yeniKalem }: { ozet?: OdemeOzet
       {(!ozet || ozet.enYakinSonGun) && (
         <>
           <Ayrac />
-          <span className="inline-flex min-w-0 items-center gap-1 px-1.5 text-[11.5px]" style={{ color: IKINCIL }} title={ozet?.enYakinSonGun ? `${ozet.enYakinSonGun.turAd} son ödeme günü: ${ozet.enYakinSonGun.tarih}` : 'En yakın son ödeme günü'}>
+          <span className="inline-flex min-w-0 items-center gap-1 px-1.5 text-[11.5px]" style={portalStyle({ color: IKINCIL })} title={ozet?.enYakinSonGun ? `${ozet.enYakinSonGun.turAd} son ödeme günü: ${ozet.enYakinSonGun.tarih}` : 'En yakın son ödeme günü'}>
             <CalendarClock size={12} />
             <Bilgi etiket="En yakın son gün" deger={ozet?.enYakinSonGun ? `${kisaGun(ozet.enYakinSonGun.tarih)} (${ozet.enYakinSonGun.turAd})` : undefined} />
           </span>
@@ -55,10 +57,10 @@ export function OzetSeridi({ ozet, aktif, onSec, yeniKalem }: { ozet?: OdemeOzet
 }
 
 function Ayrac() {
-  return <span className="mx-0.5 h-4 w-px flex-shrink-0" style={{ background: KENAR_NOTR }} aria-hidden="true" />;
+  return <span className="mx-0.5 h-4 w-px flex-shrink-0" style={portalStyle({ background: KENAR_NOTR })} aria-hidden="true" />;
 }
 function Nokta() {
-  return <span aria-hidden="true" style={{ color: 'rgba(250,250,249,0.3)' }}>·</span>;
+  return <span aria-hidden="true" style={portalStyle({ color: 'rgba(250,250,249,0.3)' })}>·</span>;
 }
 
 /** Tıklanabilir sayaç hapı — seçili: ince altın kenar (dolgu YOK); sayı > 0: nötr; hata: yumuşak kırmızı yazı; 0: soluk. */
@@ -72,14 +74,14 @@ function Hap({ ikon, children, sayi, secili, onClick, title, yukleniyor, renk = 
       title={title}
       className="inline-flex flex-shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2.5 py-1.5 text-[11.5px] font-semibold transition-[background-color,border-color,color,transform] duration-150 hover:-translate-y-px"
       style={
-        secili
+        portalStyle(secili
           ? { background: 'rgba(255,255,255,0.05)', border: `1px solid ${GOLD}88`, color: METIN }
-          : { background: 'transparent', border: `1px solid ${KENAR_NOTR}`, color: var_ ? (renk === KIRMIZI_YUMUSAK ? renk : METIN) : IKINCIL }
+          : { background: 'transparent', border: `1px solid ${KENAR_NOTR}`, color: var_ ? (renk === KIRMIZI_YUMUSAK ? renk : METIN) : IKINCIL })
       }
     >
       {ikon}
       {yukleniyor ? (
-        <span className="inline-block h-3 w-5 animate-pulse rounded" style={{ background: 'rgba(255,255,255,0.12)' }} />
+        <span className="inline-block h-3 w-5 animate-pulse rounded" style={portalStyle({ background: 'rgba(255,255,255,0.12)' })} />
       ) : (
         <span className="tabular-nums">{sayi ?? 0}</span>
       )}
@@ -94,9 +96,9 @@ function Bilgi({ etiket, deger, title }: { etiket: string; deger?: string; title
     <span title={title} className="inline-flex flex-shrink-0 items-center gap-1 whitespace-nowrap">
       <span className="font-medium">{etiket}</span>
       {deger === undefined ? (
-        <span className="inline-block h-3 w-14 animate-pulse rounded" style={{ background: 'rgba(255,255,255,0.12)' }} />
+        <span className="inline-block h-3 w-14 animate-pulse rounded" style={portalStyle({ background: 'rgba(255,255,255,0.12)' })} />
       ) : (
-        <span className="font-semibold tabular-nums" style={{ color: METIN }}>{deger}</span>
+        <span className="font-semibold tabular-nums" style={portalStyle({ color: METIN })}>{deger}</span>
       )}
     </span>
   );

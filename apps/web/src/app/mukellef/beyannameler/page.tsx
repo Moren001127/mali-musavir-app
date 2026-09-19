@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 import { useQuery } from '@tanstack/react-query';
 import { taxpayerApi } from '@/lib/taxpayer-api';
 import { fmtTRY, Empty, Spinner, PageTitle, Section, openBelge, ozetBelge } from '../_lib/shared';
@@ -58,8 +60,8 @@ export default function MukellefBeyannameler() {
           {rows.length === 0 ? <div className="p-6"><Empty>Henüz beyanname kaydı yok.</Empty></div> : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[760px] text-[13px]">
-                <thead style={{ background: 'rgba(255,255,255,0.025)' }}>
-                  <tr className="text-left uppercase tracking-[.12em] text-[10.5px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                <thead style={portalStyle({ background: 'rgba(255,255,255,0.025)' })}>
+                  <tr className="text-left uppercase tracking-[.12em] text-[10.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                     <th className="px-3 py-3 w-[160px] whitespace-nowrap">Beyanname Dönemi</th>
                     <th className="px-3 py-3">Beyanname Türü</th>
                     <th className="px-3 py-3">Belge Mahiyeti</th>
@@ -73,28 +75,28 @@ export default function MukellefBeyannameler() {
                     const k = item.k;
                     const tarih = fmtDate(k.beyanTarihi || k.createdAt);
                     return (
-                      <tr key={item.key} style={{ borderTop: '1px solid rgba(255,255,255,0.055)' }}>
+                      <tr key={item.key} style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.055)' })}>
                         <td className="px-3 py-3">
-                          <div className="whitespace-nowrap font-semibold tabular-nums" style={{ color: '#fafaf9' }}>{fmtDonem(k.donem)}</div>
-                          {tarih && <div className="text-[11.5px] mt-0.5" style={{ color: 'rgba(250,250,249,0.42)' }}>{tarih}</div>}
+                          <div className="whitespace-nowrap font-semibold tabular-nums" style={portalStyle({ color: '#fafaf9' })}>{fmtDonem(k.donem)}</div>
+                          {tarih && <div className="text-[11.5px] mt-0.5" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>{tarih}</div>}
                         </td>
                         <td className="px-3 py-3">
-                          <div className="font-semibold" style={{ color: '#fafaf9' }}>{k.beyanTipi}</div>
-                          <div className="text-[11px] mt-0.5" style={{ color: 'rgba(250,250,249,0.42)' }}>{TIP_ETIKET[k.beyanTipi] || k.beyanTipi}</div>
+                          <div className="font-semibold" style={portalStyle({ color: '#fafaf9' })}>{k.beyanTipi}</div>
+                          <div className="text-[11px] mt-0.5" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>{TIP_ETIKET[k.beyanTipi] || k.beyanTipi}</div>
                         </td>
                         <td className="px-3 py-3">
-                          <span className="text-[12.5px] font-semibold" style={{ color: 'rgba(250,250,249,0.85)' }}>{k.mahiyet === 'DUZELTME' ? 'DÜZELTME' : 'ASIL'}</span>
+                          <span className="text-[12.5px] font-semibold" style={portalStyle({ color: 'rgba(250,250,249,0.85)' })}>{k.mahiyet === 'DUZELTME' ? 'DÜZELTME' : 'ASIL'}</span>
                         </td>
-                        <td className="px-3 py-3" style={{ color: '#fafaf9' }}>{item.tur}</td>
+                        <td className="px-3 py-3" style={portalStyle({ color: '#fafaf9' })}>{item.tur}</td>
                         <td className="px-3 py-3">
                           {item.kind === 'pdf' ? (
                             <>
-                              <div className="font-semibold tabular-nums" style={{ color: k.tahakkukTutari != null ? '#fafaf9' : 'rgba(250,250,249,0.4)' }}>
+                              <div className="font-semibold tabular-nums" style={portalStyle({ color: k.tahakkukTutari != null ? '#fafaf9' : 'rgba(250,250,249,0.4)' })}>
                                 {k.tahakkukTutari != null ? fmtTRY(k.tahakkukTutari) : '—'}
                               </div>
-                              {k.tahakkukTutari != null && <div className="text-[10.5px] mt-0.5" style={{ color: 'rgba(250,250,249,0.36)' }}>Tahakkuk tutarı</div>}
+                              {k.tahakkukTutari != null && <div className="text-[10.5px] mt-0.5" style={portalStyle({ color: 'rgba(250,250,249,0.36)' })}>Tahakkuk tutarı</div>}
                             </>
-                          ) : <span style={{ color: 'rgba(250,250,249,0.25)' }}>—</span>}
+                          ) : <span style={portalStyle({ color: 'rgba(250,250,249,0.25)' })}>—</span>}
                         </td>
                         <td className="px-3 py-3">
                           <div className="flex justify-end gap-1.5">
@@ -105,7 +107,7 @@ export default function MukellefBeyannameler() {
                                   onClick={() => ozetBelge('beyanname', k.id, item.kind, `${k.beyanTipi} ${fmtDonem(k.donem)} ${item.tur}`)}
                                   title="MOREN AI ile özetle"
                                   className="flex h-8 w-8 items-center justify-center rounded-lg transition hover:bg-white/[0.06]"
-                                  style={{ border: '1px solid rgba(184,160,111,0.4)', color: '#d4b876', background: 'rgba(184,160,111,0.1)' }}
+                                  style={portalStyle({ border: '1px solid rgba(184,160,111,0.4)', color: '#d4b876', background: 'rgba(184,160,111,0.1)' })}
                                 >
                                   <Sparkles size={15} />
                                 </button>
@@ -114,13 +116,13 @@ export default function MukellefBeyannameler() {
                                   onClick={() => openBelge('beyanname', k.id, item.kind, `${k.beyanTipi} ${fmtDonem(k.donem)} ${item.tur}`)}
                                   title={item.kind === 'pdf' ? 'Tahakkuk fişini görüntüle' : 'Beyannameyi görüntüle'}
                                   className="flex h-8 w-8 items-center justify-center rounded-lg transition hover:bg-white/[0.06]"
-                                  style={{ border: '1px solid rgba(244,63,94,0.25)', color: '#fda4af', background: 'rgba(244,63,94,0.08)' }}
+                                  style={portalStyle({ border: '1px solid rgba(244,63,94,0.25)', color: '#fda4af', background: 'rgba(244,63,94,0.08)' })}
                                 >
                                   <Eye size={15} />
                                 </button>
                               </>
                             ) : (
-                              <span className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ border: '1px solid rgba(255,255,255,0.06)', color: 'rgba(250,250,249,0.25)' }}>
+                              <span className="flex h-8 w-8 items-center justify-center rounded-lg" style={portalStyle({ border: '1px solid rgba(255,255,255,0.06)', color: 'rgba(250,250,249,0.25)' })}>
                                 <Eye size={15} />
                               </span>
                             )}

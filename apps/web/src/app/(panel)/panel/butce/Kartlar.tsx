@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import React, { useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -135,23 +137,23 @@ export default function Kartlar() {
                 <div
                   key={k.id}
                   className="relative overflow-hidden rounded-2xl p-4"
-                  style={{
+                  style={portalStyle({
                     background: `linear-gradient(150deg, ${renk}14, rgba(255,255,255,0.012) 55%)`,
                     border: `1px solid ${renk}33`,
                     opacity: k.aktif ? 1 : 0.6,
-                  }}
+                  })}
                 >
                   <div
                     className="pointer-events-none absolute -right-10 -top-12 h-36 w-36 rounded-full opacity-20"
-                    style={{ background: `radial-gradient(circle, ${renk}, transparent 68%)` }}
+                    style={portalStyle({ background: `radial-gradient(circle, ${renk}, transparent 68%)` })}
                   />
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <div className="flex items-center gap-2 text-[13.5px] font-semibold" style={{ color: TEXT }}>
+                      <div className="flex items-center gap-2 text-[13.5px] font-semibold" style={portalStyle({ color: TEXT })}>
                         {k.bankaAdi} · {k.kartAdi}
                         {!k.aktif && <Rozet metin="pasif" renk={MUTED} />}
                       </div>
-                      <div className="mt-0.5 text-[11px]" style={{ color: MUTED }}>
+                      <div className="mt-0.5 text-[11px]" style={portalStyle({ color: MUTED })}>
                         {k.sonDortHane ? `**** ${k.sonDortHane} · ` : ''}
                         Kesim ayın {k.kesimGunu}’i · Son ödeme +{k.sonOdemeGunFarki} gün
                       </div>
@@ -160,7 +162,7 @@ export default function Kartlar() {
                       <button
                         onClick={() => setKartModal(k)}
                         className="rounded-md p-1 transition hover:bg-white/[0.08]"
-                        style={{ color: MUTED }}
+                        style={portalStyle({ color: MUTED })}
                         title="Düzenle"
                       >
                         <Pencil size={12} />
@@ -168,7 +170,7 @@ export default function Kartlar() {
                       <button
                         onClick={() => setSilModal(k)}
                         className="rounded-md p-1 transition hover:bg-white/[0.08]"
-                        style={{ color: KIRMIZI }}
+                        style={portalStyle({ color: KIRMIZI })}
                         title="Sil"
                       >
                         <Trash2 size={12} />
@@ -183,47 +185,47 @@ export default function Kartlar() {
                     <div className="flex items-baseline justify-between gap-3">
                       <span
                         className="text-[11px]"
-                        style={{ color: MUTED }}
+                        style={portalStyle({ color: MUTED })}
                         title="Kesilen ekstrenin ödenmemiş kısmı — son ödeme tarihinde bu tutar ödenir."
                       >
-                        Ekstre borcu <span style={{ color: 'rgba(113,113,122,0.75)' }}>· ödenecek</span>
+                        Ekstre borcu <span style={portalStyle({ color: 'rgba(113,113,122,0.75)' })}>· ödenecek</span>
                       </span>
-                      <span className="text-[12.5px] tabular-nums" style={{ color: TEXT }}>
+                      <span className="text-[12.5px] tabular-nums" style={portalStyle({ color: TEXT })}>
                         {para(k.ekstreBorcu ?? 0)} ₺
                       </span>
                     </div>
                     <div className="flex items-baseline justify-between gap-3">
                       <span
                         className="text-[11px]"
-                        style={{ color: MUTED }}
+                        style={portalStyle({ color: MUTED })}
                         title="Son kesimden bugüne yapılan harcama. Gelecek ekstreye gider, şimdi ödenmez."
                       >
                         Dönem içi harcama{' '}
-                        <span style={{ color: 'rgba(113,113,122,0.75)' }}>
+                        <span style={portalStyle({ color: 'rgba(113,113,122,0.75)' })}>
                           · {gunAy(k.donemIciBaslangic) || '—'} – bugün
                         </span>
                       </span>
-                      <span className="text-[12.5px] tabular-nums" style={{ color: TEXT }}>
+                      <span className="text-[12.5px] tabular-nums" style={portalStyle({ color: TEXT })}>
                         {para(k.donemIciHarcama ?? 0)} ₺
                       </span>
                     </div>
                     <div
                       className="flex items-end justify-between gap-3 border-t pt-1.5"
-                      style={{ borderColor: ROW_SEP }}
+                      style={portalStyle({ borderColor: ROW_SEP })}
                     >
                       <div>
-                        <div className="text-[10.5px] uppercase tracking-wider" style={{ color: MUTED }}>
+                        <div className="text-[10.5px] uppercase tracking-wider" style={portalStyle({ color: MUTED })}>
                           Güncel borç
                         </div>
-                        <div className="text-[20px] font-semibold tabular-nums" style={{ color: renk }}>
+                        <div className="text-[20px] font-semibold tabular-nums" style={portalStyle({ color: renk })}>
                           {para(guncelBorc)} ₺
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="text-[10.5px]" style={{ color: MUTED }}>
+                        <div className="text-[10.5px]" style={portalStyle({ color: MUTED })}>
                           Kullanılabilir limit
                         </div>
-                        <div className="text-[12.5px] tabular-nums" style={{ color: TEXT }}>
+                        <div className="text-[12.5px] tabular-nums" style={portalStyle({ color: TEXT })}>
                           {para(k.kullanilabilirLimit)} ₺
                         </div>
                       </div>
@@ -231,13 +233,13 @@ export default function Kartlar() {
                   </div>
 
                   {k.kartLimiti > 0 && (
-                    <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.06)' }}>
+                    <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full" style={portalStyle({ background: 'rgba(255,255,255,0.06)' })}>
                       <div
-                        style={{
+                        style={portalStyle({
                           width: `${kullanimOran}%`,
                           height: '100%',
                           background: kullanimOran > 80 ? KIRMIZI : kullanimOran > 50 ? TURUNCU : OK,
-                        }}
+                        })}
                       />
                     </div>
                   )}
@@ -245,11 +247,11 @@ export default function Kartlar() {
                   {/* Güncel ekstre */}
                   <div
                     className="mt-3 rounded-xl px-3 py-2.5"
-                    style={{ background: 'rgba(0,0,0,0.25)', border: `1px solid ${ROW_SEP}` }}
+                    style={portalStyle({ background: 'rgba(0,0,0,0.25)', border: `1px solid ${ROW_SEP}` })}
                   >
                     {!e ? (
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-[11.5px]" style={{ color: MUTED }}>
+                        <span className="text-[11.5px]" style={portalStyle({ color: MUTED })}>
                           Bu dönem için ekstre kaydı yok.
                         </span>
                         <Dugme onClick={() => ekstreUret.mutate(k.id)} yukleniyor={ekstreUret.isPending}>
@@ -259,28 +261,28 @@ export default function Kartlar() {
                     ) : (
                       <>
                         <div className="flex items-center justify-between gap-2">
-                          <span className="flex items-center gap-1.5 text-[11.5px]" style={{ color: MUTED }}>
+                          <span className="flex items-center gap-1.5 text-[11.5px]" style={portalStyle({ color: MUTED })}>
                             <CalendarClock size={12} className="flex-shrink-0" />
                             {ekstreAralik(e)} · son ödeme {tarihTR(e.sonOdemeTarihi)}
                           </span>
                           {durum && <Rozet metin={durum.etiket} renk={durum.renk} />}
                         </div>
                         <div className="mt-2 flex items-center justify-between gap-3">
-                          <div className="text-[13px] tabular-nums" style={{ color: TEXT }}>
+                          <div className="text-[13px] tabular-nums" style={portalStyle({ color: TEXT })}>
                             {e.borcTutari === null ? (
                               e.kesilmedi ? (
                                 /* Kesim günü daha gelmedi — eksik veri değil, uyarı rengi kullanılmaz */
-                                <span style={{ color: MUTED }}>
+                                <span style={portalStyle({ color: MUTED })}>
                                   {gunAyEkli(e.kesimTarihi)} kesilecek
                                 </span>
                               ) : (
-                                <span style={{ color: TURUNCU }}>Ekstre tutarı girilmedi</span>
+                                <span style={portalStyle({ color: TURUNCU })}>Ekstre tutarı girilmedi</span>
                               )
                             ) : (
                               <>
                                 Borç {para(e.borcTutari)} ₺
                                 {e.odenenTutar > 0 && (
-                                  <span style={{ color: MUTED }}> · ödenen {para(e.odenenTutar)} ₺</span>
+                                  <span style={portalStyle({ color: MUTED })}> · ödenen {para(e.odenenTutar)} ₺</span>
                                 )}
                               </>
                             )}
@@ -412,21 +414,21 @@ function KartSilModal({ kart, kapat, silindi }: { kart: Kart; kapat: () => void;
       <div className="space-y-3">
         <div
           className="flex items-start gap-2 rounded-xl px-3 py-2.5 text-[11.5px]"
-          style={{ background: `${KIRMIZI}12`, border: `1px solid ${KIRMIZI}30`, color: MUTED }}
+          style={portalStyle({ background: `${KIRMIZI}12`, border: `1px solid ${KIRMIZI}30`, color: MUTED })}
         >
-          <AlertTriangle size={13} style={{ color: KIRMIZI }} className="mt-0.5 flex-shrink-0" />
+          <AlertTriangle size={13} style={portalStyle({ color: KIRMIZI })} className="mt-0.5 flex-shrink-0" />
           <div className="space-y-1.5">
-            <div style={{ color: TEXT }}>Bu işlem geri alınamaz.</div>
+            <div style={portalStyle({ color: TEXT })}>Bu işlem geri alınamaz.</div>
             {isLoading ? (
               <div>Silinecek kayıtlar sayılıyor…</div>
             ) : (
               <ul className="list-disc space-y-0.5 pl-4">
                 <li>
-                  <b style={{ color: TEXT }}>{ekstreSayisi}</b> ekstre
+                  <b style={portalStyle({ color: TEXT })}>{ekstreSayisi}</b> ekstre
                   {ozet && ozet.odemeli > 0 && <> (bunların {ozet.odemeli} tanesinde ödeme kaydı var)</>}
                 </li>
                 <li>
-                  <b style={{ color: TEXT }}>{ozet?.hareket ?? 0}</b> ekstre hareketi
+                  <b style={portalStyle({ color: TEXT })}>{ozet?.hareket ?? 0}</b> ekstre hareketi
                 </li>
                 <li>Karta ait ödeme geçmişi ve hatırlatmalar</li>
               </ul>
@@ -436,7 +438,7 @@ function KartSilModal({ kart, kapat, silindi }: { kart: Kart; kapat: () => void;
         </div>
 
         {eminMi && (
-          <div className="text-[11.5px]" style={{ color: KIRMIZI }}>
+          <div className="text-[11.5px]" style={portalStyle({ color: KIRMIZI })}>
             Son adım: onaylarsanız yukarıdaki kayıtlar kalıcı olarak silinir.
           </div>
         )}
@@ -484,7 +486,7 @@ function EkstreGecmisi({ kartlar }: { kartlar: Kart[] }) {
       <div className="max-h-[320px] overflow-y-auto pr-1">
         <table className="w-full text-[12px]">
           <thead>
-            <tr className="text-left text-[10.5px] uppercase tracking-wider" style={{ color: MUTED }}>
+            <tr className="text-left text-[10.5px] uppercase tracking-wider" style={portalStyle({ color: MUTED })}>
               <th className="pb-2 font-medium">Kart</th>
               <th className="pb-2 font-medium">Dönem</th>
               <th className="pb-2 font-medium">Son ödeme</th>
@@ -506,29 +508,29 @@ function EkstreGecmisi({ kartlar }: { kartlar: Kart[] }) {
                 <tr
                   key={e.id}
                   className="border-t"
-                  style={{ borderColor: ROW_SEP, opacity: devretti ? 0.62 : 1 }}
+                  style={portalStyle({ borderColor: ROW_SEP, opacity: devretti ? 0.62 : 1 })}
                   title={devretti ? devirNotu : undefined}
                 >
-                  <td className="py-2" style={{ color: TEXT }}>
+                  <td className="py-2" style={portalStyle({ color: TEXT })}>
                     {e.kart?.bankaAdi} {e.kart?.kartAdi}
                   </td>
-                  <td className="py-2" style={{ color: MUTED }}>
+                  <td className="py-2" style={portalStyle({ color: MUTED })}>
                     <span className="flex flex-col leading-tight">
                       <span>{e.donem}</span>
                       {e.harcamaBaslangic && e.harcamaBitis && (
-                        <span className="text-[10px]" style={{ color: 'rgba(113,113,122,0.8)' }}>
+                        <span className="text-[10px]" style={portalStyle({ color: 'rgba(113,113,122,0.8)' })}>
                           {gunAy(e.harcamaBaslangic)} – {gunAy(e.harcamaBitis)} harcamaları
                         </span>
                       )}
                     </span>
                   </td>
-                  <td className="py-2 tabular-nums" style={{ color: MUTED }}>
+                  <td className="py-2 tabular-nums" style={portalStyle({ color: MUTED })}>
                     {tarihTR(e.sonOdemeTarihi)}
                   </td>
-                  <td className="py-2 text-right tabular-nums" style={{ color: TEXT }}>
+                  <td className="py-2 text-right tabular-nums" style={portalStyle({ color: TEXT })}>
                     {e.borcTutari === null ? '—' : `${para(e.borcTutari)} ₺`}
                   </td>
-                  <td className="py-2 text-right tabular-nums" style={{ color: MUTED }}>
+                  <td className="py-2 text-right tabular-nums" style={portalStyle({ color: MUTED })}>
                     {para(e.odenenTutar)} ₺
                   </td>
                   <td className="py-2 text-right">
@@ -641,10 +643,10 @@ function KartModal({ kart, kapat, kaydedildi }: { kart: Kart | null; kapat: () =
             type="color"
             value={form.renk}
             onChange={(e) => setForm({ ...form, renk: e.target.value })}
-            style={{ width: '100%', height: 34, background: 'transparent', border: `1px solid ${CARD_BORDER}`, borderRadius: 10 }}
+            style={portalStyle({ width: '100%', height: 34, background: 'transparent', border: `1px solid ${CARD_BORDER}`, borderRadius: 10 })}
           />
         </Alan>
-        <label className="flex items-center gap-2 text-[12px] sm:col-span-2" style={{ color: MUTED }}>
+        <label className="flex items-center gap-2 text-[12px] sm:col-span-2" style={portalStyle({ color: MUTED })}>
           <input type="checkbox" checked={form.aktif} onChange={(e) => setForm({ ...form, aktif: e.target.checked })} />
           Kart aktif (kapalı kartlar plan hesabına girmez)
         </label>
@@ -725,8 +727,8 @@ function EkstreModal({
         </div>
 
         {ekstre.borcTutari !== null && (
-          <div className="border-t pt-4" style={{ borderColor: ROW_SEP }}>
-            <div className="mb-2 flex items-center justify-between text-[12px]" style={{ color: MUTED }}>
+          <div className="border-t pt-4" style={portalStyle({ borderColor: ROW_SEP })}>
+            <div className="mb-2 flex items-center justify-between text-[12px]" style={portalStyle({ color: MUTED })}>
               <span>Ödenen: {para(ekstre.odenenTutar)} ₺</span>
               <span>Kalan: {para(ekstre.kalanTutar ?? 0)} ₺</span>
             </div>
@@ -790,11 +792,11 @@ function PdfModal({ kart, kapat, tamamlandi }: { kart: Kart; kapat: () => void; 
         <div
           onClick={() => dosyaRef.current?.click()}
           className="cursor-pointer rounded-xl px-4 py-8 text-center transition hover:bg-white/[0.03]"
-          style={{ border: `1px dashed ${dosya ? MOR : CARD_BORDER}`, color: dosya ? TEXT : MUTED }}
+          style={portalStyle({ border: `1px dashed ${dosya ? MOR : CARD_BORDER}`, color: dosya ? TEXT : MUTED })}
         >
-          <Upload size={20} className="mx-auto mb-2" style={{ color: MOR }} />
+          <Upload size={20} className="mx-auto mb-2" style={portalStyle({ color: MOR })} />
           <div className="text-[12.5px]">{dosya ? dosya.name : 'PDF dosyasını seçmek için tıklayın'}</div>
-          <div className="mt-1 text-[10.5px]" style={{ color: MUTED }}>
+          <div className="mt-1 text-[10.5px]" style={portalStyle({ color: MUTED })}>
             En fazla 20 MB
           </div>
           <input
@@ -817,9 +819,9 @@ function PdfModal({ kart, kapat, tamamlandi }: { kart: Kart; kapat: () => void; 
 
         <div
           className="flex items-start gap-2 rounded-xl px-3 py-2.5 text-[11px]"
-          style={{ background: `${MOR}12`, border: `1px solid ${MOR}30`, color: MUTED }}
+          style={portalStyle({ background: `${MOR}12`, border: `1px solid ${MOR}30`, color: MUTED })}
         >
-          <Sparkles size={13} style={{ color: MOR }} className="mt-0.5 flex-shrink-0" />
+          <Sparkles size={13} style={portalStyle({ color: MOR })} className="mt-0.5 flex-shrink-0" />
           <span>
             Hareketler önce kural tabanlı okunur (ücretsiz ve hızlı); okunamazsa yapay zekâ devreye girer.
             Kategoriler daha önce düzelttiğiniz satıcılardan öğrenilir. Onaylamadan bütçeye işlenmez.
@@ -909,7 +911,7 @@ function HareketModal({
   const kategorisiz = bekleyen.filter((h) => !h.kategoriId).length;
 
   const kaynakIkon = (k: KartHareket['kategoriKaynak']) =>
-    k === 'HAFIZA' ? <Brain size={11} style={{ color: OK }} /> : k === 'ELLE' ? <Hand size={11} style={{ color: GOLD }} /> : <Sparkles size={11} style={{ color: MOR }} />;
+    k === 'HAFIZA' ? <Brain size={11} style={portalStyle({ color: OK })} /> : k === 'ELLE' ? <Hand size={11} style={portalStyle({ color: GOLD })} /> : <Sparkles size={11} style={portalStyle({ color: MOR })} />;
 
   return (
     <Modal
@@ -924,15 +926,15 @@ function HareketModal({
         <Bos metin="Bu ekstrede hareket yok. PDF yükleyerek hareketleri okutabilirsiniz." />
       ) : (
         <>
-          <div className="mb-2 flex items-center justify-end gap-2 text-[11px]" style={{ color: MUTED }}>
+          <div className="mb-2 flex items-center justify-end gap-2 text-[11px]" style={portalStyle({ color: MUTED })}>
             <span>Defter değişikliğini aynı satıcının tüm hareketlerine uygula</span>
             <Anahtar acik={hepsineUygula} degistir={setHepsineUygula} renk={MAVI} />
           </div>
 
           <div className="max-h-[440px] overflow-y-auto pr-1">
             <table className="w-full text-[12px]">
-              <thead className="sticky top-0" style={{ background: '#0c0c0e' }}>
-                <tr className="text-left text-[10.5px] uppercase tracking-wider" style={{ color: MUTED }}>
+              <thead className="sticky top-0" style={portalStyle({ background: '#0c0c0e' })}>
+                <tr className="text-left text-[10.5px] uppercase tracking-wider" style={portalStyle({ color: MUTED })}>
                   <th className="pb-2 font-medium">Tarih</th>
                   <th className="pb-2 font-medium">Açıklama</th>
                   <th className="pb-2 text-right font-medium">Tutar</th>
@@ -942,20 +944,20 @@ function HareketModal({
               </thead>
               <tbody>
                 {hareketler.map((h) => (
-                  <tr key={h.id} className="border-t" style={{ borderColor: ROW_SEP, opacity: h.onaylandi ? 0.55 : 1 }}>
-                    <td className="py-1.5 tabular-nums" style={{ color: MUTED }}>
+                  <tr key={h.id} className="border-t" style={portalStyle({ borderColor: ROW_SEP, opacity: h.onaylandi ? 0.55 : 1 })}>
+                    <td className="py-1.5 tabular-nums" style={portalStyle({ color: MUTED })}>
                       {tarihTR(h.tarih)}
                     </td>
-                    <td className="py-1.5" style={{ color: TEXT }}>
+                    <td className="py-1.5" style={portalStyle({ color: TEXT })}>
                       <span className="flex items-center gap-1.5">
                         {h.aciklama}
                         {h.taksitBilgi && <Rozet metin={h.taksitBilgi} renk={TURUNCU} />}
-                        {h.onaylandi && <CheckCircle2 size={11} style={{ color: OK }} />}
+                        {h.onaylandi && <CheckCircle2 size={11} style={portalStyle({ color: OK })} />}
                       </span>
                     </td>
                     <td
                       className="py-1.5 text-right tabular-nums"
-                      style={{ color: h.tutar >= 0 ? TEXT : OK }}
+                      style={portalStyle({ color: h.tutar >= 0 ? TEXT : OK })}
                     >
                       {para(h.tutar)} ₺
                     </td>
@@ -966,7 +968,7 @@ function HareketModal({
                           value={h.kategoriId || ''}
                           disabled={h.onaylandi}
                           onChange={(e) => kategoriDegistir.mutate({ id: h.id, kategoriId: e.target.value })}
-                          style={{ padding: '4px 8px', fontSize: 11.5, minWidth: 150 }}
+                          style={portalStyle({ padding: '4px 8px', fontSize: 11.5, minWidth: 150 })}
                         >
                           <option value="">Seçiniz</option>
                           {kategoriler
@@ -984,7 +986,7 @@ function HareketModal({
                         value={h.defter || kart.varsayilanDefter || 'SAHSI'}
                         disabled={h.onaylandi}
                         onChange={(ev) => defterDegistir.mutate({ id: h.id, defter: ev.target.value as Defter })}
-                        style={{ padding: '4px 6px', fontSize: 11.5, minWidth: 76 }}
+                        style={portalStyle({ padding: '4px 6px', fontSize: 11.5, minWidth: 76 })}
                         title="Bu harcama şahsi mi, ofis mi?"
                       >
                         {DEFTERLER.map((d) => (
@@ -1001,10 +1003,10 @@ function HareketModal({
           </div>
 
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-            <span className="text-[11px]" style={{ color: MUTED }}>
-              <Brain size={11} className="mr-1 inline" style={{ color: OK }} /> hafızadan ·
-              <Sparkles size={11} className="mx-1 inline" style={{ color: MOR }} /> yapay zekâ ·
-              <Hand size={11} className="mx-1 inline" style={{ color: GOLD }} /> elle. Düzelttiğiniz satıcı bir daha sorulmaz.
+            <span className="text-[11px]" style={portalStyle({ color: MUTED })}>
+              <Brain size={11} className="mr-1 inline" style={portalStyle({ color: OK })} /> hafızadan ·
+              <Sparkles size={11} className="mx-1 inline" style={portalStyle({ color: MOR })} /> yapay zekâ ·
+              <Hand size={11} className="mx-1 inline" style={portalStyle({ color: GOLD })} /> elle. Düzelttiğiniz satıcı bir daha sorulmaz.
             </span>
             <div className="flex gap-2">
               {hareketler.some((h) => h.onaylandi) && (

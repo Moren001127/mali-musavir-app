@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle, portalPaint } from '@/lib/portal-theme';
+
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
@@ -77,32 +79,32 @@ function PageHeader() {
   return (
     <header
       className="relative overflow-hidden rounded-2xl border p-5"
-      style={{
+      style={portalStyle({
         borderColor: 'rgba(255,255,255,0.08)',
         background:
           'radial-gradient(120% 140% at 0% 0%, rgba(212,184,118,0.18), transparent 45%), radial-gradient(120% 140% at 100% 0%, rgba(217,160,108,0.12), transparent 45%), #0f0d0b',
-      }}
+      })}
     >
       {/* üst renk şeridi */}
       <div
         className="absolute inset-x-0 top-0 h-1"
-        style={{ background: 'linear-gradient(90deg, #d4b876, #e0b878, #d9a06c, #b8863a)' }}
+        style={portalStyle({ background: 'linear-gradient(90deg, #d4b876, #e0b878, #d9a06c, #b8863a)' })}
       />
-      <Link href="/panel" className="inline-flex items-center gap-1.5 text-[12px] font-medium" style={{ color: MUTED }}>
+      <Link href="/panel" className="inline-flex items-center gap-1.5 text-[12px] font-medium" style={portalStyle({ color: MUTED })}>
         <ArrowLeft size={14} /> Panel
       </Link>
       <div className="mt-2 flex items-center gap-2.5">
-        <h1 className="flex items-center gap-2.5 text-[28px] font-semibold leading-tight" style={{ color: TEXT }}>
+        <h1 className="flex items-center gap-2.5 text-[28px] font-semibold leading-tight" style={portalStyle({ color: TEXT })}>
           <span
             className="grid h-10 w-10 place-items-center rounded-xl"
-            style={{ background: 'linear-gradient(135deg, #d4b876, #8b7649)', boxShadow: '0 6px 18px rgba(212,184,118,0.35)' }}
+            style={portalStyle({ background: 'linear-gradient(135deg, #d4b876, #8b7649)', boxShadow: '0 6px 18px rgba(212,184,118,0.35)' })}
           >
-            <Settings2 size={22} style={{ color: '#1a1410' }} />
+            <Settings2 size={22} style={portalStyle({ color: '#1a1410' })} />
           </span>
           Ayarlar
         </h1>
       </div>
-      <p className="mt-2 max-w-2xl text-[13px]" style={{ color: MUTED }}>
+      <p className="mt-2 max-w-2xl text-[13px]" style={portalStyle({ color: MUTED })}>
         Erişim, entegrasyonlar ve portal şifreleri.
       </p>
     </header>
@@ -203,35 +205,35 @@ function SettingsTile({
     <Link
       href={href}
       className="group relative overflow-hidden rounded-xl border p-4 transition"
-      style={{ borderColor: t.bd, background: idle }}
-      onMouseEnter={(e) => (e.currentTarget.style.background = hover)}
-      onMouseLeave={(e) => (e.currentTarget.style.background = idle)}
+      style={portalStyle({ borderColor: t.bd, background: idle })}
+      onMouseEnter={(e) => (e.currentTarget.style.background = portalPaint(hover, 'background'))}
+      onMouseLeave={(e) => (e.currentTarget.style.background = portalPaint(idle, 'background'))}
     >
       <div
         className="absolute inset-x-0 top-0 h-[3px]"
-        style={{ background: `linear-gradient(90deg, ${t.fg}, ${t.fg}33)` }}
+        style={portalStyle({ background: `linear-gradient(90deg, ${t.fg}, ${t.fg}33)` })}
       />
       <div className="flex items-center gap-3">
         <div
           className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
-          style={{ color: '#0f0d0b', background: `linear-gradient(135deg, ${t.fg}, ${t.fg}aa)`, boxShadow: `0 4px 12px ${t.fg}33` }}
+          style={portalStyle({ color: '#0f0d0b', background: `linear-gradient(135deg, ${t.fg}, ${t.fg}aa)`, boxShadow: `0 4px 12px ${t.fg}33` })}
         >
           <Icon size={18} />
         </div>
         <div className="min-w-0 flex-1">
-          <h2 className="truncate text-[14.5px] font-semibold" style={{ color: TEXT }}>
+          <h2 className="truncate text-[14.5px] font-semibold" style={portalStyle({ color: TEXT })}>
             {title}
           </h2>
-          <p className="mt-0.5 truncate text-[12px]" style={{ color: MUTED }}>
+          <p className="mt-0.5 truncate text-[12px]" style={portalStyle({ color: MUTED })}>
             {text}
           </p>
           {status && status.length > 0 && (
             <div className="mt-1.5 flex flex-wrap items-center gap-3">
               {status.map((s) => (
-                <span key={s.label} className="inline-flex items-center gap-1.5 text-[11px]" style={{ color: s.ok ? GREEN : RED }}>
+                <span key={s.label} className="inline-flex items-center gap-1.5 text-[11px]" style={portalStyle({ color: s.ok ? GREEN : RED })}>
                   <span
                     className="h-1.5 w-1.5 rounded-full"
-                    style={{ background: s.ok ? GREEN : RED, boxShadow: `0 0 6px ${s.ok ? GREEN : RED}66` }}
+                    style={portalStyle({ background: s.ok ? GREEN : RED, boxShadow: `0 0 6px ${s.ok ? GREEN : RED}66` })}
                   />
                   {s.label} {s.ok ? 'bağlı' : 'bağlı değil'}
                 </span>
@@ -239,7 +241,7 @@ function SettingsTile({
             </div>
           )}
         </div>
-        <ArrowRight size={15} className="transition group-hover:translate-x-0.5" style={{ color: t.fg }} />
+        <ArrowRight size={15} className="transition group-hover:translate-x-0.5" style={portalStyle({ color: t.fg })} />
       </div>
     </Link>
   );
@@ -282,48 +284,48 @@ function CollapsibleSection({
     <section
       id={id}
       className="relative rounded-xl border overflow-hidden"
-      style={{ borderColor: t.bd, background: `linear-gradient(135deg, ${t.fg}14, rgba(255,255,255,0.015)), ${CARD}` }}
+      style={portalStyle({ borderColor: t.bd, background: `linear-gradient(135deg, ${t.fg}14, rgba(255,255,255,0.015)), ${CARD}` })}
     >
       <div
         className="absolute inset-x-0 top-0 h-[3px]"
-        style={{ background: `linear-gradient(90deg, ${t.fg}, ${t.fg}33)` }}
+        style={portalStyle({ background: `linear-gradient(90deg, ${t.fg}, ${t.fg}33)` })}
       />
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         className="flex w-full items-center gap-3 p-5 text-left transition"
-        onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.02)')}
-        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+        onMouseEnter={(e) => (e.currentTarget.style.background = portalPaint('rgba(255,255,255,0.02)', 'background'))}
+        onMouseLeave={(e) => (e.currentTarget.style.background = portalPaint('transparent', 'background'))}
       >
         <div
           className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
-          style={{ background: `linear-gradient(135deg, ${t.fg}, ${t.fg}aa)`, color: '#0f0d0b', boxShadow: `0 4px 12px ${t.fg}33` }}
+          style={portalStyle({ background: `linear-gradient(135deg, ${t.fg}, ${t.fg}aa)`, color: '#0f0d0b', boxShadow: `0 4px 12px ${t.fg}33` })}
         >
           <Icon size={18} />
         </div>
         <div className="min-w-0 flex-1">
-          <h2 className="text-[15px] font-semibold" style={{ color: TEXT }}>
+          <h2 className="text-[15px] font-semibold" style={portalStyle({ color: TEXT })}>
             {title}
           </h2>
-          <p className="mt-0.5 text-[12px]" style={{ color: MUTED }}>
+          <p className="mt-0.5 text-[12px]" style={portalStyle({ color: MUTED })}>
             {subtitle}
           </p>
         </div>
         <span
           className="text-[11px] font-medium uppercase tracking-wider"
-          style={{ color: open ? GOLD : MUTED }}
+          style={portalStyle({ color: open ? GOLD : MUTED })}
         >
           {open ? 'Gizle' : 'Aç'}
         </span>
         <ArrowRight
           size={16}
           className="transition"
-          style={{ color: GOLD, transform: open ? 'rotate(90deg)' : 'none' }}
+          style={portalStyle({ color: GOLD, transform: open ? 'rotate(90deg)' : 'none' })}
         />
       </button>
 
       {open && (
-        <div className="border-t px-5 pb-5 pt-4" style={{ borderColor: LINE }}>
+        <div className="border-t px-5 pb-5 pt-4" style={portalStyle({ borderColor: LINE })}>
           {children}
         </div>
       )}
@@ -377,7 +379,7 @@ function TwoFactorSection() {
       inputMode="numeric"
       placeholder="6 haneli kod"
       className="w-40 rounded-lg px-3 py-2.5 text-[14px] tracking-[0.3em] outline-none"
-      style={{ background: SOFT, border: `1px solid ${LINE_GOLD}`, color: TEXT }}
+      style={portalStyle({ background: SOFT, border: `1px solid ${LINE_GOLD}`, color: TEXT })}
     />
   );
 
@@ -390,13 +392,13 @@ function TwoFactorSection() {
       tone="gold"
     >
       {isLoading ? (
-        <p className="text-[13px]" style={{ color: MUTED }}>Yükleniyor…</p>
+        <p className="text-[13px]" style={portalStyle({ color: MUTED })}>Yükleniyor…</p>
       ) : enabled ? (
         <div className="space-y-3">
-          <div className="flex items-center gap-2 text-[13.5px]" style={{ color: GREEN }}>
+          <div className="flex items-center gap-2 text-[13.5px]" style={portalStyle({ color: GREEN })}>
             <CheckCircle2 size={16} /> Açık — girişte authenticator kodu istenir.
           </div>
-          <p className="text-[12.5px]" style={{ color: MUTED }}>Kapatmak için uygulamadaki güncel kodu girin:</p>
+          <p className="text-[12.5px]" style={portalStyle({ color: MUTED })}>Kapatmak için uygulamadaki güncel kodu girin:</p>
           <div className="flex flex-wrap items-center gap-2">
             {codeInput}
             <button
@@ -404,7 +406,7 @@ function TwoFactorSection() {
               onClick={() => disableMut.mutate()}
               disabled={code.length !== 6 || disableMut.isPending}
               className="inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-[13px] font-semibold disabled:opacity-40"
-              style={{ background: 'rgba(248,113,113,0.12)', border: `1px solid ${RED}55`, color: RED }}
+              style={portalStyle({ background: 'rgba(248,113,113,0.12)', border: `1px solid ${RED}55`, color: RED })}
             >
               {disableMut.isPending ? <Loader2 size={14} className="animate-spin" /> : null} Kapat
             </button>
@@ -412,24 +414,24 @@ function TwoFactorSection() {
         </div>
       ) : setup ? (
         <div className="space-y-4">
-          <p className="text-[13px]" style={{ color: MUTED }}>
-            <strong style={{ color: TEXT }}>1)</strong> Authenticator uygulamanıza (Google Authenticator, Authy vb.) aşağıdaki anahtarı elle ekleyin:
+          <p className="text-[13px]" style={portalStyle({ color: MUTED })}>
+            <strong style={portalStyle({ color: TEXT })}>1)</strong> Authenticator uygulamanıza (Google Authenticator, Authy vb.) aşağıdaki anahtarı elle ekleyin:
           </p>
           <div className="flex flex-wrap items-center gap-2">
-            <code className="rounded-lg px-3 py-2 text-[14px] tracking-widest" style={{ background: SOFT, border: `1px solid ${LINE}`, color: GOLD }}>
+            <code className="rounded-lg px-3 py-2 text-[14px] tracking-widest" style={portalStyle({ background: SOFT, border: `1px solid ${LINE}`, color: GOLD })}>
               {setup.secret}
             </code>
             <button
               type="button"
               onClick={() => { navigator.clipboard?.writeText(setup.secret.replace(/\s/g, '')); toast.success('Anahtar kopyalandı'); }}
               className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12.5px]"
-              style={{ background: SOFT, border: `1px solid ${LINE}`, color: MUTED }}
+              style={portalStyle({ background: SOFT, border: `1px solid ${LINE}`, color: MUTED })}
             >
               <Copy size={13} /> Kopyala
             </button>
           </div>
-          <p className="text-[13px]" style={{ color: MUTED }}>
-            <strong style={{ color: TEXT }}>2)</strong> Uygulamadaki 6 haneli kodu girip etkinleştirin:
+          <p className="text-[13px]" style={portalStyle({ color: MUTED })}>
+            <strong style={portalStyle({ color: TEXT })}>2)</strong> Uygulamadaki 6 haneli kodu girip etkinleştirin:
           </p>
           <div className="flex flex-wrap items-center gap-2">
             {codeInput}
@@ -438,18 +440,18 @@ function TwoFactorSection() {
               onClick={() => enableMut.mutate()}
               disabled={code.length !== 6 || enableMut.isPending}
               className="inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-[13px] font-semibold disabled:opacity-40"
-              style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DEEP})`, color: '#0f0d0b' }}
+              style={portalStyle({ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DEEP})`, color: '#0f0d0b' })}
             >
               {enableMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Etkinleştir
             </button>
-            <button type="button" onClick={() => { setSetup(null); setCode(''); }} className="text-[12.5px]" style={{ color: MUTED }}>
+            <button type="button" onClick={() => { setSetup(null); setCode(''); }} className="text-[12.5px]" style={portalStyle({ color: MUTED })}>
               Vazgeç
             </button>
           </div>
         </div>
       ) : (
         <div className="space-y-3">
-          <p className="text-[13px]" style={{ color: MUTED }}>
+          <p className="text-[13px]" style={portalStyle({ color: MUTED })}>
             Şifrenize ek olarak telefondaki authenticator uygulamasından 6 haneli kod ister. Şifreniz çalınsa bile giriş engellenir.
           </p>
           <button
@@ -457,7 +459,7 @@ function TwoFactorSection() {
             onClick={() => setupMut.mutate()}
             disabled={setupMut.isPending}
             className="inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-[13px] font-semibold disabled:opacity-40"
-            style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DEEP})`, color: '#0f0d0b' }}
+            style={portalStyle({ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DEEP})`, color: '#0f0d0b' })}
           >
             {setupMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <ShieldCheck size={14} />} Etkinleştir
           </button>
@@ -514,7 +516,7 @@ function AgentContent() {
         href={bookmarkletCode}
         onClick={(event) => event.preventDefault()}
         className="inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-[12.5px] font-bold"
-        style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DEEP})`, color: '#0f0d0b' }}
+        style={portalStyle({ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DEEP})`, color: '#0f0d0b' })}
       >
         <ExternalLink size={14} /> Bookmarklet'i Çalıştır
       </a>
@@ -526,7 +528,7 @@ function AgentContent() {
             readOnly
             value={info?.token || ''}
             className="h-9 flex-1 rounded-md border px-2.5 font-mono text-[11.5px] outline-none"
-            style={{ background: SOFT, borderColor: LINE, color: TEXT }}
+            style={portalStyle({ background: SOFT, borderColor: LINE, color: TEXT })}
             onFocus={(event) => event.currentTarget.select()}
           />
           <SmallButton onClick={() => copy(info?.token || '', 'token')} active={copiedToken}>
@@ -543,7 +545,7 @@ function AgentContent() {
             readOnly
             value={bookmarkletCode}
             className="h-9 flex-1 rounded-md border px-2.5 font-mono text-[11.5px] outline-none"
-            style={{ background: SOFT, borderColor: LINE, color: TEXT }}
+            style={portalStyle({ background: SOFT, borderColor: LINE, color: TEXT })}
             onFocus={(event) => event.currentTarget.select()}
           />
           <SmallButton onClick={() => copy(bookmarkletCode, 'bookmarklet')} active={copiedBookmarklet}>
@@ -563,7 +565,7 @@ function AgentContent() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-[11px] font-medium uppercase tracking-wider" style={{ color: MUTED }}>
+      <span className="mb-1 block text-[11px] font-medium uppercase tracking-wider" style={portalStyle({ color: MUTED })}>
         {label}
       </span>
       {children}
@@ -585,11 +587,11 @@ function SmallButton({
       type="button"
       onClick={onClick}
       className="inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-[12px] font-medium transition hover:bg-white/[0.06]"
-      style={{
+      style={portalStyle({
         borderColor: active ? LINE_GOLD : LINE,
         color: active ? GOLD : TEXT,
         background: active ? 'rgba(212,184,118,0.08)' : SOFT,
-      }}
+      })}
     >
       {children}
     </button>
@@ -598,7 +600,7 @@ function SmallButton({
 
 function LoadingLine() {
   return (
-    <div className="flex items-center gap-2 text-[13px]" style={{ color: MUTED }}>
+    <div className="flex items-center gap-2 text-[13px]" style={portalStyle({ color: MUTED })}>
       <Loader2 size={14} className="animate-spin" /> Yükleniyor…
     </div>
   );

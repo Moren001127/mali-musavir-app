@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 import React, { useState, useMemo, useEffect } from 'react';
 // useMemo zaten import edildi
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -311,8 +313,8 @@ export default function GelirTablosuPage() {
     const t = QUARTER_LABELS[qi];
     return (
       <>
-        <div style={{ fontSize: 13 }}>{year} · {t.no}</div>
-        <div className="font-normal mt-0.5" style={{ fontSize: 11, color: 'rgba(250,250,249,0.55)', fontFamily: REPORT_FONT, letterSpacing: 0 }}>
+        <div style={portalStyle({ fontSize: 13 })}>{year} · {t.no}</div>
+        <div className="font-normal mt-0.5" style={portalStyle({ fontSize: 11, color: 'rgba(250,250,249,0.55)', fontFamily: REPORT_FONT, letterSpacing: 0 })}>
           {t.range}
         </div>
       </>
@@ -921,34 +923,34 @@ export default function GelirTablosuPage() {
       {/* Header — Fiş Yazdırma imzası: kart + üst renk şeridi + radial parıltı + degrade ikon kutusu */}
       <div
         className="relative overflow-hidden rounded-2xl border p-5"
-        style={{
+        style={portalStyle({
           borderColor: 'rgba(255,255,255,0.06)',
           background:
             'radial-gradient(120% 140% at 0% 0%, rgba(212,184,118,0.16), transparent 46%), radial-gradient(120% 140% at 100% 0%, rgba(139,118,73,0.12), transparent 48%), #0f0d0b',
-        }}
+        })}
       >
         <div
           className="absolute inset-x-0 top-0 h-1"
-          style={{ background: 'linear-gradient(90deg, #8b7649, #b8a06f, #d4b876, #e7cf95, #d4b876, #b8a06f)' }}
+          style={portalStyle({ background: 'linear-gradient(90deg, #8b7649, #b8a06f, #d4b876, #e7cf95, #d4b876, #b8a06f)' })}
         />
         <div className="flex items-center gap-2.5 mb-3">
-          <span className="w-[26px] h-px" style={{ background: GOLD }} />
-          <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>
+          <span className="w-[26px] h-px" style={portalStyle({ background: GOLD })} />
+          <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={portalStyle({ color: '#b8a06f' })}>
             <Sparkles size={10} className="inline mr-1" /> Mali Rapor
           </span>
         </div>
         <div className="flex items-center gap-3.5">
           <span
             className="grid place-items-center rounded-xl flex-shrink-0"
-            style={{ width: 46, height: 46, background: 'linear-gradient(135deg, #d4b876, #b8a06f)', boxShadow: '0 8px 22px rgba(212,184,118,0.32)' }}
+            style={portalStyle({ width: 46, height: 46, background: 'linear-gradient(135deg, #d4b876, #b8a06f)', boxShadow: '0 8px 22px rgba(212,184,118,0.32)' })}
           >
-            <TrendingUp size={24} style={{ color: '#1a1410' }} />
+            <TrendingUp size={24} style={portalStyle({ color: '#1a1410' })} />
           </span>
           <div className="min-w-0">
-            <h1 style={{ fontFamily: REPORT_FONT, fontSize: 30, fontWeight: 700, color: '#fafaf9', letterSpacing: 0, lineHeight: 1.05 }}>
+            <h1 style={portalStyle({ fontFamily: REPORT_FONT, fontSize: 30, fontWeight: 700, color: '#fafaf9', letterSpacing: 0, lineHeight: 1.05 })}>
               Gelir Tablosu
             </h1>
-            <p className="text-[13px] mt-1.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
+            <p className="text-[13px] mt-1.5" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
               Mizan hesap kodlarından otomatik üretilen gelir tablosu. Geçici vergi beyannameleri için hazır format, geçmiş dönemler karşılaştırmalı.
             </p>
           </div>
@@ -956,18 +958,18 @@ export default function GelirTablosuPage() {
       </div>
 
       {/* Komut barı */}
-      <div className="rounded-xl border p-5" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}>
+      <div className="rounded-xl border p-5" style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' })}>
         <div className="flex flex-wrap gap-3 items-end">
           <div className="flex-1 min-w-[260px]">
-            <label className="text-[11px] uppercase font-bold tracking-[.12em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
+            <label className="text-[11px] uppercase font-bold tracking-[.12em] block mb-1.5" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
               <Users size={11} className="inline mr-1" /> Mükellef
             </label>
             <button
               onClick={() => setPickerOpen(true)}
               className="w-full px-3 py-2.5 rounded-lg text-sm border outline-none flex items-center gap-2 text-left"
-              style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}
+              style={portalStyle({ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' })}
             >
-              <span className="flex-1 truncate" style={{ color: selectedTp ? '#fafaf9' : 'rgba(250,250,249,0.45)' }}>
+              <span className="flex-1 truncate" style={portalStyle({ color: selectedTp ? '#fafaf9' : 'rgba(250,250,249,0.45)' })}>
                 {selectedTp ? taxpayerName(selectedTp) : 'Mükellef seç…'}
               </span>
               {selectedTp && (
@@ -980,23 +982,23 @@ export default function GelirTablosuPage() {
           </div>
 
           <div>
-            <label className="text-[11px] uppercase font-bold tracking-[.12em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
+            <label className="text-[11px] uppercase font-bold tracking-[.12em] block mb-1.5" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
               <Calendar size={11} className="inline mr-1" /> Yıl
             </label>
             <select
               value={year}
               onChange={(e) => setYear(parseInt(e.target.value))}
               className="px-3 py-2.5 rounded-lg text-sm border outline-none"
-              style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9', minWidth: 110 }}
+              style={portalStyle({ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9', minWidth: 110 })}
             >
               {Array.from({ length: 6 }, (_, i) => new Date().getFullYear() + 1 - i).map((y) => (
-                <option key={y} value={y} style={{ background: '#0f0d0b' }}>{y}</option>
+                <option key={y} value={y} style={portalStyle({ background: '#0f0d0b' })}>{y}</option>
               ))}
             </select>
           </div>
 
           <div className="flex-1 min-w-[240px]">
-            <label className="text-[11px] uppercase font-bold tracking-[.12em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
+            <label className="text-[11px] uppercase font-bold tracking-[.12em] block mb-1.5" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
               Kaynak Mizan
             </label>
             <select
@@ -1004,13 +1006,13 @@ export default function GelirTablosuPage() {
               onChange={(e) => setSelectedMizan(e.target.value)}
               disabled={!taxpayerId || mizanList.length === 0}
               className="w-full px-3 py-2.5 rounded-lg text-sm border outline-none"
-              style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}
+              style={portalStyle({ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' })}
             >
-              <option value="" style={{ background: '#0f0d0b' }}>
+              <option value="" style={portalStyle({ background: '#0f0d0b' })}>
                 {!taxpayerId ? 'Önce mükellef seçin' : mizanList.length === 0 ? 'Bu mükellef için mizan yok' : '— Mizan seçin (hangi çeyreği üretecek) —'}
               </option>
               {mizanList.map((m: any) => (
-                <option key={m.id} value={m.id} style={{ background: '#0f0d0b' }}>
+                <option key={m.id} value={m.id} style={portalStyle({ background: '#0f0d0b' })}>
                   {formatDonemRangeLabel(m.donem, m.donemTipi)}
                 </option>
               ))}
@@ -1024,7 +1026,7 @@ export default function GelirTablosuPage() {
             }}
             disabled={generateMut.isPending || !selectedMizan}
             className="px-5 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 disabled:opacity-50"
-            style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}
+            style={portalStyle({ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' })}
           >
             {generateMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
             Mizandan Oluştur
@@ -1034,16 +1036,16 @@ export default function GelirTablosuPage() {
 
       {/* 4 Çeyrek Yıllık Görünüm — Q4 · Q3 · Q2 · Q1 (ters sıra, kullanıcı isteği) */}
       <div>
-        <h3 className="text-[14px] font-semibold mb-3 flex items-center gap-2.5" style={{ color: '#fafaf9' }}>
-          <span className="w-[3px] h-4 rounded-sm" style={{ background: GOLD }} />
+        <h3 className="text-[14px] font-semibold mb-3 flex items-center gap-2.5" style={portalStyle({ color: '#fafaf9' })}>
+          <span className="w-[3px] h-4 rounded-sm" style={portalStyle({ background: GOLD })} />
           Gelir Tablosu
           {selectedTp && (
-            <span style={{ color: GOLD, fontWeight: 700 }}>
+            <span style={portalStyle({ color: GOLD, fontWeight: 700 })}>
               · {taxpayerName(selectedTp)}
             </span>
           )}
-          <span style={{ color: 'rgba(250,250,249,0.55)' }}>· {year}</span>
-          <span className="text-[10.5px] font-medium px-2 py-[2px] rounded-md" style={{ background: 'rgba(184,160,111,0.28)', color: GOLD }}>
+          <span style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>· {year}</span>
+          <span className="text-[10.5px] font-medium px-2 py-[2px] rounded-md" style={portalStyle({ background: 'rgba(184,160,111,0.28)', color: GOLD })}>
             {quarterSlots.filter(Boolean).length}/4 çeyrek
           </span>
           {latestQuarter && (
@@ -1052,49 +1054,49 @@ export default function GelirTablosuPage() {
               onClick={() => handleClientOutput(latestQuarter)}
               disabled={clientOutputLoadingId === latestQuarter.id}
               className="ml-auto inline-flex items-center justify-center gap-2 rounded-lg px-3 py-1.5 text-[12px] font-bold disabled:opacity-50"
-              style={{
+              style={portalStyle({
                 background: 'rgba(212,184,118,0.12)',
                 border: '1px solid rgba(212,184,118,0.32)',
                 color: AMOUNT_COLOR,
-              }}
+              })}
             >
               {clientOutputLoadingId === latestQuarter.id ? <Loader2 size={14} className="animate-spin" /> : <Printer size={14} />}
               Mükellef Çıktısı
             </button>
           )}
         </h3>
-        <div className="rounded-xl overflow-hidden overflow-x-auto" style={{
+        <div className="rounded-xl overflow-hidden overflow-x-auto" style={portalStyle({
           background: TABLE_BG,
           border: `1px solid ${GRID_LINE_STRONG}`,
           boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.05), 0 16px 34px rgba(0,0,0,0.24)',
-        }}>
-          <table className="w-full text-left" style={{ fontFamily: REPORT_FONT, fontVariantNumeric: 'tabular-nums', borderCollapse: 'collapse', borderSpacing: 0, tableLayout: 'fixed' }}>
+        })}>
+          <table className="w-full text-left" style={portalStyle({ fontFamily: REPORT_FONT, fontVariantNumeric: 'tabular-nums', borderCollapse: 'collapse', borderSpacing: 0, tableLayout: 'fixed' })}>
             <colgroup>
-              <col style={{ width: CODE_COL_WIDTH }} />
-              <col style={{ width: ACCOUNT_COL_WIDTH }} />
-              <col style={{ width: PERIOD_COL_WIDTH }} />
-              <col style={{ width: PERIOD_COL_WIDTH }} />
-              <col style={{ width: PERIOD_COL_WIDTH }} />
-              <col style={{ width: PERIOD_COL_WIDTH }} />
+              <col style={portalStyle({ width: CODE_COL_WIDTH })} />
+              <col style={portalStyle({ width: ACCOUNT_COL_WIDTH })} />
+              <col style={portalStyle({ width: PERIOD_COL_WIDTH })} />
+              <col style={portalStyle({ width: PERIOD_COL_WIDTH })} />
+              <col style={portalStyle({ width: PERIOD_COL_WIDTH })} />
+              <col style={portalStyle({ width: PERIOD_COL_WIDTH })} />
             </colgroup>
             <thead>
               {/* Firma adı satırı — KOD/KALEM üstüne */}
               {selectedTp && (
-                <tr style={{ background: 'rgba(184,160,111,0.12)', borderBottom: `1px solid ${GRID_LINE_STRONG}` }}>
+                <tr style={portalStyle({ background: 'rgba(184,160,111,0.12)', borderBottom: `1px solid ${GRID_LINE_STRONG}` })}>
                   <th
                     colSpan={2 + 4}
                     className="px-4 py-2.5 text-left"
-                    style={{
+                    style={portalStyle({
                       color: GOLD,
                       fontFamily: REPORT_FONT,
                       fontSize: 14,
                       fontWeight: 600,
                       letterSpacing: '-0.01em',
-                    }}
+                    })}
                   >
                     {taxpayerName(selectedTp)}
                     {selectedTp.taxNumber && (
-                      <span className="ml-2 text-[12px]" style={{ color: 'rgba(250,250,249,0.5)', fontFamily: REPORT_FONT, fontWeight: 500 }}>
+                      <span className="ml-2 text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.5)', fontFamily: REPORT_FONT, fontWeight: 500 })}>
                         · VKN/TCKN: {selectedTp.taxNumber}
                       </span>
                     )}
@@ -1102,8 +1104,8 @@ export default function GelirTablosuPage() {
                 </tr>
               )}
               <tr>
-                <th style={{ padding: '12px 14px', background: 'rgba(184,160,111,0.08)', borderBottom: `1px solid ${GRID_LINE}` }}></th>
-                <th style={{ padding: '12px 14px', background: 'rgba(184,160,111,0.08)', borderBottom: `1px solid ${GRID_LINE}` }}></th>
+                <th style={portalStyle({ padding: '12px 14px', background: 'rgba(184,160,111,0.08)', borderBottom: `1px solid ${GRID_LINE}` })}></th>
+                <th style={portalStyle({ padding: '12px 14px', background: 'rgba(184,160,111,0.08)', borderBottom: `1px solid ${GRID_LINE}` })}></th>
                 {DISPLAY_ORDER.map((qi) => {
                   const t = [
                     { no: '1. DÖNEM', range: 'Ocak – Mart' },
@@ -1117,7 +1119,7 @@ export default function GelirTablosuPage() {
                     <th
                       key={qi}
                       className="text-center"
-                      style={{
+                      style={portalStyle({
                         color: gt ? GOLD : MISSING_AMOUNT_COLOR,
                         fontSize: 14,
                         padding: '12px 14px 6px',
@@ -1127,28 +1129,28 @@ export default function GelirTablosuPage() {
                         fontFamily: REPORT_FONT,
                         fontWeight: 600,
                         letterSpacing: '-0.01em',
-                      }}
+                      })}
                     >
-                      <div style={{ fontSize: 15 }}>{year} · {t.no}</div>
-                      <div className="font-normal mt-0.5" style={{ fontSize: 11.5, color: gt ? 'rgba(250,250,249,0.6)' : 'rgba(250,250,249,0.3)', fontFamily: REPORT_FONT, letterSpacing: 0 }}>
+                      <div style={portalStyle({ fontSize: 15 })}>{year} · {t.no}</div>
+                      <div className="font-normal mt-0.5" style={portalStyle({ fontSize: 11.5, color: gt ? 'rgba(250,250,249,0.6)' : 'rgba(250,250,249,0.3)', fontFamily: REPORT_FONT, letterSpacing: 0 })}>
                         {t.range}
                       </div>
                       {locked && (
-                        <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: 'rgba(34,197,94,0.15)', color: '#22c55e', fontFamily: REPORT_FONT }}>
+                        <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-bold px-1.5 py-0.5 rounded" style={portalStyle({ background: 'rgba(34,197,94,0.15)', color: '#22c55e', fontFamily: REPORT_FONT })}>
                           <Lock size={9} /> KESİN
                         </span>
                       )}
-                      {!gt && <div className="text-[10px] font-normal mt-0.5" style={{ color: 'rgba(250,250,249,0.3)', fontFamily: REPORT_FONT }}>Veri yok</div>}
+                      {!gt && <div className="text-[10px] font-normal mt-0.5" style={portalStyle({ color: 'rgba(250,250,249,0.3)', fontFamily: REPORT_FONT })}>Veri yok</div>}
                       {gt && (
-                        <div className="flex items-center justify-center gap-1 mt-1.5" style={{ fontFamily: REPORT_FONT }}>
+                        <div className="flex items-center justify-center gap-1 mt-1.5" style={portalStyle({ fontFamily: REPORT_FONT })}>
                           <button
                             onClick={() => locked ? handleUnlock(gt.id) : handleLock(gt.id)}
                             className="text-[10px] font-semibold px-2 py-0.5 rounded"
-                            style={{
+                            style={portalStyle({
                               background: locked ? 'rgba(244,63,94,0.1)' : 'rgba(184,160,111,0.1)',
                               color: locked ? '#f43f5e' : GOLD,
                               border: `1px solid ${locked ? 'rgba(244,63,94,0.25)' : 'rgba(184,160,111,0.25)'}`,
-                            }}
+                            })}
                           >
                             {locked ? 'Kilidi Aç' : 'Kesin Kayıt'}
                           </button>
@@ -1156,7 +1158,7 @@ export default function GelirTablosuPage() {
                             onClick={() => exportMut.mutate(gt.id)}
                             disabled={exportMut.isPending}
                             className="text-[10px] font-semibold px-2 py-0.5 rounded"
-                            style={{ background: 'rgba(184,160,111,0.1)', color: GOLD, border: '1px solid rgba(184,160,111,0.25)' }}
+                            style={portalStyle({ background: 'rgba(184,160,111,0.1)', color: GOLD, border: '1px solid rgba(184,160,111,0.25)' })}
                           >
                             Excel
                           </button>
@@ -1165,13 +1167,13 @@ export default function GelirTablosuPage() {
                             disabled={waLoading && waQi === qi}
                             title="Mükellefe WhatsApp'tan bu dönemin gelir tablosu özetini gönder (önce önizleme)"
                             className="inline-flex items-center justify-center rounded"
-                            style={{
+                            style={portalStyle({
                               background: 'rgba(37,211,102,0.14)',
                               color: '#25D366',
                               border: '1px solid rgba(37,211,102,0.4)',
                               height: 22,
                               width: 22,
-                            }}
+                            })}
                           >
                             {waLoading && waQi === qi ? (
                               <Loader2 className="h-3 w-3 animate-spin" />
@@ -1185,11 +1187,11 @@ export default function GelirTablosuPage() {
                   );
                 })}
               </tr>
-              <tr style={{ borderBottom: `1px solid ${GRID_LINE_STRONG}` }}>
-                <th className="px-3 py-2 text-left text-[12px] font-bold uppercase tracking-[.06em]" style={{ color: '#f5efe3', background: 'rgba(184,160,111,0.16)', borderRight: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${CELL_LINE_STRONG}` }}>Kod</th>
-                <th className="px-3 py-2 text-left text-[12px] font-bold uppercase tracking-[.06em]" style={{ color: '#f5efe3', background: 'rgba(184,160,111,0.16)', borderRight: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${CELL_LINE_STRONG}` }}>Kalem</th>
+              <tr style={portalStyle({ borderBottom: `1px solid ${GRID_LINE_STRONG}` })}>
+                <th className="px-3 py-2 text-left text-[12px] font-bold uppercase tracking-[.06em]" style={portalStyle({ color: '#f5efe3', background: 'rgba(184,160,111,0.16)', borderRight: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${CELL_LINE_STRONG}` })}>Kod</th>
+                <th className="px-3 py-2 text-left text-[12px] font-bold uppercase tracking-[.06em]" style={portalStyle({ color: '#f5efe3', background: 'rgba(184,160,111,0.16)', borderRight: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${CELL_LINE_STRONG}` })}>Kalem</th>
                 {DISPLAY_ORDER.map((qi) => (
-                  <th key={qi} className="px-3 py-2 text-center text-[12px] font-bold uppercase tracking-[.06em]" style={{ color: '#f5efe3', background: 'rgba(184,160,111,0.16)', borderLeft: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${CELL_LINE_STRONG}` }}>Tutar</th>
+                  <th key={qi} className="px-3 py-2 text-center text-[12px] font-bold uppercase tracking-[.06em]" style={portalStyle({ color: '#f5efe3', background: 'rgba(184,160,111,0.16)', borderLeft: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${CELL_LINE_STRONG}` })}>Tutar</th>
                 ))}
               </tr>
             </thead>
@@ -1198,9 +1200,9 @@ export default function GelirTablosuPage() {
                 // Alt hesap satırı (sub kodu)
                 if (row.sub) {
                   return (
-                    <tr key={idx} style={{ borderTop: `1px solid ${GRID_LINE}`, background: ACCOUNT_ROW_BG }}>
-                      <td className="px-3 py-2 text-[13px]" style={{ color: '#d8c17f', textAlign: 'left', fontWeight: 700, fontFamily: REPORT_FONT, fontVariantNumeric: 'tabular-nums', borderRight: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${CELL_LINE}` }}>{row.sub}</td>
-                      <td className="px-3 py-2 text-[13px]" style={{ color: 'rgba(250,250,249,0.82)', fontWeight: 500, paddingLeft: 8, borderRight: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${CELL_LINE}` }}>
+                    <tr key={idx} style={portalStyle({ borderTop: `1px solid ${GRID_LINE}`, background: ACCOUNT_ROW_BG })}>
+                      <td className="px-3 py-2 text-[13px]" style={portalStyle({ color: '#d8c17f', textAlign: 'left', fontWeight: 700, fontFamily: REPORT_FONT, fontVariantNumeric: 'tabular-nums', borderRight: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${CELL_LINE}` })}>{row.sub}</td>
+                      <td className="px-3 py-2 text-[13px]" style={portalStyle({ color: 'rgba(250,250,249,0.82)', fontWeight: 500, paddingLeft: 8, borderRight: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${CELL_LINE}` })}>
                         {row.subLabel}
                       </td>
                       {DISPLAY_ORDER.map((qi) => {
@@ -1208,7 +1210,7 @@ export default function GelirTablosuPage() {
                         const v = gt ? getSubAccountAmount(gt, row.sub!) : null;
                         const hasData = gt !== null;
                         return (
-                          <td key={qi} className="px-3 py-2 text-center" style={{ borderLeft: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${CELL_LINE}` }}>
+                          <td key={qi} className="px-3 py-2 text-center" style={portalStyle({ borderLeft: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${CELL_LINE}` })}>
                             <AmountText value={hasData ? v! : null} />
                           </td>
                         );
@@ -1220,9 +1222,9 @@ export default function GelirTablosuPage() {
                 // Manuel düzeltme satırı (input ile) — 621'in hemen altında
                 if (row.manual) {
                   return (
-                    <tr key={idx} style={{ borderTop: '1px dashed rgba(96,165,250,0.30)', background: 'rgba(96,165,250,0.045)' }}>
-                      <td className="px-3 py-2.5 text-[12.5px]" style={{ color: '#60a5fa', textAlign: 'left', fontWeight: 700, fontFamily: REPORT_FONT, borderRight: `1px solid ${GRID_LINE}`, borderBottom: '1px dashed rgba(96,165,250,0.35)' }}>Manuel</td>
-                      <td className="px-3 py-2.5 text-[13.5px]" style={{ color: '#60a5fa', fontWeight: 600, paddingLeft: 8, borderRight: `1px solid ${GRID_LINE}`, borderBottom: '1px dashed rgba(96,165,250,0.35)' }}>
+                    <tr key={idx} style={portalStyle({ borderTop: '1px dashed rgba(96,165,250,0.30)', background: 'rgba(96,165,250,0.045)' })}>
+                      <td className="px-3 py-2.5 text-[12.5px]" style={portalStyle({ color: '#60a5fa', textAlign: 'left', fontWeight: 700, fontFamily: REPORT_FONT, borderRight: `1px solid ${GRID_LINE}`, borderBottom: '1px dashed rgba(96,165,250,0.35)' })}>Manuel</td>
+                      <td className="px-3 py-2.5 text-[13.5px]" style={portalStyle({ color: '#60a5fa', fontWeight: 600, paddingLeft: 8, borderRight: `1px solid ${GRID_LINE}`, borderBottom: '1px dashed rgba(96,165,250,0.35)' })}>
                         {row.label}
                       </td>
                       {DISPLAY_ORDER.map((qi) => {
@@ -1230,7 +1232,7 @@ export default function GelirTablosuPage() {
                         const hasData = gt !== null;
                         if (!hasData) {
                           return (
-                            <td key={qi} style={{ borderLeft: `1px solid ${GRID_LINE}`, borderBottom: '1px dashed rgba(96,165,250,0.35)' }}></td>
+                            <td key={qi} style={portalStyle({ borderLeft: `1px solid ${GRID_LINE}`, borderBottom: '1px dashed rgba(96,165,250,0.35)' })}></td>
                           );
                         }
                         const field = row.manual!;
@@ -1239,7 +1241,7 @@ export default function GelirTablosuPage() {
                         const hasSaved = typeof savedVal === 'number' && savedVal > 0;
                         const isEditing = !hasSaved || hasDraft || !!editingManual[manualEditKey(gt.id, field)];
                         return (
-                          <td key={qi} className="px-2 py-1.5 text-center" style={{ borderLeft: `1px solid ${GRID_LINE}`, borderBottom: '1px dashed rgba(96,165,250,0.35)' }}>
+                          <td key={qi} className="px-2 py-1.5 text-center" style={portalStyle({ borderLeft: `1px solid ${GRID_LINE}`, borderBottom: '1px dashed rgba(96,165,250,0.35)' })}>
                             <ManuelInput
                               gtId={gt.id}
                               field={field}
@@ -1268,16 +1270,16 @@ export default function GelirTablosuPage() {
                 return (
                   <tr
                     key={idx}
-                    style={{
+                    style={portalStyle({
                       background: rowBg,
                       borderTop: row.total ? `1px solid ${GRID_LINE_STRONG}` : `1px solid ${GRID_LINE}`,
                       borderBottom: row.total ? `1px solid ${GRID_LINE_STRONG}` : undefined,
-                    }}
+                    })}
                   >
-                    <td className="px-3 py-2.5 text-[12.5px]" style={{ color: 'rgba(250,250,249,0.62)', textAlign: 'left', fontWeight: 600, fontFamily: REPORT_FONT, fontVariantNumeric: 'tabular-nums', borderRight: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${row.total || row.final ? CELL_LINE_STRONG : CELL_LINE}` }}>{row.kod || ''}</td>
+                    <td className="px-3 py-2.5 text-[12.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.62)', textAlign: 'left', fontWeight: 600, fontFamily: REPORT_FONT, fontVariantNumeric: 'tabular-nums', borderRight: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${row.total || row.final ? CELL_LINE_STRONG : CELL_LINE}` })}>{row.kod || ''}</td>
                     <td
                       className="px-3 py-2.5"
-                      style={{
+                      style={portalStyle({
                         color: labelColor,
                         fontWeight: row.final ? 700 : bold ? 700 : 500,
                         fontFamily: labelFont,
@@ -1287,7 +1289,7 @@ export default function GelirTablosuPage() {
                         letterSpacing: 0,
                         borderRight: `1px solid ${GRID_LINE}`,
                         borderBottom: `1px solid ${row.total || row.final ? CELL_LINE_STRONG : CELL_LINE}`,
-                      }}
+                      })}
                     >
                       {row.label}
                     </td>
@@ -1309,18 +1311,18 @@ export default function GelirTablosuPage() {
                         <td
                           key={qi}
                           className="px-3 py-2.5 text-center"
-                          style={{
+                          style={portalStyle({
                             // v1.36.50: Kar/Zarar satırları (brutSatisKari, faaliyetKari, olaganKar, donemKari, donemNetKari)
                             // → pozitif yeşil, negatif kırmızı (önceden total altın renkti, kar/zarar belli olmuyordu)
                             borderLeft: `1px solid ${GRID_LINE}`,
                             borderBottom: `1px solid ${row.total || row.final ? CELL_LINE_STRONG : CELL_LINE}`,
-                          }}
+                          })}
                         >
                           <AmountText value={hasData ? v! : null} color={amountColor} emphasis={!!mainAmount} final={!!row.final} />
                           {showOranBadge && (
                             <div
                               className="inline-flex items-center justify-center mt-1 rounded-md px-2 py-[3px]"
-                              style={{
+                              style={portalStyle({
                                 color: RATIO_COLOR,
                                 background: RATIO_BG,
                                 border: `1px solid ${RATIO_BORDER}`,
@@ -1332,7 +1334,7 @@ export default function GelirTablosuPage() {
                                 minWidth: 86,
                                 maxWidth: '100%',
                                 textShadow: '0 1px 1px rgba(0,0,0,0.35)',
-                              }}
+                              })}
                             >
                               {pct(v!, netSatis)}
                             </div>
@@ -1351,8 +1353,8 @@ export default function GelirTablosuPage() {
                   (Number(gt.duzeltmeler?.satisMaliyetiManuel) || 0) > 0
                 )
               ) && (
-                <tr style={{ background: 'rgba(96,165,250,0.08)', borderTop: '1px solid rgba(96,165,250,0.25)' }}>
-                  <td colSpan={2} className="px-3 py-3 text-[11.5px]" style={{ color: '#60a5fa' }}>
+                <tr style={portalStyle({ background: 'rgba(96,165,250,0.08)', borderTop: '1px solid rgba(96,165,250,0.25)' })}>
+                  <td colSpan={2} className="px-3 py-3 text-[11.5px]" style={portalStyle({ color: '#60a5fa' })}>
                     Manuel satılan ticari mallar maliyeti
                   </td>
                   {DISPLAY_ORDER.map((qi) => {
@@ -1360,7 +1362,7 @@ export default function GelirTablosuPage() {
                     const hasDraft = !!gt && Object.keys(duzeltmelerDraft[gt.id] || {}).length > 0;
                     const hasSaved = !!gt && (Number(gt.duzeltmeler?.satisMaliyetiManuel) || 0) > 0;
                     return (
-                      <td key={qi} className="px-2 py-2 text-right" style={{ borderLeft: '1px solid rgba(255,255,255,0.18)' }}>
+                      <td key={qi} className="px-2 py-2 text-right" style={portalStyle({ borderLeft: '1px solid rgba(255,255,255,0.18)' })}>
                         {gt && (hasDraft || hasSaved) ? (
                           <div className="inline-flex items-center gap-1.5">
                             {hasSaved && !gt.locked && (
@@ -1368,7 +1370,7 @@ export default function GelirTablosuPage() {
                                 type="button"
                                 onClick={() => startManualEdit(gt, 'satisMaliyetiManuel')}
                                 className="px-3 py-1.5 rounded text-[11px] font-bold"
-                                style={{ background: 'rgba(255,255,255,0.05)', color: '#d4b876', border: '1px solid rgba(212,184,118,0.35)' }}
+                                style={portalStyle({ background: 'rgba(255,255,255,0.05)', color: '#d4b876', border: '1px solid rgba(212,184,118,0.35)' })}
                               >
                                 Düzelt
                               </button>
@@ -1378,7 +1380,7 @@ export default function GelirTablosuPage() {
                                 onClick={() => saveDuzeltmelerMut.mutate(gt.id)}
                                 disabled={saveDuzeltmelerMut.isPending || gt.locked}
                                 className="px-3 py-1.5 rounded text-[11px] font-bold"
-                                style={{ background: 'rgba(96,165,250,0.2)', color: '#60a5fa', border: '1px solid rgba(96,165,250,0.4)' }}
+                                style={portalStyle({ background: 'rgba(96,165,250,0.2)', color: '#60a5fa', border: '1px solid rgba(96,165,250,0.4)' })}
                               >
                                 {saveDuzeltmelerMut.isPending ? 'Kaydediliyor...' : 'Kaydet'}
                               </button>
@@ -1407,23 +1409,23 @@ export default function GelirTablosuPage() {
           const allKodlar = [...stokKodList, ...maliyetKodList];
 
           return (
-            <div key={qi} className="space-y-3 pt-2" style={{ borderTop: displayIdx > 0 ? '1px dashed rgba(184,160,111,0.15)' : 'none', paddingTop: displayIdx > 0 ? 24 : 0 }}>
+            <div key={qi} className="space-y-3 pt-2" style={portalStyle({ borderTop: displayIdx > 0 ? '1px dashed rgba(184,160,111,0.15)' : 'none', paddingTop: displayIdx > 0 ? 24 : 0 })}>
               {/* Dönem başlığı */}
               <div className="flex items-baseline gap-3">
-                <span className="w-1 h-7 rounded-sm" style={{ background: GOLD }} />
-                <h2 className="text-[20px] font-semibold" style={{ color: '#fafaf9', fontFamily: REPORT_FONT }}>
+                <span className="w-1 h-7 rounded-sm" style={portalStyle({ background: GOLD })} />
+                <h2 className="text-[20px] font-semibold" style={portalStyle({ color: '#fafaf9', fontFamily: REPORT_FONT })}>
                   {qi + 1}. Dönem
                 </h2>
-                <span className="text-[12px] font-medium px-2.5 py-[3px] rounded-md" style={{ background: 'rgba(184,160,111,0.28)', color: GOLD }}>
+                <span className="text-[12px] font-medium px-2.5 py-[3px] rounded-md" style={portalStyle({ background: 'rgba(184,160,111,0.28)', color: GOLD })}>
                   {quarterRangeLabel(year, qi + 1)}
                 </span>
                 {isLocked && (
-                  <span className="text-[10px] font-bold px-2 py-[2px] rounded" style={{ background: 'rgba(34,197,94,0.15)', color: '#22c55e' }}>
+                  <span className="text-[10px] font-bold px-2 py-[2px] rounded" style={portalStyle({ background: 'rgba(34,197,94,0.15)', color: '#22c55e' })}>
                     KESİN KAYIT
                   </span>
                 )}
                 {!detail && (
-                  <span className="text-[11px]" style={{ color: 'rgba(250,250,249,0.4)', fontStyle: 'italic' }}>
+                  <span className="text-[11px]" style={portalStyle({ color: 'rgba(250,250,249,0.4)', fontStyle: 'italic' })}>
                     · Bu dönem için veri yok
                   </span>
                 )}
@@ -1432,10 +1434,10 @@ export default function GelirTablosuPage() {
               {/* Veri yoksa boş placeholder iki tablo göster */}
               {!detail?.geciciVergiHesabi && !detail?.stokMaliyetOzet && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div className="rounded-xl p-4 text-center text-[12px]" style={{ background: 'rgba(255,255,255,0.02)', border: '1px dashed rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.35)' }}>
+                  <div className="rounded-xl p-4 text-center text-[12px]" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px dashed rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.35)' })}>
                     Geçici Vergi Matrahı — veri yok
                   </div>
-                  <div className="rounded-xl p-4 text-center text-[12px]" style={{ background: 'rgba(255,255,255,0.02)', border: '1px dashed rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.35)' }}>
+                  <div className="rounded-xl p-4 text-center text-[12px]" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px dashed rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.35)' })}>
                     Stok ve Satılan Malın Maliyeti — veri yok
                   </div>
                 </div>
@@ -1444,12 +1446,12 @@ export default function GelirTablosuPage() {
               {/* Geçici Vergi Matrahı — tek sütun */}
               {detail?.geciciVergiHesabi && (
                 <div>
-                  <h3 className="text-[13px] font-semibold mb-2.5 flex items-center gap-2" style={{ color: 'rgba(250,250,249,0.9)' }}>
-                    <span className="w-[3px] h-3.5 rounded-sm" style={{ background: GOLD }} />
+                  <h3 className="text-[13px] font-semibold mb-2.5 flex items-center gap-2" style={portalStyle({ color: 'rgba(250,250,249,0.9)' })}>
+                    <span className="w-[3px] h-3.5 rounded-sm" style={portalStyle({ background: GOLD })} />
                     Geçici Vergi Matrahı Hesaplama
                   </h3>
-                  <div className="rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(184,160,111,0.2)' }}>
-                    <table className="w-full text-left text-[13px]" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                  <div className="rounded-xl overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(184,160,111,0.2)' })}>
+                    <table className="w-full text-left text-[13px]" style={portalStyle({ fontVariantNumeric: 'tabular-nums' })}>
                       <tbody>
                         {[
                           { key: 'kkeg', label: 'Kanunen Kabul Edilmeyen Gider' },
@@ -1465,19 +1467,19 @@ export default function GelirTablosuPage() {
                           const isManual = !!row.manual;
                           const isFirstQuarter = v.donemSirasi === 1 && row.key === 'oncekiDonemOdenen';
                           return (
-                            <tr key={ri} style={{ borderTop: ri === 0 ? 'none' : '1px solid rgba(255,255,255,0.18)', background: row.bg || 'transparent' }}>
-                              <td className="px-3 py-2.5" style={{ color: row.color || 'rgba(250,250,249,0.7)', fontWeight: row.bold ? 700 : 400, fontSize: row.big ? 14 : 13 }}>
+                            <tr key={ri} style={portalStyle({ borderTop: ri === 0 ? 'none' : '1px solid rgba(255,255,255,0.18)', background: row.bg || 'transparent' })}>
+                              <td className="px-3 py-2.5" style={portalStyle({ color: row.color || 'rgba(250,250,249,0.7)', fontWeight: row.bold ? 700 : 400, fontSize: row.big ? 14 : 13 })}>
                                 <span className="inline-flex items-center gap-2">
                                   {row.label}
                                   {row.manual && (
-                                    <span className="text-[9.5px] font-bold px-1.5 py-[1px] rounded" style={{ background: 'rgba(184,160,111,0.28)', color: GOLD }}>MANUEL</span>
+                                    <span className="text-[9.5px] font-bold px-1.5 py-[1px] rounded" style={portalStyle({ background: 'rgba(184,160,111,0.28)', color: GOLD })}>MANUEL</span>
                                   )}
                                 </span>
                               </td>
-                              <td className="px-3 py-2 text-right font-mono" style={{ color: row.color || (val === 0 ? MUTED_AMOUNT_COLOR : AMOUNT_COLOR), fontWeight: row.bold ? FINANCIAL_AMOUNT_STRONG_WEIGHT : FINANCIAL_AMOUNT_WEIGHT, fontSize: FINANCIAL_AMOUNT_SIZE, width: 220, fontFamily: FINANCIAL_FONT, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', letterSpacing: 0 }}>
+                              <td className="px-3 py-2 text-right font-mono" style={portalStyle({ color: row.color || (val === 0 ? MUTED_AMOUNT_COLOR : AMOUNT_COLOR), fontWeight: row.bold ? FINANCIAL_AMOUNT_STRONG_WEIGHT : FINANCIAL_AMOUNT_WEIGHT, fontSize: FINANCIAL_AMOUNT_SIZE, width: 220, fontFamily: FINANCIAL_FONT, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', letterSpacing: 0 })}>
                                 {isManual && !isLocked ? (
                                   isFirstQuarter ? (
-                                    <span style={{ color: 'rgba(250,250,249,0.3)' }}>— (ilk dönem)</span>
+                                    <span style={portalStyle({ color: 'rgba(250,250,249,0.3)' })}>— (ilk dönem)</span>
                                   ) : (
                                     <input
                                       type="text"
@@ -1485,7 +1487,7 @@ export default function GelirTablosuPage() {
                                       value={row.manual === 'gecmisYil' ? ms.gecmisYil : ms.oncekiOdenen}
                                       onChange={(e) => setManuel(detail.id, { [row.manual!]: e.target.value } as any)}
                                       className="w-full px-2 py-1 rounded text-[12px] font-mono text-right outline-none border"
-                                      style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(184,160,111,0.25)', color: '#fafaf9' }}
+                                      style={portalStyle({ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(184,160,111,0.25)', color: '#fafaf9' })}
                                     />
                                   )
                                 ) : val !== 0 ? (row.negSign ? '−' + fmtTRY(val) : fmtTRY(val)) : '0,00'}
@@ -1494,9 +1496,9 @@ export default function GelirTablosuPage() {
                           );
                         })}
                         {!isLocked && (
-                          <tr style={{ borderTop: '1px dashed rgba(184,160,111,0.25)' }}>
-                            <td className="px-3 py-2 text-[11px] italic" style={{ color: 'rgba(250,250,249,0.4)' }}>Manuel değerleri kaydet</td>
-                            <td className="px-3 py-2 text-right" style={{ width: 220 }}>
+                          <tr style={portalStyle({ borderTop: '1px dashed rgba(184,160,111,0.25)' })}>
+                            <td className="px-3 py-2 text-[11px] italic" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>Manuel değerleri kaydet</td>
+                            <td className="px-3 py-2 text-right" style={portalStyle({ width: 220 })}>
                               <button
                                 onClick={() => {
                                   vergiDuzeltmeMut.mutate({
@@ -1507,7 +1509,7 @@ export default function GelirTablosuPage() {
                                 }}
                                 disabled={vergiDuzeltmeMut.isPending}
                                 className="px-3 py-1 rounded text-[11px] font-semibold transition-all"
-                                style={{ background: GOLD, color: '#0a0906' }}
+                                style={portalStyle({ background: GOLD, color: '#0a0906' })}
                               >
                                 {vergiDuzeltmeMut.isPending ? '…' : 'Kaydet'}
                               </button>
@@ -1523,44 +1525,44 @@ export default function GelirTablosuPage() {
               {/* Stok ve Satılan Malın Maliyeti — tek sütun */}
               {detail?.stokMaliyetOzet && (
                 <div>
-                  <h3 className="text-[13px] font-semibold mb-2.5 flex items-center gap-2" style={{ color: 'rgba(250,250,249,0.9)' }}>
-                    <span className="w-[3px] h-3.5 rounded-sm" style={{ background: GOLD }} />
+                  <h3 className="text-[13px] font-semibold mb-2.5 flex items-center gap-2" style={portalStyle({ color: 'rgba(250,250,249,0.9)' })}>
+                    <span className="w-[3px] h-3.5 rounded-sm" style={portalStyle({ background: GOLD })} />
                     Stok ve Satılan Malın Maliyeti
                   </h3>
-                  <div className="rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
-                    <table className="w-full text-left text-[13px]" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                  <div className="rounded-xl overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' })}>
+                    <table className="w-full text-left text-[13px]" style={portalStyle({ fontVariantNumeric: 'tabular-nums' })}>
                       <thead>
-                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                          <th className="px-3 py-2 text-left text-[12px] font-bold uppercase tracking-[.06em]" style={{ color: 'rgba(250,250,249,0.55)', width: 90 }}>Kod</th>
-                          <th className="px-3 py-2 text-left text-[12px] font-bold uppercase tracking-[.06em]" style={{ color: 'rgba(250,250,249,0.55)' }}>Hesap Adı</th>
-                          <th className="px-3 py-2 text-right text-[12px] font-bold uppercase tracking-[.06em]" style={{ color: 'rgba(250,250,249,0.55)', width: 220 }}>Bakiye</th>
+                        <tr style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.05)' })}>
+                          <th className="px-3 py-2 text-left text-[12px] font-bold uppercase tracking-[.06em]" style={portalStyle({ color: 'rgba(250,250,249,0.55)', width: 90 })}>Kod</th>
+                          <th className="px-3 py-2 text-left text-[12px] font-bold uppercase tracking-[.06em]" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>Hesap Adı</th>
+                          <th className="px-3 py-2 text-right text-[12px] font-bold uppercase tracking-[.06em]" style={portalStyle({ color: 'rgba(250,250,249,0.55)', width: 220 })}>Bakiye</th>
                         </tr>
                       </thead>
                       <tbody>
                         {allKodlar.map((h: any) => (
-                          <tr key={h.kod} style={{ borderTop: '1px solid rgba(255,255,255,0.18)' }}>
-                            <td className="px-3 py-2 font-mono text-[13px]" style={{ color: GOLD, fontWeight: 600 }}>{h.kod}</td>
-                            <td className="px-3 py-2 text-[14px]" style={{ color: 'rgba(250,250,249,0.78)' }}>{h.hesapAdi || HESAP_ADLARI[h.kod] || '—'}</td>
-                            <td className="px-3 py-2 text-right font-mono" style={{ color: Number(h.bakiye) === 0 ? MUTED_AMOUNT_COLOR : AMOUNT_COLOR, fontWeight: FINANCIAL_AMOUNT_WEIGHT, fontSize: FINANCIAL_AMOUNT_SIZE, fontFamily: FINANCIAL_FONT, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', letterSpacing: 0 }}>
+                          <tr key={h.kod} style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.18)' })}>
+                            <td className="px-3 py-2 font-mono text-[13px]" style={portalStyle({ color: GOLD, fontWeight: 600 })}>{h.kod}</td>
+                            <td className="px-3 py-2 text-[14px]" style={portalStyle({ color: 'rgba(250,250,249,0.78)' })}>{h.hesapAdi || HESAP_ADLARI[h.kod] || '—'}</td>
+                            <td className="px-3 py-2 text-right font-mono" style={portalStyle({ color: Number(h.bakiye) === 0 ? MUTED_AMOUNT_COLOR : AMOUNT_COLOR, fontWeight: FINANCIAL_AMOUNT_WEIGHT, fontSize: FINANCIAL_AMOUNT_SIZE, fontFamily: FINANCIAL_FONT, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', letterSpacing: 0 })}>
                               {Number(h.bakiye) !== 0 ? fmtTRY(Number(h.bakiye)) : '0,00'}
                             </td>
                           </tr>
                         ))}
-                        <tr style={{ borderTop: '2px solid rgba(184,160,111,0.3)', background: 'rgba(184,160,111,0.04)' }}>
-                          <td colSpan={2} className="px-3 py-2.5 font-semibold" style={{ color: GOLD }}>Toplam Stok</td>
-                          <td className="px-3 py-2.5 text-right font-mono font-bold" style={{ color: GOLD }}>
+                        <tr style={portalStyle({ borderTop: '2px solid rgba(184,160,111,0.3)', background: 'rgba(184,160,111,0.04)' })}>
+                          <td colSpan={2} className="px-3 py-2.5 font-semibold" style={portalStyle({ color: GOLD })}>Toplam Stok</td>
+                          <td className="px-3 py-2.5 text-right font-mono font-bold" style={portalStyle({ color: GOLD })}>
                             {fmtTRY(Number(detail.stokMaliyetOzet.toplamStok))}
                           </td>
                         </tr>
-                        <tr style={{ borderTop: '1px solid rgba(244,63,94,0.2)', background: 'rgba(244,63,94,0.04)' }}>
-                          <td colSpan={2} className="px-3 py-2.5 font-semibold" style={{ color: '#f43f5e' }}>Satılan Malın Maliyeti</td>
-                          <td className="px-3 py-2.5 text-right font-mono font-bold" style={{ color: '#f43f5e' }}>
+                        <tr style={portalStyle({ borderTop: '1px solid rgba(244,63,94,0.2)', background: 'rgba(244,63,94,0.04)' })}>
+                          <td colSpan={2} className="px-3 py-2.5 font-semibold" style={portalStyle({ color: '#f43f5e' })}>Satılan Malın Maliyeti</td>
+                          <td className="px-3 py-2.5 text-right font-mono font-bold" style={portalStyle({ color: '#f43f5e' })}>
                             {'−' + fmtTRY(Number(detail.stokMaliyetOzet.satisMaliyeti))}
                           </td>
                         </tr>
-                        <tr style={{ borderTop: '2px solid rgba(34,197,94,0.3)', background: 'rgba(34,197,94,0.04)' }}>
-                          <td colSpan={2} className="px-3 py-2.5 font-bold text-[13.5px]" style={{ color: '#22c55e' }}>Kalan Stok</td>
-                          <td className="px-3 py-2.5 text-right font-mono font-bold text-[14px]" style={{ color: '#22c55e' }}>
+                        <tr style={portalStyle({ borderTop: '2px solid rgba(34,197,94,0.3)', background: 'rgba(34,197,94,0.04)' })}>
+                          <td colSpan={2} className="px-3 py-2.5 font-bold text-[13.5px]" style={portalStyle({ color: '#22c55e' })}>Kalan Stok</td>
+                          <td className="px-3 py-2.5 text-right font-mono font-bold text-[14px]" style={portalStyle({ color: '#22c55e' })}>
                             {fmtTRY(Number(detail.stokMaliyetOzet.kalanStok))}
                           </td>
                         </tr>
@@ -1576,31 +1578,31 @@ export default function GelirTablosuPage() {
       {/* GEÇİCİ VERGİ MATRAHI HESAPLAMA — 4 çeyrek yan yana, Q4→Q1 (gelir tablosunun devamı) */}
       {quarterDetails.some((qd) => qd?.data?.geciciVergiHesabi) && (
         <div>
-          <h3 className="text-[14px] font-semibold mb-3 flex items-center gap-2.5" style={{ color: '#fafaf9' }}>
-            <span className="w-[3px] h-4 rounded-sm" style={{ background: GOLD }} />
+          <h3 className="text-[14px] font-semibold mb-3 flex items-center gap-2.5" style={portalStyle({ color: '#fafaf9' })}>
+            <span className="w-[3px] h-4 rounded-sm" style={portalStyle({ background: GOLD })} />
             Geçici Vergi Matrahı Hesaplama
-            <span className="text-[10.5px] font-medium px-2 py-[2px] rounded-md" style={{ background: 'rgba(184,160,111,0.28)', color: GOLD }}>
+            <span className="text-[10.5px] font-medium px-2 py-[2px] rounded-md" style={portalStyle({ background: 'rgba(184,160,111,0.28)', color: GOLD })}>
               {year} · 4 Çeyrek
             </span>
           </h3>
-          <div className="rounded-xl overflow-hidden" style={{ background: TABLE_BG, border: `1px solid ${GRID_LINE_STRONG}` }}>
-            <table className="w-full text-left text-[13px]" style={{ fontVariantNumeric: 'tabular-nums', borderCollapse: 'collapse', borderSpacing: 0, tableLayout: 'fixed' }}>
+          <div className="rounded-xl overflow-hidden" style={portalStyle({ background: TABLE_BG, border: `1px solid ${GRID_LINE_STRONG}` })}>
+            <table className="w-full text-left text-[13px]" style={portalStyle({ fontVariantNumeric: 'tabular-nums', borderCollapse: 'collapse', borderSpacing: 0, tableLayout: 'fixed' })}>
               <colgroup>
-                <col style={{ width: LEADING_COL_WIDTH }} />
-                <col style={{ width: PERIOD_COL_WIDTH }} />
-                <col style={{ width: PERIOD_COL_WIDTH }} />
-                <col style={{ width: PERIOD_COL_WIDTH }} />
-                <col style={{ width: PERIOD_COL_WIDTH }} />
+                <col style={portalStyle({ width: LEADING_COL_WIDTH })} />
+                <col style={portalStyle({ width: PERIOD_COL_WIDTH })} />
+                <col style={portalStyle({ width: PERIOD_COL_WIDTH })} />
+                <col style={portalStyle({ width: PERIOD_COL_WIDTH })} />
+                <col style={portalStyle({ width: PERIOD_COL_WIDTH })} />
               </colgroup>
               <thead>
                 {/* Üst başlık — gelir tablosundaki gibi: 2026 · X. DÖNEM + ay aralığı */}
-                <tr style={{ borderBottom: `1px solid ${GRID_LINE}` }}>
-                  <th style={{ padding: '10px 14px', background: 'rgba(184,160,111,0.08)' }}></th>
+                <tr style={portalStyle({ borderBottom: `1px solid ${GRID_LINE}` })}>
+                  <th style={portalStyle({ padding: '10px 14px', background: 'rgba(184,160,111,0.08)' })}></th>
                   {DISPLAY_ORDER.map((qi) => (
                     <th
                       key={qi}
                       className="text-center"
-                      style={{
+                      style={portalStyle({
                         color: GOLD,
                         fontSize: 13,
                         padding: '10px 14px',
@@ -1608,16 +1610,16 @@ export default function GelirTablosuPage() {
                         borderLeft: `1px solid ${GRID_LINE}`,
                         fontFamily: REPORT_FONT,
                         fontWeight: 600,
-                      }}
+                      })}
                     >
                       {renderQuarterHeader(qi)}
                     </th>
                   ))}
                 </tr>
-                <tr style={{ borderBottom: `1px solid ${GRID_LINE_STRONG}` }}>
-                  <th className="px-3 py-2 text-[12px] font-bold uppercase tracking-[.06em]" style={{ color: '#f5efe3', background: 'rgba(184,160,111,0.16)' }}>Kalem</th>
+                <tr style={portalStyle({ borderBottom: `1px solid ${GRID_LINE_STRONG}` })}>
+                  <th className="px-3 py-2 text-[12px] font-bold uppercase tracking-[.06em]" style={portalStyle({ color: '#f5efe3', background: 'rgba(184,160,111,0.16)' })}>Kalem</th>
                   {DISPLAY_ORDER.map((qi) => (
-                    <th key={qi} className="px-3 py-2 text-center text-[12px] font-bold uppercase tracking-[.06em]" style={{ color: '#f5efe3', background: 'rgba(184,160,111,0.16)', borderLeft: `1px solid ${GRID_LINE}` }}>
+                    <th key={qi} className="px-3 py-2 text-center text-[12px] font-bold uppercase tracking-[.06em]" style={portalStyle({ color: '#f5efe3', background: 'rgba(184,160,111,0.16)', borderLeft: `1px solid ${GRID_LINE}` })}>
                       Tutar
                     </th>
                   ))}
@@ -1634,15 +1636,15 @@ export default function GelirTablosuPage() {
                   { key: 'oncekiDonemOdenen', label: 'Önceki Dönem Ödenen Geçici Vergi', manual: 'oncekiOdenen' as const, negSign: true },
                   { key: 'odenecekGeciciVergi', label: 'ÖDENECEK GEÇİCİ VERGİ', bold: true, color: GOLD, bg: 'linear-gradient(135deg, rgba(184,160,111,0.10), rgba(184,160,111,0.03))', big: true },
                 ].map((row: any, ri) => (
-                  <tr key={ri} style={{ borderTop: `1px solid ${GRID_LINE}`, background: row.bg || ACCOUNT_ROW_BG }}>
-                    <td className="px-3 py-2.5" style={{ color: row.color || 'rgba(250,250,249,0.7)', fontWeight: row.bold ? 700 : 400, fontSize: row.big ? 14 : 13, borderBottom: `1px solid ${GRID_LINE}` }}>
+                  <tr key={ri} style={portalStyle({ borderTop: `1px solid ${GRID_LINE}`, background: row.bg || ACCOUNT_ROW_BG })}>
+                    <td className="px-3 py-2.5" style={portalStyle({ color: row.color || 'rgba(250,250,249,0.7)', fontWeight: row.bold ? 700 : 400, fontSize: row.big ? 14 : 13, borderBottom: `1px solid ${GRID_LINE}` })}>
                       <span className="inline-flex items-center gap-2">
                         {row.label}
                         {row.manual && (
                           row.key === 'oncekiDonemOdenen' ? (
-                            <span className="text-[9.5px] font-bold px-1.5 py-[1px] rounded" style={{ background: 'rgba(34,197,94,0.2)', color: '#22c55e' }} title="Önceki dönemin hesaplanan geçici vergisinden otomatik gelir">OTOMATİK</span>
+                            <span className="text-[9.5px] font-bold px-1.5 py-[1px] rounded" style={portalStyle({ background: 'rgba(34,197,94,0.2)', color: '#22c55e' })} title="Önceki dönemin hesaplanan geçici vergisinden otomatik gelir">OTOMATİK</span>
                           ) : (
-                            <span className="text-[9.5px] font-bold px-1.5 py-[1px] rounded" style={{ background: 'rgba(184,160,111,0.28)', color: GOLD }}>MANUEL</span>
+                            <span className="text-[9.5px] font-bold px-1.5 py-[1px] rounded" style={portalStyle({ background: 'rgba(184,160,111,0.28)', color: GOLD })}>MANUEL</span>
                           )
                         )}
                       </span>
@@ -1685,10 +1687,10 @@ export default function GelirTablosuPage() {
                       }
 
                       return (
-                        <td key={qi} className="px-3 py-2 text-center font-mono" style={{ color: !hasData ? MISSING_AMOUNT_COLOR : row.color || (val === 0 ? MUTED_AMOUNT_COLOR : AMOUNT_COLOR), fontWeight: row.bold ? FINANCIAL_AMOUNT_STRONG_WEIGHT : FINANCIAL_AMOUNT_WEIGHT, fontSize: FINANCIAL_AMOUNT_SIZE, borderLeft: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${GRID_LINE}`, fontFamily: FINANCIAL_FONT, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', letterSpacing: 0 }}>
+                        <td key={qi} className="px-3 py-2 text-center font-mono" style={portalStyle({ color: !hasData ? MISSING_AMOUNT_COLOR : row.color || (val === 0 ? MUTED_AMOUNT_COLOR : AMOUNT_COLOR), fontWeight: row.bold ? FINANCIAL_AMOUNT_STRONG_WEIGHT : FINANCIAL_AMOUNT_WEIGHT, fontSize: FINANCIAL_AMOUNT_SIZE, borderLeft: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${GRID_LINE}`, fontFamily: FINANCIAL_FONT, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', letterSpacing: 0 })}>
                           {!hasData ? '—' : (isManual && !isLocked && row.key !== 'oncekiDonemOdenen') ? (
                             isFirstQuarter ? (
-                              <span style={{ color: 'rgba(250,250,249,0.3)' }}>— (ilk)</span>
+                              <span style={portalStyle({ color: 'rgba(250,250,249,0.3)' })}>— (ilk)</span>
                             ) : (
                               <input
                                 type="text"
@@ -1702,7 +1704,7 @@ export default function GelirTablosuPage() {
                                   setManuel(detail.id, { [row.manual!]: formatted } as any);
                                 }}
                                 className="w-full px-2 py-1 rounded text-[13px] font-mono text-center outline-none border"
-                                style={{ background: 'rgba(96,165,250,0.06)', borderColor: 'rgba(96,165,250,0.3)', color: '#60a5fa', fontWeight: 600 }}
+                                style={portalStyle({ background: 'rgba(96,165,250,0.06)', borderColor: 'rgba(96,165,250,0.3)', color: '#60a5fa', fontWeight: 600 })}
                               />
                             )
                           ) : val !== 0 && val !== null ? (row.negSign ? '−' + fmtTRY(val) : fmtTRY(val)) : '0,00'}
@@ -1712,14 +1714,14 @@ export default function GelirTablosuPage() {
                   </tr>
                 ))}
                 {/* Kaydet butonları satırı */}
-                <tr style={{ borderTop: `1px dashed ${GRID_LINE_STRONG}` }}>
-                  <td className="px-3 py-2 text-[11px] italic" style={{ color: 'rgba(250,250,249,0.4)', borderBottom: `1px solid ${GRID_LINE}` }}>Manuel değerleri kaydet</td>
+                <tr style={portalStyle({ borderTop: `1px dashed ${GRID_LINE_STRONG}` })}>
+                  <td className="px-3 py-2 text-[11px] italic" style={portalStyle({ color: 'rgba(250,250,249,0.4)', borderBottom: `1px solid ${GRID_LINE}` })}>Manuel değerleri kaydet</td>
                   {DISPLAY_ORDER.map((qi) => {
                     const detail = quarterDetails[qi]?.data as any;
                     const hasData = !!detail?.geciciVergiHesabi;
                     const isLocked = !!detail?.locked;
                     return (
-                      <td key={qi} className="px-2 py-2 text-center" style={{ borderLeft: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${GRID_LINE}` }}>
+                      <td key={qi} className="px-2 py-2 text-center" style={portalStyle({ borderLeft: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${GRID_LINE}` })}>
                         {hasData && !isLocked && (
                           <button
                             onClick={() => {
@@ -1732,7 +1734,7 @@ export default function GelirTablosuPage() {
                             }}
                             disabled={vergiDuzeltmeMut.isPending}
                             className="px-3 py-1 rounded text-[11px] font-semibold transition-all"
-                            style={{ background: GOLD, color: '#0a0906' }}
+                            style={portalStyle({ background: GOLD, color: '#0a0906' })}
                           >
                             {vergiDuzeltmeMut.isPending ? '…' : 'Kaydet'}
                           </button>
@@ -1761,32 +1763,32 @@ export default function GelirTablosuPage() {
         };
         return (
           <div>
-            <h3 className="text-[14px] font-semibold mb-3 flex items-center gap-2.5" style={{ color: '#fafaf9' }}>
-              <span className="w-[3px] h-4 rounded-sm" style={{ background: GOLD }} />
+            <h3 className="text-[14px] font-semibold mb-3 flex items-center gap-2.5" style={portalStyle({ color: '#fafaf9' })}>
+              <span className="w-[3px] h-4 rounded-sm" style={portalStyle({ background: GOLD })} />
               Stok ve Satılan Malın Maliyeti
-              <span className="text-[10.5px] font-medium px-2 py-[2px] rounded-md" style={{ background: 'rgba(184,160,111,0.28)', color: GOLD }}>
+              <span className="text-[10.5px] font-medium px-2 py-[2px] rounded-md" style={portalStyle({ background: 'rgba(184,160,111,0.28)', color: GOLD })}>
                 {year} · 4 Çeyrek
               </span>
             </h3>
-            <div className="rounded-xl overflow-hidden" style={{ background: TABLE_BG, border: `1px solid ${GRID_LINE_STRONG}` }}>
-              <table className="w-full text-left text-[13px]" style={{ fontVariantNumeric: 'tabular-nums', borderCollapse: 'collapse', borderSpacing: 0, tableLayout: 'fixed' }}>
+            <div className="rounded-xl overflow-hidden" style={portalStyle({ background: TABLE_BG, border: `1px solid ${GRID_LINE_STRONG}` })}>
+              <table className="w-full text-left text-[13px]" style={portalStyle({ fontVariantNumeric: 'tabular-nums', borderCollapse: 'collapse', borderSpacing: 0, tableLayout: 'fixed' })}>
                 <colgroup>
-                  <col style={{ width: CODE_COL_WIDTH }} />
-                  <col style={{ width: ACCOUNT_COL_WIDTH }} />
-                  <col style={{ width: PERIOD_COL_WIDTH }} />
-                  <col style={{ width: PERIOD_COL_WIDTH }} />
-                  <col style={{ width: PERIOD_COL_WIDTH }} />
-                  <col style={{ width: PERIOD_COL_WIDTH }} />
+                  <col style={portalStyle({ width: CODE_COL_WIDTH })} />
+                  <col style={portalStyle({ width: ACCOUNT_COL_WIDTH })} />
+                  <col style={portalStyle({ width: PERIOD_COL_WIDTH })} />
+                  <col style={portalStyle({ width: PERIOD_COL_WIDTH })} />
+                  <col style={portalStyle({ width: PERIOD_COL_WIDTH })} />
+                  <col style={portalStyle({ width: PERIOD_COL_WIDTH })} />
                 </colgroup>
                 <thead>
                   {/* Üst başlık — gelir tablosundaki gibi */}
-                  <tr style={{ borderBottom: `1px solid ${GRID_LINE}` }}>
-                    <th colSpan={2} style={{ padding: '10px 14px', background: 'rgba(184,160,111,0.08)' }}></th>
+                  <tr style={portalStyle({ borderBottom: `1px solid ${GRID_LINE}` })}>
+                    <th colSpan={2} style={portalStyle({ padding: '10px 14px', background: 'rgba(184,160,111,0.08)' })}></th>
                     {DISPLAY_ORDER.map((qi) => (
                       <th
                         key={qi}
                         className="text-center"
-                        style={{
+                        style={portalStyle({
                           color: GOLD,
                           fontSize: 13,
                           padding: '10px 14px',
@@ -1794,17 +1796,17 @@ export default function GelirTablosuPage() {
                           borderLeft: `1px solid ${GRID_LINE}`,
                           fontFamily: REPORT_FONT,
                           fontWeight: 600,
-                        }}
+                        })}
                       >
                         {renderQuarterHeader(qi)}
                       </th>
                     ))}
                   </tr>
-                  <tr style={{ borderBottom: `1px solid ${GRID_LINE_STRONG}` }}>
-                    <th className="px-3 py-2 text-left text-[12px] font-bold uppercase tracking-[.06em]" style={{ color: '#f5efe3', background: 'rgba(184,160,111,0.16)', borderRight: `1px solid ${GRID_LINE}` }}>Kod</th>
-                    <th className="px-3 py-2 text-left text-[12px] font-bold uppercase tracking-[.06em]" style={{ color: '#f5efe3', background: 'rgba(184,160,111,0.16)', borderRight: `1px solid ${GRID_LINE}` }}>Hesap Adı</th>
+                  <tr style={portalStyle({ borderBottom: `1px solid ${GRID_LINE_STRONG}` })}>
+                    <th className="px-3 py-2 text-left text-[12px] font-bold uppercase tracking-[.06em]" style={portalStyle({ color: '#f5efe3', background: 'rgba(184,160,111,0.16)', borderRight: `1px solid ${GRID_LINE}` })}>Kod</th>
+                    <th className="px-3 py-2 text-left text-[12px] font-bold uppercase tracking-[.06em]" style={portalStyle({ color: '#f5efe3', background: 'rgba(184,160,111,0.16)', borderRight: `1px solid ${GRID_LINE}` })}>Hesap Adı</th>
                     {DISPLAY_ORDER.map((qi) => (
-                      <th key={qi} className="px-3 py-2 text-center text-[12px] font-bold uppercase tracking-[.06em]" style={{ color: '#f5efe3', background: 'rgba(184,160,111,0.16)', borderLeft: `1px solid ${GRID_LINE}` }}>
+                      <th key={qi} className="px-3 py-2 text-center text-[12px] font-bold uppercase tracking-[.06em]" style={portalStyle({ color: '#f5efe3', background: 'rgba(184,160,111,0.16)', borderLeft: `1px solid ${GRID_LINE}` })}>
                         Tutar
                       </th>
                     ))}
@@ -1812,13 +1814,13 @@ export default function GelirTablosuPage() {
                 </thead>
                 <tbody>
                   {allKodlar.map((baseH: any, hi: number) => (
-                    <tr key={baseH.kod} style={{ borderTop: `1px solid ${GRID_LINE}`, background: ACCOUNT_ROW_BG }}>
-                      <td className="px-3 py-2 font-mono text-[13px]" style={{ color: '#d8c17f', textAlign: 'left', fontWeight: 600, borderRight: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${GRID_LINE}` }}>{baseH.kod}</td>
-                      <td className="px-3 py-2 text-[13px]" style={{ color: 'rgba(250,250,249,0.78)', borderRight: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${GRID_LINE}` }}>{baseH.hesapAdi || HESAP_ADLARI[baseH.kod] || '—'}</td>
+                    <tr key={baseH.kod} style={portalStyle({ borderTop: `1px solid ${GRID_LINE}`, background: ACCOUNT_ROW_BG })}>
+                      <td className="px-3 py-2 font-mono text-[13px]" style={portalStyle({ color: '#d8c17f', textAlign: 'left', fontWeight: 600, borderRight: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${GRID_LINE}` })}>{baseH.kod}</td>
+                      <td className="px-3 py-2 text-[13px]" style={portalStyle({ color: 'rgba(250,250,249,0.78)', borderRight: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${GRID_LINE}` })}>{baseH.hesapAdi || HESAP_ADLARI[baseH.kod] || '—'}</td>
                       {DISPLAY_ORDER.map((qi) => {
                         const v = getBakiye(qi, baseH.kod);
                         return (
-                          <td key={qi} className="px-3 py-2 text-center font-mono" style={{ color: v === null ? MISSING_AMOUNT_COLOR : v === 0 ? MUTED_AMOUNT_COLOR : AMOUNT_COLOR, fontWeight: v === 0 ? 500 : FINANCIAL_AMOUNT_WEIGHT, fontSize: FINANCIAL_AMOUNT_SIZE, fontFamily: FINANCIAL_FONT, borderLeft: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${GRID_LINE}`, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', letterSpacing: 0 }}>
+                          <td key={qi} className="px-3 py-2 text-center font-mono" style={portalStyle({ color: v === null ? MISSING_AMOUNT_COLOR : v === 0 ? MUTED_AMOUNT_COLOR : AMOUNT_COLOR, fontWeight: v === 0 ? 500 : FINANCIAL_AMOUNT_WEIGHT, fontSize: FINANCIAL_AMOUNT_SIZE, fontFamily: FINANCIAL_FONT, borderLeft: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${GRID_LINE}`, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', letterSpacing: 0 })}>
                             {v === null ? '—' : v !== 0 ? fmtTRY(v) : '0,00'}
                           </td>
                         );
@@ -1826,14 +1828,14 @@ export default function GelirTablosuPage() {
                     </tr>
                   ))}
                   {/* Toplam Stok */}
-                  <tr style={{ borderTop: `2px solid ${GRID_LINE_STRONG}`, background: 'rgba(184,160,111,0.08)' }}>
+                  <tr style={portalStyle({ borderTop: `2px solid ${GRID_LINE_STRONG}`, background: 'rgba(184,160,111,0.08)' })}>
                     <td></td>
-                    <td className="px-3 py-2.5 font-semibold" style={{ color: GOLD, borderBottom: `1px solid ${GRID_LINE}` }}>Toplam Stok</td>
+                    <td className="px-3 py-2.5 font-semibold" style={portalStyle({ color: GOLD, borderBottom: `1px solid ${GRID_LINE}` })}>Toplam Stok</td>
                     {DISPLAY_ORDER.map((qi) => {
                       const d = quarterDetails[qi]?.data as any;
                       const v = d?.stokMaliyetOzet?.toplamStok;
                       return (
-                        <td key={qi} className="px-3 py-2.5 text-center font-mono" style={{ color: TOTAL_COLOR, fontWeight: FINANCIAL_AMOUNT_STRONG_WEIGHT, fontSize: FINANCIAL_AMOUNT_SIZE, fontFamily: FINANCIAL_FONT, borderLeft: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${GRID_LINE}`, fontVariantNumeric: 'tabular-nums', letterSpacing: 0 }}>
+                        <td key={qi} className="px-3 py-2.5 text-center font-mono" style={portalStyle({ color: TOTAL_COLOR, fontWeight: FINANCIAL_AMOUNT_STRONG_WEIGHT, fontSize: FINANCIAL_AMOUNT_SIZE, fontFamily: FINANCIAL_FONT, borderLeft: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${GRID_LINE}`, fontVariantNumeric: 'tabular-nums', letterSpacing: 0 })}>
                           {d?.stokMaliyetOzet ? fmtTRY(Number(v)) : '—'}
                         </td>
                       );
@@ -1842,9 +1844,9 @@ export default function GelirTablosuPage() {
                   {/* Satılan Malın Maliyeti — v1.36.55: SADECE Manuel girilen değer (toplam SMM değil).
                       User'ın talep ettiği: yukarıdaki "Manuel: 2. Satılan Ticari Mallar Maliyeti" alanına yazdığı değer
                       buraya birebir gelir; D. SATIŞLARIN MALİYETİ toplamına 740 vs eklenmiş halde gelmez. */}
-                  <tr style={{ borderTop: '1px solid rgba(244,63,94,0.26)', background: 'rgba(244,63,94,0.055)' }}>
+                  <tr style={portalStyle({ borderTop: '1px solid rgba(244,63,94,0.26)', background: 'rgba(244,63,94,0.055)' })}>
                     <td></td>
-                    <td className="px-3 py-2.5 font-semibold" style={{ color: LOSS_COLOR, borderBottom: `1px solid ${GRID_LINE}` }}>Satılan Malın Maliyeti</td>
+                    <td className="px-3 py-2.5 font-semibold" style={portalStyle({ color: LOSS_COLOR, borderBottom: `1px solid ${GRID_LINE}` })}>Satılan Malın Maliyeti</td>
                     {DISPLAY_ORDER.map((qi) => {
                       const d = quarterDetails[qi]?.data as any;
                       const slot = quarterSlots[qi];
@@ -1858,7 +1860,7 @@ export default function GelirTablosuPage() {
                         <td
                           key={qi}
                           className="px-3 py-2.5 text-center font-mono"
-                          style={{
+                          style={portalStyle({
                             color: LOSS_COLOR,
                             fontWeight: FINANCIAL_AMOUNT_STRONG_WEIGHT,
                             fontSize: FINANCIAL_AMOUNT_SIZE,
@@ -1869,21 +1871,21 @@ export default function GelirTablosuPage() {
                             position: 'relative',
                             fontVariantNumeric: 'tabular-nums',
                             letterSpacing: 0,
-                          }}
+                          })}
                           title={ihlal ? `⚠ Satılan maliyet (${fmtTRY(v)}) toplam stoktan (${fmtTRY(toplamStok)}) büyük olamaz` : undefined}
                         >
                           {d?.stokMaliyetOzet ? '−' + fmtTRY(v) : '—'}
                           {ihlal && (
-                            <span style={{ position: 'absolute', top: 2, right: 4, fontSize: 11 }}>⚠</span>
+                            <span style={portalStyle({ position: 'absolute', top: 2, right: 4, fontSize: 11 })}>⚠</span>
                           )}
                         </td>
                       );
                     })}
                   </tr>
                   {/* Kalan Stok — manuel düzeltmeyle re-compute + negatif olunca kırmızı */}
-                  <tr style={{ borderTop: `2px solid ${GRID_LINE_STRONG}`, background: 'rgba(184,160,111,0.08)' }}>
+                  <tr style={portalStyle({ borderTop: `2px solid ${GRID_LINE_STRONG}`, background: 'rgba(184,160,111,0.08)' })}>
                     <td></td>
-                    <td className="px-3 py-2.5 font-bold text-[13.5px]" style={{ color: TOTAL_COLOR, borderBottom: `1px solid ${GRID_LINE}` }}>Kalan Stok</td>
+                    <td className="px-3 py-2.5 font-bold text-[13.5px]" style={portalStyle({ color: TOTAL_COLOR, borderBottom: `1px solid ${GRID_LINE}` })}>Kalan Stok</td>
                     {DISPLAY_ORDER.map((qi) => {
                       const d = quarterDetails[qi]?.data as any;
                       // v1.36.55: Kalan Stok = Toplam Stok − Manuel SMM (toplam SMM değil)
@@ -1898,7 +1900,7 @@ export default function GelirTablosuPage() {
                         <td
                           key={qi}
                           className="px-3 py-2.5 text-center font-mono"
-                          style={{
+                          style={portalStyle({
                             color: negatif ? LOSS_COLOR : TOTAL_COLOR,
                             fontWeight: FINANCIAL_AMOUNT_STRONG_WEIGHT,
                             fontSize: FINANCIAL_AMOUNT_SIZE,
@@ -1909,12 +1911,12 @@ export default function GelirTablosuPage() {
                             position: 'relative',
                             fontVariantNumeric: 'tabular-nums',
                             letterSpacing: 0,
-                          }}
+                          })}
                           title={negatif ? `⚠ Kalan stok negatif (${fmtTRY(v)}) — satılan maliyet toplam stoktan büyük` : undefined}
                         >
                           {d?.stokMaliyetOzet ? fmtTRY(v) : '—'}
                           {negatif && (
-                            <span style={{ position: 'absolute', top: 2, right: 4, fontSize: 11 }}>⚠</span>
+                            <span style={portalStyle({ position: 'absolute', top: 2, right: 4, fontSize: 11 })}>⚠</span>
                           )}
                         </td>
                       );
@@ -1931,8 +1933,8 @@ export default function GelirTablosuPage() {
                     const ts = Number(d?.stokMaliyetOzet?.toplamStok ?? 0);
                     return d?.stokMaliyetOzet && ((sm > ts && ts > 0) || (ts - sm) < 0);
                   }) && (
-                    <tr style={{ borderTop: '1px dashed rgba(239,68,68,0.4)', background: 'rgba(239,68,68,0.06)' }}>
-                      <td colSpan={6} className="px-4 py-2.5 text-[12px]" style={{ color: '#ef4444' }}>
+                    <tr style={portalStyle({ borderTop: '1px dashed rgba(239,68,68,0.4)', background: 'rgba(239,68,68,0.06)' })}>
+                      <td colSpan={6} className="px-4 py-2.5 text-[12px]" style={portalStyle({ color: '#ef4444' })}>
                         ⚠ <strong>Tutarsızlık:</strong> Satılan Malın Maliyeti, Toplam Stok'tan büyük olamaz; Kalan Stok negatif olamaz. Yukarıda kırmızı işaretli hücreler hatalı. Mizan kayıtlarını kontrol edin.
                       </td>
                     </tr>
@@ -1947,10 +1949,10 @@ export default function GelirTablosuPage() {
       {/* Finansal Oranlar — son dolu çeyreğe göre */}
       {latestQuarter && (
         <div>
-          <h3 className="text-[14px] font-semibold mb-3 flex items-center gap-2.5" style={{ color: '#fafaf9' }}>
-            <span className="w-[3px] h-4 rounded-sm" style={{ background: GOLD }} />
+          <h3 className="text-[14px] font-semibold mb-3 flex items-center gap-2.5" style={portalStyle({ color: '#fafaf9' })}>
+            <span className="w-[3px] h-4 rounded-sm" style={portalStyle({ background: GOLD })} />
             Finansal Oranlar
-            <span className="text-[10.5px] font-medium px-2 py-[2px] rounded-md" style={{ background: 'rgba(184,160,111,0.28)', color: GOLD }}>
+            <span className="text-[10.5px] font-medium px-2 py-[2px] rounded-md" style={portalStyle({ background: 'rgba(184,160,111,0.28)', color: GOLD })}>
               {formatDonemLabel(latestQuarter.donem, latestQuarter.donemTipi)}
             </span>
           </h3>
@@ -1977,64 +1979,64 @@ export default function GelirTablosuPage() {
 
       {/* Geçmiş Gelir Tabloları */}
       <div>
-        <h3 className="text-[14px] font-semibold mb-3 flex items-center gap-2.5" style={{ color: '#fafaf9' }}>
-          <span className="w-[3px] h-4 rounded-sm" style={{ background: GOLD }} />
+        <h3 className="text-[14px] font-semibold mb-3 flex items-center gap-2.5" style={portalStyle({ color: '#fafaf9' })}>
+          <span className="w-[3px] h-4 rounded-sm" style={portalStyle({ background: GOLD })} />
           Kayıtlı Gelir Tabloları
-          <span className="text-[10.5px] font-medium px-2 py-[2px] rounded-md" style={{ background: 'rgba(184,160,111,0.28)', color: GOLD }}>
+          <span className="text-[10.5px] font-medium px-2 py-[2px] rounded-md" style={portalStyle({ background: 'rgba(184,160,111,0.28)', color: GOLD })}>
             {gtList.length}
           </span>
         </h3>
         {gtList.length === 0 ? (
-          <div className="rounded-xl py-10 text-center" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
-            <FileSpreadsheet size={24} style={{ color: 'rgba(250,250,249,0.3)', margin: '0 auto 8px' }} />
-            <p className="text-[13px]" style={{ color: 'rgba(250,250,249,0.5)' }}>Henüz kayıtlı gelir tablosu yok</p>
+          <div className="rounded-xl py-10 text-center" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' })}>
+            <FileSpreadsheet size={24} style={portalStyle({ color: 'rgba(250,250,249,0.3)', margin: '0 auto 8px' })} />
+            <p className="text-[13px]" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>Henüz kayıtlı gelir tablosu yok</p>
           </div>
         ) : (
-          <div className="rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+          <div className="rounded-xl overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' })}>
             <table className="w-full text-left text-[13px]">
               <thead>
-                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                  <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.45)' }}>Oluşturma</th>
-                  <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.45)' }}>Mükellef</th>
-                  <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.45)' }}>Dönem</th>
-                  <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.45)' }}>Tür</th>
-                  <th className="px-4 py-3 text-right text-[10.5px] font-bold uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.45)' }}>Net Kar</th>
-                  <th className="px-4 py-3 text-right text-[10.5px] font-bold uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.45)' }}>İşlem</th>
+                <tr style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.05)' })}>
+                  <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-[.08em]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>Oluşturma</th>
+                  <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-[.08em]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>Mükellef</th>
+                  <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-[.08em]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>Dönem</th>
+                  <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-[.08em]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>Tür</th>
+                  <th className="px-4 py-3 text-right text-[10.5px] font-bold uppercase tracking-[.08em]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>Net Kar</th>
+                  <th className="px-4 py-3 text-right text-[10.5px] font-bold uppercase tracking-[.08em]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>İşlem</th>
                 </tr>
               </thead>
               <tbody>
                 {gtList.map((g: any, idx: number) => (
-                  <tr key={g.id} style={{ borderTop: idx === 0 ? 'none' : '1px solid rgba(255,255,255,0.18)' }}>
-                    <td className="px-4 py-3 font-mono text-[12px]" style={{ color: 'rgba(250,250,249,0.7)' }}>{new Date(g.createdAt).toLocaleDateString('tr-TR')}</td>
+                  <tr key={g.id} style={portalStyle({ borderTop: idx === 0 ? 'none' : '1px solid rgba(255,255,255,0.18)' })}>
+                    <td className="px-4 py-3 font-mono text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.7)' })}>{new Date(g.createdAt).toLocaleDateString('tr-TR')}</td>
                     <td className="px-4 py-3 font-medium">
-                      {g.locked && <Lock size={11} style={{ color: '#22c55e', display: 'inline', marginRight: 6, verticalAlign: 'middle' }} />}
+                      {g.locked && <Lock size={11} style={portalStyle({ color: '#22c55e', display: 'inline', marginRight: 6, verticalAlign: 'middle' })} />}
                       {g.taxpayer ? taxpayerName(g.taxpayer) : '—'}
                     </td>
                     <td className="px-4 py-3">{formatDonemLabel(g.donem, g.donemTipi)}</td>
-                    <td className="px-4 py-3 text-[11.5px]" style={{ color: 'rgba(250,250,249,0.6)' }}>
+                    <td className="px-4 py-3 text-[11.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.6)' })}>
                       {formatDonemTipiLabel(g.donemTipi, g.donem)}
-                      {g.locked && <span className="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: 'rgba(34,197,94,0.15)', color: '#22c55e' }}>KESİN</span>}
+                      {g.locked && <span className="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded" style={portalStyle({ background: 'rgba(34,197,94,0.15)', color: '#22c55e' })}>KESİN</span>}
                     </td>
-                    <td className="px-4 py-3 text-right font-mono" style={{ color: GOLD, fontWeight: 600 }}>{fmtTRY(g.donemNetKari)}</td>
+                    <td className="px-4 py-3 text-right font-mono" style={portalStyle({ color: GOLD, fontWeight: 600 })}>{fmtTRY(g.donemNetKari)}</td>
                     <td className="px-4 py-3 text-right">
                       <div className="inline-flex gap-1.5">
                         <button
                           onClick={() => handleClientOutput(g)}
                           disabled={clientOutputLoadingId === g.id}
                           className="p-1.5 rounded-md disabled:opacity-50"
-                          style={{ color: AMOUNT_COLOR, background: 'rgba(212,184,118,0.10)' }}
+                          style={portalStyle({ color: AMOUNT_COLOR, background: 'rgba(212,184,118,0.10)' })}
                           title="Mükellef Çıktısı"
                         >
                           {clientOutputLoadingId === g.id ? <Loader2 size={14} className="animate-spin" /> : <Printer size={14} />}
                         </button>
-                        <button onClick={() => exportMut.mutate(g.id)} disabled={exportMut.isPending} className="p-1.5 rounded-md" style={{ color: GOLD, background: 'rgba(184,160,111,0.08)' }} title="Excel İndir">
+                        <button onClick={() => exportMut.mutate(g.id)} disabled={exportMut.isPending} className="p-1.5 rounded-md" style={portalStyle({ color: GOLD, background: 'rgba(184,160,111,0.08)' })} title="Excel İndir">
                           <Download size={14} />
                         </button>
                         <button
                           onClick={() => { if (g.locked) return toast.error('Kesin kayıtlı silinemez'); if (confirm('Silinsin mi?')) deleteMut.mutate(g.id); }}
                           disabled={g.locked}
                           className="p-1.5 rounded-md disabled:opacity-30"
-                          style={{ color: '#f43f5e', background: 'rgba(244,63,94,0.08)' }}
+                          style={portalStyle({ color: '#f43f5e', background: 'rgba(244,63,94,0.08)' })}
                         >
                           <Trash2 size={14} />
                         </button>
@@ -2054,21 +2056,21 @@ export default function GelirTablosuPage() {
 
       {/* Mükellef Picker */}
       {pickerOpen && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-[8vh]" style={{ background: 'rgba(0,0,0,.6)', backdropFilter: 'blur(6px)' }} onClick={() => setPickerOpen(false)}>
-          <div className="w-full max-w-xl rounded-2xl border flex flex-col overflow-hidden" style={{ background: 'rgba(17,14,12,0.98)', borderColor: 'rgba(255,255,255,0.05)', maxHeight: '84vh' }} onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
-              <h3 className="text-lg font-bold" style={{ color: '#fafaf9' }}>Mükellef Seç</h3>
+        <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-[8vh]" style={portalStyle({ background: 'rgba(0,0,0,.6)', backdropFilter: 'blur(6px)' })} onClick={() => setPickerOpen(false)}>
+          <div className="w-full max-w-xl rounded-2xl border flex flex-col overflow-hidden" style={portalStyle({ background: 'rgba(17,14,12,0.98)', borderColor: 'rgba(255,255,255,0.05)', maxHeight: '84vh' })} onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b" style={portalStyle({ borderColor: 'rgba(255,255,255,0.05)' })}>
+              <h3 className="text-lg font-bold" style={portalStyle({ color: '#fafaf9' })}>Mükellef Seç</h3>
               <button onClick={() => setPickerOpen(false)}><X size={16} /></button>
             </div>
-            <div className="px-5 py-3 border-b" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
-              <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg border" style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)' }}>
-                <Search size={14} /><input value={pickerSearch} onChange={(e) => setPickerSearch(e.target.value)} placeholder="Ara…" autoFocus className="flex-1 bg-transparent outline-none text-sm" style={{ color: '#fafaf9' }} />
+            <div className="px-5 py-3 border-b" style={portalStyle({ borderColor: 'rgba(255,255,255,0.05)' })}>
+              <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg border" style={portalStyle({ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)' })}>
+                <Search size={14} /><input value={pickerSearch} onChange={(e) => setPickerSearch(e.target.value)} placeholder="Ara…" autoFocus className="flex-1 bg-transparent outline-none text-sm" style={portalStyle({ color: '#fafaf9' })} />
               </div>
             </div>
             <div className="flex-1 overflow-y-auto p-2">
               {filteredTp.map((t) => (
-                <button key={t.id} onClick={() => { setTaxpayerId(t.id); setPickerOpen(false); setPickerSearch(''); }} className="w-full flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg text-left" style={{ color: '#fafaf9', background: taxpayerId === t.id ? 'rgba(184,160,111,.08)' : 'transparent' }}>
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold" style={{ background: 'rgba(255,255,255,0.05)' }}>{taxpayerName(t).charAt(0)}</div>
+                <button key={t.id} onClick={() => { setTaxpayerId(t.id); setPickerOpen(false); setPickerSearch(''); }} className="w-full flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg text-left" style={portalStyle({ color: '#fafaf9', background: taxpayerId === t.id ? 'rgba(184,160,111,.08)' : 'transparent' })}>
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold" style={portalStyle({ background: 'rgba(255,255,255,0.05)' })}>{taxpayerName(t).charAt(0)}</div>
                   <span className="flex-1 truncate font-medium">{taxpayerName(t)}</span>
                 </button>
               ))}
@@ -2081,12 +2083,12 @@ export default function GelirTablosuPage() {
       {waOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ background: 'rgba(0,0,0,0.65)' }}
+          style={portalStyle({ background: 'rgba(0,0,0,0.65)' })}
           onClick={() => !waLoading && setWaOpen(false)}
         >
           <div
             className="w-full max-w-md rounded-2xl border p-5"
-            style={{ background: '#14110d', borderColor: 'rgba(37,211,102,0.3)' }}
+            style={portalStyle({ background: '#14110d', borderColor: 'rgba(37,211,102,0.3)' })}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-2 mb-3">
@@ -2108,7 +2110,7 @@ export default function GelirTablosuPage() {
               onChange={(e) => setWaMessage(e.target.value)}
               rows={12}
               className="w-full whitespace-pre-wrap rounded-md border border-white/10 p-3 text-xs text-stone-200 max-h-72 overflow-auto mb-4 outline-none"
-              style={{ background: 'rgba(0,0,0,0.35)', fontFamily: 'inherit', resize: 'vertical' }}
+              style={portalStyle({ background: 'rgba(0,0,0,0.35)', fontFamily: 'inherit', resize: 'vertical' })}
             />
             <div className="flex justify-end gap-2">
               <button
@@ -2122,7 +2124,7 @@ export default function GelirTablosuPage() {
                 onClick={waGonder}
                 disabled={waLoading || !waPhone.trim() || !waMessage.trim()}
                 className="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-bold text-white disabled:opacity-50"
-                style={{ background: '#25D366' }}
+                style={portalStyle({ background: '#25D366' })}
               >
                 {waLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <WhatsAppIcon size={14} color="#ffffff" />}
                 Onayla ve Gönder
@@ -2205,7 +2207,7 @@ function ManuelInput({
       disabled={disabled}
       placeholder={isLocked ? 'Kilitli' : isEditing ? '0,00' : 'Düzelt'}
       className="w-full px-2 py-1 rounded font-mono text-center outline-none border"
-      style={{
+      style={portalStyle({
         background: readOnlySaved ? 'transparent' : disabled ? 'rgba(255,255,255,0.012)' : 'rgba(96,165,250,0.08)',
         borderColor: readOnlySaved ? 'transparent' : disabled ? 'rgba(255,255,255,0.06)' : 'rgba(96,165,250,0.25)',
         color: readOnlySaved ? AMOUNT_COLOR : disabled ? MUTED_AMOUNT_COLOR : '#60a5fa',
@@ -2216,7 +2218,7 @@ function ManuelInput({
         letterSpacing: 0,
         opacity: 1,
         cursor: readOnlySaved ? 'default' : disabled ? 'not-allowed' : 'text',
-      }}
+      })}
     />
   );
 }
@@ -2240,7 +2242,7 @@ function AmountText({
   return (
     <span
       className={className}
-      style={{
+      style={portalStyle({
         display: 'block',
         width: '100%',
         textAlign: 'center',
@@ -2252,7 +2254,7 @@ function AmountText({
         whiteSpace: 'nowrap',
         fontVariantNumeric: 'tabular-nums',
         letterSpacing: 0,
-      }}
+      })}
     >
       {missing ? '—' : fmtTRY(value ?? 0)}
     </span>
@@ -2461,15 +2463,15 @@ function getSubAccountAmount(gt: any, kod: string): number {
 function RatioCard({ label, value, formula, tone }: { label: string; value: string; formula: string; tone: 'good' | 'neutral' | 'warn' | 'bad' }) {
   const color = tone === 'good' ? '#22c55e' : tone === 'warn' ? '#f59e0b' : tone === 'bad' ? '#f43f5e' : GOLD;
   return (
-    <div className="rounded-xl border p-4" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)', minWidth: 0 }}>
-      <div className="text-[11px] font-semibold mb-1.5" style={{ color: 'rgba(250,250,249,0.55)' }}>{label}</div>
+    <div className="rounded-xl border p-4" style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)', minWidth: 0 })}>
+      <div className="text-[11px] font-semibold mb-1.5" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>{label}</div>
       <div
         className="font-mono text-[24px] font-bold"
-        style={{ color, letterSpacing: 0, lineHeight: 1.15, whiteSpace: 'nowrap', overflowWrap: 'normal' }}
+        style={portalStyle({ color, letterSpacing: 0, lineHeight: 1.15, whiteSpace: 'nowrap', overflowWrap: 'normal' })}
       >
         {value}
       </div>
-      <div className="text-[10.5px] font-mono mt-1.5 leading-snug" style={{ color: 'rgba(250,250,249,0.48)' }}>{formula}</div>
+      <div className="text-[10.5px] font-mono mt-1.5 leading-snug" style={portalStyle({ color: 'rgba(250,250,249,0.48)' })}>{formula}</div>
     </div>
   );
 }

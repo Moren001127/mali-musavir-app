@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import { type FormEvent, type ReactNode, useState } from 'react';
 import Link from 'next/link';
@@ -198,17 +200,17 @@ export default function YeniMukellefPage() {
           <Link
             href="/panel/mukellef-listesi"
             className="inline-flex h-10 w-10 items-center justify-center rounded-[8px] transition"
-            style={{ background: 'rgba(255,255,255,0.035)', border: `1px solid ${LINE}`, color: MUTED }}
+            style={portalStyle({ background: 'rgba(255,255,255,0.035)', border: `1px solid ${LINE}`, color: MUTED })}
             title="Listeye dön"
           >
             <ArrowLeft size={17} />
           </Link>
           <div>
             <div className="mb-1 flex items-center gap-2">
-              <span className="h-px w-[26px]" style={{ background: GOLD }} />
-              <span className="text-[9.5px] font-bold uppercase tracking-[.18em]" style={{ color: GOLD_SOFT }}>Mükellef CRM</span>
+              <span className="h-px w-[26px]" style={portalStyle({ background: GOLD })} />
+              <span className="text-[9.5px] font-bold uppercase tracking-[.18em]" style={portalStyle({ color: GOLD_SOFT })}>Mükellef CRM</span>
             </div>
-            <h1 className="text-[28px] font-black leading-none" style={{ color: GOLD, fontFamily: 'Manrope, Inter, system-ui, sans-serif', letterSpacing: 0 }}>
+            <h1 className="text-[28px] font-black leading-none" style={portalStyle({ color: GOLD, fontFamily: 'Manrope, Inter, system-ui, sans-serif', letterSpacing: 0 })}>
               Yeni Mükellef
             </h1>
           </div>
@@ -218,7 +220,7 @@ export default function YeniMukellefPage() {
           form="new-taxpayer-form"
           disabled={isPending}
           className="inline-flex h-10 items-center justify-center gap-2 rounded-[8px] px-4 text-[13px] font-black transition disabled:opacity-45"
-          style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_SOFT})`, color: '#0f0d0b' }}
+          style={portalStyle({ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_SOFT})`, color: '#0f0d0b' })}
         >
           {isPending ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
           {isPending ? 'Kaydediliyor' : 'Kaydet'}
@@ -351,7 +353,7 @@ export default function YeniMukellefPage() {
                     }));
                   }}
                   className={inputClass}
-                  style={inputStyle}
+                  style={portalStyle(inputStyle)}
                 >
                   <option value="BILANCO">Bilanço</option>
                   <option value="DEFTER_BEYAN">İşletme</option>
@@ -368,7 +370,7 @@ export default function YeniMukellefPage() {
               placeholder="Not ekle..."
               onChange={(e) => update('notes', e.target.value)}
               className={textareaClass}
-              style={inputStyle}
+              style={portalStyle(inputStyle)}
             />
           </Section>
         </main>
@@ -379,7 +381,7 @@ export default function YeniMukellefPage() {
             <Link
               href="/panel/mukellef-listesi"
               className="inline-flex h-10 items-center justify-center rounded-[8px] text-[13px] font-bold"
-              style={{ background: 'rgba(255,255,255,0.035)', border: `1px solid ${LINE}`, color: MUTED }}
+              style={portalStyle({ background: 'rgba(255,255,255,0.035)', border: `1px solid ${LINE}`, color: MUTED })}
             >
               İptal
             </Link>
@@ -387,7 +389,7 @@ export default function YeniMukellefPage() {
               type="submit"
               disabled={isPending}
               className="inline-flex h-10 items-center justify-center gap-2 rounded-[8px] text-[13px] font-black disabled:opacity-45"
-              style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_SOFT})`, color: '#0f0d0b' }}
+              style={portalStyle({ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_SOFT})`, color: '#0f0d0b' })}
             >
               {isPending ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
               Kaydet
@@ -401,12 +403,12 @@ export default function YeniMukellefPage() {
 
 function Section({ icon: Icon, title, children }: { icon: LucideIcon; title: string; children: ReactNode }) {
   return (
-    <section className="rounded-[8px] p-4" style={{ background: CARD, border: `1px solid ${LINE}`, boxShadow: '0 12px 30px rgba(0,0,0,0.14)' }}>
+    <section className="rounded-[8px] p-4" style={portalStyle({ background: CARD, border: `1px solid ${LINE}`, boxShadow: '0 12px 30px rgba(0,0,0,0.14)' })}>
       <div className="mb-4 flex items-center gap-2.5">
-        <span className="inline-flex h-9 w-9 items-center justify-center rounded-[7px]" style={{ background: 'rgba(212,184,118,0.10)', border: '1px solid rgba(212,184,118,0.22)', color: GOLD }}>
+        <span className="inline-flex h-9 w-9 items-center justify-center rounded-[7px]" style={portalStyle({ background: 'rgba(212,184,118,0.10)', border: '1px solid rgba(212,184,118,0.22)', color: GOLD })}>
           <Icon size={17} />
         </span>
-        <h2 className="text-[15px] font-black" style={{ color: GOLD }}>{title}</h2>
+        <h2 className="text-[15px] font-black" style={portalStyle({ color: GOLD })}>{title}</h2>
       </div>
       {children}
     </section>
@@ -415,7 +417,7 @@ function Section({ icon: Icon, title, children }: { icon: LucideIcon; title: str
 
 function FieldLabel({ children }: { children: ReactNode }) {
   return (
-    <label className="mb-1.5 block text-[12px] font-bold" style={{ color: MUTED }}>
+    <label className="mb-1.5 block text-[12px] font-bold" style={portalStyle({ color: MUTED })}>
       {children}
     </label>
   );
@@ -462,7 +464,7 @@ function TextField({
         max={max}
         onChange={(e) => onChange(e.target.value)}
         className={`${inputClass} ${mono ? 'font-mono tracking-[0.02em]' : ''}`}
-        style={inputStyle}
+        style={portalStyle(inputStyle)}
       />
     </div>
   );
@@ -475,11 +477,11 @@ function SegmentButton({ active, icon: Icon, label, onClick, color }: { active: 
       aria-pressed={active}
       onClick={onClick}
       className="inline-flex h-11 items-center justify-center gap-2 rounded-[8px] px-3 text-[13px] font-black transition"
-      style={{
+      style={portalStyle({
         background: active ? `${color}24` : 'rgba(255,255,255,0.028)',
         border: `1px solid ${active ? `${color}66` : 'rgba(255,255,255,0.085)'}`,
         color: active ? color : MUTED,
-      }}
+      })}
     >
       <Icon size={16} />
       {label}
@@ -494,11 +496,11 @@ function ToggleRow({ checked, icon: Icon, title, onChange }: { checked: boolean;
       aria-pressed={checked}
       onClick={() => onChange(!checked)}
       className="flex min-h-14 items-center justify-between gap-3 rounded-[8px] px-3 py-2 text-left transition"
-      style={{
+      style={portalStyle({
         background: checked ? 'rgba(34,197,94,0.11)' : 'rgba(255,255,255,0.028)',
         border: `1px solid ${checked ? 'rgba(34,197,94,0.30)' : 'rgba(255,255,255,0.085)'}`,
         color: checked ? '#7eeaa5' : MUTED,
-      }}
+      })}
     >
       <span className="flex min-w-0 items-center gap-2">
         <Icon size={16} />
@@ -506,7 +508,7 @@ function ToggleRow({ checked, icon: Icon, title, onChange }: { checked: boolean;
       </span>
       <span
         className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px]"
-        style={{ background: checked ? GREEN : 'rgba(255,255,255,0.055)', color: checked ? '#052111' : FAINT }}
+        style={portalStyle({ background: checked ? GREEN : 'rgba(255,255,255,0.055)', color: checked ? '#052111' : FAINT })}
       >
         {checked ? <Check size={13} strokeWidth={3} /> : null}
       </span>
@@ -521,20 +523,20 @@ function PreviewCard({ form }: { form: FormState }) {
   const hasEmail = form.emails.some((email) => email.trim());
 
   return (
-    <section className="rounded-[8px] p-4" style={{ background: CARD, border: `1px solid ${LINE}`, boxShadow: '0 12px 30px rgba(0,0,0,0.14)' }}>
-      <div className="flex h-[170px] items-center justify-center rounded-[7px]" style={{ background: 'rgba(79,134,201,0.24)', border: '1px solid rgba(79,134,201,0.22)' }}>
-        <div className="flex h-20 w-20 items-center justify-center rounded-full text-[25px] font-black" style={{ background: 'rgba(255,255,255,0.16)', color: TEXT }}>
+    <section className="rounded-[8px] p-4" style={portalStyle({ background: CARD, border: `1px solid ${LINE}`, boxShadow: '0 12px 30px rgba(0,0,0,0.14)' })}>
+      <div className="flex h-[170px] items-center justify-center rounded-[7px]" style={portalStyle({ background: 'rgba(79,134,201,0.24)', border: '1px solid rgba(79,134,201,0.22)' })}>
+        <div className="flex h-20 w-20 items-center justify-center rounded-full text-[25px] font-black" style={portalStyle({ background: 'rgba(255,255,255,0.16)', color: TEXT })}>
           {initials(name)}
         </div>
       </div>
       <div className="mt-4 flex items-start gap-2">
-        <h2 className="min-w-0 flex-1 truncate text-[20px] font-black leading-tight" style={{ color: TEXT }}>{name}</h2>
+        <h2 className="min-w-0 flex-1 truncate text-[20px] font-black leading-tight" style={portalStyle({ color: TEXT })}>{name}</h2>
         <span
           className="rounded-[5px] px-2 py-1 text-[11px] font-black"
-          style={{
+          style={portalStyle({
             background: type === 'BASİT' ? 'rgba(245,158,11,0.16)' : type === 'FİRMA' ? 'rgba(79,134,201,0.18)' : 'rgba(24,174,226,0.18)',
             color: type === 'BASİT' ? AMBER : '#7fc2f0',
-          }}
+          })}
         >
           {type}
         </span>
@@ -545,13 +547,13 @@ function PreviewCard({ form }: { form: FormState }) {
         <PresenceIcon active={hasEmail} icon={Mail} title="E-posta" />
         <PresenceIcon active={hasPhone} icon={Smartphone} title="Telefon" />
       </div>
-      <div className="mt-4 grid gap-2 text-[12px] font-semibold" style={{ color: MUTED }}>
+      <div className="mt-4 grid gap-2 text-[12px] font-semibold" style={portalStyle({ color: MUTED })}>
         <div className="flex min-w-0 items-center gap-2">
-          <Landmark size={14} style={{ color: GOLD }} />
+          <Landmark size={14} style={portalStyle({ color: GOLD })} />
           <span className="truncate">{form.taxNumber || 'VKN/TC eksik'}</span>
         </div>
         <div className="flex min-w-0 items-center gap-2">
-          <MapPin size={14} style={{ color: GOLD }} />
+          <MapPin size={14} style={portalStyle({ color: GOLD })} />
           <span className="truncate">{form.taxOffice || 'Vergi dairesi eksik'}</span>
         </div>
       </div>
@@ -566,11 +568,11 @@ function PresenceIcon({ active, icon: Icon, title }: { active: boolean; icon: Lu
       title={`${title}: ${active ? 'tanımlı' : 'eksik'}`}
       aria-label={`${title}: ${active ? 'tanımlı' : 'eksik'}`}
       className="inline-flex h-10 w-10 items-center justify-center rounded-[5px]"
-      style={{
+      style={portalStyle({
         background: active ? 'rgba(34,197,94,0.13)' : 'rgba(251,113,133,0.12)',
         border: `1px solid ${active ? 'rgba(34,197,94,0.32)' : 'rgba(251,113,133,0.32)'}`,
         color,
-      }}
+      })}
     >
       <Icon size={17} />
     </span>

@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
@@ -195,32 +197,32 @@ export default function MukellefListesiPage() {
     <div className="max-w-none space-y-4">
       <header
         className="relative overflow-hidden rounded-[18px] border px-5 py-4"
-        style={{
+        style={portalStyle({
           background:
             'radial-gradient(120% 140% at 0% 0%, rgba(212,184,118,0.16), transparent 46%), radial-gradient(120% 140% at 100% 0%, rgba(139,118,73,0.12), transparent 48%), #0f0d0b',
           borderColor: 'rgba(255,255,255,0.06)',
           boxShadow: '0 16px 42px rgba(0,0,0,0.28)',
-        }}
+        })}
       >
         <div
           className="absolute inset-x-0 top-0 h-1"
-          style={{ background: 'linear-gradient(90deg, #8b7649, #b8a06f, #d4b876, #e7cf95, #d4b876, #b8a06f)' }}
+          style={portalStyle({ background: 'linear-gradient(90deg, #8b7649, #b8a06f, #d4b876, #e7cf95, #d4b876, #b8a06f)' })}
         />
         <div className="mb-3 flex items-center gap-2.5">
-          <span className="h-px w-[26px]" style={{ background: GOLD }} />
-          <span className="text-[10px] font-bold uppercase tracking-[.18em]" style={{ color: GOLD_SOFT }}>Mükellef CRM</span>
+          <span className="h-px w-[26px]" style={portalStyle({ background: GOLD })} />
+          <span className="text-[10px] font-bold uppercase tracking-[.18em]" style={portalStyle({ color: GOLD_SOFT })}>Mükellef CRM</span>
         </div>
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex min-w-0 items-center gap-3.5">
             <span
               className="grid shrink-0 place-items-center rounded-xl"
-              style={{ width: 46, height: 46, background: `linear-gradient(135deg, ${GOLD}, ${GOLD_SOFT})`, boxShadow: '0 8px 22px rgba(212,184,118,0.30)' }}
+              style={portalStyle({ width: 46, height: 46, background: `linear-gradient(135deg, ${GOLD}, ${GOLD_SOFT})`, boxShadow: '0 8px 22px rgba(212,184,118,0.30)' })}
             >
-              <Users size={24} style={{ color: '#1a1410' }} />
+              <Users size={24} style={portalStyle({ color: '#1a1410' })} />
             </span>
             <div className="min-w-0">
-              <h1 style={{ fontFamily: 'Fraunces, Georgia, serif', fontSize: 30, fontWeight: 600, color: TEXT, letterSpacing: '-.03em', lineHeight: 1.05 }}>Mükellef Listesi</h1>
-              <p className="mt-1.5 text-[13px] font-semibold" style={{ color: 'rgba(250,250,249,0.48)' }}>
+              <h1 style={portalStyle({ fontFamily: 'Fraunces, Georgia, serif', fontSize: 30, fontWeight: 600, color: TEXT, letterSpacing: '-.03em', lineHeight: 1.05 })}>Mükellef Listesi</h1>
+              <p className="mt-1.5 text-[13px] font-semibold" style={portalStyle({ color: 'rgba(250,250,249,0.48)' })}>
                 {counts.active} aktif, {counts.inactive} pasif, toplam {counts.total} kayıt
               </p>
             </div>
@@ -228,7 +230,7 @@ export default function MukellefListesiPage() {
           <Link
             href="/panel/mukellefler/yeni"
             className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-[10px] px-4 text-[12.5px] font-bold transition-all"
-            style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_SOFT})`, color: '#0f0d0b', boxShadow: '0 10px 24px rgba(212,184,118,0.16)' }}
+            style={portalStyle({ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_SOFT})`, color: '#0f0d0b', boxShadow: '0 10px 24px rgba(212,184,118,0.16)' })}
           >
             <Plus size={14} /> Yeni Mükellef
           </Link>
@@ -242,7 +244,7 @@ export default function MukellefListesiPage() {
 
       <section
         className="rounded-[8px] p-3"
-        style={{ background: 'rgba(255,255,255,0.018)', border: `1px solid ${LINE}` }}
+        style={portalStyle({ background: 'rgba(255,255,255,0.018)', border: `1px solid ${LINE}` })}
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap gap-2">
@@ -255,11 +257,11 @@ export default function MukellefListesiPage() {
                   type="button"
                   onClick={() => setTypeFilter(item.key)}
                   className="inline-flex h-10 items-center gap-2 rounded-[6px] px-3.5 text-[13px] font-bold transition"
-                  style={{
+                  style={portalStyle({
                     background: active ? item.color : 'rgba(255,255,255,0.035)',
                     border: `1px solid ${active ? item.color : 'rgba(255,255,255,0.09)'}`,
                     color: active ? '#fff' : 'rgba(250,250,249,0.72)',
-                  }}
+                  })}
                   title={`${item.label} filtresi`}
                 >
                   <Icon size={15} /> {item.label}
@@ -270,16 +272,16 @@ export default function MukellefListesiPage() {
 
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative min-w-[280px] flex-1">
-              <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: FAINT }} />
+              <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={portalStyle({ color: FAINT })} />
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="İsim, VKN/TC, vergi dairesi ara..."
                 className="h-10 w-full rounded-[8px] py-2 pl-10 pr-3 text-[12.5px] outline-none"
-                style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.09)', color: TEXT }}
+                style={portalStyle({ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.09)', color: TEXT })}
               />
             </div>
-            <div className="inline-flex rounded-[8px] p-1" style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.08)' }}>
+            <div className="inline-flex rounded-[8px] p-1" style={portalStyle({ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.08)' })}>
               {STATUS_FILTERS.map((item) => {
                 const active = statusFilter === item.key;
                 return (
@@ -288,7 +290,7 @@ export default function MukellefListesiPage() {
                     type="button"
                     onClick={() => setStatusFilter(item.key)}
                     className="h-8 rounded-[6px] px-3 text-[12px] font-bold transition"
-                    style={{ background: active ? `${GOLD}26` : 'transparent', color: active ? GOLD : MUTED }}
+                    style={portalStyle({ background: active ? `${GOLD}26` : 'transparent', color: active ? GOLD : MUTED })}
                   >
                     {item.label}
                   </button>
@@ -301,7 +303,7 @@ export default function MukellefListesiPage() {
 
       <section
         className="grid grid-cols-[repeat(auto-fit,minmax(42px,1fr))] gap-px overflow-hidden rounded-[8px]"
-        style={{ border: `1px solid ${LINE}`, background: LINE }}
+        style={portalStyle({ border: `1px solid ${LINE}`, background: LINE })}
       >
         {[...LETTERS, 'TÜMÜ'].map((item) => {
           const active = letter === item;
@@ -311,7 +313,7 @@ export default function MukellefListesiPage() {
               type="button"
               onClick={() => setLetter(item)}
               className="h-10 text-[13px] font-bold transition"
-              style={{ background: active ? 'rgba(212,184,118,0.18)' : 'rgba(255,255,255,0.028)', color: active ? GOLD : 'rgba(250,250,249,0.68)' }}
+              style={portalStyle({ background: active ? 'rgba(212,184,118,0.18)' : 'rgba(255,255,255,0.028)', color: active ? GOLD : 'rgba(250,250,249,0.68)' })}
             >
               {item}
             </button>
@@ -320,13 +322,13 @@ export default function MukellefListesiPage() {
       </section>
 
       {isLoading ? (
-        <div className="rounded-[8px] py-16 text-center" style={{ background: CARD, border: `1px solid ${LINE}`, color: MUTED }}>
+        <div className="rounded-[8px] py-16 text-center" style={portalStyle({ background: CARD, border: `1px solid ${LINE}`, color: MUTED })}>
           Yükleniyor...
         </div>
       ) : filtered.length === 0 ? (
-        <div className="rounded-[8px] py-16 text-center" style={{ background: CARD, border: `1px solid ${LINE}` }}>
-          <p className="text-[14px] font-semibold" style={{ color: TEXT }}>Kayıt bulunamadı</p>
-          <p className="mt-1 text-[12px]" style={{ color: FAINT }}>Seçili filtrelerde mükellef yok</p>
+        <div className="rounded-[8px] py-16 text-center" style={portalStyle({ background: CARD, border: `1px solid ${LINE}` })}>
+          <p className="text-[14px] font-semibold" style={portalStyle({ color: TEXT })}>Kayıt bulunamadı</p>
+          <p className="mt-1 text-[12px]" style={portalStyle({ color: FAINT })}>Seçili filtrelerde mükellef yok</p>
         </div>
       ) : (
         <div className="grid gap-4 xl:grid-cols-2">
@@ -385,15 +387,15 @@ function InsightButton({ card, onClick }: { card: PortalCredentialInsightCard; o
       type="button"
       onClick={onClick}
       className="flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-[5px] px-3 text-[11.5px] font-bold transition hover:brightness-110"
-      style={{
+      style={portalStyle({
         background: blue ? 'linear-gradient(135deg, #3a88b8, #2f789f)' : 'linear-gradient(135deg, #e79a25, #c67f19)',
         border: `1px solid ${blue ? 'rgba(125,211,252,0.24)' : 'rgba(251,191,36,0.28)'}`,
         color: '#fff',
         boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.14), 0 5px 12px rgba(0,0,0,0.14)',
-      }}
+      })}
     >
       <span className="truncate">{card.label}</span>
-      <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-white px-1 text-[10px] font-black leading-none" style={{ color: blue ? '#2f79a7' : '#c78019' }}>
+      <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-white px-1 text-[10px] font-black leading-none" style={portalStyle({ color: blue ? '#2f79a7' : '#c78019' })}>
         {card.count}
       </span>
     </button>
@@ -406,48 +408,48 @@ function CredentialInsightDialog({ card, onClose }: { card: PortalCredentialInsi
   return (
     <div
       className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
-      style={{ background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(4px)' }}
+      style={portalStyle({ background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(4px)' })}
       onClick={onClose}
     >
       <div
         onClick={(event) => event.stopPropagation()}
         className="w-full max-w-3xl overflow-hidden rounded-[10px]"
-        style={{
+        style={portalStyle({
           background: '#111211',
           border: `1px solid ${blue ? 'rgba(125,211,252,0.35)' : 'rgba(245,158,11,0.42)'}`,
           boxShadow: '0 28px 90px rgba(0,0,0,0.5)',
-        }}
+        })}
       >
-        <div className="flex items-start justify-between gap-4 px-5 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+        <div className="flex items-start justify-between gap-4 px-5 py-4" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.08)' })}>
           <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[8px]" style={{ background: blue ? 'rgba(79,134,201,0.16)' : 'rgba(245,158,11,0.16)', color: blue ? '#93c5fd' : '#fbbf24' }}>
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[8px]" style={portalStyle({ background: blue ? 'rgba(79,134,201,0.16)' : 'rgba(245,158,11,0.16)', color: blue ? '#93c5fd' : '#fbbf24' })}>
               <AlertTriangle size={18} />
             </div>
             <div>
-              <h2 className="text-[18px] font-black" style={{ color: TEXT }}>{card.label}</h2>
-              <p className="mt-1 text-[12.5px]" style={{ color: MUTED }}>
+              <h2 className="text-[18px] font-black" style={portalStyle({ color: TEXT })}>{card.label}</h2>
+              <p className="mt-1 text-[12.5px]" style={portalStyle({ color: MUTED })}>
                 {card.count} mükellef listeleniyor
               </p>
             </div>
           </div>
-          <button type="button" onClick={onClose} className="rounded-[7px] p-2 transition hover:bg-white/[0.06]" style={{ color: MUTED }}>
+          <button type="button" onClick={onClose} className="rounded-[7px] p-2 transition hover:bg-white/[0.06]" style={portalStyle({ color: MUTED })}>
             <X size={18} />
           </button>
         </div>
         <div className="max-h-[62vh] overflow-y-auto p-4">
           {taxpayers.length === 0 ? (
-            <div className="rounded-[8px] px-4 py-10 text-center text-[13px]" style={{ border: '1px dashed rgba(255,255,255,0.12)', color: MUTED }}>
+            <div className="rounded-[8px] px-4 py-10 text-center text-[13px]" style={portalStyle({ border: '1px dashed rgba(255,255,255,0.12)', color: MUTED })}>
               Bu grupta mükellef yok.
             </div>
           ) : (
-            <div className="overflow-hidden rounded-[8px]" style={{ border: '1px solid rgba(255,255,255,0.08)' }}>
-              <div className="grid grid-cols-[56px_minmax(220px,1fr)_170px_minmax(180px,1fr)] px-4 py-3 text-[10.5px] font-black uppercase tracking-[0.12em]" style={{ background: 'rgba(255,255,255,0.04)', color: FAINT }}>
+            <div className="overflow-hidden rounded-[8px]" style={portalStyle({ border: '1px solid rgba(255,255,255,0.08)' })}>
+              <div className="grid grid-cols-[56px_minmax(220px,1fr)_170px_minmax(180px,1fr)] px-4 py-3 text-[10.5px] font-black uppercase tracking-[0.12em]" style={portalStyle({ background: 'rgba(255,255,255,0.04)', color: FAINT })}>
                 <div>No</div>
                 <div>Mükellef</div>
                 <div>VKN/TC</div>
                 <div>Açıklama</div>
               </div>
-              <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
+              <div className="divide-y" style={portalStyle({ borderColor: 'rgba(255,255,255,0.07)' })}>
                 {taxpayers.map((item, index) => (
                   <Link
                     key={`${card.key}-${item.id}-${index}`}
@@ -455,13 +457,13 @@ function CredentialInsightDialog({ card, onClose }: { card: PortalCredentialInsi
                     className="grid grid-cols-[56px_minmax(220px,1fr)_170px_minmax(180px,1fr)] items-center px-4 py-3 text-[12.5px] transition hover:bg-white/[0.035]"
                     onClick={onClose}
                   >
-                    <div className="font-black tabular-nums" style={{ color: FAINT }}>{index + 1}</div>
+                    <div className="font-black tabular-nums" style={portalStyle({ color: FAINT })}>{index + 1}</div>
                     <div className="min-w-0 pr-3">
-                      <div className="truncate font-black" style={{ color: TEXT }}>{item.name}</div>
-                      <div className="mt-0.5 truncate text-[11px]" style={{ color: FAINT }}>{item.taxOffice || '-'}</div>
+                      <div className="truncate font-black" style={portalStyle({ color: TEXT })}>{item.name}</div>
+                      <div className="mt-0.5 truncate text-[11px]" style={portalStyle({ color: FAINT })}>{item.taxOffice || '-'}</div>
                     </div>
-                    <div className="font-semibold tabular-nums" style={{ color: MUTED }}>{item.taxNumber || '-'}</div>
-                    <div className="truncate" style={{ color: MUTED }}>{item.reason || '-'}</div>
+                    <div className="font-semibold tabular-nums" style={portalStyle({ color: MUTED })}>{item.taxNumber || '-'}</div>
+                    <div className="truncate" style={portalStyle({ color: MUTED })}>{item.reason || '-'}</div>
                   </Link>
                 ))}
               </div>
@@ -497,17 +499,17 @@ function TaxpayerCard({
   return (
     <article
       className="group grid gap-3 rounded-[8px] p-3 transition md:grid-cols-[74px_minmax(0,1fr)_96px]"
-      style={{
+      style={portalStyle({
         background: 'linear-gradient(180deg, rgba(18,18,17,0.98), rgba(10,10,10,0.98))',
         border: '1px solid rgba(212,184,118,0.16)',
         boxShadow: '0 10px 24px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.035)',
-      }}
+      })}
     >
-      <div className="flex h-[74px] items-center justify-center overflow-hidden rounded-[7px]" style={{ background: 'linear-gradient(135deg, #21313b, #516979)', border: '1px solid rgba(255,255,255,0.12)' }}>
+      <div className="flex h-[74px] items-center justify-center overflow-hidden rounded-[7px]" style={portalStyle({ background: 'linear-gradient(135deg, #21313b, #516979)', border: '1px solid rgba(255,255,255,0.12)' })}>
         {taxpayer.logoUrl ? (
-          <div className="h-full w-full bg-cover bg-center" style={{ backgroundImage: `url(${taxpayer.logoUrl})` }} />
+          <div className="h-full w-full bg-cover bg-center" style={portalStyle({ backgroundImage: `url(${taxpayer.logoUrl})` })} />
         ) : (
-          <div className="flex h-[46px] w-[46px] items-center justify-center rounded-full text-[16px] font-black" style={{ background: 'rgba(11,16,22,0.38)', color: '#fff', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08)' }}>
+          <div className="flex h-[46px] w-[46px] items-center justify-center rounded-full text-[16px] font-black" style={portalStyle({ background: 'rgba(11,16,22,0.38)', color: '#fff', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08)' })}>
             {initials(taxpayer)}
           </div>
         )}
@@ -516,14 +518,14 @@ function TaxpayerCard({
       <div className="min-w-0 py-0.5">
         <div className="flex min-w-0 items-start gap-2">
           <Link href={`/panel/mukellefler/${taxpayer.id}`} className="min-w-0 flex-1">
-            <h2 className="truncate text-[18px] font-black leading-tight transition group-hover:text-[#d4b876]" style={{ color: TEXT, fontFamily: 'Inter, Manrope, system-ui, sans-serif', letterSpacing: 0 }}>{name}</h2>
+            <h2 className="truncate text-[18px] font-black leading-tight transition group-hover:text-[#d4b876]" style={portalStyle({ color: TEXT, fontFamily: 'Inter, Manrope, system-ui, sans-serif', letterSpacing: 0 })}>{name}</h2>
           </Link>
           <span
             className="shrink-0 rounded-[5px] px-2 py-1 text-[10.5px] font-black"
-            style={{
+            style={portalStyle({
               background: type === 'BASİT' ? 'rgba(245,158,11,0.16)' : type === 'FİRMA' ? 'rgba(79,134,201,0.18)' : 'rgba(24,174,226,0.18)',
               color: type === 'BASİT' ? AMBER : '#7fc2f0',
-            }}
+            })}
           >
             {type}
           </span>
@@ -544,19 +546,19 @@ function TaxpayerCard({
             onClick={() => setStatusMenuOpen((v) => !v)}
             disabled={busy}
             className="inline-flex w-full items-center justify-center gap-1.5 rounded-[6px] px-2.5 py-2 text-[12px] font-black transition hover:brightness-110 disabled:opacity-40 md:w-[90px]"
-            style={{
+            style={portalStyle({
               background: taxpayer.isActive ? 'rgba(0,166,90,0.14)' : 'rgba(96,121,135,0.14)',
               border: `1px solid ${taxpayer.isActive ? 'rgba(0,166,90,0.36)' : 'rgba(96,121,135,0.32)'}`,
               color: taxpayer.isActive ? '#39d17e' : '#9fb1bb',
               boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.035)',
-            }}
+            })}
           >
             <BadgeCheck size={14} /> {taxpayer.isActive ? 'Aktif' : 'Pasif'} <ChevronDown size={13} />
           </button>
           {statusMenuOpen && (
             <div
               className="absolute right-0 top-[calc(100%+6px)] z-20 w-[150px] overflow-hidden rounded-[7px] border p-1 shadow-2xl"
-              style={{ background: '#141414', borderColor: LINE }}
+              style={portalStyle({ background: '#141414', borderColor: LINE })}
             >
               <button
                 type="button"
@@ -566,7 +568,7 @@ function TaxpayerCard({
                 }}
                 disabled={busy}
                 className="w-full rounded-[5px] px-3 py-2 text-left text-[12px] font-bold transition hover:bg-white/[0.06] disabled:opacity-40"
-                style={{ color: taxpayer.isActive ? '#ff9aae' : '#7eeaa5' }}
+                style={portalStyle({ color: taxpayer.isActive ? '#ff9aae' : '#7eeaa5' })}
               >
                 {taxpayer.isActive ? 'Pasife al' : 'Aktife al'}
               </button>
@@ -579,12 +581,12 @@ function TaxpayerCard({
             onClick={onDelete}
             disabled={deleteBusy}
             className="inline-flex h-8 items-center justify-center rounded-[6px] px-3 text-[12px] font-black transition hover:brightness-110 disabled:opacity-40 md:w-[64px]"
-            style={{
+            style={portalStyle({
               background: 'rgba(216,27,96,0.13)',
               border: '1px solid rgba(216,27,96,0.36)',
               color: '#ff8fb0',
               boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.035)',
-            }}
+            })}
             title="Mükellefi sil"
           >
             Sil
@@ -602,11 +604,11 @@ function PresenceIcon({ active, icon: Icon, title }: { active: boolean; icon: Lu
       title={`${title}: ${active ? 'tanımlı' : 'eksik'}`}
       aria-label={`${title}: ${active ? 'tanımlı' : 'eksik'}`}
       className="inline-flex h-10 w-10 items-center justify-center rounded-[5px]"
-      style={{
+      style={portalStyle({
         background: active ? 'rgba(34,197,94,0.13)' : 'rgba(251,113,133,0.12)',
         border: `1px solid ${active ? 'rgba(34,197,94,0.32)' : 'rgba(251,113,133,0.32)'}`,
         color,
-      }}
+      })}
     >
       <Icon size={17} />
     </span>
@@ -622,12 +624,12 @@ function HattatPresenceIcon({ active, kind, title }: { active: boolean; kind: Ha
       title={`${title}: ${active ? 'tanımlı' : 'eksik'}`}
       aria-label={`${title}: ${active ? 'tanımlı' : 'eksik'}`}
       className="inline-flex h-[34px] min-w-[38px] items-center justify-center rounded-[6px] px-2"
-      style={{
+      style={portalStyle({
         background: active ? 'rgba(0,166,90,0.12)' : 'rgba(231,76,60,0.10)',
         border: `1px solid ${active ? 'rgba(0,166,90,0.34)' : 'rgba(231,76,60,0.30)'}`,
         color,
         boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.035), 0 1px 0 rgba(0,0,0,0.18)',
-      }}
+      })}
     >
       {kind === 'gib' && <GibMark color={color} />}
       {kind === 'sgk' && <span className="font-serif text-[10.5px] font-black leading-none">SGK</span>}

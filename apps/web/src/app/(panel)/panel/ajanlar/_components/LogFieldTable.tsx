@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import { FieldRow } from '@/lib/log-format';
 
@@ -35,11 +37,11 @@ export function LogFieldTable({ rows }: { rows: FieldRow[] }) {
       {documentRows.length > 0 && (
         <section
           className="grid gap-1.5 rounded-md p-2"
-          style={{
+          style={portalStyle({
             background: 'rgba(255,255,255,0.018)',
             border: '1px solid rgba(255,255,255,0.04)',
             gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-          }}
+          })}
         >
           {documentRows.map((row, i) => (
             <InfoTile key={`${row.label}-${i}`} row={row} />
@@ -50,12 +52,12 @@ export function LogFieldTable({ rows }: { rows: FieldRow[] }) {
       {accountRows.length > 0 && (
         <section
           className="rounded-md p-2"
-          style={{
+          style={portalStyle({
             background: 'rgba(15,13,10,0.34)',
             border: '1px solid rgba(184,160,111,0.10)',
-          }}
+          })}
         >
-          <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wide" style={{ color: '#8d7442' }}>
+          <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wide" style={portalStyle({ color: '#8d7442' })}>
             {hasIsletmeRows ? 'İşletme kaydı' : 'Muhasebe kaydı'}
           </div>
           <div className="space-y-1">
@@ -69,11 +71,11 @@ export function LogFieldTable({ rows }: { rows: FieldRow[] }) {
       {(decisionRows.length > 0 || otherRows.length > 0) && (
         <section
           className="grid gap-1.5 rounded-md p-2"
-          style={{
+          style={portalStyle({
             background: 'rgba(255,255,255,0.012)',
             border: '1px solid rgba(255,255,255,0.035)',
             gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-          }}
+          })}
         >
           {[...otherRows, ...decisionRows].map((row, i) => (
             <InfoTile key={`${row.label}-${i}`} row={row} quiet />
@@ -89,20 +91,20 @@ function InfoTile({ row, quiet = false }: { row: FieldRow; quiet?: boolean }) {
   return (
     <div
       className="min-w-0 rounded px-2 py-1.5"
-      style={{
+      style={portalStyle({
         background: quiet ? 'rgba(255,255,255,0.012)' : 'rgba(255,255,255,0.018)',
         border: `1px solid ${style.border}`,
-      }}
+      })}
     >
-      <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide" style={{ color: '#6f6a62' }}>
+      <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide" style={portalStyle({ color: '#6f6a62' })}>
         <StatusDot color={style.color} />
         <span>{row.label}</span>
       </div>
-      <div className="mt-0.5 truncate text-[12px] font-semibold" style={{ color: style.text }}>
+      <div className="mt-0.5 truncate text-[12px] font-semibold" style={portalStyle({ color: style.text })}>
         {row.value || '-'}
       </div>
       {row.meta && (
-        <div className="mt-0.5 truncate text-[10.5px]" style={{ color: style.meta }}>
+        <div className="mt-0.5 truncate text-[10.5px]" style={portalStyle({ color: style.meta })}>
           {row.meta}
         </div>
       )}
@@ -118,7 +120,7 @@ function AccountLine({ row }: { row: FieldRow }) {
   return (
     <div
       className="grid items-center gap-2 rounded px-2 py-1.5 text-[12px]"
-      style={{
+      style={portalStyle({
         gridTemplateColumns: '128px 1fr',
         background: isMatrah
           ? 'rgba(34,197,94,0.045)'
@@ -126,18 +128,18 @@ function AccountLine({ row }: { row: FieldRow }) {
             ? 'rgba(59,130,246,0.045)'
             : 'rgba(255,255,255,0.018)',
         border: `1px solid ${style.border}`,
-      }}
+      })}
     >
-      <div className="flex items-center gap-1.5 font-bold uppercase tracking-wide" style={{ color: style.label }}>
+      <div className="flex items-center gap-1.5 font-bold uppercase tracking-wide" style={portalStyle({ color: style.label })}>
         <StatusDot color={style.color} />
         <span>{row.label}</span>
       </div>
       <div className="min-w-0">
-        <div className="truncate font-semibold tabular-nums" style={{ color: style.text }}>
+        <div className="truncate font-semibold tabular-nums" style={portalStyle({ color: style.text })}>
           {row.value || '-'}
         </div>
         {row.meta && (
-          <div className="truncate text-[10.5px]" style={{ color: style.meta }}>
+          <div className="truncate text-[10.5px]" style={portalStyle({ color: style.meta })}>
             {row.meta}
           </div>
         )}
@@ -150,14 +152,14 @@ function StatusDot({ color }: { color: string }) {
   return (
     <span
       aria-hidden="true"
-      style={{
+      style={portalStyle({
         width: 7,
         height: 7,
         borderRadius: 999,
         background: color,
         boxShadow: `0 0 0 3px ${color}1f`,
         flexShrink: 0,
-      }}
+      })}
     />
   );
 }
@@ -216,32 +218,32 @@ export function LogSummary({
   return (
     <div
       className="mt-2 rounded-md px-2 py-1.5 text-[12px]"
-      style={{
+      style={portalStyle({
         background: 'rgba(255,255,255,0.012)',
         border: '1px dashed rgba(255,255,255,0.055)',
         color: '#8a8a8a',
         lineHeight: 1.5,
-      }}
+      })}
     >
       {sonuc && (
-        <div style={{ color: sonuc.ok ? '#6fa873' : '#d65f5f', fontWeight: 700 }}>
+        <div style={portalStyle({ color: sonuc.ok ? '#6fa873' : '#d65f5f', fontWeight: 700 })}>
           Sonuc: {sonuc.text}
         </div>
       )}
       {mihsapUyarisi && (
         <div>
-          <span style={{ color: '#6f6a62' }}>Mihsap uyarisi: </span>
-          <span style={{ color: '#c9c0ae' }}>"{mihsapUyarisi}"</span>
+          <span style={portalStyle({ color: '#6f6a62' })}>Mihsap uyarisi: </span>
+          <span style={portalStyle({ color: '#c9c0ae' })}>"{mihsapUyarisi}"</span>
         </div>
       )}
       {hata && (
         <div>
-          <span style={{ color: '#6f6a62' }}>Hata: </span>
-          <span style={{ color: '#d65f5f', fontWeight: 700 }}>{hata}</span>
+          <span style={portalStyle({ color: '#6f6a62' })}>Hata: </span>
+          <span style={portalStyle({ color: '#d65f5f', fontWeight: 700 })}>{hata}</span>
         </div>
       )}
       {rawLines?.map((line, i) => (
-        <div key={i} style={{ color: '#8a8a8a' }}>
+        <div key={i} style={portalStyle({ color: '#8a8a8a' })}>
           {line}
         </div>
       ))}

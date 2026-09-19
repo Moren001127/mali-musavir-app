@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import React, { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -154,15 +156,15 @@ export default function TahsilatlarView() {
 
   return (
     <div className="mt-6">
-      <div className="overflow-hidden rounded-2xl" style={{ background: KART, border: `1px solid ${CIZGI}` }}>
+      <div className="overflow-hidden rounded-2xl" style={portalStyle({ background: KART, border: `1px solid ${CIZGI}` })}>
         {/* ARAÇ ÇUBUĞU */}
-        <div className="flex flex-wrap items-center gap-2.5 px-4 py-3" style={{ borderBottom: `1px solid ${CIZGI}` }}>
-          <span className="text-[13px] font-semibold" style={{ color: METIN }}>Tahsilatlar</span>
+        <div className="flex flex-wrap items-center gap-2.5 px-4 py-3" style={portalStyle({ borderBottom: `1px solid ${CIZGI}` })}>
+          <span className="text-[13px] font-semibold" style={portalStyle({ color: METIN })}>Tahsilatlar</span>
 
           <select
             value={donem}
             onChange={(e) => setDonem(e.target.value)}
-            style={secStil}
+            style={portalStyle(secStil)}
             className="[&>option]:bg-[#0c0c0e]"
           >
             {aySecenekleri().map((a) => (
@@ -171,13 +173,13 @@ export default function TahsilatlarView() {
           </select>
 
           <div className="relative w-full sm:w-[240px]">
-            <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" style={{ color: SOLUK }} />
+            <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" style={portalStyle({ color: SOLUK })} />
             <input
               value={arama}
               onChange={(e) => setArama(e.target.value)}
               placeholder="Mükellef, belge no, açıklama…"
               className="w-full rounded-lg py-2 pl-9 pr-3 text-[12.5px] outline-none"
-              style={{ border: `1px solid ${CIZGI}`, background: 'rgba(0,0,0,0.25)', color: METIN }}
+              style={portalStyle({ border: `1px solid ${CIZGI}`, background: 'rgba(0,0,0,0.25)', color: METIN })}
             />
           </div>
 
@@ -186,7 +188,7 @@ export default function TahsilatlarView() {
               onClick={excelIndir}
               disabled={gosterilen.length === 0}
               className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12.5px] font-medium transition hover:brightness-125 disabled:opacity-40"
-              style={{ border: `1px solid ${CIZGI}`, background: 'rgba(255,255,255,0.02)', color: '#d4d4d8' }}
+              style={portalStyle({ border: `1px solid ${CIZGI}`, background: 'rgba(255,255,255,0.02)', color: '#d4d4d8' })}
             >
               <Download className="h-3.5 w-3.5" /> Excel
             </button>
@@ -194,11 +196,11 @@ export default function TahsilatlarView() {
         </div>
 
         {isLoading ? (
-          <div className="px-4 py-14 text-center text-[12.5px]" style={{ color: SOLUK }}>
+          <div className="px-4 py-14 text-center text-[12.5px]" style={portalStyle({ color: SOLUK })}>
             <Loader2 className="mr-2 inline h-4 w-4 animate-spin" /> Tahsilatlar yükleniyor…
           </div>
         ) : gosterilen.length === 0 ? (
-          <div className="px-4 py-14 text-center text-[12.5px]" style={{ color: SOLUK }}>
+          <div className="px-4 py-14 text-center text-[12.5px]" style={portalStyle({ color: SOLUK })}>
             {arama ? 'Aramaya uyan tahsilat yok.' : 'Bu dönemde tahsilat yok.'}
           </div>
         ) : (
@@ -207,15 +209,15 @@ export default function TahsilatlarView() {
                 dışına taşımasın (listede bir kez bu hataya düşüldü) */}
             <table className="w-full table-fixed text-[13px]">
               <colgroup>
-                <col style={{ width: 104 }} />
+                <col style={portalStyle({ width: 104 })} />
                 <col />
-                <col style={{ width: 140 }} />
-                <col style={{ width: 132 }} />
-                <col style={{ width: 150 }} />
-                <col style={{ width: 130 }} />
+                <col style={portalStyle({ width: 140 })} />
+                <col style={portalStyle({ width: 132 })} />
+                <col style={portalStyle({ width: 150 })} />
+                <col style={portalStyle({ width: 130 })} />
               </colgroup>
               <thead>
-                <tr className="text-[10.5px] uppercase tracking-wider" style={{ color: SOLUK }}>
+                <tr className="text-[10.5px] uppercase tracking-wider" style={portalStyle({ color: SOLUK })}>
                   <th className="px-4 py-2.5 text-left font-medium">Tarih</th>
                   <th className="px-3 py-2.5 text-left font-medium">Mükellef</th>
                   <th className="px-3 py-2.5 text-right font-medium">Tutar</th>
@@ -226,41 +228,41 @@ export default function TahsilatlarView() {
               </thead>
               <tbody>
                 {gosterilen.map((t) => (
-                  <tr key={t.id} style={{ borderTop: `1px solid ${SATIR_CIZGI}` }}>
-                    <td className="whitespace-nowrap px-4 py-2.5 tabular-nums" style={{ color: SOLUK }}>
+                  <tr key={t.id} style={portalStyle({ borderTop: `1px solid ${SATIR_CIZGI}` })}>
+                    <td className="whitespace-nowrap px-4 py-2.5 tabular-nums" style={portalStyle({ color: SOLUK })}>
                       {tarihTR(t.tarih)}
                     </td>
                     <td className="px-3 py-2.5">
-                      <span className="block truncate" style={{ color: METIN }}>{mukellefAdi(t)}</span>
+                      <span className="block truncate" style={portalStyle({ color: METIN })}>{mukellefAdi(t)}</span>
                       {t.aciklama && (
-                        <span className="mt-0.5 block truncate text-[11px]" style={{ color: SOLUK }}>{t.aciklama}</span>
+                        <span className="mt-0.5 block truncate text-[11px]" style={portalStyle({ color: SOLUK })}>{t.aciklama}</span>
                       )}
                     </td>
-                    <td className="whitespace-nowrap px-3 py-2.5 text-right font-semibold tabular-nums" style={{ color: OK }}>
+                    <td className="whitespace-nowrap px-3 py-2.5 text-right font-semibold tabular-nums" style={portalStyle({ color: OK })}>
                       {para(t.tutar)}
                     </td>
-                    <td className="whitespace-nowrap px-3 py-2.5" style={{ color: SOLUK }}>
+                    <td className="whitespace-nowrap px-3 py-2.5" style={portalStyle({ color: SOLUK })}>
                       {yontemEtiket(t.odemeYontemi)}
                     </td>
                     <td className="px-3 py-2.5">
                       {t.account?.name ? (
-                        <span className="inline-flex items-center gap-1.5 truncate" style={{ color: '#d4d4d8' }}>
-                          <i className="h-2 w-2 flex-shrink-0 rounded-sm" style={{ background: t.account.color || '#d4b876' }} />
+                        <span className="inline-flex items-center gap-1.5 truncate" style={portalStyle({ color: '#d4d4d8' })}>
+                          <i className="h-2 w-2 flex-shrink-0 rounded-sm" style={portalStyle({ background: t.account.color || '#d4b876' })} />
                           <span className="truncate">{t.account.name}</span>
                         </span>
                       ) : (
-                        <span style={{ color: 'rgba(113,113,122,0.5)' }}>Nakit kasa</span>
+                        <span style={portalStyle({ color: 'rgba(113,113,122,0.5)' })}>Nakit kasa</span>
                       )}
                     </td>
-                    <td className="truncate px-4 py-2.5" style={{ color: SOLUK }}>{t.belgeNo || '—'}</td>
+                    <td className="truncate px-4 py-2.5" style={portalStyle({ color: SOLUK })}>{t.belgeNo || '—'}</td>
                   </tr>
                 ))}
 
-                <tr style={{ borderTop: `1px solid ${CIZGI}`, background: 'rgba(255,255,255,0.022)' }}>
-                  <td className="px-4 py-3 text-[11.5px] uppercase tracking-wider" colSpan={2} style={{ color: SOLUK }}>
+                <tr style={portalStyle({ borderTop: `1px solid ${CIZGI}`, background: 'rgba(255,255,255,0.022)' })}>
+                  <td className="px-4 py-3 text-[11.5px] uppercase tracking-wider" colSpan={2} style={portalStyle({ color: SOLUK })}>
                     Toplam · {gosterilen.length} tahsilat
                   </td>
-                  <td className="whitespace-nowrap px-3 py-3 text-right font-semibold tabular-nums" style={{ color: OK }}>
+                  <td className="whitespace-nowrap px-3 py-3 text-right font-semibold tabular-nums" style={portalStyle({ color: OK })}>
                     {para(toplam)}
                   </td>
                   <td colSpan={3} />

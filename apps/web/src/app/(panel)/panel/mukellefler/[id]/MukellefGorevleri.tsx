@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 /**
  * Mükellef kartı → "Mükellef Not" sekmesi: bu mükellefe bağlı GÖREVLER ve NOTLAR (Görevler & Notlar modülü, 2026-09-14 Faz 3).
@@ -83,18 +85,18 @@ export function MukellefGorevleri({ taxpayerId }: { taxpayerId: string }) {
     <div className="mt-6 space-y-4">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <ListTodo size={15} style={{ color: GOLD }} />
-          <span className="text-[14px] font-bold" style={{ color: TEXT }}>
+          <ListTodo size={15} style={portalStyle({ color: GOLD })} />
+          <span className="text-[14px] font-bold" style={portalStyle({ color: TEXT })}>
             Görevler & Notlar
           </span>
-          <span className="text-[11.5px]" style={{ color: FAINT }}>
+          <span className="text-[11.5px]" style={portalStyle({ color: FAINT })}>
             {gorevler.length} açık · {notlar.length} not{bitenSayisi ? ` · ${bitenSayisi} bitti` : ''}
           </span>
         </div>
         <Link
           href={`/panel/gorevler?mukellef=${encodeURIComponent(taxpayerId)}`}
           className="text-[13px] font-medium underline-offset-2 hover:underline"
-          style={{ color: GOLD }}
+          style={portalStyle({ color: GOLD })}
         >
           Görevler'de aç →
         </Link>
@@ -102,14 +104,14 @@ export function MukellefGorevleri({ taxpayerId }: { taxpayerId: string }) {
 
       {/* Hızlı ekleme */}
       <div className="flex items-center gap-2">
-        <div className="flex h-9 overflow-hidden rounded-[8px] border" style={{ borderColor: LINE }}>
+        <div className="flex h-9 overflow-hidden rounded-[8px] border" style={portalStyle({ borderColor: LINE })}>
           {(['GOREV', 'NOT'] as const).map((k) => (
             <button
               key={k}
               type="button"
               onClick={() => setTur(k)}
               className="px-2.5 text-[13px] font-medium transition-colors"
-              style={{ background: tur === k ? 'rgba(212,184,118,0.18)' : 'transparent', color: tur === k ? GOLD : MUTED }}
+              style={portalStyle({ background: tur === k ? 'rgba(212,184,118,0.18)' : 'transparent', color: tur === k ? GOLD : MUTED })}
             >
               {k === 'GOREV' ? 'Görev' : 'Not'}
             </button>
@@ -126,51 +128,51 @@ export function MukellefGorevleri({ taxpayerId }: { taxpayerId: string }) {
           }}
           placeholder={tur === 'NOT' ? 'Bu mükellef için not…' : 'Bu mükellef için görev… (vade/öncelik Görevler ekranında)'}
           className="h-9 flex-1 rounded-[8px] border bg-black/30 px-3 text-[13px] font-medium text-[#fafaf9] outline-none placeholder:text-white/25 focus:border-[#d4b876]/60"
-          style={{ borderColor: LINE }}
+          style={portalStyle({ borderColor: LINE })}
         />
         <button
           type="button"
           onClick={gonder}
           disabled={!metin.trim() || ekle.isPending}
           className="flex h-9 items-center gap-1 rounded-[8px] px-3 text-[13px] font-medium disabled:opacity-40"
-          style={{ background: 'rgba(212,184,118,0.18)', color: GOLD, border: `1px solid rgba(212,184,118,0.35)` }}
+          style={portalStyle({ background: 'rgba(212,184,118,0.18)', color: GOLD, border: `1px solid rgba(212,184,118,0.35)` })}
         >
           <Plus size={13} /> Ekle
         </button>
       </div>
 
       {q.isLoading ? (
-        <div className="text-[13px]" style={{ color: FAINT }}>
+        <div className="text-[13px]" style={portalStyle({ color: FAINT })}>
           Yükleniyor…
         </div>
       ) : (
         <>
           {/* Açık görevler */}
-          <div className="overflow-hidden rounded-[10px] border" style={{ borderColor: LINE }}>
+          <div className="overflow-hidden rounded-[10px] border" style={portalStyle({ borderColor: LINE })}>
             {gorevler.length === 0 ? (
-              <div className="px-3 py-3 text-[13px]" style={{ color: FAINT }}>
+              <div className="px-3 py-3 text-[13px]" style={portalStyle({ color: FAINT })}>
                 Açık görev yok.
               </div>
             ) : (
               gorevler.map((t) => (
-                <div key={t.id} className="flex items-center gap-2.5 border-b px-3 py-2 last:border-b-0" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+                <div key={t.id} className="flex items-center gap-2.5 border-b px-3 py-2 last:border-b-0" style={portalStyle({ borderColor: 'rgba(255,255,255,0.06)' })}>
                   <button
                     type="button"
                     title="Tamamla"
                     onClick={() => tamamla.mutate(t.id)}
                     className="shrink-0 rounded-full p-0.5 transition-colors hover:bg-white/10"
-                    style={{ color: GREEN }}
+                    style={portalStyle({ color: GREEN })}
                   >
                     <CheckCircle2 size={15} />
                   </button>
-                  <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: PRIORITY_COLOR[t.priority] || MUTED }} title={PRIORITY_LABEL[t.priority]} />
-                  <Link href={`/panel/gorevler?gorev=${encodeURIComponent(t.id)}`} className="min-w-0 flex-1 truncate text-[13px] font-medium hover:underline" style={{ color: TEXT }}>
+                  <span className="h-2 w-2 shrink-0 rounded-full" style={portalStyle({ background: PRIORITY_COLOR[t.priority] || MUTED })} title={PRIORITY_LABEL[t.priority]} />
+                  <Link href={`/panel/gorevler?gorev=${encodeURIComponent(t.id)}`} className="min-w-0 flex-1 truncate text-[13px] font-medium hover:underline" style={portalStyle({ color: TEXT })}>
                     {t.title}
                   </Link>
-                  <span className="shrink-0 text-[11.5px]" style={{ color: FAINT }}>
+                  <span className="shrink-0 text-[11.5px]" style={portalStyle({ color: FAINT })}>
                     {kategoriEtiketi(t.category)}
                   </span>
-                  <span className="shrink-0 text-[11.5px] font-medium" style={{ color: vadeRengi(t) }}>
+                  <span className="shrink-0 text-[11.5px] font-medium" style={portalStyle({ color: vadeRengi(t) })}>
                     {t.dueDate ? formatDueDate(t) : 'vadesiz'}
                   </span>
                 </div>
@@ -186,15 +188,15 @@ export function MukellefGorevleri({ taxpayerId }: { taxpayerId: string }) {
                   key={n.id}
                   href={`/panel/gorevler?gorev=${encodeURIComponent(n.id)}`}
                   className="flex items-start gap-2 rounded-[8px] border px-3 py-2 transition-colors hover:bg-white/[0.03]"
-                  style={{ borderColor: LINE, background: 'rgba(212,184,118,0.05)' }}
+                  style={portalStyle({ borderColor: LINE, background: 'rgba(212,184,118,0.05)' })}
                 >
-                  {n.pinned ? <Pin size={13} className="mt-0.5 shrink-0" style={{ color: GOLD }} /> : <StickyNote size={13} className="mt-0.5 shrink-0" style={{ color: MUTED }} />}
+                  {n.pinned ? <Pin size={13} className="mt-0.5 shrink-0" style={portalStyle({ color: GOLD })} /> : <StickyNote size={13} className="mt-0.5 shrink-0" style={portalStyle({ color: MUTED })} />}
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-[13px] font-medium" style={{ color: TEXT }}>
+                    <div className="truncate text-[13px] font-medium" style={portalStyle({ color: TEXT })}>
                       {n.title}
                     </div>
                     {n.description && (
-                      <div className="line-clamp-2 text-[11.5px]" style={{ color: MUTED }}>
+                      <div className="line-clamp-2 text-[11.5px]" style={portalStyle({ color: MUTED })}>
                         {n.description}
                       </div>
                     )}

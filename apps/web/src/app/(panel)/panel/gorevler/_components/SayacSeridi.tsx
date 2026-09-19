@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import { AlertTriangle, CalendarRange, CheckSquare, Clock, StickyNote, Users } from 'lucide-react';
 import type { AjandaSayaclar } from '@/lib/tasks';
@@ -33,17 +35,17 @@ export function SayacSeridi({ sayaclar, aktif, onSec }: { sayaclar?: AjandaSayac
             title={h.ipucu}
             className="inline-flex flex-shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-[11.5px] font-semibold transition-[background-color,border-color,color,transform] duration-150 hover:-translate-y-px"
             style={
-              secili
+              portalStyle(secili
                 ? { background: `linear-gradient(135deg, ${h.renk}, ${h.renk}bb)`, border: '1px solid transparent', color: '#0b1218' }
-                : { background: var_ ? `${h.renk}12` : 'transparent', border: `1px solid ${var_ ? `${h.renk}55` : 'rgba(255,255,255,0.10)'}`, color: var_ ? h.renk : IKINCIL }
+                : { background: var_ ? `${h.renk}12` : 'transparent', border: `1px solid ${var_ ? `${h.renk}55` : 'rgba(255,255,255,0.10)'}`, color: var_ ? h.renk : IKINCIL })
             }
           >
             <Ikon size={12} />
             {h.ad}
             {sayi === undefined ? (
-              <span className="inline-block h-3 w-5 animate-pulse rounded" style={{ background: 'rgba(255,255,255,0.12)' }} />
+              <span className="inline-block h-3 w-5 animate-pulse rounded" style={portalStyle({ background: 'rgba(255,255,255,0.12)' })} />
             ) : (
-              <span className="rounded-full px-1.5 text-[10px] font-bold leading-4 tabular-nums" style={secili ? { background: 'rgba(0,0,0,0.22)' } : { background: `${h.renk}22` }}>
+              <span className="rounded-full px-1.5 text-[10px] font-bold leading-4 tabular-nums" style={portalStyle(secili ? { background: 'rgba(0,0,0,0.22)' } : { background: `${h.renk}22` })}>
                 {sayi}
               </span>
             )}

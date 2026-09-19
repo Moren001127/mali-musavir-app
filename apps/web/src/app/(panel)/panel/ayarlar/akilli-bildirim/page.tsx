@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 // =====================================================================
 // AKILLI BİLDİRİM AYARLARI — Ayarlar > Akıllı Bildirim
@@ -41,7 +43,7 @@ const ORNEK: Record<Kategori, React.ReactNode> = {
       <b>Toplam: 4.973,86 TL</b>
       <br />
       <br />
-      <span style={{ color: MUTED, fontSize: 11.5 }}>
+      <span style={portalStyle({ color: MUTED, fontSize: 11.5 })}>
         PDF ekinde beyanname + tahakkuk birlikte; rakam yalnız bu mesajda, BİR KEZ yazılır.
       </span>
     </>
@@ -67,7 +69,7 @@ const ORNEK: Record<Kategori, React.ReactNode> = {
       GİB - E-Tebligat - Tebliğ Tarihi: 05.08.2026
       <br />
       <br />
-      <span style={{ color: MUTED, fontSize: 11.5 }}>Tutar yok; tebliğ bilgisi ve belge gönderilir.</span>
+      <span style={portalStyle({ color: MUTED, fontSize: 11.5 })}>Tutar yok; tebliğ bilgisi ve belge gönderilir.</span>
     </>
   ),
 };
@@ -79,11 +81,11 @@ function Toggle({ value, onChange, disabled }: { value: boolean; onChange: (v: b
       disabled={disabled}
       onClick={() => onChange(!value)}
       className="relative inline-flex h-[22px] w-[40px] flex-none rounded-full transition-colors"
-      style={{ background: value ? '#22c55e' : '#3a352c', opacity: disabled ? 0.5 : 1 }}
+      style={portalStyle({ background: value ? '#22c55e' : '#3a352c', opacity: disabled ? 0.5 : 1 })}
     >
       <span
         className="absolute top-[2px] h-[18px] w-[18px] rounded-full bg-white transition-all"
-        style={{ left: value ? 20 : 2 }}
+        style={portalStyle({ left: value ? 20 : 2 })}
       />
     </button>
   );
@@ -91,8 +93,8 @@ function Toggle({ value, onChange, disabled }: { value: boolean; onChange: (v: b
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-center justify-between gap-3 border-b py-2.5 last:border-b-0" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-      <span className="text-[13px]" style={{ color: TEXT2 }}>{label}</span>
+    <div className="flex items-center justify-between gap-3 border-b py-2.5 last:border-b-0" style={portalStyle({ borderColor: 'rgba(255,255,255,0.06)' })}>
+      <span className="text-[13px]" style={portalStyle({ color: TEXT2 })}>{label}</span>
       {children}
     </div>
   );
@@ -150,17 +152,17 @@ export default function AkilliBildirimPage() {
   return (
     <div className="mx-auto max-w-6xl space-y-5 pb-12">
       {/* Başlık */}
-      <header className="relative overflow-hidden rounded-2xl border p-6" style={{ borderColor: CARD_BORDER, background: `radial-gradient(ellipse at top left, rgba(212,184,118,0.08), transparent 60%), ${CARD_BG}` }}>
-        <Link href="/panel/ayarlar" className="mb-3 inline-flex items-center gap-1.5 text-[12px]" style={{ color: MUTED }}>
+      <header className="relative overflow-hidden rounded-2xl border p-6" style={portalStyle({ borderColor: CARD_BORDER, background: `radial-gradient(ellipse at top left, rgba(212,184,118,0.08), transparent 60%), ${CARD_BG}` })}>
+        <Link href="/panel/ayarlar" className="mb-3 inline-flex items-center gap-1.5 text-[12px]" style={portalStyle({ color: MUTED })}>
           <ArrowLeft size={13} /> Ayarlar
         </Link>
         <h1 className="flex items-center gap-3 text-[22px] font-semibold text-white">
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: `linear-gradient(135deg, ${GOLD}, #8b7649)` }}>
-            <MoonStar size={20} style={{ color: '#1a1410' }} />
+          <span className="flex h-10 w-10 items-center justify-center rounded-xl" style={portalStyle({ background: `linear-gradient(135deg, ${GOLD}, #8b7649)` })}>
+            <MoonStar size={20} style={portalStyle({ color: '#1a1410' })} />
           </span>
           Akıllı Bildirim Ayarları
         </h1>
-        <p className="mt-2 max-w-2xl text-[13px]" style={{ color: MUTED }}>
+        <p className="mt-2 max-w-2xl text-[13px]" style={portalStyle({ color: MUTED })}>
           Gece çekilen belgeler sabah 09:00&apos;da mükellefe otomatik gönderilir. Vergi = beyanname + tahakkuk TEK mesaj; SGK ve e-Tebligat ayrı mesajdır.
         </p>
       </header>
@@ -173,9 +175,9 @@ export default function AkilliBildirimPage() {
             onClick={() => setTab(k.key)}
             className="rounded-xl px-5 py-2.5 text-[13px] font-semibold transition-colors"
             style={
-              tab === k.key
+              portalStyle(tab === k.key
                 ? { background: GOLD, color: '#141210' }
-                : { background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.55)', border: '1px solid rgba(255,255,255,0.08)' }
+                : { background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.55)', border: '1px solid rgba(255,255,255,0.08)' })
             }
           >
             {k.tab}
@@ -183,22 +185,22 @@ export default function AkilliBildirimPage() {
         ))}
         <span className="ml-auto" />
         {current?.testMode && (
-          <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11.5px] font-bold" style={{ background: 'rgba(251,191,36,0.12)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.35)' }}>
+          <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11.5px] font-bold" style={portalStyle({ background: 'rgba(251,191,36,0.12)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.35)' })}>
             <FlaskConical size={12} /> TEST MODU — gerçek mükellefe gitmez
           </span>
         )}
       </div>
 
       {isLoading || !current ? (
-        <div className="flex items-center gap-2 p-8 text-[13px]" style={{ color: MUTED }}>
+        <div className="flex items-center gap-2 p-8 text-[13px]" style={portalStyle({ color: MUTED })}>
           <Loader2 size={16} className="animate-spin" /> Yükleniyor…
         </div>
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">
           {/* Sol: ayarlar */}
-          <div className="rounded-2xl border p-5" style={{ borderColor: CARD_BORDER, background: CARD_BG }}>
+          <div className="rounded-2xl border p-5" style={portalStyle({ borderColor: CARD_BORDER, background: CARD_BG })}>
             <div className="mb-1 text-[15px] font-bold text-white">🌙 Gece Otomatik Çekilenler</div>
-            <p className="mb-3 text-[12.5px]" style={{ color: MUTED }}>
+            <p className="mb-3 text-[12.5px]" style={portalStyle({ color: MUTED })}>
               {KATEGORILER.find((k) => k.key === tab)?.kisa} belgeleri gece çekilir, sabah 09:00 itibariyle TEK mesajla iletilir.
             </p>
             <Row label="Otomatik gönderim AÇIK (ana anahtar)">
@@ -211,7 +213,7 @@ export default function AkilliBildirimPage() {
               <Toggle value={!!current.email} onChange={(v) => patch({ email: v })} disabled={saving} />
             </Row>
             <Row label="Gönderim saati">
-              <span className="rounded-full px-3 py-0.5 text-[11.5px] font-bold" style={{ background: 'rgba(45,212,191,0.12)', color: '#2dd4bf', border: '1px solid rgba(45,212,191,0.3)' }}>09:00</span>
+              <span className="rounded-full px-3 py-0.5 text-[11.5px] font-bold" style={portalStyle({ background: 'rgba(45,212,191,0.12)', color: '#2dd4bf', border: '1px solid rgba(45,212,191,0.3)' })}>09:00</span>
             </Row>
             <Row label="Elle çekilen de AYNI formatla anında iletilsin">
               <Toggle value={!!current.manualInstant} onChange={(v) => patch({ manualInstant: v })} disabled={saving} />
@@ -219,7 +221,7 @@ export default function AkilliBildirimPage() {
             <Row label="Test modu (gönderimler yalnız test alıcısına)">
               <Toggle value={!!current.testMode} onChange={(v) => patch({ testMode: v })} disabled={saving} />
             </Row>
-            <label className="mt-3 block text-[12px]" style={{ color: MUTED }}>
+            <label className="mt-3 block text-[12px]" style={portalStyle({ color: MUTED })}>
               Gönderen adı (mesajın başında görünür — tüm kategoriler için geçerli)
               <input
                 key={`sender-${tab}-${current.senderName || ''}`}
@@ -235,10 +237,10 @@ export default function AkilliBildirimPage() {
                 }}
                 placeholder="MOREN MALİ MÜŞAVİRLİK"
                 className="mt-1 w-full rounded-lg border bg-transparent px-3 py-2 text-[13px] text-white outline-none"
-                style={{ borderColor: 'rgba(255,255,255,0.12)' }}
+                style={portalStyle({ borderColor: 'rgba(255,255,255,0.12)' })}
               />
             </label>
-            <label className="mt-3 block text-[12px]" style={{ color: MUTED }}>
+            <label className="mt-3 block text-[12px]" style={portalStyle({ color: MUTED })}>
               İletim raporu e-postası (dağıtım sonrası müşavire giden özet mail)
               <input
                 key={`report-${tab}-${current.reportEmail || ''}`}
@@ -254,7 +256,7 @@ export default function AkilliBildirimPage() {
                 }}
                 placeholder="musavir@ofis.com"
                 className="mt-1 w-full rounded-lg border bg-transparent px-3 py-2 text-[13px] text-white outline-none"
-                style={{ borderColor: 'rgba(255,255,255,0.12)' }}
+                style={portalStyle({ borderColor: 'rgba(255,255,255,0.12)' })}
               />
             </label>
             <button
@@ -266,30 +268,30 @@ export default function AkilliBildirimPage() {
                 } catch (e: any) { toast.error(e?.response?.data?.message || 'Rapor gönderilemedi'); }
               }}
               className="mt-3 inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-[12.5px]"
-              style={{ borderColor: 'rgba(255,255,255,0.15)', color: TEXT2 }}
+              style={portalStyle({ borderColor: 'rgba(255,255,255,0.15)', color: TEXT2 })}
             >
               <Mail size={14} /> İletim Raporu Mailini Şimdi Gönder
             </button>
             {current.testMode && (
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                <label className="text-[12px]" style={{ color: MUTED }}>
+                <label className="text-[12px]" style={portalStyle({ color: MUTED })}>
                   Test telefonu
                   <input
                     defaultValue={current.testPhone || ''}
                     onBlur={(e) => { if (e.target.value !== (current.testPhone || '')) patch({ testPhone: e.target.value || null }); }}
                     placeholder="05xxxxxxxxx"
                     className="mt-1 w-full rounded-lg border bg-transparent px-3 py-2 text-[13px] text-white outline-none"
-                    style={{ borderColor: 'rgba(255,255,255,0.12)' }}
+                    style={portalStyle({ borderColor: 'rgba(255,255,255,0.12)' })}
                   />
                 </label>
-                <label className="text-[12px]" style={{ color: MUTED }}>
+                <label className="text-[12px]" style={portalStyle({ color: MUTED })}>
                   Test e-postası
                   <input
                     defaultValue={current.testEmail || ''}
                     onBlur={(e) => { if (e.target.value !== (current.testEmail || '')) patch({ testEmail: e.target.value || null }); }}
                     placeholder="ornek@adres.com"
                     className="mt-1 w-full rounded-lg border bg-transparent px-3 py-2 text-[13px] text-white outline-none"
-                    style={{ borderColor: 'rgba(255,255,255,0.12)' }}
+                    style={portalStyle({ borderColor: 'rgba(255,255,255,0.12)' })}
                   />
                 </label>
               </div>
@@ -298,7 +300,7 @@ export default function AkilliBildirimPage() {
               onClick={testGonder}
               disabled={testing}
               className="mt-4 inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-bold"
-              style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#141210', opacity: testing ? 0.6 : 1 }}
+              style={portalStyle({ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#141210', opacity: testing ? 0.6 : 1 })}
             >
               {testing ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
               Şimdi Çalıştır (son 40 günün belgeleri)
@@ -306,26 +308,26 @@ export default function AkilliBildirimPage() {
           </div>
 
           {/* Sağ: mesaj önizleme */}
-          <div className="rounded-2xl border p-5" style={{ borderColor: CARD_BORDER, background: CARD_BG }}>
+          <div className="rounded-2xl border p-5" style={portalStyle({ borderColor: CARD_BORDER, background: CARD_BG })}>
             <div className="mb-1 flex items-center gap-2 text-[15px] font-bold text-white">
-              <MessageCircle size={16} style={{ color: GOLD }} /> Mesaj Önizleme — {KATEGORILER.find((k) => k.key === tab)?.kisa}
+              <MessageCircle size={16} style={portalStyle({ color: GOLD })} /> Mesaj Önizleme — {KATEGORILER.find((k) => k.key === tab)?.kisa}
             </div>
-            <p className="mb-3 text-[12.5px]" style={{ color: MUTED }}>
+            <p className="mb-3 text-[12.5px]" style={portalStyle({ color: MUTED })}>
               Elle veya otomatik çekilen fark etmez, mesaj hep bu formattadır.
             </p>
-            <div className="rounded-xl border border-dashed p-4 text-[12.5px] leading-[1.7]" style={{ borderColor: 'rgba(212,184,118,0.3)', background: 'rgba(0,0,0,0.35)', color: TEXT2 }}>
+            <div className="rounded-xl border border-dashed p-4 text-[12.5px] leading-[1.7]" style={portalStyle({ borderColor: 'rgba(212,184,118,0.3)', background: 'rgba(0,0,0,0.35)', color: TEXT2 })}>
               <b>Gönderen</b>
               <br />
               MOREN MALİ MÜŞAVİRLİK
               <br />
               <br />
-              <b>Merhaba</b> <b style={{ color: GOLD }}>{'{ünvan}'}</b>,
+              <b>Merhaba</b> <b style={portalStyle({ color: GOLD })}>{'{ünvan}'}</b>,
               <br />
               <br />
               {ORNEK[tab]}
               <br />
               <br />
-              <span style={{ color: '#8cbde8', wordBreak: 'break-all' }}>https://…/belge.pdf</span>
+              <span style={portalStyle({ color: '#8cbde8', wordBreak: 'break-all' })}>https://…/belge.pdf</span>
               <br />
               <br />
               <span className="inline-flex items-center gap-1.5"><Mail size={13} /> Belgeler mesaj sonundaki linkle açılır (1 yıl geçerli); e-postada ayrıca ek olarak gider</span>
@@ -335,10 +337,10 @@ export default function AkilliBildirimPage() {
       )}
 
       {/* Bugün özeti */}
-      <div className="rounded-r-xl border-l-[3px] py-2.5 pl-4 pr-3 text-[13px]" style={{ borderColor: GOLD, background: 'rgba(212,184,118,0.08)', color: TEXT2 }}>
+      <div className="rounded-r-xl border-l-[3px] py-2.5 pl-4 pr-3 text-[13px]" style={portalStyle({ borderColor: GOLD, background: 'rgba(212,184,118,0.08)', color: TEXT2 })}>
         Bugün: <b className="text-white">{today?.belge ?? 0} belge</b> {today?.mukellef ?? 0} mükellefe iletildi
-        {today?.bekleyen ? <> · <b style={{ color: '#fbbf24' }}>{today.bekleyen} bekliyor</b></> : null}
-        {today?.hata ? <> · <b style={{ color: '#f87171' }}>{today.hata} hata</b>{today.ilkHata ? ` (${today.ilkHata})` : ''}</> : null}
+        {today?.bekleyen ? <> · <b style={portalStyle({ color: '#fbbf24' })}>{today.bekleyen} bekliyor</b></> : null}
+        {today?.hata ? <> · <b style={portalStyle({ color: '#f87171' })}>{today.hata} hata</b>{today.ilkHata ? ` (${today.ilkHata})` : ''}</> : null}
       </div>
     </div>
   );

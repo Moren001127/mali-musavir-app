@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -81,7 +83,7 @@ export default function TahsilatOtomasyonView() {
 
   if (isLoading) {
     return (
-      <div className="py-16 text-center text-[13px]" style={{ color: SOLUK }}>
+      <div className="py-16 text-center text-[13px]" style={portalStyle({ color: SOLUK })}>
         Plan hazırlanıyor…
       </div>
     );
@@ -95,16 +97,16 @@ export default function TahsilatOtomasyonView() {
       {/* Güvenlik bandı — en üstte, tartışmasız */}
       <div
         className="flex items-start gap-3 rounded-xl px-4 py-3.5"
-        style={{ background: `${YESIL}0d`, border: `1px solid ${YESIL}33` }}
+        style={portalStyle({ background: `${YESIL}0d`, border: `1px solid ${YESIL}33` })}
       >
-        <ShieldCheck size={18} style={{ color: YESIL }} className="mt-0.5 flex-shrink-0" />
+        <ShieldCheck size={18} style={portalStyle({ color: YESIL })} className="mt-0.5 flex-shrink-0" />
         <div>
-          <div className="text-[13px] font-medium" style={{ color: YESIL }}>
+          <div className="text-[13px] font-medium" style={portalStyle({ color: YESIL })}>
             Kuru test — mükellefe hiçbir mesaj gönderilmiyor
           </div>
-          <div className="mt-1 text-[11.5px] leading-relaxed" style={{ color: SOLUK }}>
+          <div className="mt-1 text-[11.5px] leading-relaxed" style={portalStyle({ color: SOLUK })}>
             Bu ekran sistemin bugün ne yapacağını gösterir. Otomasyon şu an{' '}
-            <strong style={{ color: data.otomasyonAcik ? TURUNCU : METIN }}>
+            <strong style={portalStyle({ color: data.otomasyonAcik ? TURUNCU : METIN })}>
               {data.otomasyonAcik ? 'AÇIK' : 'KAPALI'}
             </strong>
             {!data.otomasyonAcik && ' — açılana kadar hiçbir mesaj gitmez.'} Gönderim düğmesi bilinçli
@@ -146,8 +148,8 @@ export default function TahsilatOtomasyonView() {
       </div>
 
       {/* Kademe merdiveni — sistemin mantığı tek bakışta */}
-      <div className="rounded-xl p-4" style={{ background: KART, border: `1px solid ${CIZGI}` }}>
-        <div className="mb-3 text-[12px] font-medium" style={{ color: METIN }}>
+      <div className="rounded-xl p-4" style={portalStyle({ background: KART, border: `1px solid ${CIZGI}` })}>
+        <div className="mb-3 text-[12px] font-medium" style={portalStyle({ color: METIN })}>
           Kademe merdiveni
         </div>
         <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
@@ -157,22 +159,22 @@ export default function TahsilatOtomasyonView() {
               <div
                 key={k}
                 className="rounded-lg px-3 py-2.5"
-                style={{ background: 'rgba(0,0,0,0.22)', border: `1px solid ${CIZGI}` }}
+                style={portalStyle({ background: 'rgba(0,0,0,0.22)', border: `1px solid ${CIZGI}` })}
               >
                 <div className="flex items-center gap-1.5">
-                  <span className="h-1.5 w-1.5 rounded-full" style={{ background: b.renk }} />
-                  <span className="text-[12px]" style={{ color: METIN }}>
+                  <span className="h-1.5 w-1.5 rounded-full" style={portalStyle({ background: b.renk })} />
+                  <span className="text-[12px]" style={portalStyle({ color: METIN })}>
                     {b.ad}
                   </span>
                 </div>
-                <div className="mt-1 text-[10.5px] leading-relaxed" style={{ color: SOLUK }}>
+                <div className="mt-1 text-[10.5px] leading-relaxed" style={portalStyle({ color: SOLUK })}>
                   {b.aciklama}
                 </div>
               </div>
             );
           })}
         </div>
-        <p className="mt-3 text-[10.5px] leading-relaxed" style={{ color: 'rgba(139,139,147,0.85)' }}>
+        <p className="mt-3 text-[10.5px] leading-relaxed" style={portalStyle({ color: 'rgba(139,139,147,0.85)' })}>
           Kademe atlanmaz: 60 gündür açık ama hiç yazılmamış bir mükellefe ilk mesaj görüşme çağrısı
           değil, bilgilendirme olarak gider. Aynı kişiye 14 günden sık yazılmaz; ödeme geldiğinde,
           mükellef mesaj yazdığında ya da susturulduğunda zincir durur.
@@ -229,14 +231,14 @@ function Kutu({
   ikon, renk, etiket, sayi, alt,
 }: { ikon: React.ReactNode; renk: string; etiket: string; sayi: number; alt: string }) {
   return (
-    <div className="rounded-xl px-4 py-3.5" style={{ background: KART, border: `1px solid ${CIZGI}` }}>
-      <div className="flex items-center gap-1.5 text-[10.5px] uppercase tracking-[0.12em]" style={{ color: SOLUK }}>
-        <span style={{ color: renk }}>{ikon}</span> {etiket}
+    <div className="rounded-xl px-4 py-3.5" style={portalStyle({ background: KART, border: `1px solid ${CIZGI}` })}>
+      <div className="flex items-center gap-1.5 text-[10.5px] uppercase tracking-[0.12em]" style={portalStyle({ color: SOLUK })}>
+        <span style={portalStyle({ color: renk })}>{ikon}</span> {etiket}
       </div>
-      <div className="mt-1.5 text-[24px] tabular-nums" style={{ color: renk }}>
+      <div className="mt-1.5 text-[24px] tabular-nums" style={portalStyle({ color: renk })}>
         {sayi}
       </div>
-      <div className="mt-0.5 text-[10.5px]" style={{ color: SOLUK }}>
+      <div className="mt-0.5 text-[10.5px]" style={portalStyle({ color: SOLUK })}>
         {alt}
       </div>
     </div>
@@ -256,47 +258,47 @@ function Liste({
 }) {
   if (!kayitlar.length) {
     return (
-      <div className="rounded-xl p-4" style={{ background: KART, border: `1px solid ${CIZGI}` }}>
-        <div className="text-[12.5px]" style={{ color: METIN }}>{baslik}</div>
-        <div className="mt-2 text-[11.5px]" style={{ color: SOLUK }}>Bu grupta kimse yok.</div>
+      <div className="rounded-xl p-4" style={portalStyle({ background: KART, border: `1px solid ${CIZGI}` })}>
+        <div className="text-[12.5px]" style={portalStyle({ color: METIN })}>{baslik}</div>
+        <div className="mt-2 text-[11.5px]" style={portalStyle({ color: SOLUK })}>Bu grupta kimse yok.</div>
       </div>
     );
   }
 
   return (
-    <div className="rounded-xl p-4" style={{ background: KART, border: `1px solid ${CIZGI}` }}>
+    <div className="rounded-xl p-4" style={portalStyle({ background: KART, border: `1px solid ${CIZGI}` })}>
       <div className="mb-0.5 flex items-center gap-2">
-        <span className="h-1.5 w-1.5 rounded-full" style={{ background: renk }} />
-        <span className="text-[12.5px]" style={{ color: METIN }}>{baslik}</span>
-        <span className="text-[11px] tabular-nums" style={{ color: SOLUK }}>({kayitlar.length})</span>
+        <span className="h-1.5 w-1.5 rounded-full" style={portalStyle({ background: renk })} />
+        <span className="text-[12.5px]" style={portalStyle({ color: METIN })}>{baslik}</span>
+        <span className="text-[11px] tabular-nums" style={portalStyle({ color: SOLUK })}>({kayitlar.length})</span>
       </div>
-      <div className="mb-3 text-[11px]" style={{ color: SOLUK }}>{aciklama}</div>
+      <div className="mb-3 text-[11px]" style={portalStyle({ color: SOLUK })}>{aciklama}</div>
 
       <div className="max-h-[420px] space-y-1 overflow-y-auto pr-1">
         {kayitlar.map((k) => {
           const b = k.kademe ? KADEME_BILGI[k.kademe] : null;
           const secili = acik === k.taxpayerId;
           return (
-            <div key={k.taxpayerId} className="rounded-lg" style={{ border: `1px solid ${CIZGI}` }}>
+            <div key={k.taxpayerId} className="rounded-lg" style={portalStyle({ border: `1px solid ${CIZGI}` })}>
               <button
                 onClick={() => setAcik(secili ? null : k.taxpayerId)}
                 className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left"
               >
                 <span className="flex min-w-0 items-center gap-2">
-                  <span className="truncate text-[12.5px]" style={{ color: METIN }}>{k.ad}</span>
+                  <span className="truncate text-[12.5px]" style={portalStyle({ color: METIN })}>{k.ad}</span>
                   {b && (
                     <span
                       className="flex-shrink-0 rounded px-1.5 py-[1px] text-[9.5px] uppercase tracking-wider"
-                      style={{ background: `${b.renk}1c`, color: b.renk }}
+                      style={portalStyle({ background: `${b.renk}1c`, color: b.renk })}
                     >
                       {b.ad}
                     </span>
                   )}
                   {k.ekstreEkle && (
-                    <span className="flex-shrink-0 text-[10px]" style={{ color: SOLUK }}>ekstre ekli</span>
+                    <span className="flex-shrink-0 text-[10px]" style={portalStyle({ color: SOLUK })}>ekstre ekli</span>
                   )}
                 </span>
-                <span className="flex-shrink-0 text-[11px]" style={{ color: SOLUK }}>
+                <span className="flex-shrink-0 text-[11px]" style={portalStyle({ color: SOLUK })}>
                   {sebepGoster && k.sebep ? k.sebep : k.mesaj ? 'mesajı gör' : ''}
                 </span>
               </button>
@@ -304,7 +306,7 @@ function Liste({
               {secili && k.mesaj && (
                 <pre
                   className="mx-3 mb-3 whitespace-pre-wrap rounded-lg px-3 py-2.5 text-[11.5px] leading-relaxed"
-                  style={{ background: 'rgba(0,0,0,0.3)', border: `1px solid ${CIZGI}`, color: METIN, fontFamily: 'inherit' }}
+                  style={portalStyle({ background: 'rgba(0,0,0,0.3)', border: `1px solid ${CIZGI}`, color: METIN, fontFamily: 'inherit' })}
                 >
                   {k.mesaj}
                 </pre>

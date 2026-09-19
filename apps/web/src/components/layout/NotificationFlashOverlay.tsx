@@ -1,4 +1,5 @@
 'use client';
+import { ownedThemeStyle } from '@/components/layout/owned-theme';
 
 import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -87,24 +88,24 @@ export default function NotificationFlashOverlay() {
   const handleClose = () => setActive(null);
 
   return (
-    <div
+    <div data-moren-owned="surface"
       className="fixed right-3 top-20 z-[9999] w-[calc(100vw-24px)] max-w-[420px] pointer-events-none sm:right-5 moren-flash-wrap"
       role="alert"
       aria-live="assertive"
     >
       <div
         className="pointer-events-auto relative overflow-hidden rounded-2xl border shadow-2xl moren-flash-card"
-        style={{
+        style={ownedThemeStyle({
           background: `linear-gradient(135deg, ${tone.bg} 0%, rgba(12,12,10,0.98) 100%)`,
           borderColor: isCritical ? 'rgba(251,113,133,0.45)' : 'rgba(212,184,118,0.42)',
           boxShadow: `0 18px 45px rgba(0,0,0,0.38), 0 0 0 1px rgba(255,255,255,0.04), 0 0 28px ${tone.soft}`,
           backdropFilter: 'blur(14px)',
-        }}
+        })}
       >
         <div className="flex items-start gap-3 p-4 pr-12">
           <div
             className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
-            style={{ background: tone.soft, color: tone.accent }}
+            style={ownedThemeStyle({ background: tone.soft, color: tone.accent })}
           >
             <Bell size={19} strokeWidth={1.8} />
           </div>
@@ -113,9 +114,9 @@ export default function NotificationFlashOverlay() {
             <div className="flex items-center gap-2">
               <span
                 className="h-2 w-2 shrink-0 rounded-full"
-                style={{ background: tone.accent, boxShadow: `0 0 16px ${tone.accent}` }}
+                style={ownedThemeStyle({ background: tone.accent, boxShadow: `0 0 16px ${tone.accent}` })}
               />
-              <p className="truncate text-[13px] font-semibold" style={{ color: '#fafaf9' }}>
+              <p className="truncate text-[13px] font-semibold" style={ownedThemeStyle({ color: '#fafaf9' })}>
                 {title}
               </p>
             </div>
@@ -123,13 +124,13 @@ export default function NotificationFlashOverlay() {
             {message && (
               <p
                 className="mt-1.5 text-[12.5px] leading-relaxed"
-                style={{
+                style={ownedThemeStyle({
                   color: 'rgba(250,250,249,0.68)',
                   display: '-webkit-box',
                   WebkitLineClamp: 3,
                   WebkitBoxOrient: 'vertical',
                   overflow: 'hidden',
-                }}
+                })}
               >
                 {message}
               </p>
@@ -139,7 +140,7 @@ export default function NotificationFlashOverlay() {
               <button
                 onClick={handleOpen}
                 className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-semibold transition hover:brightness-110"
-                style={{ background: tone.accent, color: '#15120c' }}
+                style={ownedThemeStyle({ background: tone.accent, color: '#15120c' })}
               >
                 Detayı aç
                 <ExternalLink size={13} />
@@ -147,7 +148,7 @@ export default function NotificationFlashOverlay() {
               <button
                 onClick={handleClose}
                 className="rounded-lg px-3 py-1.5 text-[12px] font-medium transition hover:bg-white/10"
-                style={{ color: 'rgba(250,250,249,0.68)' }}
+                style={ownedThemeStyle({ color: 'rgba(250,250,249,0.68)' })}
               >
                 Kapat
               </button>
@@ -159,13 +160,13 @@ export default function NotificationFlashOverlay() {
           onClick={handleClose}
           aria-label="Kapat"
           className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-lg transition hover:bg-white/10"
-          style={{ color: 'rgba(250,250,249,0.62)' }}
+          style={ownedThemeStyle({ color: 'rgba(250,250,249,0.62)' })}
         >
           <X size={15} />
         </button>
 
-        <div className="h-1 w-full" style={{ background: 'rgba(255,255,255,0.06)' }}>
-          <div className="h-full moren-flash-progress" style={{ background: tone.accent }} />
+        <div className="h-1 w-full" style={ownedThemeStyle({ background: 'rgba(255,255,255,0.06)' })}>
+          <div className="h-full moren-flash-progress" style={ownedThemeStyle({ background: tone.accent })} />
         </div>
       </div>
 

@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 import React, { useState, useMemo, useRef } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { api } from '@/lib/api';
@@ -186,68 +188,68 @@ export default function Yapilandirma7582Page() {
   const etiket: React.CSSProperties = { fontSize: 12, color: '#9c937f', marginBottom: 4, display: 'block' };
 
   return (
-    <div style={{ padding: 14, color: '#e8e2d5' }}>
+    <div style={portalStyle({ padding: 14, color: '#e8e2d5' })}>
       {/* Başlık — üst renk şeridi + radial parıltı + degrade ikon kutusu */}
-      <div style={{ ...kutu, padding: 0, overflow: 'hidden', marginBottom: 14 }}>
-        <div style={{ height: 3, background: `linear-gradient(90deg, ${GOLD}, #8b7649, transparent)` }} />
+      <div style={portalStyle({ ...kutu, padding: 0, overflow: 'hidden', marginBottom: 14 })}>
+        <div style={portalStyle({ height: 3, background: `linear-gradient(90deg, ${GOLD}, #8b7649, transparent)` })} />
         <div
-          style={{
+          style={portalStyle({
             padding: 18,
             background:
               'radial-gradient(120% 140% at 0% 0%, rgba(212,184,118,0.16), transparent 46%), radial-gradient(120% 140% at 100% 0%, rgba(139,118,73,0.12), transparent 48%), #0f0d0b',
             display: 'flex', alignItems: 'center', gap: 14,
-          }}
+          })}
         >
-          <div style={{
+          <div style={portalStyle({
             width: 44, height: 44, borderRadius: 12, display: 'grid', placeItems: 'center',
             background: `linear-gradient(135deg, ${GOLD}, #8b7649)`, color: '#1a1713',
-          }}>
+          })}>
             <Scale size={22} />
           </div>
           <div>
-            <div style={{ fontSize: 18, fontWeight: 700 }}>7582 Tecil ve Taksitlendirme</div>
-            <div style={{ fontSize: 12, color: '#9c937f' }}>
-              Seri:B Sıra No:20 · yıllık %29 tecil faizi · son başvuru <b style={{ color: GOLD }}>31.08.2026</b>
+            <div style={portalStyle({ fontSize: 18, fontWeight: 700 })}>7582 Tecil ve Taksitlendirme</div>
+            <div style={portalStyle({ fontSize: 12, color: '#9c937f' })}>
+              Seri:B Sıra No:20 · yıllık %29 tecil faizi · son başvuru <b style={portalStyle({ color: GOLD })}>31.08.2026</b>
             </div>
           </div>
         </div>
       </div>
 
       {/* Mod seçici */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+      <div style={portalStyle({ display: 'flex', gap: 8, marginBottom: 12 })}>
         {([['TOPLU', 'Toplu liste (tüm mükellefler)'], ['TEK', 'Tek mükellef']] as const).map(([k, b]) => (
           <button
             key={k} onClick={() => setMod(k)}
-            style={{
+            style={portalStyle({
               background: mod === k ? `linear-gradient(135deg, ${GOLD}, #8b7649)` : '#0f0d0b',
               color: mod === k ? '#1a1713' : '#9c937f',
               border: mod === k ? 0 : '1px solid rgba(212,184,118,0.25)',
               borderRadius: 9, padding: '8px 14px', fontWeight: 600, cursor: 'pointer', fontSize: 13,
-            }}
+            })}
           >{b}</button>
         ))}
       </div>
 
       {mod === 'TOPLU' && (
-        <div style={{ ...kutu, marginBottom: 12 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+        <div style={portalStyle({ ...kutu, marginBottom: 12 })}>
+          <div style={portalStyle({ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 })}>
             <div>
-              <div style={{ fontWeight: 600 }}>GİB borç listesi</div>
-              <div style={{ fontSize: 12, color: '#9c937f' }}>
+              <div style={portalStyle({ fontWeight: 600 })}>GİB borç listesi</div>
+              <div style={portalStyle({ fontSize: 12, color: '#9c937f' })}>
                 Mükellef başlıklı blok biçimindeki dosyayı olduğu gibi yükleyin; kapsam ayrımı otomatik yapılır.
               </div>
             </div>
             <input
-              ref={topluRef} type="file" accept=".xlsx,.xls" style={{ display: 'none' }}
+              ref={topluRef} type="file" accept=".xlsx,.xls" style={portalStyle({ display: 'none' })}
               onChange={(e) => { const f = e.target.files?.[0]; if (f) topluYukle.mutate(f); e.target.value = ''; }}
             />
             <button
               onClick={() => topluRef.current?.click()} disabled={topluYukle.isPending}
-              style={{
+              style={portalStyle({
                 background: `linear-gradient(135deg, ${GOLD}, #8b7649)`, color: '#1a1713', border: 0,
                 borderRadius: 9, padding: '9px 14px', fontWeight: 700, cursor: 'pointer',
                 display: 'flex', alignItems: 'center', gap: 8,
-              }}
+              })}
             >
               {topluYukle.isPending ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
               Listeyi yükle
@@ -256,7 +258,7 @@ export default function Yapilandirma7582Page() {
 
           {toplu && (
             <>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10, marginBottom: 12 }}>
+              <div style={portalStyle({ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10, marginBottom: 12 })}>
                 {[
                   ['Toplam borç', toplu.genel.toplam, '#e8e2d5'],
                   ['Kapsamda', toplu.genel.kapsamda, GOLD],
@@ -264,58 +266,58 @@ export default function Yapilandirma7582Page() {
                   ['Kısmen', toplu.genel.kismen, '#d9964a'],
                   ['Vadesi belirsiz', toplu.genel.belirsizVade, '#a88b8b'],
                 ].map(([b, v, renk]: any) => (
-                  <div key={b} style={{ background: '#0f0d0b', borderRadius: 10, padding: 10 }}>
-                    <div style={{ fontSize: 11, color: '#9c937f' }}>{b}</div>
-                    <div style={{ fontVariantNumeric: 'tabular-nums', color: renk, fontWeight: 600 }}>{fmt(v)} ₺</div>
+                  <div key={b} style={portalStyle({ background: '#0f0d0b', borderRadius: 10, padding: 10 })}>
+                    <div style={portalStyle({ fontSize: 11, color: '#9c937f' })}>{b}</div>
+                    <div style={portalStyle({ fontVariantNumeric: 'tabular-nums', color: renk, fontWeight: 600 })}>{fmt(v)} ₺</div>
                   </div>
                 ))}
               </div>
-              <div style={{ fontSize: 12, color: '#9c937f', marginBottom: 8 }}>
-                Kapsamdaki borcun ayrımı: <b style={{ color: GOLD }}>{fmt(toplu.genel.kdv)} ₺</b> KDV (12 taksit) ·
-                {' '}<b style={{ color: GOLD }}>{fmt(toplu.genel.diger)} ₺</b> diğer (36/48/72) —
+              <div style={portalStyle({ fontSize: 12, color: '#9c937f', marginBottom: 8 })}>
+                Kapsamdaki borcun ayrımı: <b style={portalStyle({ color: GOLD })}>{fmt(toplu.genel.kdv)} ₺</b> KDV (12 taksit) ·
+                {' '}<b style={portalStyle({ color: GOLD })}>{fmt(toplu.genel.diger)} ₺</b> diğer (36/48/72) —
                 {' '}{toplu.eslesenMukellef}/{toplu.mukellefSayisi} mükellef portal kaydıyla eşleşti
               </div>
 
-              <div style={{ maxHeight: 420, overflowY: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <div style={portalStyle({ maxHeight: 420, overflowY: 'auto' })}>
+                <table style={portalStyle({ width: '100%', borderCollapse: 'collapse', fontSize: 13 })}>
                   <thead>
-                    <tr style={{ color: '#9c937f', textAlign: 'right' }}>
-                      <th style={{ textAlign: 'left', padding: '6px 8px' }}>Mükellef</th>
-                      <th style={{ padding: '6px 8px' }}>Toplam</th>
-                      <th style={{ padding: '6px 8px' }}>Kapsamda</th>
-                      <th style={{ padding: '6px 8px' }}>KDV</th>
-                      <th style={{ padding: '6px 8px' }}>Diğer</th>
-                      <th style={{ padding: '6px 8px' }}>Kısmen</th>
-                      <th style={{ padding: '6px 8px' }}>Belirsiz</th>
+                    <tr style={portalStyle({ color: '#9c937f', textAlign: 'right' })}>
+                      <th style={portalStyle({ textAlign: 'left', padding: '6px 8px' })}>Mükellef</th>
+                      <th style={portalStyle({ padding: '6px 8px' })}>Toplam</th>
+                      <th style={portalStyle({ padding: '6px 8px' })}>Kapsamda</th>
+                      <th style={portalStyle({ padding: '6px 8px' })}>KDV</th>
+                      <th style={portalStyle({ padding: '6px 8px' })}>Diğer</th>
+                      <th style={portalStyle({ padding: '6px 8px' })}>Kısmen</th>
+                      <th style={portalStyle({ padding: '6px 8px' })}>Belirsiz</th>
                       <th />
                     </tr>
                   </thead>
-                  <tbody style={{ fontVariantNumeric: 'tabular-nums' }}>
+                  <tbody style={portalStyle({ fontVariantNumeric: 'tabular-nums' })}>
                     {[...toplu.mukellefler].sort((a: any, b: any) => b.kapsamda - a.kapsamda).map((m: any) => (
-                      <tr key={m.sira} style={{ borderTop: '1px solid rgba(212,184,118,0.12)', textAlign: 'right' }}>
-                        <td style={{ textAlign: 'left', padding: '6px 8px' }}>
+                      <tr key={m.sira} style={portalStyle({ borderTop: '1px solid rgba(212,184,118,0.12)', textAlign: 'right' })}>
+                        <td style={portalStyle({ textAlign: 'left', padding: '6px 8px' })}>
                           {m.ad}
-                          {!m.taxpayerId && <span style={{ color: '#d9964a', fontSize: 11 }} title="Portal kaydıyla eşleşmedi"> ●</span>}
+                          {!m.taxpayerId && <span style={portalStyle({ color: '#d9964a', fontSize: 11 })} title="Portal kaydıyla eşleşmedi"> ●</span>}
                           {m.toplamUyumsuz && (
-                            <span style={{ color: '#9c937f', fontSize: 11 }} title="GİB’in yazdığı 'Vadesi Geçmiş' toplamı satır toplamıyla farklı">
+                            <span style={portalStyle({ color: '#9c937f', fontSize: 11 })} title="GİB’in yazdığı 'Vadesi Geçmiş' toplamı satır toplamıyla farklı">
                               {' '}⚠
                             </span>
                           )}
                         </td>
-                        <td style={{ padding: '6px 8px', color: '#9c937f' }}>{fmt(m.toplam)}</td>
-                        <td style={{ padding: '6px 8px', color: GOLD, fontWeight: 600 }}>{fmt(m.kapsamda)}</td>
-                        <td style={{ padding: '6px 8px' }}>{fmt(m.kdv)}</td>
-                        <td style={{ padding: '6px 8px' }}>{fmt(m.diger)}</td>
-                        <td style={{ padding: '6px 8px', color: m.kismen ? '#d9964a' : '#5a5449' }}>{fmt(m.kismen)}</td>
-                        <td style={{ padding: '6px 8px', color: '#5a5449' }}>{fmt(m.belirsizVade)}</td>
-                        <td style={{ padding: '6px 8px' }}>
+                        <td style={portalStyle({ padding: '6px 8px', color: '#9c937f' })}>{fmt(m.toplam)}</td>
+                        <td style={portalStyle({ padding: '6px 8px', color: GOLD, fontWeight: 600 })}>{fmt(m.kapsamda)}</td>
+                        <td style={portalStyle({ padding: '6px 8px' })}>{fmt(m.kdv)}</td>
+                        <td style={portalStyle({ padding: '6px 8px' })}>{fmt(m.diger)}</td>
+                        <td style={portalStyle({ padding: '6px 8px', color: m.kismen ? '#d9964a' : '#5a5449' })}>{fmt(m.kismen)}</td>
+                        <td style={portalStyle({ padding: '6px 8px', color: '#5a5449' })}>{fmt(m.belirsizVade)}</td>
+                        <td style={portalStyle({ padding: '6px 8px' })}>
                           <button
                             onClick={() => mukellefeGec(m)} disabled={!m.kapsamda}
-                            style={{
+                            style={portalStyle({
                               background: 'transparent', border: `1px solid ${m.kapsamda ? GOLD : '#3a352d'}`,
                               color: m.kapsamda ? GOLD : '#5a5449', borderRadius: 7, padding: '3px 9px',
                               fontSize: 12, cursor: m.kapsamda ? 'pointer' : 'default',
-                            }}
+                            })}
                           >Seçenekler</button>
                         </td>
                       </tr>
@@ -330,11 +332,11 @@ export default function Yapilandirma7582Page() {
 
       {mod === 'TEK' && (<>
       {/* 1) Mükellef ve durum */}
-      <div style={{ ...kutu, marginBottom: 12 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: 12 }}>
+      <div style={portalStyle({ ...kutu, marginBottom: 12 })}>
+        <div style={portalStyle({ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: 12 })}>
           <div>
-            <label style={etiket}>Mükellef</label>
-            <select style={input} value={taxpayerId} onChange={(e) => { setTaxpayerId(e.target.value); setLikidite(null); setLucaJobId(null); }}>
+            <label style={portalStyle(etiket)}>Mükellef</label>
+            <select style={portalStyle(input)} value={taxpayerId} onChange={(e) => { setTaxpayerId(e.target.value); setLikidite(null); setLucaJobId(null); }}>
               <option value="">— seçin —</option>
               {(mukellefler.data || []).map((m: any) => (
                 <option key={m.id} value={m.id}>{m.companyName || `${m.firstName || ''} ${m.lastName || ''}`.trim()}</option>
@@ -342,85 +344,85 @@ export default function Yapilandirma7582Page() {
             </select>
           </div>
           <div>
-            <label style={etiket}>Defter türü</label>
-            <select style={input} value={defter} onChange={(e) => setDefter(e.target.value as Defter)}>
+            <label style={portalStyle(etiket)}>Defter türü</label>
+            <select style={portalStyle(input)} value={defter} onChange={(e) => setDefter(e.target.value as Defter)}>
               <option value="BILANCO">Bilanço esası</option>
               <option value="ISLETME">İşletme hesabı esası</option>
               <option value="DIGER">Diğer / defter tutmayan</option>
             </select>
           </div>
           <div>
-            <label style={etiket}>Hukuki statü</label>
-            <select style={input} value={statu} onChange={(e) => setStatu(e.target.value as any)}>
+            <label style={portalStyle(etiket)}>Hukuki statü</label>
+            <select style={portalStyle(input)} value={statu} onChange={(e) => setStatu(e.target.value as any)}>
               <option value="NORMAL">Normal</option>
               <option value="BELEDIYE_VB">Belediye / il özel idaresi vb.</option>
             </select>
           </div>
           <div>
-            <label style={etiket}>Tecil talep tarihi</label>
-            <input style={input} type="date" value={talepTarihi} onChange={(e) => setTalepTarihi(e.target.value)} />
+            <label style={portalStyle(etiket)}>Tecil talep tarihi</label>
+            <input style={portalStyle(input)} type="date" value={talepTarihi} onChange={(e) => setTalepTarihi(e.target.value)} />
           </div>
         </div>
-        <label style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 10, fontSize: 13 }}>
+        <label style={portalStyle({ display: 'flex', gap: 8, alignItems: 'center', marginTop: 10, fontSize: 13 })}>
           <input type="checkbox" checked={faalMi} onChange={(e) => setFaalMi(e.target.checked)} />
           16.06.2026 itibarıyla faal mükellefiyet kaydı var
         </label>
       </div>
 
       {/* 2) Likidite oranı */}
-      <div style={{ ...kutu, marginBottom: 12 }}>
-        <div style={{ fontWeight: 600, marginBottom: 10 }}>Likidite oranı</div>
+      <div style={portalStyle({ ...kutu, marginBottom: 12 })}>
+        <div style={portalStyle({ fontWeight: 600, marginBottom: 10 })}>Likidite oranı</div>
 
         {defter === 'BILANCO' && (
           <>
-            <div style={{ fontSize: 12, color: '#9c937f', marginBottom: 10 }}>
+            <div style={portalStyle({ fontSize: 12, color: '#9c937f', marginBottom: 10 })}>
               Oran <b>(Dönen Varlıklar − Stoklar) ÷ Kısa Vadeli Yabancı Kaynaklar</b> formülüyle, Luca’dan
               çekilen <b>taze mizandan</b> hesaplanır. Mevzuat hangi dönemin esas alınacağını yazmıyor —
               dönemi siz seçiyorsunuz, kullanılan dönem çıktıda görünür.
             </div>
-            <div style={{ display: 'flex', gap: 10, alignItems: 'end', flexWrap: 'wrap' }}>
-              <div style={{ width: 110 }}>
-                <label style={etiket}>Yıl</label>
-                <input style={input} type="number" value={yil} onChange={(e) => setYil(Number(e.target.value))} />
+            <div style={portalStyle({ display: 'flex', gap: 10, alignItems: 'end', flexWrap: 'wrap' })}>
+              <div style={portalStyle({ width: 110 })}>
+                <label style={portalStyle(etiket)}>Yıl</label>
+                <input style={portalStyle(input)} type="number" value={yil} onChange={(e) => setYil(Number(e.target.value))} />
               </div>
-              <div style={{ width: 110 }}>
-                <label style={etiket}>Ay</label>
-                <input style={input} type="number" min={1} max={12} value={ay} onChange={(e) => setAy(Number(e.target.value))} />
+              <div style={portalStyle({ width: 110 })}>
+                <label style={portalStyle(etiket)}>Ay</label>
+                <input style={portalStyle(input)} type="number" min={1} max={12} value={ay} onChange={(e) => setAy(Number(e.target.value))} />
               </div>
               <button
                 onClick={() => { setLikidite(null); mizanCek.mutate(); }}
                 disabled={!taxpayerId || mizanCek.isPending}
-                style={{
+                style={portalStyle({
                   background: `linear-gradient(135deg, ${GOLD}, #8b7649)`, color: '#1a1713', border: 0,
                   borderRadius: 9, padding: '9px 14px', fontWeight: 600, cursor: 'pointer',
                   display: 'flex', alignItems: 'center', gap: 8,
-                }}
+                })}
               >
                 {mizanCek.isPending ? <Loader2 size={16} className="animate-spin" /> : <CloudDownload size={16} />}
                 Mizan Çek
               </button>
               {job && (
-                <span style={{ fontSize: 12, color: '#9c937f' }}>
+                <span style={portalStyle({ fontSize: 12, color: '#9c937f' })}>
                   Job: {job.status}{job.error ? ` · ${String(job.error).slice(0, 80)}` : ''}
                 </span>
               )}
             </div>
             {lucaJobId && <LucaInlineCaptchaPanel jobIds={[lucaJobId]} color={GOLD} />}
             {likidite && (
-              <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+              <div style={portalStyle({ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 })}>
                 {[
                   ['Dönen varlıklar', likidite.donenVarliklar],
                   ['Stoklar', likidite.stoklar],
                   ['KV yabancı kaynak', likidite.kisaVadeliYabanciKaynak],
                 ].map(([b, v]: any) => (
-                  <div key={b} style={{ background: '#0f0d0b', borderRadius: 10, padding: 10 }}>
-                    <div style={{ fontSize: 11, color: '#9c937f' }}>{b}</div>
-                    <div style={{ fontVariantNumeric: 'tabular-nums' }}>{fmt(v)}</div>
+                  <div key={b} style={portalStyle({ background: '#0f0d0b', borderRadius: 10, padding: 10 })}>
+                    <div style={portalStyle({ fontSize: 11, color: '#9c937f' })}>{b}</div>
+                    <div style={portalStyle({ fontVariantNumeric: 'tabular-nums' })}>{fmt(v)}</div>
                   </div>
                 ))}
-                <div style={{ background: '#0f0d0b', borderRadius: 10, padding: 10, border: `1px solid ${GOLD}` }}>
-                  <div style={{ fontSize: 11, color: '#9c937f' }}>Likidite oranı · {likidite.donem}</div>
-                  <div style={{ fontSize: 20, fontWeight: 700, color: GOLD }}>
+                <div style={portalStyle({ background: '#0f0d0b', borderRadius: 10, padding: 10, border: `1px solid ${GOLD}` })}>
+                  <div style={portalStyle({ fontSize: 11, color: '#9c937f' })}>Likidite oranı · {likidite.donem}</div>
+                  <div style={portalStyle({ fontSize: 20, fontWeight: 700, color: GOLD })}>
                     {likidite.oran == null ? '—' : likidite.oran.toFixed(2)}
                   </div>
                 </div>
@@ -431,75 +433,75 @@ export default function Yapilandirma7582Page() {
 
         {defter === 'ISLETME' && (
           <>
-            <div style={{ fontSize: 12, color: '#9c937f', marginBottom: 10 }}>
+            <div style={portalStyle({ fontSize: 12, color: '#9c937f', marginBottom: 10 })}>
               Oran <b>(Kasa + Banka + Kısa Vadeli Alacaklar) ÷ Kısa Vadeli Borçlar</b>. İşletme defterinde bu
               kalemler tutulmadığı için rakamlar <b>beyana</b> dayanır: kasa sayımı, banka ekstresi, tahsil
               edilmemiş faturalar/çek-senet, satıcı-kredi-vergi-SGK borçları. Belgelenebilir olmalı.
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+            <div style={portalStyle({ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 })}>
               {([['kasa', 'Kasa'], ['banka', 'Banka'], ['alacak', 'Kısa vadeli alacaklar'], ['borc', 'Kısa vadeli borçlar']] as const).map(
                 ([k, b]) => (
                   <div key={k}>
-                    <label style={etiket}>{b}</label>
-                    <input style={input} value={(elle as any)[k]} onChange={(e) => setElle({ ...elle, [k]: e.target.value })} placeholder="0" />
+                    <label style={portalStyle(etiket)}>{b}</label>
+                    <input style={portalStyle(input)} value={(elle as any)[k]} onChange={(e) => setElle({ ...elle, [k]: e.target.value })} placeholder="0" />
                   </div>
                 ),
               )}
             </div>
             {elleOran != null && (
-              <div style={{ marginTop: 10, fontSize: 14 }}>
-                Likidite oranı: <b style={{ color: GOLD, fontSize: 18 }}>{elleOran.toFixed(2)}</b>
+              <div style={portalStyle({ marginTop: 10, fontSize: 14 })}>
+                Likidite oranı: <b style={portalStyle({ color: GOLD, fontSize: 18 })}>{elleOran.toFixed(2)}</b>
               </div>
             )}
           </>
         )}
 
         {defter === 'DIGER' && (
-          <div style={{ fontSize: 13, color: '#9c937f' }}>
+          <div style={portalStyle({ fontSize: 13, color: '#9c937f' })}>
             Bilanço ya da işletme hesabı esasına göre defter tutmayan borçlularda oran hesaplanmaz;
-            borçlar <b style={{ color: GOLD }}>48 eşit taksitte</b> ödenir.
+            borçlar <b style={portalStyle({ color: GOLD })}>48 eşit taksitte</b> ödenir.
           </div>
         )}
       </div>
 
       {/* 3) Borçlar */}
-      <div style={{ ...kutu, marginBottom: 12 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-          <div style={{ fontWeight: 600 }}>Borçlar</div>
-          <div style={{ display: 'flex', gap: 8 }}>
+      <div style={portalStyle({ ...kutu, marginBottom: 12 })}>
+        <div style={portalStyle({ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 })}>
+          <div style={portalStyle({ fontWeight: 600 })}>Borçlar</div>
+          <div style={portalStyle({ display: 'flex', gap: 8 })}>
             <input
-              ref={dosyaRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }}
+              ref={dosyaRef} type="file" accept=".xlsx,.xls,.csv" style={portalStyle({ display: 'none' })}
               onChange={(e) => { const f = e.target.files?.[0]; if (f) excelYukle.mutate(f); e.target.value = ''; }}
             />
             <button
               onClick={() => dosyaRef.current?.click()}
-              style={{ background: '#0f0d0b', border: `1px solid ${GOLD}`, color: GOLD, borderRadius: 8, padding: '7px 12px', cursor: 'pointer', display: 'flex', gap: 6, alignItems: 'center' }}
+              style={portalStyle({ background: '#0f0d0b', border: `1px solid ${GOLD}`, color: GOLD, borderRadius: 8, padding: '7px 12px', cursor: 'pointer', display: 'flex', gap: 6, alignItems: 'center' })}
             >
               {excelYukle.isPending ? <Loader2 size={15} className="animate-spin" /> : <FileSpreadsheet size={15} />}
               Excel yükle
             </button>
             <button
               onClick={() => setSatirlar([...satirlar, { vergiTuru: '', tutar: 0 }])}
-              style={{ background: '#0f0d0b', border: '1px solid rgba(212,184,118,0.3)', color: '#e8e2d5', borderRadius: 8, padding: '7px 12px', cursor: 'pointer', display: 'flex', gap: 6, alignItems: 'center' }}
+              style={portalStyle({ background: '#0f0d0b', border: '1px solid rgba(212,184,118,0.3)', color: '#e8e2d5', borderRadius: 8, padding: '7px 12px', cursor: 'pointer', display: 'flex', gap: 6, alignItems: 'center' })}
             >
               <Plus size={15} /> Satır
             </button>
           </div>
         </div>
-        <div style={{ maxHeight: 220, overflowY: 'auto' }}>
+        <div style={portalStyle({ maxHeight: 220, overflowY: 'auto' })}>
           {satirlar.map((s, i) => (
-            <div key={i} style={{ display: 'grid', gridTemplateColumns: '3fr 1fr 32px', gap: 8, marginBottom: 6 }}>
+            <div key={i} style={portalStyle({ display: 'grid', gridTemplateColumns: '3fr 1fr 32px', gap: 8, marginBottom: 6 })}>
               <input
-                style={input} placeholder="Vergi türü (örn. KATMA DEĞER VERGİSİ)" value={s.vergiTuru}
+                style={portalStyle(input)} placeholder="Vergi türü (örn. KATMA DEĞER VERGİSİ)" value={s.vergiTuru}
                 onChange={(e) => { const y = [...satirlar]; y[i] = { ...s, vergiTuru: e.target.value }; setSatirlar(y); }}
               />
               <input
-                style={{ ...input, textAlign: 'right' }} placeholder="0,00" value={s.tutar || ''}
+                style={portalStyle({ ...input, textAlign: 'right' })} placeholder="0,00" value={s.tutar || ''}
                 onChange={(e) => { const y = [...satirlar]; y[i] = { ...s, tutar: Number(e.target.value.replace(/\./g, '').replace(',', '.')) || 0 }; setSatirlar(y); }}
               />
               <button
                 onClick={() => setSatirlar(satirlar.filter((_, j) => j !== i))}
-                style={{ background: 'transparent', border: 0, color: '#8a6a6a', cursor: 'pointer' }}
+                style={portalStyle({ background: 'transparent', border: 0, color: '#8a6a6a', cursor: 'pointer' })}
               ><Trash2 size={16} /></button>
             </div>
           ))}
@@ -507,11 +509,11 @@ export default function Yapilandirma7582Page() {
         <button
           onClick={() => hesapla.mutate()}
           disabled={hesapla.isPending || !satirlar.some((s) => s.vergiTuru && s.tutar > 0)}
-          style={{
+          style={portalStyle({
             marginTop: 10, background: `linear-gradient(135deg, ${GOLD}, #8b7649)`, color: '#1a1713',
             border: 0, borderRadius: 9, padding: '10px 16px', fontWeight: 700, cursor: 'pointer',
             display: 'flex', alignItems: 'center', gap: 8,
-          }}
+          })}
         >
           {hesapla.isPending ? <Loader2 size={16} className="animate-spin" /> : <Calculator size={16} />}
           Taksit seçeneklerini hesapla
@@ -520,55 +522,55 @@ export default function Yapilandirma7582Page() {
 
       {/* 4) Sonuç */}
       {sonuc && (
-        <div style={{ ...kutu }}>
+        <div style={portalStyle({ ...kutu })}>
           {sonuc.uyarilar?.map((u: string, i: number) => (
-            <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'start', background: 'rgba(180,120,60,0.12)', border: '1px solid rgba(212,140,60,0.35)', borderRadius: 10, padding: 10, marginBottom: 8, fontSize: 13 }}>
-              <AlertTriangle size={16} style={{ color: '#d9964a', flexShrink: 0, marginTop: 2 }} />
+            <div key={i} style={portalStyle({ display: 'flex', gap: 8, alignItems: 'start', background: 'rgba(180,120,60,0.12)', border: '1px solid rgba(212,140,60,0.35)', borderRadius: 10, padding: 10, marginBottom: 8, fontSize: 13 })}>
+              <AlertTriangle size={16} style={portalStyle({ color: '#d9964a', flexShrink: 0, marginTop: 2 })} />
               <span>{u}</span>
             </div>
           ))}
 
-          <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', marginBottom: 12, fontSize: 13 }}>
-            <span>Tecil edilebilir toplam: <b style={{ color: GOLD }}>{fmt(sonuc.tecilEdilebilirToplam)} ₺</b></span>
+          <div style={portalStyle({ display: 'flex', gap: 18, flexWrap: 'wrap', marginBottom: 12, fontSize: 13 })}>
+            <span>Tecil edilebilir toplam: <b style={portalStyle({ color: GOLD })}>{fmt(sonuc.tecilEdilebilirToplam)} ₺</b></span>
             <span>Tecil faizi: <b>%{sonuc.tecilFaiziYillik}</b></span>
-            {sonuc.teminatGerekli > 0 && <span>Teminat: <b style={{ color: '#d9964a' }}>{fmt(sonuc.teminatGerekli)} ₺</b></span>}
+            {sonuc.teminatGerekli > 0 && <span>Teminat: <b style={portalStyle({ color: '#d9964a' })}>{fmt(sonuc.teminatGerekli)} ₺</b></span>}
           </div>
 
           {sonuc.paketler.map((p: any) => (
-            <div key={p.grup} style={{ marginBottom: 16 }}>
-              <div style={{ fontWeight: 600, marginBottom: 4 }}>
+            <div key={p.grup} style={portalStyle({ marginBottom: 16 })}>
+              <div style={portalStyle({ fontWeight: 600, marginBottom: 4 })}>
                 {p.grupAdi} · {fmt(p.tutar)} ₺
-                <span style={{ color: '#9c937f', fontWeight: 400, fontSize: 12, marginLeft: 8 }}>{p.gerekce}</span>
+                <span style={portalStyle({ color: '#9c937f', fontWeight: 400, fontSize: 12, marginLeft: 8 })}>{p.gerekce}</span>
               </div>
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <div style={portalStyle({ overflowX: 'auto' })}>
+                <table style={portalStyle({ width: '100%', borderCollapse: 'collapse', fontSize: 13 })}>
                   <thead>
-                    <tr style={{ color: '#9c937f', textAlign: 'right' }}>
-                      <th style={{ textAlign: 'left', padding: '6px 8px' }}>Taksit</th>
-                      <th style={{ padding: '6px 8px' }}>İlk taksit</th>
-                      <th style={{ padding: '6px 8px' }}>Aylık</th>
-                      <th style={{ padding: '6px 8px' }}>Toplam faiz</th>
-                      <th style={{ padding: '6px 8px' }}>Faiz yükü</th>
-                      <th style={{ padding: '6px 8px' }}>Toplam ödeme</th>
+                    <tr style={portalStyle({ color: '#9c937f', textAlign: 'right' })}>
+                      <th style={portalStyle({ textAlign: 'left', padding: '6px 8px' })}>Taksit</th>
+                      <th style={portalStyle({ padding: '6px 8px' })}>İlk taksit</th>
+                      <th style={portalStyle({ padding: '6px 8px' })}>Aylık</th>
+                      <th style={portalStyle({ padding: '6px 8px' })}>Toplam faiz</th>
+                      <th style={portalStyle({ padding: '6px 8px' })}>Faiz yükü</th>
+                      <th style={portalStyle({ padding: '6px 8px' })}>Toplam ödeme</th>
                       <th />
                     </tr>
                   </thead>
-                  <tbody style={{ fontVariantNumeric: 'tabular-nums' }}>
+                  <tbody style={portalStyle({ fontVariantNumeric: 'tabular-nums' })}>
                     {p.secenekler.map((s: any) => (
-                      <tr key={s.taksitSayisi} style={{ borderTop: '1px solid rgba(212,184,118,0.12)', textAlign: 'right' }}>
-                        <td style={{ textAlign: 'left', padding: '6px 8px', fontWeight: 600 }}>
+                      <tr key={s.taksitSayisi} style={portalStyle({ borderTop: '1px solid rgba(212,184,118,0.12)', textAlign: 'right' })}>
+                        <td style={portalStyle({ textAlign: 'left', padding: '6px 8px', fontWeight: 600 })}>
                           {s.taksitSayisi} ay
-                          {s.taksitSayisi === p.azamiTaksit && <span style={{ color: GOLD, fontSize: 11 }}> (azami)</span>}
+                          {s.taksitSayisi === p.azamiTaksit && <span style={portalStyle({ color: GOLD, fontSize: 11 })}> (azami)</span>}
                         </td>
-                        <td style={{ padding: '6px 8px' }}>{fmt(s.ilkTaksit)}</td>
-                        <td style={{ padding: '6px 8px' }}>{fmt(s.aylikTaksit)}</td>
-                        <td style={{ padding: '6px 8px' }}>{fmt(s.toplamFaiz)}</td>
-                        <td style={{ padding: '6px 8px', color: '#9c937f' }}>%{s.faizYuku}</td>
-                        <td style={{ padding: '6px 8px', fontWeight: 600 }}>{fmt(s.toplamOdeme)}</td>
-                        <td style={{ padding: '6px 8px' }}>
+                        <td style={portalStyle({ padding: '6px 8px' })}>{fmt(s.ilkTaksit)}</td>
+                        <td style={portalStyle({ padding: '6px 8px' })}>{fmt(s.aylikTaksit)}</td>
+                        <td style={portalStyle({ padding: '6px 8px' })}>{fmt(s.toplamFaiz)}</td>
+                        <td style={portalStyle({ padding: '6px 8px', color: '#9c937f' })}>%{s.faizYuku}</td>
+                        <td style={portalStyle({ padding: '6px 8px', fontWeight: 600 })}>{fmt(s.toplamOdeme)}</td>
+                        <td style={portalStyle({ padding: '6px 8px' })}>
                           <button
                             onClick={() => planCek.mutate({ tutar: p.tutar, taksitSayisi: s.taksitSayisi })}
-                            style={{ background: 'transparent', border: `1px solid ${GOLD}`, color: GOLD, borderRadius: 7, padding: '3px 9px', fontSize: 12, cursor: 'pointer' }}
+                            style={portalStyle({ background: 'transparent', border: `1px solid ${GOLD}`, color: GOLD, borderRadius: 7, padding: '3px 9px', fontSize: 12, cursor: 'pointer' })}
                           >Plan</button>
                         </td>
                       </tr>
@@ -577,45 +579,45 @@ export default function Yapilandirma7582Page() {
                 </table>
               </div>
               {!p.secenekler.length && (
-                <div style={{ fontSize: 13, color: '#d9964a' }}>Taksit sayısı belirlenemedi — {p.gerekce}</div>
+                <div style={portalStyle({ fontSize: 13, color: '#d9964a' })}>Taksit sayısı belirlenemedi — {p.gerekce}</div>
               )}
             </div>
           ))}
 
           {plan && (
-            <div style={{ marginTop: 6, borderTop: '1px solid rgba(212,184,118,0.18)', paddingTop: 12 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <div style={{ fontWeight: 600 }}>
+            <div style={portalStyle({ marginTop: 6, borderTop: '1px solid rgba(212,184,118,0.18)', paddingTop: 12 })}>
+              <div style={portalStyle({ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 })}>
+                <div style={portalStyle({ fontWeight: 600 })}>
                   Ödeme planı · {plan.taksitSayisi} taksit · toplam {fmt(plan.toplamOdeme)} ₺
                 </div>
                 <button
                   onClick={() => window.print()}
-                  style={{ background: '#0f0d0b', border: `1px solid ${GOLD}`, color: GOLD, borderRadius: 8, padding: '6px 12px', cursor: 'pointer', display: 'flex', gap: 6, alignItems: 'center' }}
+                  style={portalStyle({ background: '#0f0d0b', border: `1px solid ${GOLD}`, color: GOLD, borderRadius: 8, padding: '6px 12px', cursor: 'pointer', display: 'flex', gap: 6, alignItems: 'center' })}
                 ><Printer size={15} /> Yazdır</button>
               </div>
-              <div style={{ maxHeight: 320, overflowY: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <div style={portalStyle({ maxHeight: 320, overflowY: 'auto' })}>
+                <table style={portalStyle({ width: '100%', borderCollapse: 'collapse', fontSize: 13 })}>
                   <thead>
-                    <tr style={{ color: '#9c937f', textAlign: 'right' }}>
-                      <th style={{ textAlign: 'left', padding: '6px 8px' }}>#</th>
-                      <th style={{ textAlign: 'left', padding: '6px 8px' }}>Vade</th>
-                      <th style={{ padding: '6px 8px' }}>Anapara</th>
-                      <th style={{ padding: '6px 8px' }}>Gün</th>
-                      <th style={{ padding: '6px 8px' }}>Tecil faizi</th>
-                      <th style={{ padding: '6px 8px' }}>Ödenecek</th>
+                    <tr style={portalStyle({ color: '#9c937f', textAlign: 'right' })}>
+                      <th style={portalStyle({ textAlign: 'left', padding: '6px 8px' })}>#</th>
+                      <th style={portalStyle({ textAlign: 'left', padding: '6px 8px' })}>Vade</th>
+                      <th style={portalStyle({ padding: '6px 8px' })}>Anapara</th>
+                      <th style={portalStyle({ padding: '6px 8px' })}>Gün</th>
+                      <th style={portalStyle({ padding: '6px 8px' })}>Tecil faizi</th>
+                      <th style={portalStyle({ padding: '6px 8px' })}>Ödenecek</th>
                     </tr>
                   </thead>
-                  <tbody style={{ fontVariantNumeric: 'tabular-nums' }}>
+                  <tbody style={portalStyle({ fontVariantNumeric: 'tabular-nums' })}>
                     {plan.satirlar.map((s: any) => (
-                      <tr key={s.sira} style={{ borderTop: '1px solid rgba(212,184,118,0.10)', textAlign: 'right' }}>
-                        <td style={{ textAlign: 'left', padding: '5px 8px' }}>{s.sira}</td>
-                        <td style={{ textAlign: 'left', padding: '5px 8px' }}>
+                      <tr key={s.sira} style={portalStyle({ borderTop: '1px solid rgba(212,184,118,0.10)', textAlign: 'right' })}>
+                        <td style={portalStyle({ textAlign: 'left', padding: '5px 8px' })}>{s.sira}</td>
+                        <td style={portalStyle({ textAlign: 'left', padding: '5px 8px' })}>
                           {new Date(s.vade).toLocaleDateString('tr-TR')}
                         </td>
-                        <td style={{ padding: '5px 8px' }}>{fmt(s.anapara)}</td>
-                        <td style={{ padding: '5px 8px', color: '#9c937f' }}>{s.gun}</td>
-                        <td style={{ padding: '5px 8px' }}>{fmt(s.tecilFaizi)}</td>
-                        <td style={{ padding: '5px 8px', fontWeight: 600 }}>{fmt(s.odenecek)}</td>
+                        <td style={portalStyle({ padding: '5px 8px' })}>{fmt(s.anapara)}</td>
+                        <td style={portalStyle({ padding: '5px 8px', color: '#9c937f' })}>{s.gun}</td>
+                        <td style={portalStyle({ padding: '5px 8px' })}>{fmt(s.tecilFaizi)}</td>
+                        <td style={portalStyle({ padding: '5px 8px', fontWeight: 600 })}>{fmt(s.odenecek)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -625,7 +627,7 @@ export default function Yapilandirma7582Page() {
           )}
 
           {sonuc.kapsamDisi?.tutar > 0 && (
-            <div style={{ marginTop: 12, fontSize: 12, color: '#9c937f' }}>
+            <div style={portalStyle({ marginTop: 12, fontSize: 12, color: '#9c937f' })}>
               Kapsam dışı ({TUR_ETIKET.KAPSAM_DISI}): {fmt(sonuc.kapsamDisi.tutar)} ₺ —
               {' '}{sonuc.kapsamDisi.satirlar.map((s: any) => s.vergiTuru).join(', ')}
             </div>

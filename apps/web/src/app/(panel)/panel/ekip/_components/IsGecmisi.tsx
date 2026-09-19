@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ChevronDown, Loader2, RefreshCw, Search } from 'lucide-react';
@@ -17,9 +19,9 @@ function IsFiltresi({ aktif, onClick, children, sayi, dikkat = false }: { aktif:
   return (
     <button type="button" aria-pressed={aktif} onClick={onClick}
       className="inline-flex min-h-8 items-center gap-1.5 rounded-full px-2.5 text-[11.5px] transition hover:bg-white/[0.04] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
-      style={{ color: aktif || dikkat ? GOLD : MUTED, border: `1px solid ${aktif ? `${GOLD}4d` : 'transparent'}`, background: aktif ? `${GOLD}14` : undefined }}>
+      style={portalStyle({ color: aktif || dikkat ? GOLD : MUTED, border: `1px solid ${aktif ? `${GOLD}4d` : 'transparent'}`, background: aktif ? `${GOLD}14` : undefined })}>
       {children}
-      {sayi != null && <span className="font-semibold tabular-nums" style={{ opacity: aktif || dikkat ? 1 : 0.7 }}>{sayi}</span>}
+      {sayi != null && <span className="font-semibold tabular-nums" style={portalStyle({ opacity: aktif || dikkat ? 1 : 0.7 })}>{sayi}</span>}
     </button>
   );
 }
@@ -72,12 +74,12 @@ export function IsGecmisi({ akis, isLoading, error, sayaclar, suzgec, onSuzgec, 
 
   return (
     <section aria-label="İşler" className="relative min-w-0 rounded-[18px] px-4 pb-5 pt-[18px] sm:px-6"
-      style={{ background: 'rgba(255,255,255,0.018)', border: '1px solid rgba(255,255,255,0.065)', boxShadow: '0 18px 44px rgba(0,0,0,0.24)' }}>
-      <span aria-hidden="true" className="pointer-events-none absolute inset-x-6 top-0 h-px" style={{ background: `linear-gradient(90deg, transparent, ${GOLD}73, transparent)` }} />
+      style={portalStyle({ background: 'rgba(255,255,255,0.018)', border: '1px solid rgba(255,255,255,0.065)', boxShadow: '0 18px 44px rgba(0,0,0,0.24)' })}>
+      <span aria-hidden="true" className="pointer-events-none absolute inset-x-6 top-0 h-px" style={portalStyle({ background: `linear-gradient(90deg, transparent, ${GOLD}73, transparent)` })} />
       <header className="mb-3 flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <h3 className="text-[14px] font-semibold" style={{ color: TEXT }}>İşler</h3>
-          <p className="mt-1 text-[11.5px]" style={{ color: MUTED }}>
+          <h3 className="text-[14px] font-semibold" style={portalStyle({ color: TEXT })}>İşler</h3>
+          <p className="mt-1 text-[11.5px]" style={portalStyle({ color: MUTED })}>
             {akis ? `${gun === 1 ? 'Bugün' : `Son ${gun} gün`} · ${vakalar.length} iş · ${bittiN} bitti${hataN ? ` · ${hataN} yarım` : ''}` : 'Verilen görevler'}
           </p>
         </div>
@@ -105,8 +107,8 @@ export function IsGecmisi({ akis, isLoading, error, sayaclar, suzgec, onSuzgec, 
               {g === 1 ? 'Bugün' : `${g} gün`}
             </IsFiltresi>
           ))}
-          <span className="inline-flex h-8 min-w-[150px] flex-1 items-center gap-2 rounded-[10px] px-3 text-[12px]" style={{ background: 'rgba(255,255,255,0.025)', border: `1px solid ${ROW_SEP}` }}>
-            <Search size={12} style={{ color: MUTED }} />
+          <span className="inline-flex h-8 min-w-[150px] flex-1 items-center gap-2 rounded-[10px] px-3 text-[12px]" style={portalStyle({ background: 'rgba(255,255,255,0.025)', border: `1px solid ${ROW_SEP}` })}>
+            <Search size={12} style={portalStyle({ color: MUTED })} />
             <span className="min-w-0 flex-1">
               <MukellefSecici sade yerTutucu="Mükellef ara…" mukellefler={mukellefler} value={taxpayerId} onChange={onTaxpayerId} renk={GOLD} />
             </span>
@@ -119,11 +121,11 @@ export function IsGecmisi({ akis, isLoading, error, sayaclar, suzgec, onSuzgec, 
         {omurgaYok ? (
           <OmurgaYokBilgi kucuk />
         ) : error ? (
-          <div className="py-3 text-[12.5px]" style={{ color: KIRMIZI }}>
+          <div className="py-3 text-[12.5px]" style={portalStyle({ color: KIRMIZI })}>
             Geçmiş alınamadı: {(error as any)?.message || 'hata'}
           </div>
         ) : isLoading && !akis ? (
-          <div className="flex items-center justify-center gap-2 py-8 text-[12px]" style={{ color: MUTED }}>
+          <div className="flex items-center justify-center gap-2 py-8 text-[12px]" style={portalStyle({ color: MUTED })}>
             <Loader2 size={13} className="animate-spin" /> Geçmiş yükleniyor…
           </div>
         ) : !vakalar.length ? (
@@ -145,28 +147,28 @@ export function IsGecmisi({ akis, isLoading, error, sayaclar, suzgec, onSuzgec, 
                 aria-current={secili}
                 title="İşi aç"
                 className="flex w-full min-w-0 items-center gap-2.5 rounded-lg px-2 py-2.5 text-left transition hover:bg-white/[0.02] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
-                style={{
+                style={portalStyle({
                   borderTop: i ? `1px solid ${ROW_SEP}` : undefined,
                   ...(secili ? { background: `${GOLD}0f`, boxShadow: `inset 3px 0 0 ${GOLD}` } : {}),
-                }}
+                })}
               >
                 <Avatar kisaltma={ajanKisaltma(personelId)} renk={ajanRengi(personelId)} ton={kosuyor ? 'mavi' : personelId === 'koordinator' ? 'gold' : 'gri'} boyut={28} nabiz={kosuyor} title={ajanKisaAd(personelId, ajanAd(personelId))} />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[12.5px] font-semibold" style={{ color: TEXT }} title={v.mukellef?.ad || 'Ofis geneli'}>
+                  <span className="block truncate text-[12.5px] font-semibold" style={portalStyle({ color: TEXT })} title={v.mukellef?.ad || 'Ofis geneli'}>
                     {v.mukellef?.ad || 'Ofis geneli'}
                   </span>
-                  <span className="block truncate text-[11.5px]" style={{ color: MUTED }} title={v.konu}>
+                  <span className="block truncate text-[11.5px]" style={portalStyle({ color: MUTED })} title={v.konu}>
                     {v.konu || 'Konu yok'}
                     {siz ? ' · sizde' : ''}
-                    {!v.kuru ? <span style={{ color: KIRMIZI }}> · canlı</span> : ''}
-                    {v.gecikti ? <span style={{ color: KIRMIZI }}> · gecikti</span> : ''}
+                    {!v.kuru ? <span style={portalStyle({ color: KIRMIZI })}> · canlı</span> : ''}
+                    {v.gecikti ? <span style={portalStyle({ color: KIRMIZI })}> · gecikti</span> : ''}
                   </span>
                 </span>
-                <span className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap text-[11px]" style={{ color: r.renk }}>
-                  <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${kosuyor ? 'animate-pulse' : ''}`} style={{ background: r.renk }} />
+                <span className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap text-[11px]" style={portalStyle({ color: r.renk })}>
+                  <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${kosuyor ? 'animate-pulse' : ''}`} style={portalStyle({ background: r.renk })} />
                   {r.ad}
                 </span>
-                <span className="w-10 flex-shrink-0 text-right text-[11px] tabular-nums" style={{ color: MUTED }}>
+                <span className="w-10 flex-shrink-0 text-right text-[11px] tabular-nums" style={portalStyle({ color: MUTED })}>
                   {tarihKisa(v.olusturuldu)}
                 </span>
               </button>
@@ -174,7 +176,7 @@ export function IsGecmisi({ akis, isLoading, error, sayaclar, suzgec, onSuzgec, 
           })
         )}
         {vakalar.length > gorunen && (
-          <div className="pt-2" style={{ borderTop: `1px solid ${ROW_SEP}` }}>
+          <div className="pt-2" style={portalStyle({ borderTop: `1px solid ${ROW_SEP}` })}>
             <Dugme tur="sade" onClick={() => setGorunen((g) => g + SAYFA)} className="w-full justify-center">
               <ChevronDown size={12} /> Daha fazla göster ({vakalar.length - gorunen} iş daha)
             </Dugme>

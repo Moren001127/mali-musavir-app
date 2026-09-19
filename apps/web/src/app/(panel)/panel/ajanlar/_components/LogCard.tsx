@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import { useState } from 'react';
 import { ChevronDown } from 'lucide-react';
@@ -81,12 +83,12 @@ function DecisionTraceBox({ trace }: { trace: any }) {
   return (
     <div
       className="mt-1.5 rounded px-2 py-1.5 text-[11px]"
-      style={{ background: 'rgba(255,255,255,0.018)', border: '1px solid rgba(255,255,255,0.04)', color: '#8f8f8f' }}
+      style={portalStyle({ background: 'rgba(255,255,255,0.018)', border: '1px solid rgba(255,255,255,0.04)', color: '#8f8f8f' })}
     >
-      <span className="font-semibold" style={{ color: '#b8a06f' }}>Karar izi:</span>{' '}
+      <span className="font-semibold" style={portalStyle({ color: '#b8a06f' })}>Karar izi:</span>{' '}
       {parts.length > 0 ? parts.join(' | ') : 'detay yok'}
       {karar?.sebep && (
-        <span style={{ color: '#b0b0b0' }}> | {String(karar.sebep).slice(0, 160)}</span>
+        <span style={portalStyle({ color: '#b0b0b0' })}> | {String(karar.sebep).slice(0, 160)}</span>
       )}
     </div>
   );
@@ -133,34 +135,34 @@ export function LogCard({ event }: { event: LogEvent }) {
   return (
     <div
       className="px-3 py-2 rounded-lg transition-colors hover:brightness-110"
-      style={{
+      style={portalStyle({
         background: visual.bg,
         border: `1px solid ${visual.border}55`,
         borderLeft: `3px solid ${visual.border}`,
         boxShadow: '0 6px 18px rgba(0,0,0,0.14)',
-      }}
+      })}
     >
       <div className="flex items-start gap-2 min-w-0">
         <span
           className="flex-shrink-0 inline-flex items-center justify-center rounded-md text-[10px] font-bold px-1.5 py-0.5 leading-none"
-          style={{ background: visual.color + '2b', color: visual.color, minWidth: 52, height: 22 }}
+          style={portalStyle({ background: visual.color + '2b', color: visual.color, minWidth: 52, height: 22 })}
         >
           {visual.icon} {visual.label}
         </span>
-        <span className="text-[10.5px] tabular-nums flex-shrink-0 pt-1" style={{ color: '#6b6b6b' }}>
+        <span className="text-[10.5px] tabular-nums flex-shrink-0 pt-1" style={portalStyle({ color: '#6b6b6b' })}>
           {t}
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5 flex-wrap text-[12px] min-w-0">
           {event.firma && (
-            <span className="font-semibold truncate max-w-[48ch]" style={{ color: '#b8a06f' }}>
+            <span className="font-semibold truncate max-w-[48ch]" style={portalStyle({ color: '#b8a06f' })}>
               {event.firma}
             </span>
           )}
           {event.fisNo && (
             <span
               className="text-[10.5px] px-1.5 py-0.5 rounded tabular-nums leading-none"
-              style={{ background: 'rgba(255,255,255,.04)', color: 'rgba(250,250,249,0.55)' }}
+              style={portalStyle({ background: 'rgba(255,255,255,.04)', color: 'rgba(250,250,249,0.55)' })}
             >
               #{event.fisNo}
             </span>
@@ -168,27 +170,27 @@ export function LogCard({ event }: { event: LogEvent }) {
           {event.tutar != null && event.tutar !== '' && (
             <span
               className="text-[10.5px] px-1.5 py-0.5 rounded tabular-nums leading-none"
-              style={{ background: 'rgba(255,255,255,.04)', color: 'rgba(250,250,249,0.55)' }}
+              style={portalStyle({ background: 'rgba(255,255,255,.04)', color: 'rgba(250,250,249,0.55)' })}
             >
               {Number(event.tutar).toLocaleString('tr-TR')} TL
             </span>
           )}
             {missingCount > 0 && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded leading-none" style={{ background: 'rgba(214,95,95,0.12)', color: '#d97070' }}>
+              <span className="text-[10px] px-1.5 py-0.5 rounded leading-none" style={portalStyle({ background: 'rgba(214,95,95,0.12)', color: '#d97070' })}>
                 {missingCount} eksik
               </span>
             )}
             {warningCount > 0 && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded leading-none" style={{ background: 'rgba(212,169,79,0.12)', color: '#d4a94f' }}>
+              <span className="text-[10px] px-1.5 py-0.5 rounded leading-none" style={portalStyle({ background: 'rgba(212,169,79,0.12)', color: '#d4a94f' })}>
                 {warningCount} uyarı
               </span>
             )}
           </div>
 
           {(needsAttention || event.message) && (
-            <div className="mt-1 truncate text-[11px]" style={{ color: needsAttention ? '#d8c18d' : '#8a8a8a' }}>
+            <div className="mt-1 truncate text-[11px]" style={portalStyle({ color: needsAttention ? '#d8c18d' : '#8a8a8a' })}>
               {needsAttention && (
-                <span className="font-semibold" style={{ color: visual.color }}>
+                <span className="font-semibold" style={portalStyle({ color: visual.color })}>
                   {visual.label === 'ATLA' ? 'Atlama' : visual.label === 'HATA' ? 'Hata' : 'Not'}:{' '}
                 </span>
               )}
@@ -201,13 +203,13 @@ export function LogCard({ event }: { event: LogEvent }) {
           type="button"
           onClick={() => setExpanded((value) => !value)}
           className="mt-0.5 h-6 w-6 rounded-md inline-flex items-center justify-center flex-shrink-0 transition-colors"
-          style={{ color: 'rgba(250,250,249,0.42)', background: expanded ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.025)' }}
+          style={portalStyle({ color: 'rgba(250,250,249,0.42)', background: expanded ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.025)' })}
           title={expanded ? 'Detayı kapat' : 'Detayı göster'}
           aria-label={expanded ? 'Detayı kapat' : 'Detayı göster'}
         >
           <ChevronDown
             size={14}
-            style={{ transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 140ms ease' }}
+            style={portalStyle({ transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 140ms ease' })}
           />
         </button>
       </div>
@@ -218,15 +220,15 @@ export function LogCard({ event }: { event: LogEvent }) {
         {needsAttention && (
           <div
             className="rounded-md px-2 py-1.5 text-[11.5px]"
-            style={{
+            style={portalStyle({
               background: statusLower === 'skip' || statusLower === 'atlandi'
                 ? 'rgba(184,152,112,0.10)'
                 : 'rgba(212,169,79,0.10)',
               border: '1px solid rgba(212,169,79,0.18)',
               color: '#d8c18d',
-            }}
+            })}
           >
-            <span className="font-semibold" style={{ color: visual.color }}>
+            <span className="font-semibold" style={portalStyle({ color: visual.color })}>
               {visual.label === 'ATLA' ? 'Atlama sebebi' : visual.label === 'HATA' ? 'Hata sebebi' : 'Kontrol notu'}:
             </span>{' '}
             {attentionText}
@@ -234,12 +236,12 @@ export function LogCard({ event }: { event: LogEvent }) {
         )}
 
         {warnings.length > 0 && (
-          <div className="mt-1.5 flex flex-wrap gap-1.5" style={{ color: '#d4a94f' }}>
+          <div className="mt-1.5 flex flex-wrap gap-1.5" style={portalStyle({ color: '#d4a94f' })}>
             {warnings.slice(0, 4).map((w, i) => (
               <span
                 key={`${w}-${i}`}
                 className="text-[10.5px] font-semibold px-1.5 py-0.5 rounded"
-                style={{ background: 'rgba(212,169,79,0.12)', border: '1px solid rgba(212,169,79,0.25)' }}
+                style={portalStyle({ background: 'rgba(212,169,79,0.12)', border: '1px solid rgba(212,169,79,0.25)' })}
               >
                 ! {w}
               </span>
@@ -271,13 +273,13 @@ export function LogCard({ event }: { event: LogEvent }) {
 
         {/* Hiç structured veri yoksa düz mesaj göster (eski kayıtlar için) */}
         {!hasFields && !hasSummary && event.message && (
-          <div className="text-[12px] mt-0.5" style={{ color: '#8a8a8a', lineHeight: '1.5' }}>
+          <div className="text-[12px] mt-0.5" style={portalStyle({ color: '#8a8a8a', lineHeight: '1.5' })}>
             {event.message}
           </div>
         )}
 
         {event.mukellef && (
-          <div className="text-[10px] mt-1 truncate uppercase tracking-wide flex items-center gap-2" style={{ color: '#4a4a4a' }}>
+          <div className="text-[10px] mt-1 truncate uppercase tracking-wide flex items-center gap-2" style={portalStyle({ color: '#4a4a4a' })}>
             <span>{event.mukellef}</span>
             {/* Agent versiyonu — eski cache'den çalışan bookmarklet'i tespit etmek için.
                 Beklenen sürüm v1.36.4. Daha eski görünüyorsa kullanıcı bookmarklet'i yenilemeli. */}
@@ -289,14 +291,14 @@ export function LogCard({ event }: { event: LogEvent }) {
                     ? 'Agent güncel'
                     : `Agent eski sürüm (${event.meta.agentVersion}) — bookmarklet'i yenile, hard reload yap`
                 }
-                style={{
+                style={portalStyle({
                   background:
                     agentVersionOk
                       ? 'rgba(34,197,94,0.10)'
                       : 'rgba(239,68,68,0.15)',
                   color:
                     agentVersionOk ? '#22c55e' : '#ef4444',
-                }}
+                })}
               >
                 v{event.meta.agentVersion}
               </span>

@@ -1,4 +1,6 @@
 ﻿'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -240,14 +242,14 @@ function MoneyText({
   return (
     <span
       className="tabular-nums whitespace-nowrap"
-      style={{
+      style={portalStyle({
         color,
         fontFamily: REPORT_FONT,
         fontVariantNumeric: 'tabular-nums',
         fontSize: size ?? (strong ? 15 : 14),
         fontWeight: strong ? 750 : 650,
         letterSpacing: 0,
-      }}
+      })}
     >
       {TRY}{fmt(value)}
     </span>
@@ -361,19 +363,19 @@ export default function KdvBeyannamePage() {
       {/* Header */}
       <header
         className="relative overflow-hidden rounded-[18px] border px-5 py-4"
-        style={{
+        style={portalStyle({
           background: `radial-gradient(circle at 12% 0%, ${TEAL}2e, transparent 34%), radial-gradient(circle at 84% 8%, rgba(240,183,85,0.20), transparent 42%), linear-gradient(160deg, rgba(13,31,29,0.96) 0%, #0f0d0b 74%)`,
           borderColor: 'rgba(255,255,255,0.06)',
           boxShadow: '0 16px 42px rgba(0,0,0,0.28)',
-        }}
+        })}
       >
         <div
           className="absolute inset-x-0 top-0 h-1"
-          style={{ background: `linear-gradient(90deg, ${TEAL}, ${TEAL_BR}, ${STAT_AMBER}, #8db6c6, ${TEAL_BR})` }}
+          style={portalStyle({ background: `linear-gradient(90deg, ${TEAL}, ${TEAL_BR}, ${STAT_AMBER}, #8db6c6, ${TEAL_BR})` })}
         />
         <div className="mb-3 flex items-center gap-2.5">
-          <span className="h-px w-[26px]" style={{ background: TEAL_BR }} />
-          <span className="text-[10px] font-bold uppercase tracking-[.18em]" style={{ color: TEAL_BR }}>
+          <span className="h-px w-[26px]" style={portalStyle({ background: TEAL_BR })} />
+          <span className="text-[10px] font-bold uppercase tracking-[.18em]" style={portalStyle({ color: TEAL_BR })}>
             Vergi Uyum · KDV
           </span>
         </div>
@@ -381,17 +383,17 @@ export default function KdvBeyannamePage() {
           <div className="flex min-w-0 items-center gap-3.5">
             <span
               className="grid shrink-0 place-items-center rounded-xl"
-              style={{
+              style={portalStyle({
                 width: 46,
                 height: 46,
                 background: `linear-gradient(135deg, ${TEAL_BR}, ${STAT_AMBER})`,
                 boxShadow: '0 8px 22px rgba(20,184,166,0.24)',
-              }}
+              })}
             >
-              <FileCheck size={24} style={{ color: '#10201d' }} />
+              <FileCheck size={24} style={portalStyle({ color: '#10201d' })} />
             </span>
             <div className="min-w-0">
-              <h1 className="text-[30px] font-semibold leading-none tracking-normal text-[#fafaf9]" style={{ fontFamily: SERIF }}>
+              <h1 className="text-[30px] font-semibold leading-none tracking-normal text-[#fafaf9]" style={portalStyle({ fontFamily: SERIF })}>
                 KDV Durum Panosu
               </h1>
               <p className="mt-2 text-[13px] font-semibold text-white/45">
@@ -402,35 +404,35 @@ export default function KdvBeyannamePage() {
           <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
             <span
               className="inline-flex h-9 max-w-[280px] items-center gap-1.5 rounded-[10px] border px-3 text-[12px] font-bold"
-              style={{ color: '#fafaf9', background: 'rgba(255,255,255,0.035)', borderColor: 'rgba(255,255,255,0.08)' }}
+              style={portalStyle({ color: '#fafaf9', background: 'rgba(255,255,255,0.035)', borderColor: 'rgba(255,255,255,0.08)' })}
               title={selectedTaxpayer ? taxpayerName(selectedTaxpayer) : 'Mükellef seçilmedi'}
             >
-              <Users size={14} style={{ color: TEAL_BR }} />
+              <Users size={14} style={portalStyle({ color: TEAL_BR })} />
               <span className="truncate">{selectedTaxpayer ? taxpayerName(selectedTaxpayer) : 'Mükellef seçilmedi'}</span>
             </span>
             <span
               className="inline-flex h-9 items-center gap-1.5 rounded-[10px] border px-3 text-[12px] font-bold"
-              style={{ color: '#fafaf9', background: 'rgba(255,255,255,0.035)', borderColor: 'rgba(255,255,255,0.08)' }}
+              style={portalStyle({ color: '#fafaf9', background: 'rgba(255,255,255,0.035)', borderColor: 'rgba(255,255,255,0.08)' })}
             >
-              <Calendar size={14} style={{ color: STAT_AMBER }} />
+              <Calendar size={14} style={portalStyle({ color: STAT_AMBER })} />
               {donem}
             </span>
             <span
               className="inline-flex h-9 items-center gap-1.5 rounded-[10px] border px-3 text-[12px] font-bold"
-              style={{ color: '#fafaf9', background: 'rgba(255,255,255,0.035)', borderColor: 'rgba(255,255,255,0.08)' }}
+              style={portalStyle({ color: '#fafaf9', background: 'rgba(255,255,255,0.035)', borderColor: 'rgba(255,255,255,0.08)' })}
             >
-              <Layers size={14} style={{ color: TEAL_BR }} />
+              <Layers size={14} style={portalStyle({ color: TEAL_BR })} />
               {tab}
             </span>
             <button
               onClick={handleDownload}
               disabled={!selectedMukellef}
               className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-[10px] px-4 text-[12.5px] font-bold transition-all disabled:cursor-not-allowed disabled:opacity-50"
-              style={{
+              style={portalStyle({
                 background: `linear-gradient(135deg, ${STAT_AMBER}, ${TEAL_BR})`,
                 color: '#0f0d0b',
                 boxShadow: '0 10px 24px rgba(20,184,166,0.18)',
-              }}
+              })}
             >
               <Download size={15} /> Excel İndir
             </button>
@@ -442,15 +444,15 @@ export default function KdvBeyannamePage() {
       {!selectedMukellef && (
         <div
           className="rounded-2xl p-4 border"
-          style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
+          style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' })}
         >
           <div className="flex items-center gap-2 mb-3">
-            <span className="w-[3px] h-4 rounded-sm" style={{ background: '#14b8a6' }} />
-            <h3 className="text-[13.5px] font-semibold" style={{ color: '#fafaf9' }}>Dönem & Mükellef</h3>
+            <span className="w-[3px] h-4 rounded-sm" style={portalStyle({ background: '#14b8a6' })} />
+            <h3 className="text-[13.5px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>Dönem & Mükellef</h3>
           </div>
           <div className="grid grid-cols-12 gap-3">
             <div className="col-span-6 md:col-span-3">
-              <label className="text-[11px] font-bold uppercase tracking-[.12em] flex items-center gap-1.5 mb-1.5" style={{ color: A_TEAL3 }}>
+              <label className="text-[11px] font-bold uppercase tracking-[.12em] flex items-center gap-1.5 mb-1.5" style={portalStyle({ color: A_TEAL3 })}>
                 <Calendar size={12} /> Yıl
               </label>
               <div className="relative">
@@ -458,17 +460,17 @@ export default function KdvBeyannamePage() {
                   value={year}
                   onChange={(e) => setYear(Number(e.target.value))}
                   className="w-full appearance-none pl-3.5 pr-9 py-3 rounded-[11px] text-[14px] font-semibold outline-none cursor-pointer transition focus:border-teal-500/60"
-                  style={{ background: 'rgba(20,184,166,0.06)', border: '1px solid rgba(20,184,166,0.28)', color: '#fff' }}
+                  style={portalStyle({ background: 'rgba(20,184,166,0.06)', border: '1px solid rgba(20,184,166,0.28)', color: '#fff' })}
                 >
                   {[2024, 2025, 2026, 2027].map((y) => (
-                    <option key={y} value={y} style={{ background: '#0f0d0b' }}>{y}</option>
+                    <option key={y} value={y} style={portalStyle({ background: '#0f0d0b' })}>{y}</option>
                   ))}
                 </select>
-                <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2" style={{ color: A_TEAL3 }} />
+                <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2" style={portalStyle({ color: A_TEAL3 })} />
               </div>
             </div>
             <div className="col-span-6 md:col-span-3">
-              <label className="text-[11px] font-bold uppercase tracking-[.12em] flex items-center gap-1.5 mb-1.5" style={{ color: A_TEAL3 }}>
+              <label className="text-[11px] font-bold uppercase tracking-[.12em] flex items-center gap-1.5 mb-1.5" style={portalStyle({ color: A_TEAL3 })}>
                 <Calendar size={12} /> Ay
               </label>
               <div className="relative">
@@ -476,17 +478,17 @@ export default function KdvBeyannamePage() {
                   value={month}
                   onChange={(e) => setMonth(e.target.value)}
                   className="w-full appearance-none pl-3.5 pr-9 py-3 rounded-[11px] text-[14px] font-semibold outline-none cursor-pointer transition"
-                  style={{ background: 'rgba(20,184,166,0.06)', border: '1px solid rgba(20,184,166,0.28)', color: '#fff' }}
+                  style={portalStyle({ background: 'rgba(20,184,166,0.06)', border: '1px solid rgba(20,184,166,0.28)', color: '#fff' })}
                 >
                   {MONTHS.map((m, i) => (
-                    <option key={m} value={m} style={{ background: '#0f0d0b' }}>{MONTH_NAMES[i]}</option>
+                    <option key={m} value={m} style={portalStyle({ background: '#0f0d0b' })}>{MONTH_NAMES[i]}</option>
                   ))}
                 </select>
-                <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2" style={{ color: A_TEAL3 }} />
+                <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2" style={portalStyle({ color: A_TEAL3 })} />
               </div>
             </div>
             <div className="col-span-12 md:col-span-6">
-              <label className="text-[11px] font-bold uppercase tracking-[.12em] flex items-center gap-1.5 mb-1.5" style={{ color: A_TEAL3 }}>
+              <label className="text-[11px] font-bold uppercase tracking-[.12em] flex items-center gap-1.5 mb-1.5" style={portalStyle({ color: A_TEAL3 })}>
                 <Users size={12} /> Mükellefe git (opsiyonel)
               </label>
               <TaxpayerSelect
@@ -504,18 +506,18 @@ export default function KdvBeyannamePage() {
       {selectedMukellef && (
         <div
           className="flex flex-wrap items-center gap-2.5 rounded-xl border px-3 py-2.5"
-          style={{ borderColor: 'rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.02)' }}
+          style={portalStyle({ borderColor: 'rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.02)' })}
         >
           <button
             type="button"
             onClick={() => setSelectedMukellef('')}
             className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12px] font-semibold transition hover:bg-white/[0.05]"
-            style={{ borderColor: 'rgba(255,255,255,0.1)', color: 'rgba(250,250,249,0.72)' }}
+            style={portalStyle({ borderColor: 'rgba(255,255,255,0.1)', color: 'rgba(250,250,249,0.72)' })}
           >
             <ArrowLeft size={14} /> Pano
           </button>
-          <Users size={14} style={{ color: '#14b8a6' }} />
-          <span className="text-[14px] font-semibold" style={{ color: '#fafaf9' }}>
+          <Users size={14} style={portalStyle({ color: '#14b8a6' })} />
+          <span className="text-[14px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>
             {selectedTaxpayer ? taxpayerName(selectedTaxpayer) : ''}
           </span>
           <div className="ml-auto flex items-center gap-2">
@@ -524,26 +526,26 @@ export default function KdvBeyannamePage() {
                 value={year}
                 onChange={(e) => setYear(Number(e.target.value))}
                 className="appearance-none rounded-[9px] pl-3 pr-8 py-2 text-[13px] font-semibold outline-none cursor-pointer"
-                style={{ background: 'rgba(20,184,166,0.06)', border: '1px solid rgba(20,184,166,0.28)', color: '#fff' }}
+                style={portalStyle({ background: 'rgba(20,184,166,0.06)', border: '1px solid rgba(20,184,166,0.28)', color: '#fff' })}
               >
                 {[2024, 2025, 2026, 2027].map((y) => (
-                  <option key={y} value={y} style={{ background: '#0f0d0b' }}>{y}</option>
+                  <option key={y} value={y} style={portalStyle({ background: '#0f0d0b' })}>{y}</option>
                 ))}
               </select>
-              <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2" style={{ color: A_TEAL3 }} />
+              <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2" style={portalStyle({ color: A_TEAL3 })} />
             </div>
             <div className="relative">
               <select
                 value={month}
                 onChange={(e) => setMonth(e.target.value)}
                 className="appearance-none rounded-[9px] pl-3 pr-8 py-2 text-[13px] font-semibold outline-none cursor-pointer"
-                style={{ background: 'rgba(20,184,166,0.06)', border: '1px solid rgba(20,184,166,0.28)', color: '#fff' }}
+                style={portalStyle({ background: 'rgba(20,184,166,0.06)', border: '1px solid rgba(20,184,166,0.28)', color: '#fff' })}
               >
                 {MONTHS.map((m, i) => (
-                  <option key={m} value={m} style={{ background: '#0f0d0b' }}>{MONTH_NAMES[i]}</option>
+                  <option key={m} value={m} style={portalStyle({ background: '#0f0d0b' })}>{MONTH_NAMES[i]}</option>
                 ))}
               </select>
-              <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2" style={{ color: A_TEAL3 }} />
+              <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2" style={portalStyle({ color: A_TEAL3 })} />
             </div>
           </div>
         </div>
@@ -559,11 +561,11 @@ export default function KdvBeyannamePage() {
                 key={t}
                 onClick={() => setTab(t)}
                 className="px-4 py-2 rounded-[10px] text-[12.5px] font-semibold transition-all"
-                style={{
+                style={portalStyle({
                   background: active ? 'rgba(13,148,136,0.15)' : 'rgba(255,255,255,0.03)',
                   color: active ? '#14b8a6' : 'rgba(250,250,249,0.6)',
                   border: `1px solid ${active ? 'rgba(13,148,136,0.35)' : 'rgba(255,255,255,0.08)'}`,
-                }}
+                })}
               >
                 {t === 'KDV1' ? 'KDV1 · Genel Beyan' : 'KDV2 · Tevkifat Sorumlusu'}
               </button>
@@ -594,12 +596,12 @@ export default function KdvBeyannamePage() {
           {!kdv2Loading && !kdv2Error && kdv2 && kdv2.toplamlar.faturaAdet === 0 && (
             <div
               className="rounded-2xl p-10 text-center border"
-              style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
+              style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' })}
             >
-              <p className="text-[14px] font-semibold" style={{ color: '#fafaf9' }}>
+              <p className="text-[14px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>
                 Bu dönemde tevkifatlı fatura bulunamadı
               </p>
-              <p className="text-[12px] mt-2" style={{ color: 'rgba(250,250,249,0.5)' }}>
+              <p className="text-[12px] mt-2" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
                 KDV2 beyanı için tevkifatlı alış faturası gerekir. Faturalar KDV Kontrol'den geçmiş olmalı (OCR tevkifat tutarını okur).
               </p>
             </div>
@@ -741,18 +743,18 @@ function GenelBakisPano({ donem, onSelect }: { donem: string; onSelect: (id: str
           <button
             onClick={() => setFilter('hepsi')}
             className="inline-flex items-center gap-1.5 rounded-[9px] border px-3 py-1.5 text-[12px] font-semibold transition"
-            style={{ background: TEAL_SF, borderColor: TEAL_LN, color: TEAL_BR }}
+            style={portalStyle({ background: TEAL_SF, borderColor: TEAL_LN, color: TEAL_BR })}
           >
             {FILTRE_ETIKET[filter]} · {satirlar.length} kayıt
             <span className="ml-0.5 text-[14px] leading-none opacity-70">×</span>
           </button>
         ) : (
-          <span className="text-[12px] font-semibold" style={{ color: 'rgba(250,250,249,0.4)' }}>
+          <span className="text-[12px] font-semibold" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>
             Tüm mükellefler · {satirlar.length} kayıt — yukarıdaki sayaçlara tıklayarak süzebilirsiniz
           </span>
         )}
         <div className="ml-auto flex items-center gap-2">
-          <span className="text-[11px]" style={{ color: 'rgba(250,250,249,0.4)' }}>
+          <span className="text-[11px]" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>
             Son güncelleme: {new Date(data.hesaplandiAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
           </span>
           <button
@@ -760,7 +762,7 @@ function GenelBakisPano({ donem, onSelect }: { donem: string; onSelect: (id: str
             disabled={backfillOranMut.isPending}
             title="OCR'ın okuyamadığı KDV oranlarını, görseli yeniden okumadan kayıtlı veriden (matrah + metin) tüm mükelleflerde doldurur"
             className="inline-flex items-center gap-1.5 rounded-[9px] px-3 py-1.5 text-[12px] font-bold disabled:opacity-50"
-            style={{ background: 'rgba(20,184,166,0.14)', border: `1px solid ${TEAL_LN}`, color: TEAL_BR }}
+            style={portalStyle({ background: 'rgba(20,184,166,0.14)', border: `1px solid ${TEAL_LN}`, color: TEAL_BR })}
           >
             {backfillOranMut.isPending ? <Loader2 size={13} className="animate-spin" /> : <span className="text-[13px] leading-none">%</span>} Oranları Tamamla
           </button>
@@ -768,7 +770,7 @@ function GenelBakisPano({ donem, onSelect }: { donem: string; onSelect: (id: str
             onClick={yenile}
             disabled={forcing}
             className="inline-flex items-center gap-1.5 rounded-[9px] border px-3 py-1.5 text-[12px] font-semibold disabled:opacity-50"
-            style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.7)' }}
+            style={portalStyle({ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.7)' })}
           >
             <RefreshCw size={13} className={forcing ? 'animate-spin' : ''} /> Yenile
           </button>
@@ -776,34 +778,34 @@ function GenelBakisPano({ donem, onSelect }: { donem: string; onSelect: (id: str
             onClick={() => bildirMut.mutate()}
             disabled={bildirMut.isPending}
             className="inline-flex items-center gap-1.5 rounded-[9px] px-3 py-1.5 text-[12px] font-bold disabled:opacity-50"
-            style={{ background: `linear-gradient(135deg, ${TEAL}, #0d9488)`, color: '#04201c' }}
+            style={portalStyle({ background: `linear-gradient(135deg, ${TEAL}, #0d9488)`, color: '#04201c' })}
           >
             {bildirMut.isPending ? <Loader2 size={13} className="animate-spin" /> : <Bell size={13} />} KDV2 Tara & Bildir
           </button>
         </div>
       </div>
 
-      <div className="overflow-x-auto rounded-2xl border" style={{ borderColor: 'rgba(255,255,255,0.1)', background: '#0f0d0b' }}>
-        <table className="w-full text-left" style={{ minWidth: 1050, borderCollapse: 'collapse' }}>
+      <div className="overflow-x-auto rounded-2xl border" style={portalStyle({ borderColor: 'rgba(255,255,255,0.1)', background: '#0f0d0b' })}>
+        <table className="w-full text-left" style={portalStyle({ minWidth: 1050, borderCollapse: 'collapse' })}>
           <thead>
             <tr
               className="text-[11px] font-bold uppercase tracking-wider"
-              style={{
+              style={portalStyle({
                 color: 'rgba(250,250,249,0.5)',
                 background: 'rgba(255,255,255,0.04)',
                 borderBottom: '2px solid rgba(255,255,255,0.12)',
-              }}
+              })}
             >
               <th className="px-4 py-3 whitespace-nowrap">Mükellef</th>
-              <th className="px-3 py-3 whitespace-nowrap" style={{ borderLeft: '1px solid rgba(255,255,255,0.08)' }}>Durum</th>
-              <th className="px-3 py-3 text-center whitespace-nowrap" style={{ borderLeft: '2px solid rgba(255,255,255,0.12)' }}>Hesaplanan KDV</th>
-              <th className="px-3 py-3 text-center whitespace-nowrap" style={{ borderLeft: '1px solid rgba(255,255,255,0.08)' }}>İndirilecek KDV</th>
-              <th className="px-3 py-3 text-center whitespace-nowrap" style={{ borderLeft: '1px solid rgba(255,255,255,0.08)' }} title="Önceki dönemden devreden KDV">Önceki Dev.</th>
-              <th className="px-3 py-3 text-center whitespace-nowrap" style={{ borderLeft: '1px solid rgba(255,255,255,0.08)' }} title="Sonraki döneme devreden KDV">Sonraki Dev.</th>
-              <th className="px-3 py-3 text-center whitespace-nowrap" style={{ borderLeft: '2px solid rgba(255,255,255,0.12)' }}>Ödenecek KDV</th>
-              <th className="px-2 py-3 text-center whitespace-nowrap" style={{ borderLeft: '1px solid rgba(255,255,255,0.08)', width: 64 }} title="Veri Güveni">Güven</th>
-              <th className="px-3 py-3 text-center whitespace-nowrap" style={{ borderLeft: '2px solid rgba(255,255,255,0.12)' }}>KDV1</th>
-              <th className="px-3 py-3 text-center whitespace-nowrap" style={{ borderLeft: '1px solid rgba(255,255,255,0.08)' }}>KDV2</th>
+              <th className="px-3 py-3 whitespace-nowrap" style={portalStyle({ borderLeft: '1px solid rgba(255,255,255,0.08)' })}>Durum</th>
+              <th className="px-3 py-3 text-center whitespace-nowrap" style={portalStyle({ borderLeft: '2px solid rgba(255,255,255,0.12)' })}>Hesaplanan KDV</th>
+              <th className="px-3 py-3 text-center whitespace-nowrap" style={portalStyle({ borderLeft: '1px solid rgba(255,255,255,0.08)' })}>İndirilecek KDV</th>
+              <th className="px-3 py-3 text-center whitespace-nowrap" style={portalStyle({ borderLeft: '1px solid rgba(255,255,255,0.08)' })} title="Önceki dönemden devreden KDV">Önceki Dev.</th>
+              <th className="px-3 py-3 text-center whitespace-nowrap" style={portalStyle({ borderLeft: '1px solid rgba(255,255,255,0.08)' })} title="Sonraki döneme devreden KDV">Sonraki Dev.</th>
+              <th className="px-3 py-3 text-center whitespace-nowrap" style={portalStyle({ borderLeft: '2px solid rgba(255,255,255,0.12)' })}>Ödenecek KDV</th>
+              <th className="px-2 py-3 text-center whitespace-nowrap" style={portalStyle({ borderLeft: '1px solid rgba(255,255,255,0.08)', width: 64 })} title="Veri Güveni">Güven</th>
+              <th className="px-3 py-3 text-center whitespace-nowrap" style={portalStyle({ borderLeft: '2px solid rgba(255,255,255,0.12)' })}>KDV1</th>
+              <th className="px-3 py-3 text-center whitespace-nowrap" style={portalStyle({ borderLeft: '1px solid rgba(255,255,255,0.08)' })}>KDV2</th>
             </tr>
           </thead>
           <tbody>
@@ -811,66 +813,66 @@ function GenelBakisPano({ donem, onSelect }: { donem: string; onSelect: (id: str
               <tr
                 key={r.mukellefId}
                 className="transition hover:bg-white/[0.03]"
-                style={{
+                style={portalStyle({
                   borderTop: idx === 0 ? 'none' : '1px solid rgba(255,255,255,0.08)',
-                }}
+                })}
               >
                 <td className="px-4 py-2">
                   <button onClick={() => onSelect(r.mukellefId)} className="inline-flex items-center gap-1.5 text-left">
-                    <span className="text-[13px] font-bold" style={{ color: '#fafaf9' }}>{r.ad}</span>
-                    <ChevronRight size={12} style={{ color: TEAL_BR, opacity: 0.6 }} />
+                    <span className="text-[13px] font-bold" style={portalStyle({ color: '#fafaf9' })}>{r.ad}</span>
+                    <ChevronRight size={12} style={portalStyle({ color: TEAL_BR, opacity: 0.6 })} />
                   </button>
-                  <div className="text-[11px] mt-0.5" style={{ color: 'rgba(250,250,249,0.35)' }}>{r.faturaAdet} fatura</div>
+                  <div className="text-[11px] mt-0.5" style={portalStyle({ color: 'rgba(250,250,249,0.35)' })}>{r.faturaAdet} fatura</div>
                 </td>
-                <td className="px-3 py-2" style={{ borderLeft: '1px solid rgba(255,255,255,0.06)' }}>
+                <td className="px-3 py-2" style={portalStyle({ borderLeft: '1px solid rgba(255,255,255,0.06)' })}>
                   <DurumBadge durum={r.durum} />
                 </td>
-                <td className="px-3 py-2 text-center" style={{ borderLeft: '2px solid rgba(255,255,255,0.1)' }}>
-                  <span className="tabular-nums text-[13px] font-semibold" style={{ color: '#fffaf0' }}>{TRY}{fmt(r.hesaplananKdv)}</span>
+                <td className="px-3 py-2 text-center" style={portalStyle({ borderLeft: '2px solid rgba(255,255,255,0.1)' })}>
+                  <span className="tabular-nums text-[13px] font-semibold" style={portalStyle({ color: '#fffaf0' })}>{TRY}{fmt(r.hesaplananKdv)}</span>
                 </td>
-                <td className="px-3 py-2 text-center" style={{ borderLeft: '1px solid rgba(255,255,255,0.06)' }}>
-                  <span className="tabular-nums text-[13px] font-semibold" style={{ color: '#fffaf0' }}>{TRY}{fmt(r.indirilecekKdv)}</span>
+                <td className="px-3 py-2 text-center" style={portalStyle({ borderLeft: '1px solid rgba(255,255,255,0.06)' })}>
+                  <span className="tabular-nums text-[13px] font-semibold" style={portalStyle({ color: '#fffaf0' })}>{TRY}{fmt(r.indirilecekKdv)}</span>
                 </td>
-                <td className="px-3 py-2 text-center" style={{ borderLeft: '1px solid rgba(255,255,255,0.06)' }}>
-                  <span className="tabular-nums text-[13px] font-semibold" style={{ color: '#fffaf0' }}>{TRY}{fmt(r.devredenKdv)}</span>
+                <td className="px-3 py-2 text-center" style={portalStyle({ borderLeft: '1px solid rgba(255,255,255,0.06)' })}>
+                  <span className="tabular-nums text-[13px] font-semibold" style={portalStyle({ color: '#fffaf0' })}>{TRY}{fmt(r.devredenKdv)}</span>
                 </td>
-                <td className="px-3 py-2 text-center" style={{ borderLeft: '1px solid rgba(255,255,255,0.06)' }}>
-                  <span className="tabular-nums text-[13px] font-semibold" style={{ color: '#fffaf0' }}>{TRY}{fmt(r.sonrakiAyaDevreden)}</span>
+                <td className="px-3 py-2 text-center" style={portalStyle({ borderLeft: '1px solid rgba(255,255,255,0.06)' })}>
+                  <span className="tabular-nums text-[13px] font-semibold" style={portalStyle({ color: '#fffaf0' })}>{TRY}{fmt(r.sonrakiAyaDevreden)}</span>
                 </td>
-                <td className="px-3 py-2 text-center" style={{ borderLeft: '2px solid rgba(255,255,255,0.1)' }}>
+                <td className="px-3 py-2 text-center" style={portalStyle({ borderLeft: '2px solid rgba(255,255,255,0.1)' })}>
                   {r.odenecekKdv > 0 ? (
-                    <span className="tabular-nums text-[13px] font-extrabold" style={{ color: STAT_RED }}>
+                    <span className="tabular-nums text-[13px] font-extrabold" style={portalStyle({ color: STAT_RED })}>
                       {TRY}{fmt(r.odenecekKdv)}
                     </span>
                   ) : (
-                    <span style={{ color: 'rgba(250,250,249,0.25)' }}>—</span>
+                    <span style={portalStyle({ color: 'rgba(250,250,249,0.25)' })}>—</span>
                   )}
                 </td>
-                <td className="px-2 py-2 text-center" style={{ borderLeft: '1px solid rgba(255,255,255,0.06)', width: 64 }}>
+                <td className="px-2 py-2 text-center" style={portalStyle({ borderLeft: '1px solid rgba(255,255,255,0.06)', width: 64 })}>
                   <GuvenDot seviye={r.veriGuveniSeviye} puan={r.veriGuveniPuan} />
                 </td>
-                <td className="px-3 py-2 text-center" style={{ borderLeft: '2px solid rgba(255,255,255,0.08)' }}>
+                <td className="px-3 py-2 text-center" style={portalStyle({ borderLeft: '2px solid rgba(255,255,255,0.08)' })}>
                   {r.kdv1Var ? (
                     <VerToggle verildi={r.kdv1Verildi} onClick={() => durumMut.mutate({ mukellefId: r.mukellefId, tip: 'KDV1', verildi: !r.kdv1Verildi })} />
                   ) : (
-                    <span style={{ color: 'rgba(250,250,249,0.2)' }}>—</span>
+                    <span style={portalStyle({ color: 'rgba(250,250,249,0.2)' })}>—</span>
                   )}
                 </td>
-                <td className="px-3 py-2 text-center" style={{ borderLeft: '1px solid rgba(255,255,255,0.06)' }}>
+                <td className="px-3 py-2 text-center" style={portalStyle({ borderLeft: '1px solid rgba(255,255,255,0.06)' })}>
                   {r.kdv2Var ? (
                     <div className="inline-flex flex-col items-center gap-1">
-                      <span className="text-[11px] tabular-nums font-semibold" style={{ color: TEAL_BR }}>{TRY}{fmt(r.kdv2TevkifatTutari)}</span>
+                      <span className="text-[11px] tabular-nums font-semibold" style={portalStyle({ color: TEAL_BR })}>{TRY}{fmt(r.kdv2TevkifatTutari)}</span>
                       <VerToggle verildi={r.kdv2Verildi} onClick={() => durumMut.mutate({ mukellefId: r.mukellefId, tip: 'KDV2', verildi: !r.kdv2Verildi })} />
                     </div>
                   ) : (
-                    <span style={{ color: 'rgba(250,250,249,0.2)' }}>—</span>
+                    <span style={portalStyle({ color: 'rgba(250,250,249,0.2)' })}>—</span>
                   )}
                 </td>
               </tr>
             ))}
             {satirlar.length === 0 && (
               <tr>
-                <td colSpan={10} className="px-3 py-10 text-center text-[13px]" style={{ color: 'rgba(250,250,249,0.4)' }}>
+                <td colSpan={10} className="px-3 py-10 text-center text-[13px]" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>
                   Bu filtrede mükellef yok.
                 </td>
               </tr>
@@ -888,18 +890,18 @@ function StatCard({ icon: Icon, label, value, accent, sub, active, onClick }: { 
       type="button"
       onClick={onClick}
       className="w-full rounded-xl border p-3 text-left transition hover:bg-white/[0.04] focus:outline-none"
-      style={{
+      style={portalStyle({
         background: active ? `${accent}1a` : 'rgba(255,255,255,0.02)',
         borderColor: active ? accent : 'rgba(255,255,255,0.06)',
         boxShadow: active ? `0 0 0 1px ${accent}55` : undefined,
-      }}
+      })}
     >
-      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider" style={{ color: active ? accent : 'rgba(250,250,249,0.45)' }}>
-        <Icon size={12} style={{ color: accent }} /> {label}
+      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider" style={portalStyle({ color: active ? accent : 'rgba(250,250,249,0.45)' })}>
+        <Icon size={12} style={portalStyle({ color: accent })} /> {label}
       </div>
       <div className="mt-1.5 flex items-baseline gap-1">
-        <span className="text-[20px] font-extrabold tabular-nums" style={{ color: '#fafaf9' }}>{value}</span>
-        {sub && <span className="text-[11px] font-semibold" style={{ color: 'rgba(250,250,249,0.4)' }}>{sub}</span>}
+        <span className="text-[20px] font-extrabold tabular-nums" style={portalStyle({ color: '#fafaf9' })}>{value}</span>
+        {sub && <span className="text-[11px] font-semibold" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>{sub}</span>}
       </div>
     </button>
   );
@@ -911,14 +913,14 @@ function DurumBadge({ durum }: { durum: 'hazir' | 'eksik' | 'bos' }) {
     eksik: { l: 'Kontrol gerekli', c: STAT_AMBER, b: 'rgba(240,183,85,0.13)' },
     bos: { l: 'Veri yok', c: 'rgba(250,250,249,0.4)', b: 'rgba(255,255,255,0.04)' },
   }[durum];
-  return <span className="inline-flex items-center rounded-md px-2 py-1 text-[10.5px] font-bold" style={{ background: map.b, color: map.c }}>{map.l}</span>;
+  return <span className="inline-flex items-center rounded-md px-2 py-1 text-[10.5px] font-bold" style={portalStyle({ background: map.b, color: map.c })}>{map.l}</span>;
 }
 
 function GuvenDot({ seviye, puan }: { seviye: string; puan: number }) {
   const c = seviye === 'kesin' ? STAT_GREEN : seviye === 'kontrol_gerekli' ? STAT_AMBER : STAT_RED;
   return (
-    <span title={`Veri güveni: %${puan}`} className="inline-flex items-center gap-1 text-[11px] tabular-nums" style={{ color: c }}>
-      <span className="h-1.5 w-1.5 rounded-full" style={{ background: c }} />%{puan}
+    <span title={`Veri güveni: %${puan}`} className="inline-flex items-center gap-1 text-[11px] tabular-nums" style={portalStyle({ color: c })}>
+      <span className="h-1.5 w-1.5 rounded-full" style={portalStyle({ background: c })} />%{puan}
     </span>
   );
 }
@@ -928,9 +930,9 @@ function VerToggle({ verildi, onClick }: { verildi: boolean; onClick: () => void
     <button
       onClick={onClick}
       className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10.5px] font-bold transition"
-      style={verildi
+      style={portalStyle(verildi
         ? { background: 'rgba(95,207,142,0.13)', borderColor: 'rgba(95,207,142,0.35)', color: STAT_GREEN }
-        : { background: 'rgba(240,183,85,0.10)', borderColor: 'rgba(240,183,85,0.30)', color: STAT_AMBER }}
+        : { background: 'rgba(240,183,85,0.10)', borderColor: 'rgba(240,183,85,0.30)', color: STAT_AMBER })}
     >
       {verildi ? <CheckCircle2 size={11} /> : null}
       {verildi ? 'Verildi' : 'Bekliyor'}
@@ -940,9 +942,9 @@ function VerToggle({ verildi, onClick }: { verildi: boolean; onClick: () => void
 
 function LoadingCard() {
   return (
-    <div className="rounded-2xl py-16 flex flex-col items-center gap-3 border" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}>
-      <Loader2 size={28} className="animate-spin" style={{ color: '#14b8a6' }} />
-      <span className="text-[12.5px]" style={{ color: 'rgba(250,250,249,0.5)' }}>Hesaplanıyor...</span>
+    <div className="rounded-2xl py-16 flex flex-col items-center gap-3 border" style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' })}>
+      <Loader2 size={28} className="animate-spin" style={portalStyle({ color: '#14b8a6' })} />
+      <span className="text-[12.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>Hesaplanıyor...</span>
     </div>
   );
 }
@@ -955,33 +957,33 @@ function ErrorCard({ error, label }: { error: any; label: string }) {
   return (
     <div
       className="rounded-2xl p-8 border"
-      style={{
+      style={portalStyle({
         background: 'rgba(239,68,68,0.06)',
         borderColor: 'rgba(239,68,68,0.25)',
-      }}
+      })}
     >
       <div className="flex items-start gap-3">
-        <AlertCircle size={22} style={{ color: '#fca5a5', flexShrink: 0, marginTop: 2 }} />
+        <AlertCircle size={22} style={portalStyle({ color: '#fca5a5', flexShrink: 0, marginTop: 2 })} />
         <div className="flex-1">
-          <h3 className="text-[14.5px] font-bold mb-1" style={{ color: '#fca5a5' }}>
+          <h3 className="text-[14.5px] font-bold mb-1" style={portalStyle({ color: '#fca5a5' })}>
             {label} verisi yüklenemedi
           </h3>
-          <p className="text-[12.5px] mb-2" style={{ color: 'rgba(252,165,165,0.85)' }}>
+          <p className="text-[12.5px] mb-2" style={portalStyle({ color: 'rgba(252,165,165,0.85)' })}>
             {isNotFound && 'Backend endpoint bulunamadı (404). Railway deploy tamamlandı mı? API build başarısız olduysa son commit canlıya çıkmamış olabilir.'}
             {isServerError && `Sunucu hatası (${status}). Backend log'unu kontrol et. Prisma schema eşleşmiyor olabilir veya mükellef bulunamıyor olabilir.`}
             {!isNotFound && !isServerError && msg}
           </p>
           <code
             className="block p-2 rounded-md text-[11px] font-mono"
-            style={{
+            style={portalStyle({
               background: 'rgba(0,0,0,0.3)',
               color: 'rgba(252,165,165,0.7)',
               wordBreak: 'break-word',
-            }}
+            })}
           >
             {status ? `HTTP ${status} · ` : ''}{msg}
           </code>
-          <p className="text-[11px] mt-2" style={{ color: 'rgba(250,250,249,0.4)' }}>
+          <p className="text-[11px] mt-2" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>
             DevTools → Network → /kdv-beyanname/on-hazirlik/{label.toLowerCase()} isteğini açıp response'a bak.
           </p>
         </div>
@@ -994,18 +996,18 @@ function EmptyStateCard({ donem }: { donem: string }) {
   return (
     <div
       className="rounded-2xl p-10 text-center border"
-      style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
+      style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' })}
     >
       <div
         className="w-14 h-14 mx-auto mb-3 rounded-2xl flex items-center justify-center"
-        style={{ background: 'rgba(20,184,166,0.1)' }}
+        style={portalStyle({ background: 'rgba(20,184,166,0.1)' })}
       >
-        <Receipt size={24} style={{ color: '#14b8a6' }} />
+        <Receipt size={24} style={portalStyle({ color: '#14b8a6' })} />
       </div>
-      <p className="text-[14px] font-semibold" style={{ color: '#fafaf9' }}>
-        Dönem <span style={{ color: '#14b8a6' }}>{donem}</span> için kayıtlı fatura bulunamadı
+      <p className="text-[14px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>
+        Dönem <span style={portalStyle({ color: '#14b8a6' })}>{donem}</span> için kayıtlı fatura bulunamadı
       </p>
-      <p className="text-[12px] mt-2 max-w-md mx-auto" style={{ color: 'rgba(250,250,249,0.55)' }}>
+      <p className="text-[12px] mt-2 max-w-md mx-auto" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>
         Önce <b>Faturalar</b> modülünden Mihsap fatura çekilmiş olmalı. Oradan "Alış Çek" ve "Satış Çek"
         butonlarıyla dönem verisi geldikten sonra burada KDV1 ön hazırlığı otomatik üretilir.
       </p>
@@ -1019,18 +1021,18 @@ function VeriGuveniPanel({ guven }: { guven?: VeriGuveni }) {
   const label = guven.seviye === 'kesin' ? 'Kesin' : guven.seviye === 'kontrol_gerekli' ? 'Kontrol gerekli' : 'Eksik';
   const pct = Math.min(100, Math.max(0, guven.puan));
   return (
-    <div className="rounded-2xl p-4 border" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' }}>
+    <div className="rounded-2xl p-4 border" style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' })}>
       <div className="mb-2.5 flex items-center justify-between gap-3">
-        <div className="text-[11px] font-bold uppercase tracking-[.12em]" style={{ color: 'rgba(250,250,249,0.5)' }}>Veri Güveni</div>
+        <div className="text-[11px] font-bold uppercase tracking-[.12em]" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>Veri Güveni</div>
         <div className="flex items-baseline gap-1.5">
-          <span className="text-[20px] font-extrabold tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color }}>%{guven.puan}</span>
-          <span className="text-[11px] font-semibold" style={{ color }}>{label}</span>
+          <span className="text-[20px] font-extrabold tabular-nums" style={portalStyle({ fontFamily: 'JetBrains Mono, monospace', color })}>%{guven.puan}</span>
+          <span className="text-[11px] font-semibold" style={portalStyle({ color })}>{label}</span>
         </div>
       </div>
-      <div className="h-2 overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.06)' }}>
-        <span className="block h-full rounded-full transition-all" style={{ width: `${pct}%`, background: color }} />
+      <div className="h-2 overflow-hidden rounded-full" style={portalStyle({ background: 'rgba(255,255,255,0.06)' })}>
+        <span className="block h-full rounded-full transition-all" style={portalStyle({ width: `${pct}%`, background: color })} />
       </div>
-      <div className="mt-2 text-[12px]" style={{ color: 'rgba(250,250,249,0.6)' }}>
+      <div className="mt-2 text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.6)' })}>
         {guven.kesinFaturaAdet}/{guven.toplamFaturaAdet} fatura kesin · {guven.kontrolGerekliAdet} kayıt kontrol bekliyor
       </div>
     </div>
@@ -1040,28 +1042,28 @@ function VeriGuveniPanel({ guven }: { guven?: VeriGuveni }) {
 function EksikVeriListesi({ items }: { items: KdvEksikVeri[] }) {
   if (!items.length) {
     return (
-      <div className="rounded-2xl p-4 border flex items-center gap-2" style={{ background: 'rgba(34,197,94,0.06)', borderColor: 'rgba(34,197,94,0.22)', color: '#86efac' }}>
+      <div className="rounded-2xl p-4 border flex items-center gap-2" style={portalStyle({ background: 'rgba(34,197,94,0.06)', borderColor: 'rgba(34,197,94,0.22)', color: '#86efac' })}>
         <CheckCircle2 size={16} />
         <span className="text-[12.5px] font-semibold">Eksik veri görünmüyor; yine de Luca karşılaştırmasını kontrol et.</span>
       </div>
     );
   }
   return (
-    <div className="rounded-2xl p-4 border" style={{ background: 'rgba(245,158,11,0.06)', borderColor: 'rgba(245,158,11,0.25)' }}>
+    <div className="rounded-2xl p-4 border" style={portalStyle({ background: 'rgba(245,158,11,0.06)', borderColor: 'rgba(245,158,11,0.25)' })}>
       <div className="flex items-center gap-2 mb-3">
-        <AlertCircle size={15} style={{ color: '#fbbf24' }} />
-        <h3 className="text-[13px] font-semibold" style={{ color: '#fde68a' }}>Eksik / Kontrol Gereken Veri</h3>
+        <AlertCircle size={15} style={portalStyle({ color: '#fbbf24' })} />
+        <h3 className="text-[13px] font-semibold" style={portalStyle({ color: '#fde68a' })}>Eksik / Kontrol Gereken Veri</h3>
       </div>
       <div className="space-y-2">
         {items.slice(0, 6).map((item, i) => (
-          <div key={`${item.tur}-${item.belgeNo || i}`} className="flex items-start justify-between gap-3 rounded-lg px-3 py-2" style={{ background: 'rgba(0,0,0,0.18)' }}>
+          <div key={`${item.tur}-${item.belgeNo || i}`} className="flex items-start justify-between gap-3 rounded-lg px-3 py-2" style={portalStyle({ background: 'rgba(0,0,0,0.18)' })}>
             <div>
-              <div className="text-[12.5px] font-semibold" style={{ color: '#fafaf9' }}>
+              <div className="text-[12.5px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>
                 {item.belgeNo ? `${item.belgeNo} · ` : ''}{item.mesaj}
               </div>
-              {item.aksiyon && <div className="text-[11.5px] mt-0.5" style={{ color: 'rgba(250,250,249,0.55)' }}>{item.aksiyon}</div>}
+              {item.aksiyon && <div className="text-[11.5px] mt-0.5" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>{item.aksiyon}</div>}
             </div>
-            <span className="text-[10.5px] uppercase font-bold" style={{ color: item.seviye === 'kritik' ? '#fca5a5' : '#fbbf24' }}>
+            <span className="text-[10.5px] uppercase font-bold" style={portalStyle({ color: item.seviye === 'kritik' ? '#fca5a5' : '#fbbf24' })}>
               {item.seviye}
             </span>
           </div>
@@ -1123,14 +1125,14 @@ function BeyannameAksiyonlari({
   });
 
   return (
-    <div className="flex items-center justify-between gap-4 flex-wrap rounded-2xl border px-5 py-4" style={{ background: 'linear-gradient(135deg,#211c18,#15120f)', borderColor: A_LINE }}>
-      <div className="text-[13.5px]" style={{ color: A_MUTED }}>Beyan hazır olduğunda işaretle</div>
+    <div className="flex items-center justify-between gap-4 flex-wrap rounded-2xl border px-5 py-4" style={portalStyle({ background: 'linear-gradient(135deg,#211c18,#15120f)', borderColor: A_LINE })}>
+      <div className="text-[13.5px]" style={portalStyle({ color: A_MUTED })}>Beyan hazır olduğunda işaretle</div>
       <div className="flex gap-2.5 flex-wrap">
         <button
           onClick={() => hazirMut.mutate()}
           disabled={hazirMut.isPending}
           className="inline-flex items-center gap-2 text-[13px] font-semibold rounded-[10px] px-4 py-2.5 disabled:opacity-50"
-          style={{ background: 'linear-gradient(135deg,#f0b755,#d9952f)', color: '#2a1c05' }}
+          style={portalStyle({ background: 'linear-gradient(135deg,#f0b755,#d9952f)', color: '#2a1c05' })}
         >
           {hazirMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
           Hazır notu düş
@@ -1139,7 +1141,7 @@ function BeyannameAksiyonlari({
           onClick={() => verildiMut.mutate()}
           disabled={verildiMut.isPending}
           className="inline-flex items-center gap-2 text-[13px] font-semibold rounded-[10px] px-4 py-2.5 disabled:opacity-50"
-          style={{ background: 'linear-gradient(135deg,#5fcf8e,#3da968)', color: '#062414' }}
+          style={portalStyle({ background: 'linear-gradient(135deg,#5fcf8e,#3da968)', color: '#062414' })}
         >
           {verildiMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
           Verildi işaretle
@@ -1190,31 +1192,31 @@ function KdvWaterfall({ sonuc }: { sonuc: Kdv1['sonuc'] }) {
   return (
     <div
       className="rounded-[18px] border p-6 sm:p-7 relative overflow-hidden"
-      style={{
+      style={portalStyle({
         background:
           `radial-gradient(560px 220px at 10% -30%, rgba(${resultRgb},.12), transparent 60%), linear-gradient(165deg,#15211e 0%, #141210 70%)`,
         borderColor: `rgba(${resultRgb},0.26)`,
         boxShadow: '0 30px 70px -36px rgba(0,0,0,.85), inset 0 1px 0 rgba(255,255,255,.04)',
-      }}
+      })}
     >
       {/* Başlık + sonuç */}
       <div className="flex items-end justify-between gap-4 flex-wrap mb-6">
         <div>
-          <div className="flex items-center gap-2 text-[12px] font-bold uppercase tracking-[.16em]" style={{ color: resultColor }}>
-            <span className="h-1.5 w-1.5 rounded-full" style={{ background: resultColor, boxShadow: `0 0 10px ${resultColor}` }} />
+          <div className="flex items-center gap-2 text-[12px] font-bold uppercase tracking-[.16em]" style={portalStyle({ color: resultColor })}>
+            <span className="h-1.5 w-1.5 rounded-full" style={portalStyle({ background: resultColor, boxShadow: `0 0 10px ${resultColor}` })} />
             KDV Akışı
           </div>
-          <h2 className="mt-1.5 font-semibold" style={{ fontFamily: SERIF, fontSize: 23, color: A_INK }}>Vergi nasıl oluştu?</h2>
-          <p className="mt-1 text-[13px] max-w-[470px]" style={{ color: A_MUTED }}>
+          <h2 className="mt-1.5 font-semibold" style={portalStyle({ fontFamily: SERIF, fontSize: 23, color: A_INK })}>Vergi nasıl oluştu?</h2>
+          <p className="mt-1 text-[13px] max-w-[470px]" style={portalStyle({ color: A_MUTED })}>
             Satıştan toplanan KDV'den indirilecek KDV ve önceki dönem devreden düşülür; kalan tutar bu dönem {odenecek ? 'ödenir' : 'sonraki aya devreder'}.
           </p>
         </div>
         <div className="text-right">
-          <div className="text-[11px] font-bold uppercase tracking-[.14em]" style={{ color: A_FAINT }}>Bu Dönem Sonucu</div>
-          <div className="mt-0.5 tabular-nums font-bold" style={{ fontFamily: SERIF, fontSize: 34, color: resultColor, textShadow: `0 0 26px rgba(${resultRgb},.45)` }}>
+          <div className="text-[11px] font-bold uppercase tracking-[.14em]" style={portalStyle({ color: A_FAINT })}>Bu Dönem Sonucu</div>
+          <div className="mt-0.5 tabular-nums font-bold" style={portalStyle({ fontFamily: SERIF, fontSize: 34, color: resultColor, textShadow: `0 0 26px rgba(${resultRgb},.45)` })}>
             {TRY}{fmt(resultVal)}
           </div>
-          <div className="text-[12px] font-semibold" style={{ color: resultColor }}>{resultLabel}</div>
+          <div className="text-[12px] font-semibold" style={portalStyle({ color: resultColor })}>{resultLabel}</div>
         </div>
       </div>
 
@@ -1226,27 +1228,27 @@ function KdvWaterfall({ sonuc }: { sonuc: Kdv1['sonuc'] }) {
           return (
             <React.Fragment key={s.nm}>
               {i > 0 && (
-                <div className="hidden lg:flex items-center justify-center flex-none" style={{ width: 38 }}>
-                  <span className="font-semibold" style={{ fontFamily: SERIF, fontSize: 24, color: A_FAINT }}>{s.op}</span>
+                <div className="hidden lg:flex items-center justify-center flex-none" style={portalStyle({ width: 38 })}>
+                  <span className="font-semibold" style={portalStyle({ fontFamily: SERIF, fontSize: 24, color: A_FAINT })}>{s.op}</span>
                 </div>
               )}
               <div
                 className="flex-1 min-w-[150px] rounded-2xl border p-4 flex flex-col"
-                style={{ borderColor: t.bd, background: t.bg }}
+                style={portalStyle({ borderColor: t.bd, background: t.bg })}
               >
                 <div className="flex items-center gap-2.5 mb-3">
                   <div
                     className="grid place-items-center rounded-[9px] flex-none"
-                    style={{ width: 32, height: 32, background: t.icoBg, border: s.kind === 'neg' ? `1px solid ${A_LINE2}` : 'none' }}
+                    style={portalStyle({ width: 32, height: 32, background: t.icoBg, border: s.kind === 'neg' ? `1px solid ${A_LINE2}` : 'none' })}
                   >
-                    <s.Ico size={16} style={{ color: t.icoClr }} />
+                    <s.Ico size={16} style={portalStyle({ color: t.icoClr })} />
                   </div>
                   <div className="min-w-0">
-                    <div className="text-[12.5px] font-bold leading-tight truncate" style={{ color: A_INK }}>{s.nm}</div>
-                    <div className="text-[10.5px]" style={{ color: A_FAINT }}>{s.sub}</div>
+                    <div className="text-[12.5px] font-bold leading-tight truncate" style={portalStyle({ color: A_INK })}>{s.nm}</div>
+                    <div className="text-[10.5px]" style={portalStyle({ color: A_FAINT })}>{s.sub}</div>
                   </div>
                 </div>
-                <div className="tabular-nums font-bold mt-auto" style={{ fontFamily: SERIF, fontSize: 23, color: sifir ? A_FAINT : t.val }}>
+                <div className="tabular-nums font-bold mt-auto" style={portalStyle({ fontFamily: SERIF, fontSize: 23, color: sifir ? A_FAINT : t.val })}>
                   {s.sign}{TRY}{fmt(s.val)}
                 </div>
               </div>
@@ -1256,12 +1258,12 @@ function KdvWaterfall({ sonuc }: { sonuc: Kdv1['sonuc'] }) {
       </div>
 
       {/* Alt özet şeridi */}
-      <div className="flex gap-5 flex-wrap mt-5 pt-4 border-t text-[12.5px]" style={{ borderColor: A_LINE, color: A_MUTED }}>
-        <span>Toplanan KDV <b className="tabular-nums ml-1" style={{ color: A_INK }}>{TRY}{fmt(sonuc.hesaplananKdv)}</b></span>
-        <span style={{ color: A_FAINT }}>·</span>
-        <span>Düşülen <b className="tabular-nums ml-1" style={{ color: A_INK }}>−{TRY}{fmt(Math.round((sonuc.indirilecekKdv + sonuc.devredenKdv) * 100) / 100)}</b></span>
-        <span style={{ color: A_FAINT }}>·</span>
-        <span>{odenecek ? 'Net ödenecek' : 'Sonraki aya'} <b className="tabular-nums ml-1" style={{ color: resultColor }}>{TRY}{fmt(resultVal)}</b></span>
+      <div className="flex gap-5 flex-wrap mt-5 pt-4 border-t text-[12.5px]" style={portalStyle({ borderColor: A_LINE, color: A_MUTED })}>
+        <span>Toplanan KDV <b className="tabular-nums ml-1" style={portalStyle({ color: A_INK })}>{TRY}{fmt(sonuc.hesaplananKdv)}</b></span>
+        <span style={portalStyle({ color: A_FAINT })}>·</span>
+        <span>Düşülen <b className="tabular-nums ml-1" style={portalStyle({ color: A_INK })}>−{TRY}{fmt(Math.round((sonuc.indirilecekKdv + sonuc.devredenKdv) * 100) / 100)}</b></span>
+        <span style={portalStyle({ color: A_FAINT })}>·</span>
+        <span>{odenecek ? 'Net ödenecek' : 'Sonraki aya'} <b className="tabular-nums ml-1" style={portalStyle({ color: resultColor })}>{TRY}{fmt(resultVal)}</b></span>
       </div>
     </div>
   );
@@ -1300,28 +1302,28 @@ function KontrolKarti({ guven, eksikVeriler, uyarilar }: { guven?: VeriGuveni; e
   });
 
   return (
-    <div className="rounded-[18px] border p-6" style={{ background: A_CARD, borderColor: A_LINE }}>
+    <div className="rounded-[18px] border p-6" style={portalStyle({ background: A_CARD, borderColor: A_LINE })}>
       <div className="mb-3 flex items-center gap-2.5">
-        <span className="text-[11px] font-bold uppercase tracking-[.12em]" style={{ color: A_FAINT }}>Kontrol</span>
-        <span className="font-semibold" style={{ fontFamily: SERIF, fontSize: 18, color: A_INK }}>Veri Güveni</span>
+        <span className="text-[11px] font-bold uppercase tracking-[.12em]" style={portalStyle({ color: A_FAINT })}>Kontrol</span>
+        <span className="font-semibold" style={portalStyle({ fontFamily: SERIF, fontSize: 18, color: A_INK })}>Veri Güveni</span>
       </div>
 
       <div className="flex items-center gap-4 flex-wrap">
-        <div className="grid place-items-center rounded-full relative flex-none" style={{ width: 84, height: 84, background: `conic-gradient(${color} 0% ${puan}%, rgba(255,250,240,.07) ${puan}% 100%)` }}>
-          <span className="absolute rounded-full" style={{ inset: 8, background: A_PANEL }} />
-          <span className="relative tabular-nums font-bold" style={{ fontFamily: SERIF, fontSize: 21, color }}>%{puan}</span>
+        <div className="grid place-items-center rounded-full relative flex-none" style={portalStyle({ width: 84, height: 84, background: `conic-gradient(${color} 0% ${puan}%, rgba(255,250,240,.07) ${puan}% 100%)` })}>
+          <span className="absolute rounded-full" style={portalStyle({ inset: 8, background: A_PANEL })} />
+          <span className="relative tabular-nums font-bold" style={portalStyle({ fontFamily: SERIF, fontSize: 21, color })}>%{puan}</span>
         </div>
         <div>
-          <div className="font-semibold" style={{ fontFamily: SERIF, fontSize: 17, color: A_INK }}>{guven?.kesinFaturaAdet ?? 0} / {guven?.toplamFaturaAdet ?? 0} fatura kesin</div>
-          <div className="text-[13px] mt-0.5" style={{ color: A_MUTED }}>{guven?.kontrolGerekliAdet ?? 0} belge kontrol bekliyor</div>
-          <span className="inline-flex items-center gap-1.5 mt-2 text-[12px] font-bold rounded-full px-2.5 py-1" style={{ color, background: `${color}1a`, border: `1px solid ${color}47` }}>
+          <div className="font-semibold" style={portalStyle({ fontFamily: SERIF, fontSize: 17, color: A_INK })}>{guven?.kesinFaturaAdet ?? 0} / {guven?.toplamFaturaAdet ?? 0} fatura kesin</div>
+          <div className="text-[13px] mt-0.5" style={portalStyle({ color: A_MUTED })}>{guven?.kontrolGerekliAdet ?? 0} belge kontrol bekliyor</div>
+          <span className="inline-flex items-center gap-1.5 mt-2 text-[12px] font-bold rounded-full px-2.5 py-1" style={portalStyle({ color, background: `${color}1a`, border: `1px solid ${color}47` })}>
             {seviye === 'kesin' ? <CheckCircle2 size={12} /> : <AlertTriangle size={12} />} {stateLabel}
           </span>
         </div>
       </div>
 
       {alerts.length === 0 && notlar.length === 0 && seviye === 'kesin' && (
-        <div className="mt-4 flex items-center gap-2 rounded-xl p-3.5 text-[13px] font-semibold" style={{ background: 'rgba(94,207,142,.08)', border: '1px solid rgba(94,207,142,.28)', color: STAT_GREEN }}>
+        <div className="mt-4 flex items-center gap-2 rounded-xl p-3.5 text-[13px] font-semibold" style={portalStyle({ background: 'rgba(94,207,142,.08)', border: '1px solid rgba(94,207,142,.28)', color: STAT_GREEN })}>
           <CheckCircle2 size={15} /> Tüm kontroller temiz — beyana hazır
         </div>
       )}
@@ -1331,18 +1333,18 @@ function KontrolKarti({ guven, eksikVeriler, uyarilar }: { guven?: VeriGuveni; e
           {alerts.slice(0, 6).map((a, i) => {
             const c = a.lvl === 'kritik' ? STAT_RED : STAT_AMBER;
             return (
-              <div key={i} className="flex gap-2 rounded-lg p-2.5 items-start" style={{ background: `${c}10`, border: `1px solid ${c}38` }}>
-                <AlertTriangle size={13} style={{ color: c, flexShrink: 0, marginTop: 2 }} />
+              <div key={i} className="flex gap-2 rounded-lg p-2.5 items-start" style={portalStyle({ background: `${c}10`, border: `1px solid ${c}38` })}>
+                <AlertTriangle size={13} style={portalStyle({ color: c, flexShrink: 0, marginTop: 2 })} />
                 <div className="min-w-0">
-                  <div className="text-[12px] font-bold flex items-center gap-1.5" style={{ color: A_INK }}>
+                  <div className="text-[12px] font-bold flex items-center gap-1.5" style={portalStyle({ color: A_INK })}>
                     {a.aksiyon || (a.lvl === 'kritik' ? 'Kritik kontrol gerekli' : 'Kontrol bekliyor')}
                     {a.count > 1 && (
-                      <span className="text-[10.5px] font-bold rounded-full px-1.5 py-0.5" style={{ color: c, background: `${c}1f` }}>×{a.count}</span>
+                      <span className="text-[10.5px] font-bold rounded-full px-1.5 py-0.5" style={portalStyle({ color: c, background: `${c}1f` })}>×{a.count}</span>
                     )}
                   </div>
-                  <div className="text-[11.5px] mt-0.5 leading-snug" style={{ color: A_MUTED }}>
+                  <div className="text-[11.5px] mt-0.5 leading-snug" style={portalStyle({ color: A_MUTED })}>
                     {a.belge && (
-                      <span className="rounded px-1.5 py-0.5 mr-1" style={{ color: STAT_AMBER, background: 'rgba(240,183,85,.08)' }}>{a.belge}</span>
+                      <span className="rounded px-1.5 py-0.5 mr-1" style={portalStyle({ color: STAT_AMBER, background: 'rgba(240,183,85,.08)' })}>{a.belge}</span>
                     )}
                     {a.msg}
                   </div>
@@ -1354,14 +1356,14 @@ function KontrolKarti({ guven, eksikVeriler, uyarilar }: { guven?: VeriGuveni; e
       )}
 
       {notlar.length > 0 && (
-        <details className="mt-3 rounded-xl border overflow-hidden [&_summary::-webkit-details-marker]:hidden" style={{ borderColor: A_LINE, background: A_BG2 }}>
-          <summary className="cursor-pointer px-4 py-3 text-[13px] font-semibold flex items-center gap-2.5 list-none" style={{ color: A_MUTED }}>
+        <details className="mt-3 rounded-xl border overflow-hidden [&_summary::-webkit-details-marker]:hidden" style={portalStyle({ borderColor: A_LINE, background: A_BG2 })}>
+          <summary className="cursor-pointer px-4 py-3 text-[13px] font-semibold flex items-center gap-2.5 list-none" style={portalStyle({ color: A_MUTED })}>
             Bilgi notları
-            <span className="text-[11px] font-bold rounded-full px-2 py-0.5" style={{ color: A_TEAL3, background: 'rgba(20,184,166,.1)', border: '1px solid rgba(20,184,166,.25)' }}>{notlar.length}</span>
-            <ChevronRight size={14} className="ml-auto" style={{ color: A_FAINT }} />
+            <span className="text-[11px] font-bold rounded-full px-2 py-0.5" style={portalStyle({ color: A_TEAL3, background: 'rgba(20,184,166,.1)', border: '1px solid rgba(20,184,166,.25)' })}>{notlar.length}</span>
+            <ChevronRight size={14} className="ml-auto" style={portalStyle({ color: A_FAINT })} />
           </summary>
           {notlar.map((n, i) => (
-            <div key={i} className="px-4 py-3 text-[12.5px] border-t" style={{ borderColor: A_LINE, color: A_MUTED }}>
+            <div key={i} className="px-4 py-3 text-[12.5px] border-t" style={portalStyle({ borderColor: A_LINE, color: A_MUTED })}>
               {n.belgeNo ? `${n.belgeNo} · ` : ''}{n.mesaj}
             </div>
           ))}
@@ -1416,19 +1418,19 @@ function DevredenKdvEditor({ data }: { data: Kdv1 }) {
   return (
     <div
       className="rounded-[14px] border px-4 py-3 flex items-center gap-4 flex-wrap"
-      style={{ background: A_CARD, borderColor: 'rgba(20,184,166,0.18)' }}
+      style={portalStyle({ background: A_CARD, borderColor: 'rgba(20,184,166,0.18)' })}
     >
       {/* Sol: etiket + büyük tutar */}
       <div className="flex items-center gap-3 flex-none">
         <div
           className="rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-[.14em]"
-          style={{ background: 'rgba(20,184,166,0.12)', color: A_TEAL3, border: '1px solid rgba(20,184,166,0.25)' }}
+          style={portalStyle({ background: 'rgba(20,184,166,0.12)', color: A_TEAL3, border: '1px solid rgba(20,184,166,0.25)' })}
         >
           İndirim
         </div>
         <div>
-          <div className="text-[11.5px] font-semibold" style={{ color: A_MUTED }}>Önceki Dönemden Devreden</div>
-          <div className="tabular-nums font-bold leading-none mt-1" style={{ fontFamily: SERIF, fontSize: 24, color: A_INK }}>
+          <div className="text-[11.5px] font-semibold" style={portalStyle({ color: A_MUTED })}>Önceki Dönemden Devreden</div>
+          <div className="tabular-nums font-bold leading-none mt-1" style={portalStyle({ fontFamily: SERIF, fontSize: 24, color: A_INK })}>
             {TRY}{fmt(data.sonuc?.devredenKdv || 0)}
           </div>
         </div>
@@ -1438,16 +1440,16 @@ function DevredenKdvEditor({ data }: { data: Kdv1 }) {
       <div className="flex-1 min-w-[200px] flex items-center gap-2 text-[11.5px] leading-snug">
         {beyannameYok ? (
           <>
-            <AlertTriangle size={13} style={{ flexShrink: 0, color: STAT_AMBER }} />
-            <span style={{ color: A_MUTED }}>
-              <b style={{ color: A_INK }}>{oncekiDonem}</b> beyannamesi bulunamadı; önceki ay verisinden hesaplandı. İnerse otomatik gelir.
+            <AlertTriangle size={13} style={portalStyle({ flexShrink: 0, color: STAT_AMBER })} />
+            <span style={portalStyle({ color: A_MUTED })}>
+              <b style={portalStyle({ color: A_INK })}>{oncekiDonem}</b> beyannamesi bulunamadı; önceki ay verisinden hesaplandı. İnerse otomatik gelir.
             </span>
           </>
         ) : (
           <>
-            <FileCheck size={13} style={{ flexShrink: 0, color: fromBeyanname ? A_TEAL3 : A_FAINT }} />
-            <span style={{ color: A_MUTED }}>
-              {fromBeyanname && <b style={{ color: A_INK }}>Beyannameler modülünden · </b>}{kaynakLabel}
+            <FileCheck size={13} style={portalStyle({ flexShrink: 0, color: fromBeyanname ? A_TEAL3 : A_FAINT })} />
+            <span style={portalStyle({ color: A_MUTED })}>
+              {fromBeyanname && <b style={portalStyle({ color: A_INK })}>Beyannameler modülünden · </b>}{kaynakLabel}
             </span>
           </>
         )}
@@ -1455,21 +1457,21 @@ function DevredenKdvEditor({ data }: { data: Kdv1 }) {
 
       {/* Sağ: input + kaydet + sonraki aya */}
       <div className="flex items-center gap-2 flex-wrap">
-        <div className="flex items-center gap-1.5 rounded-[8px] px-3 py-2" style={{ background: A_BG2, border: `1px solid ${A_LINE2}` }}>
-          <span className="text-[10px] font-bold uppercase tracking-[.1em]" style={{ color: A_FAINT }}>Bu dönem</span>
-          <span className="font-bold" style={{ color: A_FAINT }}>{TRY}</span>
+        <div className="flex items-center gap-1.5 rounded-[8px] px-3 py-2" style={portalStyle({ background: A_BG2, border: `1px solid ${A_LINE2}` })}>
+          <span className="text-[10px] font-bold uppercase tracking-[.1em]" style={portalStyle({ color: A_FAINT })}>Bu dönem</span>
+          <span className="font-bold" style={portalStyle({ color: A_FAINT })}>{TRY}</span>
           <input
             value={value}
             onChange={(e) => setValue(e.target.value)}
             className="bg-transparent border-none outline-none tabular-nums"
-            style={{ color: A_INK, fontSize: 14, fontWeight: 600, width: 100 }}
+            style={portalStyle({ color: A_INK, fontSize: 14, fontWeight: 600, width: 100 })}
           />
         </div>
         <button
           onClick={() => saveMut.mutate({ tutar: parseMoneyInput(value), mode: 'onceki' })}
           disabled={saveMut.isPending}
           className="inline-flex items-center gap-1.5 text-[12px] font-semibold rounded-[8px] px-3 py-2 disabled:opacity-50"
-          style={{ background: 'linear-gradient(135deg,#14b8a6,#0d9488)', color: '#04201c' }}
+          style={portalStyle({ background: 'linear-gradient(135deg,#14b8a6,#0d9488)', color: '#04201c' })}
         >
           <CheckCircle2 size={13} /> Kaydet
         </button>
@@ -1477,9 +1479,9 @@ function DevredenKdvEditor({ data }: { data: Kdv1 }) {
           onClick={() => saveMut.mutate({ tutar: sonraki, mode: 'sonraki' })}
           disabled={saveMut.isPending || sonraki <= 0}
           className="inline-flex items-center gap-1.5 text-[12px] font-semibold rounded-[8px] px-3 py-2 border disabled:opacity-40"
-          style={{ background: 'transparent', borderColor: A_LINE2, color: A_MUTED }}
+          style={portalStyle({ background: 'transparent', borderColor: A_LINE2, color: A_MUTED })}
         >
-          Sonraki aya: <b className="tabular-nums" style={{ color: A_INK }}>{TRY}{fmt(sonraki)}</b>
+          Sonraki aya: <b className="tabular-nums" style={portalStyle({ color: A_INK })}>{TRY}{fmt(sonraki)}</b>
         </button>
       </div>
     </div>
@@ -1564,8 +1566,8 @@ function Kdv1View({ data, isBilanco }: { data: Kdv1; isBilanco: boolean }) {
           {lucaKontrol.mizanVar && (
             <div>
               <div className="mb-2.5 flex items-center gap-2">
-                <Sparkles size={14} style={{ color: '#14b8a6' }} />
-                <h3 className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>Luca Çapraz Kontrol</h3>
+                <Sparkles size={14} style={portalStyle({ color: '#14b8a6' })} />
+                <h3 className="text-[13px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>Luca Çapraz Kontrol</h3>
               </div>
               <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
                 <LucaCrossCard hesap="391 · Hesaplanan" mihsap={displaySatis.toplamHesaplananKdv} luca={lucaKontrol.luca391Bakiye} fark={lucaKontrol.fark391} />
@@ -1651,14 +1653,14 @@ function IsletmeGgFetchPanel({ data, hesaplanan, indirilecek }: { data: Kdv1; he
   })();
 
   return (
-    <div className="rounded-2xl border p-5 space-y-3" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' }}>
+    <div className="rounded-2xl border p-5 space-y-3" style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' })}>
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
-            <Sparkles size={14} style={{ color: '#14b8a6' }} />
-            <h3 className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>Luca Gelir-Gider Çapraz Kontrol</h3>
+            <Sparkles size={14} style={portalStyle({ color: '#14b8a6' })} />
+            <h3 className="text-[13px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>Luca Gelir-Gider Çapraz Kontrol</h3>
           </div>
-          <p className="text-[11.5px] mt-1.5" style={{ color: 'rgba(250,250,249,0.55)' }}>
+          <p className="text-[11.5px] mt-1.5" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>
             {gg?.cekildiAt
               ? `Son çekim: ${new Date(gg.cekildiAt).toLocaleString('tr-TR')}`
               : 'İşletme defteri usulü — mizan yerine Luca gelir-gider listesi KDV toplamı çekilir. Kontrol tamamlanınca otomatik gelir; elle de çekebilirsin.'}
@@ -1668,7 +1670,7 @@ function IsletmeGgFetchPanel({ data, hesaplanan, indirilecek }: { data: Kdv1; he
           onClick={() => fetchMut.mutate()}
           disabled={fetchMut.isPending || fetching}
           className="px-4 py-2 rounded-md text-sm font-semibold flex items-center gap-2 disabled:opacity-50 whitespace-nowrap"
-          style={{ background: '#14b8a6', color: '#0a0906' }}
+          style={portalStyle({ background: '#14b8a6', color: '#0a0906' })}
         >
           {fetchMut.isPending || fetching ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
           {fetching ? 'Çekiliyor…' : "Luca'dan Çek"}
@@ -1684,7 +1686,7 @@ function IsletmeGgFetchPanel({ data, hesaplanan, indirilecek }: { data: Kdv1; he
             onCancel={() => cancelJobMut.mutate()}
           />
           {lastLogLine && (
-            <div className="rounded-md px-3 py-2 text-[11.5px] font-mono" style={{ background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(13,148,136,0.2)', color: 'rgba(250,250,249,0.75)' }}>
+            <div className="rounded-md px-3 py-2 text-[11.5px] font-mono" style={portalStyle({ background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(13,148,136,0.2)', color: 'rgba(250,250,249,0.75)' })}>
               {lastLogLine}
             </div>
           )}
@@ -1697,7 +1699,7 @@ function IsletmeGgFetchPanel({ data, hesaplanan, indirilecek }: { data: Kdv1; he
             <LucaCrossCard hesap="Gelir KDV · Hesaplanan" mihsap={hesaplanan} luca={gg.gelirKdvToplam} fark={Math.round((hesaplanan - gg.gelirKdvToplam) * 100) / 100} />
             <LucaCrossCard hesap="Gider KDV · İndirilecek" mihsap={indirilecek} luca={gg.giderKdvToplam} fark={Math.round((indirilecek - gg.giderKdvToplam) * 100) / 100} />
           </div>
-          <div className="text-[11.5px]" style={{ color: 'rgba(250,250,249,0.5)' }}>
+          <div className="text-[11.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
             Luca gelir-gider listesindeki "Hesaplanan / İndirilecek K.D.V." toplamları.
           </div>
         </>
@@ -1804,22 +1806,22 @@ function LucaSnapshotFetchPanel({
   return (
     <div
       className="rounded-2xl p-5 border space-y-3"
-      style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
+      style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' })}
     >
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
-            <Sparkles size={14} style={{ color: 'rgba(20,184,166,0.8)' }} />
-            <h3 className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>
+            <Sparkles size={14} style={portalStyle({ color: 'rgba(20,184,166,0.8)' })} />
+            <h3 className="text-[13px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>
               Luca Mizan Çapraz Kontrol
             </h3>
           </div>
           {snap?.exists ? (
-            <p className="text-[11.5px] mt-1.5" style={{ color: 'rgba(250,250,249,0.55)' }}>
+            <p className="text-[11.5px] mt-1.5" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>
               Son çekim: <strong>{new Date(snap.cekildiAt!).toLocaleString('tr-TR')}</strong> · {snap.toplamHesapAdet} hesap satırı
             </p>
           ) : (
-            <p className="text-[11.5px] mt-1.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
+            <p className="text-[11.5px] mt-1.5" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
               KDV beyanname için bağımsız Luca mizan henüz çekilmedi.
               "Luca'dan Çek" ile mizanı al — 191 / 391 / 190 hesapları otomatik karşılaştırılır.
             </p>
@@ -1829,7 +1831,7 @@ function LucaSnapshotFetchPanel({
           onClick={() => fetchMut.mutate()}
           disabled={fetchMut.isPending || !!jobId}
           className="px-4 py-2 rounded-md text-sm font-semibold flex items-center gap-2 disabled:opacity-50 whitespace-nowrap"
-          style={{ background: '#14b8a6', color: '#0a0906' }}
+          style={portalStyle({ background: '#14b8a6', color: '#0a0906' })}
         >
           {fetchMut.isPending || jobId ? (
             <Loader2 size={14} className="animate-spin" />
@@ -1851,11 +1853,11 @@ function LucaSnapshotFetchPanel({
           {lastLogLine && (
             <div
               className="rounded-md px-3 py-2 text-[11.5px] font-mono"
-              style={{
+              style={portalStyle({
                 background: 'rgba(0,0,0,0.35)',
                 border: '1px solid rgba(13,148,136,0.2)',
                 color: 'rgba(250,250,249,0.75)',
-              }}
+              })}
             >
               {lastLogLine}
             </div>
@@ -1865,36 +1867,36 @@ function LucaSnapshotFetchPanel({
 
       {/* KDV hesap satırları — belirgin grid tablo */}
       {snap?.exists && snap.kdvSatirlari && snap.kdvSatirlari.length > 0 && (
-        <div className="rounded-2xl overflow-x-auto" style={{ border: '1px solid rgba(255,255,255,0.12)', borderLeft: '3px solid #14b8a6' }}>
+        <div className="rounded-2xl overflow-x-auto" style={portalStyle({ border: '1px solid rgba(255,255,255,0.12)', borderLeft: '3px solid #14b8a6' })}>
           <table
             className="w-full min-w-[980px] text-[13px]"
-            style={{ borderCollapse: 'collapse' }}
+            style={portalStyle({ borderCollapse: 'collapse' })}
           >
             <thead>
-              <tr style={{ color: 'rgba(255,255,255,0.55)', background: 'rgba(255,255,255,0.04)' }}>
-                <th className="text-left px-3 py-2.5 font-bold uppercase tracking-[.08em] text-[10.5px]" style={{ border: '1px solid rgba(255,255,255,0.10)' }}>Kod</th>
-                <th className="text-left px-3 py-2.5 font-bold uppercase tracking-[.08em] text-[10.5px]" style={{ border: '1px solid rgba(255,255,255,0.10)' }}>Hesap</th>
-                <th className="text-right px-3 py-2.5 font-bold uppercase tracking-[.08em] text-[10.5px]" style={{ border: '1px solid rgba(255,255,255,0.10)' }}>Borç Hareket</th>
-                <th className="text-right px-3 py-2.5 font-bold uppercase tracking-[.08em] text-[10.5px]" style={{ border: '1px solid rgba(255,255,255,0.10)' }}>Alacak Hareket</th>
-                <th className="text-right px-3 py-2.5 font-bold uppercase tracking-[.08em] text-[10.5px]" style={{ border: '1px solid rgba(255,255,255,0.10)' }}>Borç Bakiye</th>
-                <th className="text-right px-3 py-2.5 font-bold uppercase tracking-[.08em] text-[10.5px]" style={{ border: '1px solid rgba(255,255,255,0.10)' }}>Alacak Bakiye</th>
+              <tr style={portalStyle({ color: 'rgba(255,255,255,0.55)', background: 'rgba(255,255,255,0.04)' })}>
+                <th className="text-left px-3 py-2.5 font-bold uppercase tracking-[.08em] text-[10.5px]" style={portalStyle({ border: '1px solid rgba(255,255,255,0.10)' })}>Kod</th>
+                <th className="text-left px-3 py-2.5 font-bold uppercase tracking-[.08em] text-[10.5px]" style={portalStyle({ border: '1px solid rgba(255,255,255,0.10)' })}>Hesap</th>
+                <th className="text-right px-3 py-2.5 font-bold uppercase tracking-[.08em] text-[10.5px]" style={portalStyle({ border: '1px solid rgba(255,255,255,0.10)' })}>Borç Hareket</th>
+                <th className="text-right px-3 py-2.5 font-bold uppercase tracking-[.08em] text-[10.5px]" style={portalStyle({ border: '1px solid rgba(255,255,255,0.10)' })}>Alacak Hareket</th>
+                <th className="text-right px-3 py-2.5 font-bold uppercase tracking-[.08em] text-[10.5px]" style={portalStyle({ border: '1px solid rgba(255,255,255,0.10)' })}>Borç Bakiye</th>
+                <th className="text-right px-3 py-2.5 font-bold uppercase tracking-[.08em] text-[10.5px]" style={portalStyle({ border: '1px solid rgba(255,255,255,0.10)' })}>Alacak Bakiye</th>
               </tr>
             </thead>
-            <tbody style={{ color: '#fff' }}>
+            <tbody style={portalStyle({ color: '#fff' })}>
               {snap.kdvSatirlari.map((r, i) => (
-                <tr key={i} style={{ background: i % 2 ? 'rgba(255,255,255,0.022)' : 'transparent' }}>
-                  <td className="px-3 py-2.5 font-mono font-bold" style={{ color: '#2dd4bf', border: '1px solid rgba(255,255,255,0.09)' }}>{r.kod}</td>
-                  <td className="px-3 py-2.5 font-semibold" style={{ border: '1px solid rgba(255,255,255,0.09)' }}>{r.ad || '—'}</td>
-                  <td className="text-right px-3 py-2.5" style={{ border: '1px solid rgba(255,255,255,0.09)' }}>
+                <tr key={i} style={portalStyle({ background: i % 2 ? 'rgba(255,255,255,0.022)' : 'transparent' })}>
+                  <td className="px-3 py-2.5 font-mono font-bold" style={portalStyle({ color: '#2dd4bf', border: '1px solid rgba(255,255,255,0.09)' })}>{r.kod}</td>
+                  <td className="px-3 py-2.5 font-semibold" style={portalStyle({ border: '1px solid rgba(255,255,255,0.09)' })}>{r.ad || '—'}</td>
+                  <td className="text-right px-3 py-2.5" style={portalStyle({ border: '1px solid rgba(255,255,255,0.09)' })}>
                     {r.borcToplami ? <MoneyText value={r.borcToplami} size={13} /> : ''}
                   </td>
-                  <td className="text-right px-3 py-2.5" style={{ border: '1px solid rgba(255,255,255,0.09)' }}>
+                  <td className="text-right px-3 py-2.5" style={portalStyle({ border: '1px solid rgba(255,255,255,0.09)' })}>
                     {r.alacakToplami ? <MoneyText value={r.alacakToplami} size={13} /> : ''}
                   </td>
-                  <td className="text-right px-3 py-2.5" style={{ border: '1px solid rgba(255,255,255,0.09)' }}>
+                  <td className="text-right px-3 py-2.5" style={portalStyle({ border: '1px solid rgba(255,255,255,0.09)' })}>
                     {r.borcBakiye ? <MoneyText value={r.borcBakiye} size={13} /> : ''}
                   </td>
-                  <td className="text-right px-3 py-2.5" style={{ border: '1px solid rgba(255,255,255,0.09)' }}>
+                  <td className="text-right px-3 py-2.5" style={portalStyle({ border: '1px solid rgba(255,255,255,0.09)' })}>
                     {r.alacakBakiye ? <MoneyText value={r.alacakBakiye} size={13} /> : ''}
                   </td>
                 </tr>
@@ -1944,24 +1946,24 @@ function LucaCrossDetayli({
   const cellBorder = '1px solid rgba(255,255,255,0.06)';
 
   return (
-    <div className="rounded-xl border overflow-hidden" style={{ background: 'rgba(0,0,0,0.2)', borderColor: borderClr }}>
-      <div className="px-3 py-2 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-        <span className="text-[12px] font-bold" style={{ color: '#fafaf9' }}>{baslik}</span>
-        {farkliMi ? <AlertCircle size={13} style={{ color: '#fca5a5' }} /> : <CheckCircle2 size={13} style={{ color: '#5fcf8e' }} />}
+    <div className="rounded-xl border overflow-hidden" style={portalStyle({ background: 'rgba(0,0,0,0.2)', borderColor: borderClr })}>
+      <div className="px-3 py-2 flex items-center justify-between" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.06)' })}>
+        <span className="text-[12px] font-bold" style={portalStyle({ color: '#fafaf9' })}>{baslik}</span>
+        {farkliMi ? <AlertCircle size={13} style={portalStyle({ color: '#fca5a5' })} /> : <CheckCircle2 size={13} style={portalStyle({ color: '#5fcf8e' })} />}
       </div>
-      <table className="w-full text-[11.5px]" style={{ borderCollapse: 'collapse' }}>
-        <thead style={{ background: 'rgba(255,255,255,0.03)' }}>
-          <tr style={{ color: 'rgba(250,250,249,0.55)' }}>
-            <th className="text-left px-3 py-1.5 font-semibold" style={{ border: cellBorder }}>Oran</th>
-            <th className="text-right px-3 py-1.5 font-semibold" style={{ border: cellBorder }}>Mihsap</th>
-            <th className="text-right px-3 py-1.5 font-semibold" style={{ border: cellBorder }}>Luca</th>
-            <th className="text-right px-3 py-1.5 font-semibold" style={{ border: cellBorder }}>Fark</th>
+      <table className="w-full text-[11.5px]" style={portalStyle({ borderCollapse: 'collapse' })}>
+        <thead style={portalStyle({ background: 'rgba(255,255,255,0.03)' })}>
+          <tr style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>
+            <th className="text-left px-3 py-1.5 font-semibold" style={portalStyle({ border: cellBorder })}>Oran</th>
+            <th className="text-right px-3 py-1.5 font-semibold" style={portalStyle({ border: cellBorder })}>Mihsap</th>
+            <th className="text-right px-3 py-1.5 font-semibold" style={portalStyle({ border: cellBorder })}>Luca</th>
+            <th className="text-right px-3 py-1.5 font-semibold" style={portalStyle({ border: cellBorder })}>Fark</th>
           </tr>
         </thead>
-        <tbody style={{ color: 'rgba(250,250,249,0.88)' }}>
+        <tbody style={portalStyle({ color: 'rgba(250,250,249,0.88)' })}>
           {sortedOranlar.length === 0 && (
             <tr>
-              <td className="px-3 py-2 text-center" colSpan={4} style={{ border: cellBorder, color: 'rgba(250,250,249,0.45)' }}>
+              <td className="px-3 py-2 text-center" colSpan={4} style={portalStyle({ border: cellBorder, color: 'rgba(250,250,249,0.45)' })}>
                 Bu hesapta oran satırı yok
               </td>
             </tr>
@@ -1973,16 +1975,16 @@ function LucaCrossDetayli({
             const rowFark = Math.abs(fark) > 0.01;
             return (
               <tr key={oran}>
-                <td className="px-3 py-1.5 font-semibold" style={{ border: cellBorder, color: '#14b8a6' }}>%{oran}</td>
-                <td className="text-right px-3 py-1.5 tabular-nums" style={{ border: cellBorder }}>
-                  {mihsap ? <MoneyText value={mihsap} size={11.5} /> : <span style={{ color: 'rgba(250,250,249,0.35)' }}>—</span>}
+                <td className="px-3 py-1.5 font-semibold" style={portalStyle({ border: cellBorder, color: '#14b8a6' })}>%{oran}</td>
+                <td className="text-right px-3 py-1.5 tabular-nums" style={portalStyle({ border: cellBorder })}>
+                  {mihsap ? <MoneyText value={mihsap} size={11.5} /> : <span style={portalStyle({ color: 'rgba(250,250,249,0.35)' })}>—</span>}
                 </td>
-                <td className="text-right px-3 py-1.5 tabular-nums" style={{ border: cellBorder }}>
-                  {luca ? <MoneyText value={luca} size={11.5} /> : <span style={{ color: 'rgba(250,250,249,0.35)' }}>—</span>}
+                <td className="text-right px-3 py-1.5 tabular-nums" style={portalStyle({ border: cellBorder })}>
+                  {luca ? <MoneyText value={luca} size={11.5} /> : <span style={portalStyle({ color: 'rgba(250,250,249,0.35)' })}>—</span>}
                 </td>
-                <td className="text-right px-3 py-1.5 tabular-nums" style={{ border: cellBorder }}>
+                <td className="text-right px-3 py-1.5 tabular-nums" style={portalStyle({ border: cellBorder })}>
                   {fark === 0 ? (
-                    <span style={{ color: 'rgba(250,250,249,0.35)' }}>—</span>
+                    <span style={portalStyle({ color: 'rgba(250,250,249,0.35)' })}>—</span>
                   ) : (
                     <MoneyText value={fark} size={11.5} color={rowFark ? '#fca5a5' : '#5fcf8e'} strong />
                   )}
@@ -1990,17 +1992,17 @@ function LucaCrossDetayli({
               </tr>
             );
           })}
-          <tr style={{ background: 'rgba(255,255,255,0.03)' }}>
-            <td className="px-3 py-2 font-bold" style={{ border: cellBorder, color: '#fafaf9' }}>TOPLAM</td>
-            <td className="text-right px-3 py-2 tabular-nums" style={{ border: cellBorder }}>
+          <tr style={portalStyle({ background: 'rgba(255,255,255,0.03)' })}>
+            <td className="px-3 py-2 font-bold" style={portalStyle({ border: cellBorder, color: '#fafaf9' })}>TOPLAM</td>
+            <td className="text-right px-3 py-2 tabular-nums" style={portalStyle({ border: cellBorder })}>
               <MoneyText value={mihsapToplam} size={12} strong />
             </td>
-            <td className="text-right px-3 py-2 tabular-nums" style={{ border: cellBorder }}>
+            <td className="text-right px-3 py-2 tabular-nums" style={portalStyle({ border: cellBorder })}>
               <MoneyText value={lucaToplam} size={12} strong />
             </td>
-            <td className="text-right px-3 py-2 tabular-nums" style={{ border: cellBorder }}>
+            <td className="text-right px-3 py-2 tabular-nums" style={portalStyle({ border: cellBorder })}>
               {toplamFark === 0 ? (
-                <span style={{ color: '#5fcf8e' }}>—</span>
+                <span style={portalStyle({ color: '#5fcf8e' })}>—</span>
               ) : (
                 <MoneyText value={toplamFark} size={12} color={farkliMi ? '#fca5a5' : '#5fcf8e'} strong />
               )}
@@ -2030,19 +2032,19 @@ function LucaCrossCard({ hesap, mihsap, luca, fark }: { hesap: string; mihsap: n
     <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round"><path d="M5 9h14M5 15h14" /></svg>
   );
   return (
-    <div className="relative overflow-hidden rounded-2xl p-5" style={{ background: '#13100d', border: '1px solid rgba(255,255,255,0.12)' }}>
-      <span className="absolute left-0 top-0 bottom-0" style={{ width: 3, background: accent }} />
+    <div className="relative overflow-hidden rounded-2xl p-5" style={portalStyle({ background: '#13100d', border: '1px solid rgba(255,255,255,0.12)' })}>
+      <span className="absolute left-0 top-0 bottom-0" style={portalStyle({ width: 3, background: accent })} />
       {/* Başlık + karar rozeti */}
       <div className="mb-4 flex items-center justify-between">
-        <span className="text-[14.5px] font-bold" style={{ color: '#fff' }}>
+        <span className="text-[14.5px] font-bold" style={portalStyle({ color: '#fff' })}>
           {acctNum}
           {acctLabel && (
-            <span className="ml-1.5 text-[10.5px] font-semibold uppercase tracking-[.08em]" style={{ color: 'rgba(255,255,255,0.45)' }}>{acctLabel}</span>
+            <span className="ml-1.5 text-[10.5px] font-semibold uppercase tracking-[.08em]" style={portalStyle({ color: 'rgba(255,255,255,0.45)' })}>{acctLabel}</span>
           )}
         </span>
         <span
           className="inline-flex items-center gap-1.5 rounded-[11px] px-3 py-1.5 text-[12px] font-extrabold"
-          style={{ background: `rgba(${accentRgb},0.12)`, border: `1px solid rgba(${accentRgb},0.4)`, color: accent }}
+          style={portalStyle({ background: `rgba(${accentRgb},0.12)`, border: `1px solid rgba(${accentRgb},0.4)`, color: accent })}
         >
           {bekliyor ? <RefreshCw size={13} /> : farkliMi ? <AlertCircle size={14} /> : <CheckCircle2 size={14} />}
           {bekliyor ? 'Bekliyor' : farkliMi ? 'Fark var' : 'Eşit'}
@@ -2050,22 +2052,22 @@ function LucaCrossCard({ hesap, mihsap, luca, fark }: { hesap: string; mihsap: n
       </div>
       {/* Terazi: Mihsap = Luca */}
       <div className="flex items-stretch gap-3">
-        <div className="flex-1 rounded-xl px-4 py-3.5" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,250,240,0.08)' }}>
-          <div className="text-[10px] font-extrabold uppercase tracking-[.12em]" style={{ color: 'rgba(255,255,255,0.45)' }}>Mihsap</div>
-          <div className="mt-1.5">{mihsap == null ? <span style={{ color: 'rgba(255,255,255,0.35)' }}>—</span> : <MoneyText value={mihsap} size={17} strong />}</div>
+        <div className="flex-1 rounded-xl px-4 py-3.5" style={portalStyle({ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,250,240,0.08)' })}>
+          <div className="text-[10px] font-extrabold uppercase tracking-[.12em]" style={portalStyle({ color: 'rgba(255,255,255,0.45)' })}>Mihsap</div>
+          <div className="mt-1.5">{mihsap == null ? <span style={portalStyle({ color: 'rgba(255,255,255,0.35)' })}>—</span> : <MoneyText value={mihsap} size={17} strong />}</div>
         </div>
-        <div className="flex items-center justify-center" style={{ width: 38 }}>
-          <span className="flex items-center justify-center rounded-full" style={{ width: 32, height: 32, background: `rgba(${accentRgb},0.13)`, color: accent }}>{midIcon}</span>
+        <div className="flex items-center justify-center" style={portalStyle({ width: 38 })}>
+          <span className="flex items-center justify-center rounded-full" style={portalStyle({ width: 32, height: 32, background: `rgba(${accentRgb},0.13)`, color: accent })}>{midIcon}</span>
         </div>
-        <div className="flex-1 rounded-xl px-4 py-3.5" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,250,240,0.08)' }}>
-          <div className="text-[10px] font-extrabold uppercase tracking-[.12em]" style={{ color: 'rgba(255,255,255,0.45)' }}>Luca</div>
-          <div className="mt-1.5">{luca == null ? <span style={{ color: 'rgba(255,255,255,0.35)' }}>—</span> : <MoneyText value={luca} size={17} strong />}</div>
+        <div className="flex-1 rounded-xl px-4 py-3.5" style={portalStyle({ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,250,240,0.08)' })}>
+          <div className="text-[10px] font-extrabold uppercase tracking-[.12em]" style={portalStyle({ color: 'rgba(255,255,255,0.45)' })}>Luca</div>
+          <div className="mt-1.5">{luca == null ? <span style={portalStyle({ color: 'rgba(255,255,255,0.35)' })}>—</span> : <MoneyText value={luca} size={17} strong />}</div>
         </div>
       </div>
       {/* Fark */}
-      <div className="mt-4 flex items-center justify-between pt-3.5" style={{ borderTop: '1px solid rgba(255,250,240,0.08)' }}>
-        <span className="text-[11px] font-extrabold uppercase tracking-[.08em]" style={{ color: 'rgba(255,255,255,0.45)' }}>Fark</span>
-        {fark == null ? <span style={{ color: 'rgba(255,255,255,0.4)' }}>—</span> : <MoneyText value={fark} color={accent} strong size={16} />}
+      <div className="mt-4 flex items-center justify-between pt-3.5" style={portalStyle({ borderTop: '1px solid rgba(255,250,240,0.08)' })}>
+        <span className="text-[11px] font-extrabold uppercase tracking-[.08em]" style={portalStyle({ color: 'rgba(255,255,255,0.45)' })}>Fark</span>
+        {fark == null ? <span style={portalStyle({ color: 'rgba(255,255,255,0.4)' })}>—</span> : <MoneyText value={fark} color={accent} strong size={16} />}
       </div>
     </div>
   );
@@ -2086,23 +2088,23 @@ function OranTablosu({
   const toplamPay = Math.max(toplamKdv, 0.0001);
   const PILL_INK = '#08130f';
   return (
-    <div className="flex flex-col overflow-hidden rounded-2xl" style={{ background: '#13100d', border: '1px solid rgba(255,255,255,0.12)' }}>
+    <div className="flex flex-col overflow-hidden rounded-2xl" style={portalStyle({ background: '#13100d', border: '1px solid rgba(255,255,255,0.12)' })}>
       {/* Renk şeridi */}
-      <div style={{ height: 3, background: `linear-gradient(90deg, ${renk}, transparent)` }} />
+      <div style={portalStyle({ height: 3, background: `linear-gradient(90deg, ${renk}, transparent)` })} />
       {/* Başlık */}
       <div className="flex items-center justify-between gap-3 px-5 pt-4 pb-3">
         <div className="flex items-center gap-2.5">
-          <span className="h-2.5 w-2.5 rounded-full" style={{ background: renk, boxShadow: `0 0 10px ${renk}` }} />
+          <span className="h-2.5 w-2.5 rounded-full" style={portalStyle({ background: renk, boxShadow: `0 0 10px ${renk}` })} />
           <div>
-            <div className="text-[10px] font-bold uppercase tracking-[.14em]" style={{ color: 'rgba(255,255,255,0.45)' }}>{taraf} · OCR</div>
-            <div className="text-[15px] font-bold" style={{ color: '#fff' }}>{kdvBaslik}</div>
+            <div className="text-[10px] font-bold uppercase tracking-[.14em]" style={portalStyle({ color: 'rgba(255,255,255,0.45)' })}>{taraf} · OCR</div>
+            <div className="text-[15px] font-bold" style={portalStyle({ color: '#fff' })}>{kdvBaslik}</div>
           </div>
         </div>
-        <span className="rounded-full px-3 py-1 text-[11.5px] font-bold tabular-nums" style={{ background: `${renk}24`, color: renk, border: `1px solid ${renk}66` }}>{adet} fatura</span>
+        <span className="rounded-full px-3 py-1 text-[11.5px] font-bold tabular-nums" style={portalStyle({ background: `${renk}24`, color: renk, border: `1px solid ${renk}66` })}>{adet} fatura</span>
       </div>
 
       {safeOranlar.length === 0 && oranBelirsizKdv <= 0 ? (
-        <div className="py-10 text-center text-[13px]" style={{ color: 'rgba(255,255,255,0.4)' }}>
+        <div className="py-10 text-center text-[13px]" style={portalStyle({ color: 'rgba(255,255,255,0.4)' })}>
           Bu dönem için kayıt yok
         </div>
       ) : (
@@ -2110,35 +2112,35 @@ function OranTablosu({
           {safeOranlar.map((o, idx) => {
             const pay = Math.min(100, Math.max(3, Math.round((o.kdv / toplamPay) * 100)));
             return (
-              <div key={o.oran} className="py-3" style={{ borderTop: idx === 0 ? 'none' : '1px solid rgba(255,250,240,0.08)' }}>
+              <div key={o.oran} className="py-3" style={portalStyle({ borderTop: idx === 0 ? 'none' : '1px solid rgba(255,250,240,0.08)' })}>
                 <div className="mb-2 flex items-center justify-between gap-3">
                   <span className="inline-flex items-center gap-2.5">
-                    <span className="inline-flex items-center justify-center rounded-lg px-2.5 py-1 text-[13px] font-extrabold" style={{ background: renk, color: PILL_INK, minWidth: 46 }}>%{o.oran}</span>
-                    <span className="text-[12px] font-semibold tabular-nums" style={{ color: 'rgba(255,255,255,0.5)' }}>{o.adet} belge{o.matrah > 0 ? ` · ${TRY}${fmt(o.matrah)} matrah` : ''}</span>
+                    <span className="inline-flex items-center justify-center rounded-lg px-2.5 py-1 text-[13px] font-extrabold" style={portalStyle({ background: renk, color: PILL_INK, minWidth: 46 })}>%{o.oran}</span>
+                    <span className="text-[12px] font-semibold tabular-nums" style={portalStyle({ color: 'rgba(255,255,255,0.5)' })}>{o.adet} belge{o.matrah > 0 ? ` · ${TRY}${fmt(o.matrah)} matrah` : ''}</span>
                   </span>
                   <MoneyText value={o.kdv} color={renk} strong size={15} />
                 </div>
-                <div className="h-2 overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.06)' }}>
-                  <span className="block h-full rounded-full transition-all" style={{ width: `${pay}%`, background: renk }} />
+                <div className="h-2 overflow-hidden rounded-full" style={portalStyle({ background: 'rgba(255,255,255,0.06)' })}>
+                  <span className="block h-full rounded-full transition-all" style={portalStyle({ width: `${pay}%`, background: renk })} />
                 </div>
               </div>
             );
           })}
           {oranBelirsizKdv > 0 && (
-            <div className="py-3" style={{ borderTop: safeOranlar.length === 0 ? 'none' : '1px solid rgba(255,250,240,0.08)' }}>
+            <div className="py-3" style={portalStyle({ borderTop: safeOranlar.length === 0 ? 'none' : '1px solid rgba(255,250,240,0.08)' })}>
               <div className="mb-2 flex items-center justify-between gap-3">
                 <span className="inline-flex items-center gap-2.5">
-                  <span className="inline-flex items-center justify-center rounded-lg px-2.5 py-1 text-[12px] font-extrabold" style={{ background: 'rgba(240,183,85,0.18)', color: STAT_AMBER, border: `1px solid ${STAT_AMBER}55`, minWidth: 46 }}>?</span>
-                  <span className="text-[12px] font-semibold tabular-nums" style={{ color: 'rgba(255,255,255,0.5)' }}>
+                  <span className="inline-flex items-center justify-center rounded-lg px-2.5 py-1 text-[12px] font-extrabold" style={portalStyle({ background: 'rgba(240,183,85,0.18)', color: STAT_AMBER, border: `1px solid ${STAT_AMBER}55`, minWidth: 46 })}>?</span>
+                  <span className="text-[12px] font-semibold tabular-nums" style={portalStyle({ color: 'rgba(255,255,255,0.5)' })}>
                     Oran okunamadı{oranBelirsizAdet > 0 ? ` · ${oranBelirsizAdet} belge` : ''}
                   </span>
                 </span>
                 <MoneyText value={oranBelirsizKdv} color={STAT_AMBER} strong size={15} />
               </div>
-              <div className="h-2 overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.06)' }}>
-                <span className="block h-full rounded-full" style={{ width: `${Math.min(100, Math.max(3, Math.round((oranBelirsizKdv / toplamPay) * 100)))}%`, background: STAT_AMBER }} />
+              <div className="h-2 overflow-hidden rounded-full" style={portalStyle({ background: 'rgba(255,255,255,0.06)' })}>
+                <span className="block h-full rounded-full" style={portalStyle({ width: `${Math.min(100, Math.max(3, Math.round((oranBelirsizKdv / toplamPay) * 100)))}%`, background: STAT_AMBER })} />
               </div>
-              <p className="mt-1.5 text-[10.5px]" style={{ color: 'rgba(240,183,85,0.65)' }}>
+              <p className="mt-1.5 text-[10.5px]" style={portalStyle({ color: 'rgba(240,183,85,0.65)' })}>
                 Tutar Luca'dan kesin (toplama dahil) ama KDV oranı OCR/Luca kaydından okunamadı.
               </p>
             </div>
@@ -2148,10 +2150,10 @@ function OranTablosu({
 
       {/* Tevkifat alt kırılım (yalnız alış) */}
       {altSatir && (
-        <div className="grid grid-cols-2 text-[11.5px]" style={{ borderTop: '1px solid rgba(255,250,240,0.08)' }}>
+        <div className="grid grid-cols-2 text-[11.5px]" style={portalStyle({ borderTop: '1px solid rgba(255,250,240,0.08)' })}>
           {altSatir.map((a, i) => (
-            <div key={a.ad} className="px-5 py-2.5" style={{ borderRight: i === 0 ? '1px solid rgba(255,250,240,0.08)' : undefined }}>
-              <div className="flex items-center justify-between" style={{ color: 'rgba(255,255,255,0.5)' }}>
+            <div key={a.ad} className="px-5 py-2.5" style={portalStyle({ borderRight: i === 0 ? '1px solid rgba(255,250,240,0.08)' : undefined })}>
+              <div className="flex items-center justify-between" style={portalStyle({ color: 'rgba(255,255,255,0.5)' })}>
                 <span className="font-semibold">{a.ad}</span>
                 <span className="tabular-nums">{a.v.adet}×</span>
               </div>
@@ -2162,9 +2164,9 @@ function OranTablosu({
       )}
 
       {/* Toplam KDV bandı */}
-      <div className="mt-auto flex items-center justify-between px-5 py-3.5" style={{ borderTop: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.022)' }}>
-        <span className="text-[10.5px] font-extrabold uppercase tracking-[.1em]" style={{ color: renk }}>Toplam KDV</span>
-        <span className="tabular-nums" style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 20, color: renk }}>{TRY}{fmt(toplamKdv)}</span>
+      <div className="mt-auto flex items-center justify-between px-5 py-3.5" style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.022)' })}>
+        <span className="text-[10.5px] font-extrabold uppercase tracking-[.1em]" style={portalStyle({ color: renk })}>Toplam KDV</span>
+        <span className="tabular-nums" style={portalStyle({ fontFamily: SERIF, fontWeight: 700, fontSize: 20, color: renk })}>{TRY}{fmt(toplamKdv)}</span>
       </div>
     </div>
   );
@@ -2175,13 +2177,13 @@ function SummaryCard({ label, value, color, subtitle }: { label: string; value: 
   return (
     <div
       className="rounded-2xl p-4 border"
-      style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
+      style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' })}
     >
-      <div className="text-[10.5px] font-bold uppercase tracking-[.12em] mb-2" style={{ color: 'rgba(250,250,249,0.5)' }}>{label}</div>
-      <div className="text-[22px] font-bold tabular-nums" style={{ fontFamily: REPORT_FONT, color, fontVariantNumeric: 'tabular-nums', letterSpacing: 0 }}>
+      <div className="text-[10.5px] font-bold uppercase tracking-[.12em] mb-2" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>{label}</div>
+      <div className="text-[22px] font-bold tabular-nums" style={portalStyle({ fontFamily: REPORT_FONT, color, fontVariantNumeric: 'tabular-nums', letterSpacing: 0 })}>
         {countCard ? value : <MoneyText value={value} color={color} strong size={22} />}
       </div>
-      <div className="text-[11px] mt-1" style={{ color: 'rgba(250,250,249,0.4)' }}>{subtitle}</div>
+      <div className="text-[11px] mt-1" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>{subtitle}</div>
     </div>
   );
 }
@@ -2197,13 +2199,13 @@ function Kdv2View({ data }: { data: Kdv2 }) {
       {uyarilar.length > 0 && (
         <div
           className="rounded-2xl p-4 border"
-          style={{ background: 'rgba(245,158,11,0.08)', borderColor: 'rgba(245,158,11,0.3)' }}
+          style={portalStyle({ background: 'rgba(245,158,11,0.08)', borderColor: 'rgba(245,158,11,0.3)' })}
         >
           <div className="flex items-start gap-2">
-            <AlertCircle size={16} style={{ color: '#fbbf24', flexShrink: 0, marginTop: 2 }} />
+            <AlertCircle size={16} style={portalStyle({ color: '#fbbf24', flexShrink: 0, marginTop: 2 })} />
             <div className="space-y-1">
               {uyarilar.map((u, i) => (
-                <p key={i} className="text-[12.5px]" style={{ color: '#fde68a' }}>{u}</p>
+                <p key={i} className="text-[12.5px]" style={portalStyle({ color: '#fde68a' })}>{u}</p>
               ))}
             </div>
           </div>
@@ -2230,20 +2232,20 @@ function Kdv2View({ data }: { data: Kdv2 }) {
       {/* Detay satır tablosu */}
       <div
         className="rounded-2xl border overflow-hidden"
-        style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
+        style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' })}
       >
-        <div className="px-5 py-3 border-b" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
-          <h3 className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>Tevkifat Detayı</h3>
+        <div className="px-5 py-3 border-b" style={portalStyle({ borderColor: 'rgba(255,255,255,0.05)' })}>
+          <h3 className="text-[13px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>Tevkifat Detayı</h3>
         </div>
         {tevkifatli.length === 0 ? (
-          <div className="py-8 text-center text-[12.5px]" style={{ color: 'rgba(250,250,249,0.4)' }}>
+          <div className="py-8 text-center text-[12.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>
             Bu dönemde tevkifatlı alış faturası yok
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-[12px]">
               <thead>
-                <tr style={{ color: 'rgba(250,250,249,0.5)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                <tr style={portalStyle({ color: 'rgba(250,250,249,0.5)', borderBottom: '1px solid rgba(255,255,255,0.05)' })}>
                   <th className="text-left px-4 py-2">Belge No</th>
                   <th className="text-left px-4 py-2">Satıcı</th>
                   <th className="text-left px-4 py-2">Tarih</th>
@@ -2254,16 +2256,16 @@ function Kdv2View({ data }: { data: Kdv2 }) {
                   <th className="text-right px-4 py-2">Tevkifat</th>
                 </tr>
               </thead>
-              <tbody style={{ color: '#fafaf9' }}>
+              <tbody style={portalStyle({ color: '#fafaf9' })}>
                 {tevkifatli.map((t, i) => (
-                  <tr key={i} style={{ borderTop: '1px solid rgba(255,255,255,0.03)' }}>
-                    <td className="px-4 py-2 tabular-nums" style={{ color: '#14b8a6', fontFamily: 'JetBrains Mono, monospace' }}>{t.belgeNo}</td>
+                  <tr key={i} style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.03)' })}>
+                    <td className="px-4 py-2 tabular-nums" style={portalStyle({ color: '#14b8a6', fontFamily: 'JetBrains Mono, monospace' })}>{t.belgeNo}</td>
                     <td className="px-4 py-2 truncate max-w-[220px]">{t.satici}</td>
-                    <td className="px-4 py-2 tabular-nums" style={{ color: 'rgba(250,250,249,0.55)' }}>{t.tarih}</td>
+                    <td className="px-4 py-2 tabular-nums" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>{t.tarih}</td>
                     <td className="px-4 py-2 text-right"><MoneyText value={t.matrah} /></td>
                     <td className="px-4 py-2 text-right"><MoneyText value={t.hesaplananKdv} /></td>
-                    <td className="px-4 py-2 text-center font-semibold" style={{ color: t.tevkifatKodu === 'KOD_YOK' ? '#fbbf24' : '#93c5fd' }}>{t.tevkifatKodu}</td>
-                    <td className="px-4 py-2 text-center font-semibold" style={{ color: '#c9a77c' }}>{t.tevkifatOrani}</td>
+                    <td className="px-4 py-2 text-center font-semibold" style={portalStyle({ color: t.tevkifatKodu === 'KOD_YOK' ? '#fbbf24' : '#93c5fd' })}>{t.tevkifatKodu}</td>
+                    <td className="px-4 py-2 text-center font-semibold" style={portalStyle({ color: '#c9a77c' })}>{t.tevkifatOrani}</td>
                     <td className="px-4 py-2 text-right"><MoneyText value={t.tevkifatTutari} color="#fca5a5" strong /></td>
                   </tr>
                 ))}
@@ -2277,25 +2279,25 @@ function Kdv2View({ data }: { data: Kdv2 }) {
       {tevkifatKodlari.length > 0 && (
         <div
           className="rounded-2xl p-5 border"
-          style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
+          style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' })}
         >
-          <h3 className="text-[13px] font-semibold mb-3" style={{ color: '#fafaf9' }}>Tevkifat Oran Özeti</h3>
+          <h3 className="text-[13px] font-semibold mb-3" style={portalStyle({ color: '#fafaf9' })}>Tevkifat Oran Özeti</h3>
           <table className="w-full text-[12px]">
             <thead>
-              <tr style={{ color: 'rgba(250,250,249,0.5)' }}>
+              <tr style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
                 <th className="text-left py-2">Oran</th>
                 <th className="text-right py-2">Matrah</th>
                 <th className="text-right py-2">Tevkifat</th>
                 <th className="text-right py-2">Adet</th>
               </tr>
             </thead>
-            <tbody style={{ color: '#fafaf9' }}>
+            <tbody style={portalStyle({ color: '#fafaf9' })}>
               {data.tevkifatKodlari.map((k) => (
-                <tr key={k.kod} style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
-                  <td className="py-2 font-semibold" style={{ color: '#c9a77c' }}>{k.kod}</td>
+                <tr key={k.kod} style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.04)' })}>
+                  <td className="py-2 font-semibold" style={portalStyle({ color: '#c9a77c' })}>{k.kod}</td>
                   <td className="text-right"><MoneyText value={k.matrah} /></td>
                   <td className="text-right"><MoneyText value={k.tevkifat} color="#fca5a5" /></td>
-                  <td className="text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace' }}>{k.adet}</td>
+                  <td className="text-right tabular-nums" style={portalStyle({ fontFamily: 'JetBrains Mono, monospace' })}>{k.adet}</td>
                 </tr>
               ))}
             </tbody>

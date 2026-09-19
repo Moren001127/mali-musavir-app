@@ -1,4 +1,5 @@
 'use client';
+import { ownedThemeStyle } from '@/components/layout/owned-theme';
 
 /**
  * Global Luca Ajanı durum panel'i — üst bar'da (TopBar) yer alır, her
@@ -203,36 +204,36 @@ export default function LucaAgentPanel() {
       : `Luca ajanı · ${runningCount} çalışıyor${pendingCount > 0 ? `, ${pendingCount} sırada` : ''}`;
 
   return (
-    <div ref={wrapperRef} className="relative">
+    <div data-moren-owned="surface" ref={wrapperRef} className="relative">
       {/* COMPACT TRIGGER — TopBar'ın diğer butonları (Tema, Bildirim) ile aynı yükseklikte */}
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         className="relative h-9 px-3 rounded-lg flex items-center gap-2 transition-all hover:brightness-110"
-        style={{
+        style={ownedThemeStyle({
           background: activeChallenge
             ? 'rgba(245,158,11,0.16)'
             : isIdle ? 'rgba(34,197,94,0.06)' : 'rgba(245,158,11,0.08)',
           border: `1px solid ${activeChallenge ? 'rgba(245,158,11,0.55)' : isIdle ? 'rgba(34,197,94,0.22)' : 'rgba(245,158,11,0.3)'}`,
-        }}
+        })}
         aria-label={lucaStatusLabel}
       >
         <div className="relative">
-          {activeChallenge ? <KeyRound size={14} style={{ color: statusColor }} /> : <Bot size={14} style={{ color: statusColor }} />}
+          {activeChallenge ? <KeyRound size={14} style={ownedThemeStyle({ color: statusColor })} /> : <Bot size={14} style={ownedThemeStyle({ color: statusColor })} />}
           {(!isIdle || activeChallenge) && (
             <span
               className="absolute -top-1 -right-1 w-2 h-2 rounded-full animate-pulse"
-              style={{ background: statusColor }}
+              style={ownedThemeStyle({ background: statusColor })}
             />
           )}
         </div>
-        <span className="text-[12px] font-semibold tabular-nums" style={{ color: statusColor }}>
+        <span className="text-[12px] font-semibold tabular-nums" style={ownedThemeStyle({ color: statusColor })}>
           {activeChallenge ? 'Kod' : isIdle ? 'Luca' : `${totalActive}`}
         </span>
         {activeChallenge && (
           <span
             className="text-[10px] font-bold rounded-full px-1.5 min-w-[18px] h-[18px] flex items-center justify-center"
-            style={{ background: statusColor, color: '#0f0d0b' }}
+            style={ownedThemeStyle({ background: statusColor, color: '#0f0d0b' })}
           >
             !
           </span>
@@ -240,7 +241,7 @@ export default function LucaAgentPanel() {
         {!isIdle && !activeChallenge && (
           <span
             className="text-[10px] font-bold rounded-full px-1.5 min-w-[18px] h-[18px] flex items-center justify-center"
-            style={{ background: statusColor, color: '#0f0d0b' }}
+            style={ownedThemeStyle({ background: statusColor, color: '#0f0d0b' })}
           >
             {runningCount > 0 ? '●' : '◌'}
           </span>
@@ -251,27 +252,27 @@ export default function LucaAgentPanel() {
       {open && (
         <div
           className="absolute right-0 mt-2 rounded-xl overflow-hidden z-50"
-          style={{
+          style={ownedThemeStyle({
             width: 420,
             maxWidth: 'calc(100vw - 32px)',
             background: 'rgba(15,13,11,0.98)',
             border: '1px solid rgba(212,184,118,0.2)',
             boxShadow: '0 18px 60px rgba(0,0,0,0.55), 0 0 0 1px rgba(212,184,118,0.08)',
             backdropFilter: 'blur(14px)',
-          }}
+          })}
         >
           {/* HEADER */}
           <div
             className="px-4 py-3 flex items-center justify-between"
-            style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'rgba(212,184,118,0.05)' }}
+            style={ownedThemeStyle({ borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'rgba(212,184,118,0.05)' })}
           >
             <div className="flex items-center gap-2">
-              <Bot size={14} style={{ color: GOLD }} />
+              <Bot size={14} style={ownedThemeStyle({ color: GOLD })} />
               <div>
-                <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color: GOLD, letterSpacing: '0.14em' }}>
+                <p className="text-[11px] font-bold uppercase tracking-wider" style={ownedThemeStyle({ color: GOLD, letterSpacing: '0.14em' })}>
                   Luca Ajanı
                 </p>
-                <p className="text-[11px] font-medium" style={{ color: statusColor }}>
+                <p className="text-[11px] font-medium" style={ownedThemeStyle({ color: statusColor })}>
                   {activeChallenge ? 'Güvenlik kodu bekliyor' : isIdle ? 'Boşta · son işten beri bekliyor' : `${runningCount} çalışıyor${pendingCount > 0 ? ` · ${pendingCount} sırada` : ''}`}
                 </p>
               </div>
@@ -279,7 +280,7 @@ export default function LucaAgentPanel() {
             <button
               onClick={() => setOpen(false)}
               className="p-1.5 rounded-md hover:bg-white/10 transition"
-              style={{ color: 'rgba(250,250,249,0.5)' }}
+              style={ownedThemeStyle({ color: 'rgba(250,250,249,0.5)' })}
               title="Kapat"
             >
               <X size={13} />
@@ -290,10 +291,10 @@ export default function LucaAgentPanel() {
               Luca ajanını seçer (localStorage); e-Arşiv/Mizan/e-Defter/KDV sorguları
               targetDeviceId ile YALNIZ o ajana gider. Seçilmezse ve birden çok ajan
               çevrimiçiyse iş serbest kuyruğa düşer (herhangi biri alabilir). */}
-          <div className="px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          <div className="px-4 py-3" style={ownedThemeStyle({ borderBottom: '1px solid rgba(255,255,255,0.06)' })}>
             <div className="flex items-center gap-2 mb-2">
-              <Laptop size={13} style={{ color: GOLD }} />
-              <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: GOLD, letterSpacing: '0.1em' }}>
+              <Laptop size={13} style={ownedThemeStyle({ color: GOLD })} />
+              <span className="text-[11px] font-bold uppercase tracking-wider" style={ownedThemeStyle({ color: GOLD, letterSpacing: '0.1em' })}>
                 Bu bilgisayarın Luca ajanı
               </span>
             </div>
@@ -305,7 +306,7 @@ export default function LucaAgentPanel() {
                 toast.success(v ? 'Bu bilgisayarın sorguları artık seçili ajandan yapılacak' : 'Ajan seçimi kaldırıldı (otomatik)');
               }}
               className="w-full px-2.5 py-2 rounded-md text-[12px] outline-none"
-              style={{ background: 'rgba(15,13,11,0.92)', color: '#fafaf9', border: '1px solid rgba(255,255,255,0.1)' }}
+              style={ownedThemeStyle({ background: 'rgba(15,13,11,0.92)', color: '#fafaf9', border: '1px solid rgba(255,255,255,0.1)' })}
             >
               <option value="">Otomatik (tek ajan varsa o)</option>
               {allDevices
@@ -324,7 +325,7 @@ export default function LucaAgentPanel() {
                   </option>
                 ))}
             </select>
-            <p className="mt-1.5 text-[10.5px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
+            <p className="mt-1.5 text-[10.5px]" style={ownedThemeStyle({ color: 'rgba(250,250,249,0.45)' })}>
               {onlineDevices.length > 1 && !preferredIdRaw
                 ? '⚠ Birden çok ajan çevrimiçi — seçim yapılmazsa sorgu herhangi bir bilgisayardan çalışabilir.'
                 : 'Seçim yalnız bu tarayıcı için geçerlidir; her bilgisayarda bir kez seçilir.'}
@@ -332,22 +333,22 @@ export default function LucaAgentPanel() {
           </div>
 
           {activeChallenge && (
-            <div className="px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'rgba(245,158,11,0.08)' }}>
+            <div className="px-4 py-3" style={ownedThemeStyle({ borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'rgba(245,158,11,0.08)' })}>
               <div className="flex items-center justify-between gap-3 mb-3">
                 <div className="flex items-center gap-2 min-w-0">
-                  <KeyRound size={13} style={{ color: '#fbbf24' }} />
-                  <span className="text-[12px] font-semibold truncate" style={{ color: '#fafaf9' }}>
+                  <KeyRound size={13} style={ownedThemeStyle({ color: '#fbbf24' })} />
+                  <span className="text-[12px] font-semibold truncate" style={ownedThemeStyle({ color: '#fafaf9' })}>
                     Luca güvenlik kodu gerekiyor
                   </span>
                 </div>
-                <Link href="/panel/ajanlar/luca" className="text-[10.5px] font-semibold shrink-0" style={{ color: GOLD }}>
+                <Link href="/panel/ajanlar/luca" className="text-[10.5px] font-semibold shrink-0" style={ownedThemeStyle({ color: GOLD })}>
                   Oturum
                 </Link>
               </div>
               <div className="flex items-center gap-2">
                 {activeChallenge.captchaImage && (
-                  <div className="rounded-md px-2 py-1 shrink-0" style={{ background: '#f8fafc' }}>
-                    <img src={activeChallenge.captchaImage} alt="Luca güvenlik kodu" style={{ width: 112, height: 42, objectFit: 'contain' }} />
+                  <div className="rounded-md px-2 py-1 shrink-0" style={ownedThemeStyle({ background: '#f8fafc' })}>
+                    <img src={activeChallenge.captchaImage} alt="Luca güvenlik kodu" style={ownedThemeStyle({ width: 112, height: 42, objectFit: 'contain' })} />
                   </div>
                 )}
                 <input
@@ -358,14 +359,14 @@ export default function LucaAgentPanel() {
                   }}
                   placeholder="Kod"
                   className="min-w-0 flex-1 px-2.5 py-2 rounded-md text-[12px] outline-none"
-                  style={{ background: 'rgba(15,13,11,0.92)', color: '#fafaf9', border: '1px solid rgba(255,255,255,0.1)' }}
+                  style={ownedThemeStyle({ background: 'rgba(15,13,11,0.92)', color: '#fafaf9', border: '1px solid rgba(255,255,255,0.1)' })}
                 />
                 <button
                   type="button"
                   disabled={answerCaptchaMut.isPending || captchaText.trim().length < 3}
                   onClick={() => answerCaptchaMut.mutate()}
                   className="px-3 py-2 rounded-md text-[11px] font-semibold disabled:opacity-50"
-                  style={{ background: GOLD, color: '#111827' }}
+                  style={ownedThemeStyle({ background: GOLD, color: '#111827' })}
                 >
                   {answerCaptchaMut.isPending ? '...' : 'Gönder'}
                 </button>
@@ -374,14 +375,14 @@ export default function LucaAgentPanel() {
           )}
 
           {/* JOB LIST */}
-          <div className="overflow-y-auto" style={{ maxHeight: 520 }}>
+          <div className="overflow-y-auto" style={ownedThemeStyle({ maxHeight: 520 })}>
             {activeJobs.length === 0 ? (
               <div className="px-4 py-8 text-center">
-                <CheckCircle2 size={24} className="mx-auto mb-2" style={{ color: '#22c55e' }} />
-                <p className="text-[13px] font-medium" style={{ color: 'rgba(250,250,249,0.65)' }}>
+                <CheckCircle2 size={24} className="mx-auto mb-2" style={ownedThemeStyle({ color: '#22c55e' })} />
+                <p className="text-[13px] font-medium" style={ownedThemeStyle({ color: 'rgba(250,250,249,0.65)' })}>
                   Luca ajanı şu an boşta
                 </p>
-                <p className="text-[11px] mt-1" style={{ color: 'rgba(250,250,249,0.35)' }}>
+                <p className="text-[11px] mt-1" style={ownedThemeStyle({ color: 'rgba(250,250,249,0.35)' })}>
                   Yeni iş tetiklediğinde burada anlık görürsün
                 </p>
               </div>
@@ -398,40 +399,40 @@ export default function LucaAgentPanel() {
                   <div
                     key={job.id}
                     className="px-4 py-3 transition-colors hover:bg-white/[0.03]"
-                    style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}
+                    style={ownedThemeStyle({ borderBottom: '1px solid rgba(255,255,255,0.04)' })}
                   >
                     {/* Üst satır: tip rozeti + dönem + süre */}
                     <div className="flex items-center gap-2 mb-1.5">
                       {needsCaptcha ? (
-                        <KeyRound size={11} className="shrink-0" style={{ color: '#fbbf24' }} />
+                        <KeyRound size={11} className="shrink-0" style={ownedThemeStyle({ color: '#fbbf24' })} />
                       ) : isRunning ? (
-                        <Loader2 size={11} className="animate-spin shrink-0" style={{ color: '#f59e0b' }} />
+                        <Loader2 size={11} className="animate-spin shrink-0" style={ownedThemeStyle({ color: '#f59e0b' })} />
                       ) : (
-                        <AlertCircle size={11} className="shrink-0" style={{ color: 'rgba(250,250,249,0.4)' }} />
+                        <AlertCircle size={11} className="shrink-0" style={ownedThemeStyle({ color: 'rgba(250,250,249,0.4)' })} />
                       )}
                       <span
                         className="text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 uppercase tracking-wide"
-                        style={{ background: `${tipColor}22`, color: tipColor }}
+                        style={ownedThemeStyle({ background: `${tipColor}22`, color: tipColor })}
                       >
                         {tipLabel}
                       </span>
                       {job.donem && (
-                        <span className="text-[10.5px] tabular-nums shrink-0" style={{ color: 'rgba(250,250,249,0.55)' }}>
+                        <span className="text-[10.5px] tabular-nums shrink-0" style={ownedThemeStyle({ color: 'rgba(250,250,249,0.55)' })}>
                           {job.donem}
                         </span>
                       )}
-                      <span className="text-[10.5px] tabular-nums ml-auto shrink-0" style={{ color: 'rgba(250,250,249,0.42)' }}>
+                      <span className="text-[10.5px] tabular-nums ml-auto shrink-0" style={ownedThemeStyle({ color: 'rgba(250,250,249,0.42)' })}>
                         {timeSince(refTime)}
                       </span>
                     </div>
                     {/* Mükellef adı */}
-                    <p className="text-[12.5px] font-semibold truncate mb-1" style={{ color: '#fafaf9' }} title={taxpayerName(tp)}>
+                    <p className="text-[12.5px] font-semibold truncate mb-1" style={ownedThemeStyle({ color: '#fafaf9' })} title={taxpayerName(tp)}>
                       {taxpayerName(tp)}
                     </p>
                     {/* Son log satırı */}
                     <p
                       className="text-[11px] truncate"
-                      style={{ color: 'rgba(250,250,249,0.55)', fontFamily: 'Manrope, Inter, system-ui, sans-serif' }}
+                      style={ownedThemeStyle({ color: 'rgba(250,250,249,0.55)', fontFamily: 'Manrope, Inter, system-ui, sans-serif' })}
                       title={lastLogLine(job.errorMsg)}
                     >
                       {lastLogLine(job.errorMsg)}
@@ -444,11 +445,11 @@ export default function LucaAgentPanel() {
                         }}
                         disabled={cancelMut.isPending}
                         className="text-[10.5px] px-2.5 py-1 rounded-md transition hover:brightness-110 disabled:opacity-50 font-semibold"
-                        style={{
+                        style={ownedThemeStyle({
                           background: 'rgba(239,68,68,0.1)',
                           color: '#ef4444',
                           border: '1px solid rgba(239,68,68,0.22)',
-                        }}
+                        })}
                       >
                         İptal
                       </button>

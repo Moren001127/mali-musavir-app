@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { taxpayerApi } from '@/lib/taxpayer-api';
 import { Section, Empty, Spinner, PageTitle, Th, THead, openBelge, ozetBelge } from '../_lib/shared';
@@ -41,9 +43,9 @@ export default function MukellefTebligatlar() {
       {isLoading ? <Spinner /> : (
         <>
           {okunmamis > 0 && (
-            <div className="flex items-center gap-2.5 rounded-2xl px-4 py-3" style={{ background: `${SARI}14`, border: `1px solid ${SARI}3a` }}>
-              <BellDot size={16} style={{ color: SARI }} />
-              <span className="text-[13px]" style={{ color: '#fafaf9' }}>
+            <div className="flex items-center gap-2.5 rounded-2xl px-4 py-3" style={portalStyle({ background: `${SARI}14`, border: `1px solid ${SARI}3a` })}>
+              <BellDot size={16} style={portalStyle({ color: SARI })} />
+              <span className="text-[13px]" style={portalStyle({ color: '#fafaf9' })}>
                 <strong>{okunmamis}</strong> okunmamış e-Tebligatınız var. Açtığınızda okundu olarak işaretlenir.
               </span>
             </div>
@@ -64,16 +66,16 @@ export default function MukellefTebligatlar() {
                     {liste.map((t: any) => {
                       const okundu = !!t.viewedAt;
                       return (
-                        <tr key={t.id} className="border-t" style={{ borderColor: 'rgba(255,255,255,0.055)' }}>
+                        <tr key={t.id} className="border-t" style={portalStyle({ borderColor: 'rgba(255,255,255,0.055)' })}>
                           <td className="px-4 py-3">
-                            <div className="text-[12.5px] font-semibold max-w-[320px] truncate" style={{ color: '#fafaf9' }}>{t.kurumAciklama || t.title || '—'}</div>
-                            {t.altKurum && <div className="text-[11px] mt-0.5" style={{ color: 'rgba(250,250,249,0.4)' }}>{t.altKurum}</div>}
+                            <div className="text-[12.5px] font-semibold max-w-[320px] truncate" style={portalStyle({ color: '#fafaf9' })}>{t.kurumAciklama || t.title || '—'}</div>
+                            {t.altKurum && <div className="text-[11px] mt-0.5" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>{t.altKurum}</div>}
                           </td>
-                          <td className="px-4 py-3 text-[12.5px] tabular-nums" style={{ color: 'rgba(250,250,249,0.55)' }}>{t.referenceNo || '—'}</td>
-                          <td className="px-4 py-3 text-[12.5px] tabular-nums" style={{ color: 'rgba(250,250,249,0.7)' }}>{fmtTarih(t.tebligZamani || t.issuedAt || t.receivedAt || t.createdAt)}</td>
+                          <td className="px-4 py-3 text-[12.5px] tabular-nums" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>{t.referenceNo || '—'}</td>
+                          <td className="px-4 py-3 text-[12.5px] tabular-nums" style={portalStyle({ color: 'rgba(250,250,249,0.7)' })}>{fmtTarih(t.tebligZamani || t.issuedAt || t.receivedAt || t.createdAt)}</td>
                           <td className="px-4 py-3 text-center">
-                            <span className="inline-flex items-center gap-1.5 text-[12px] font-semibold" style={{ color: okundu ? YESIL : KIRMIZI }}>
-                              <span style={{ width: 7, height: 7, borderRadius: '50%', background: okundu ? YESIL : KIRMIZI, display: 'inline-block' }} />
+                            <span className="inline-flex items-center gap-1.5 text-[12px] font-semibold" style={portalStyle({ color: okundu ? YESIL : KIRMIZI })}>
+                              <span style={portalStyle({ width: 7, height: 7, borderRadius: '50%', background: okundu ? YESIL : KIRMIZI, display: 'inline-block' })} />
                               {okundu ? 'Okundu' : 'Okunmadı'}
                             </span>
                           </td>
@@ -81,10 +83,10 @@ export default function MukellefTebligatlar() {
                             <div className="flex justify-end gap-1.5">
                               {t.goruntulenebilir ? (
                                 <>
-                                  <button type="button" onClick={() => ozetBelge('tebligat', t.id, undefined, t.kurumAciklama || t.title || 'e-Tebligat')} title="MOREN AI ile özetle" className="flex h-8 w-8 items-center justify-center rounded-lg transition hover:bg-white/[0.06]" style={{ border: '1px solid rgba(184,160,111,0.4)', color: '#d4b876', background: 'rgba(184,160,111,0.1)' }}><Sparkles size={15} /></button>
-                                  <button type="button" onClick={() => acVeTazele(t.id, t.kurumAciklama || t.title || 'e-Tebligat')} title="Tebligatı görüntüle" className="flex h-8 w-8 items-center justify-center rounded-lg transition hover:bg-white/[0.06]" style={{ border: `1px solid ${SARI}45`, color: SARI, background: `${SARI}12` }}><Eye size={15} /></button>
+                                  <button type="button" onClick={() => ozetBelge('tebligat', t.id, undefined, t.kurumAciklama || t.title || 'e-Tebligat')} title="MOREN AI ile özetle" className="flex h-8 w-8 items-center justify-center rounded-lg transition hover:bg-white/[0.06]" style={portalStyle({ border: '1px solid rgba(184,160,111,0.4)', color: '#d4b876', background: 'rgba(184,160,111,0.1)' })}><Sparkles size={15} /></button>
+                                  <button type="button" onClick={() => acVeTazele(t.id, t.kurumAciklama || t.title || 'e-Tebligat')} title="Tebligatı görüntüle" className="flex h-8 w-8 items-center justify-center rounded-lg transition hover:bg-white/[0.06]" style={portalStyle({ border: `1px solid ${SARI}45`, color: SARI, background: `${SARI}12` })}><Eye size={15} /></button>
                                 </>
-                              ) : <span className="text-[11px]" style={{ color: 'rgba(250,250,249,0.25)' }}>—</span>}
+                              ) : <span className="text-[11px]" style={portalStyle({ color: 'rgba(250,250,249,0.25)' })}>—</span>}
                             </div>
                           </td>
                         </tr>

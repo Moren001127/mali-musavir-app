@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 import React from 'react';
 import { BookOpen, Contact, FileText, Landmark, Mail, MessageSquareText, Shield, Sparkles, UserCog } from 'lucide-react';
 import { GOLD, HAIR, MUTED, TEXT } from '../_lib/tema';
@@ -32,7 +34,7 @@ export function SekmeCubugu({ tabs, activeTab, onChange }: { tabs: typeof REAL_T
     <nav
       role="tablist"
       className="flex overflow-x-auto border-b px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-      style={{ borderColor: HAIR, background: 'linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0.005))' }}
+      style={portalStyle({ borderColor: HAIR, background: 'linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0.005))' })}
     >
       {tabs.map((t) => {
         const Icon = t.icon;
@@ -45,13 +47,13 @@ export function SekmeCubugu({ tabs, activeTab, onChange }: { tabs: typeof REAL_T
             aria-selected={active}
             onClick={() => onChange(t.key)}
             className="relative inline-flex h-11 shrink-0 items-center gap-2 whitespace-nowrap px-3.5 text-[13px] transition-colors hover:bg-white/[0.03]"
-            style={{ color: active ? TEXT : MUTED, fontWeight: active ? 700 : 500 }}
+            style={portalStyle({ color: active ? TEXT : MUTED, fontWeight: active ? 700 : 500 })}
           >
-            <Icon size={16} style={{ color: active ? GOLD : MUTED }} />
+            <Icon size={16} style={portalStyle({ color: active ? GOLD : MUTED })} />
             <span>{t.label}</span>
             <span
               className="absolute inset-x-2 bottom-0 h-[2px] rounded-t-full transition-opacity"
-              style={{ background: GOLD, opacity: active ? 1 : 0 }}
+              style={portalStyle({ background: GOLD, opacity: active ? 1 : 0 })}
             />
           </button>
         );

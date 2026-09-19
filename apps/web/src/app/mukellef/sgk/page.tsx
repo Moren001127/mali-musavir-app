@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 import { useQuery } from '@tanstack/react-query';
 import { taxpayerApi } from '@/lib/taxpayer-api';
 import { Section, Empty, Spinner, PageTitle, Th, THead, openBelge } from '../_lib/shared';
@@ -43,22 +45,22 @@ export default function MukellefSgk() {
                   {rows.map((s) => {
                     const tahakkuk = s.belgeTuru === 'SGK_TAHAKKUK';
                     return (
-                      <tr key={s.id} className="border-t" style={{ borderColor: 'rgba(255,255,255,0.055)' }}>
-                        <td className="px-4 py-3 text-[12.5px] font-semibold tabular-nums" style={{ color: '#fafaf9' }}>{s.donem || '—'}</td>
+                      <tr key={s.id} className="border-t" style={portalStyle({ borderColor: 'rgba(255,255,255,0.055)' })}>
+                        <td className="px-4 py-3 text-[12.5px] font-semibold tabular-nums" style={portalStyle({ color: '#fafaf9' })}>{s.donem || '—'}</td>
                         <td className="px-4 py-3">
                           <span className="rounded-md px-2 py-1 text-[10.5px] font-bold"
-                            style={tahakkuk ? { color: GOLD, background: 'rgba(212,184,118,0.13)' } : { color: STEEL, background: 'rgba(157,168,183,0.14)' }}>
+                            style={portalStyle(tahakkuk ? { color: GOLD, background: 'rgba(212,184,118,0.13)' } : { color: STEEL, background: 'rgba(157,168,183,0.14)' })}>
                             {tahakkuk ? 'Tahakkuk' : 'Hizmet L.'}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-[12.5px]" style={{ color: 'rgba(250,250,249,0.55)' }}>{s.mahiyet || '—'}</td>
-                        <td className="px-4 py-3 text-right text-[12.5px] tabular-nums" style={{ color: 'rgba(250,250,249,0.7)' }}>{s.calisan || '—'}</td>
-                        <td className="px-4 py-3 text-right text-[12.5px] font-semibold tabular-nums" style={{ color: tahakkuk && s.tutar ? '#fafaf9' : 'rgba(250,250,249,0.3)' }}>{tahakkuk && s.tutar ? `${s.tutar} ₺` : '—'}</td>
+                        <td className="px-4 py-3 text-[12.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>{s.mahiyet || '—'}</td>
+                        <td className="px-4 py-3 text-right text-[12.5px] tabular-nums" style={portalStyle({ color: 'rgba(250,250,249,0.7)' })}>{s.calisan || '—'}</td>
+                        <td className="px-4 py-3 text-right text-[12.5px] font-semibold tabular-nums" style={portalStyle({ color: tahakkuk && s.tutar ? '#fafaf9' : 'rgba(250,250,249,0.3)' })}>{tahakkuk && s.tutar ? `${s.tutar} ₺` : '—'}</td>
                         <td className="px-4 py-3">
                           <div className="flex justify-end">
                             {s.goruntulenebilir
-                              ? <button type="button" onClick={() => openBelge('sgk', s.id)} title="Belgeyi görüntüle" className="flex h-8 w-8 items-center justify-center rounded-lg transition hover:bg-white/[0.06]" style={{ border: '1px solid rgba(157,168,183,0.35)', color: STEEL }}><Eye size={15} /></button>
-                              : <span className="text-[11px]" style={{ color: 'rgba(250,250,249,0.25)' }}>—</span>}
+                              ? <button type="button" onClick={() => openBelge('sgk', s.id)} title="Belgeyi görüntüle" className="flex h-8 w-8 items-center justify-center rounded-lg transition hover:bg-white/[0.06]" style={portalStyle({ border: '1px solid rgba(157,168,183,0.35)', color: STEEL })}><Eye size={15} /></button>
+                              : <span className="text-[11px]" style={portalStyle({ color: 'rgba(250,250,249,0.25)' })}>—</span>}
                           </div>
                         </td>
                       </tr>

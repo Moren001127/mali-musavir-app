@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import React, { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
@@ -70,28 +72,28 @@ export default function PinEkrani({ acildi }: { acildi: () => void }) {
     <div className="flex min-h-[65vh] items-center justify-center px-4">
       <div
         className="relative w-full max-w-sm overflow-hidden rounded-2xl px-6 py-7 text-center"
-        style={{
+        style={portalStyle({
           background: 'linear-gradient(160deg, rgba(230,200,120,0.08), rgba(255,255,255,0.012) 60%)',
           border: `1px solid ${CARD_BORDER}`,
           boxShadow: '0 30px 70px rgba(0,0,0,0.45)',
-        }}
+        })}
       >
         <div
           className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full opacity-25"
-          style={{ background: `radial-gradient(circle, ${GOLD}, transparent 66%)` }}
+          style={portalStyle({ background: `radial-gradient(circle, ${GOLD}, transparent 66%)` })}
         />
 
         <div
           className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl"
-          style={{ background: `${GOLD}1a`, border: `1px solid ${GOLD}44`, color: GOLD }}
+          style={portalStyle({ background: `${GOLD}1a`, border: `1px solid ${GOLD}44`, color: GOLD })}
         >
           {kurulu ? <Lock size={20} /> : <KeyRound size={20} />}
         </div>
 
-        <h1 className="mt-3 text-[15px] font-semibold" style={{ color: TEXT }}>
+        <h1 className="mt-3 text-[15px] font-semibold" style={portalStyle({ color: TEXT })}>
           {kurulu ? 'Kişisel Bütçe kilidi' : 'Modül şifresi belirleyin'}
         </h1>
-        <p className="mt-1 text-[11.5px] leading-relaxed" style={{ color: MUTED }}>
+        <p className="mt-1 text-[11.5px] leading-relaxed" style={portalStyle({ color: MUTED })}>
           {kurulu
             ? 'Devam etmek için 6 haneli şifrenizi girin.'
             : 'Bu modül her açılışta 6 haneli şifre soracak. Portal şifrenizden farklı olmalı.'}
@@ -100,7 +102,7 @@ export default function PinEkrani({ acildi }: { acildi: () => void }) {
         {kilitli ? (
           <div
             className="mt-5 rounded-xl px-4 py-3 text-[12px]"
-            style={{ background: `${KIRMIZI}14`, border: `1px solid ${KIRMIZI}38`, color: KIRMIZI }}
+            style={portalStyle({ background: `${KIRMIZI}14`, border: `1px solid ${KIRMIZI}38`, color: KIRMIZI })}
           >
             Çok fazla yanlış deneme yapıldı. Bir süre sonra tekrar deneyin.
           </div>
@@ -121,7 +123,7 @@ export default function PinEkrani({ acildi }: { acildi: () => void }) {
               autoComplete="off"
               placeholder="••••••"
               className="w-full text-center tracking-[0.5em]"
-              style={{
+              style={portalStyle({
                 background: 'rgba(0,0,0,0.35)',
                 border: `1px solid ${CARD_BORDER}`,
                 borderRadius: 12,
@@ -129,7 +131,7 @@ export default function PinEkrani({ acildi }: { acildi: () => void }) {
                 fontSize: 20,
                 color: TEXT,
                 outline: 'none',
-              }}
+              })}
             />
             {!kurulu && (
               <input
@@ -140,7 +142,7 @@ export default function PinEkrani({ acildi }: { acildi: () => void }) {
                 autoComplete="off"
                 placeholder="Tekrar"
                 className="w-full text-center tracking-[0.5em]"
-                style={{
+                style={portalStyle({
                   background: 'rgba(0,0,0,0.35)',
                   border: `1px solid ${CARD_BORDER}`,
                   borderRadius: 12,
@@ -148,18 +150,18 @@ export default function PinEkrani({ acildi }: { acildi: () => void }) {
                   fontSize: 20,
                   color: TEXT,
                   outline: 'none',
-                }}
+                })}
               />
             )}
 
             {hata && (
-              <div className="text-[11.5px]" style={{ color: KIRMIZI }}>
+              <div className="text-[11.5px]" style={portalStyle({ color: KIRMIZI })}>
                 {hata}
               </div>
             )}
 
             {kurulu && durum.data && durum.data.kalanDeneme < 5 && !hata && (
-              <div className="text-[11px]" style={{ color: MUTED }}>
+              <div className="text-[11px]" style={portalStyle({ color: MUTED })}>
                 Kalan deneme: {durum.data.kalanDeneme}
               </div>
             )}
@@ -175,8 +177,8 @@ export default function PinEkrani({ acildi }: { acildi: () => void }) {
           </form>
         )}
 
-        <p className="mt-4 flex items-center justify-center gap-1.5 text-[10.5px]" style={{ color: MUTED }}>
-          <ShieldCheck size={11} style={{ color: OK }} />
+        <p className="mt-4 flex items-center justify-center gap-1.5 text-[10.5px]" style={portalStyle({ color: MUTED })}>
+          <ShieldCheck size={11} style={portalStyle({ color: OK })} />
           Şifre geri döndürülemez biçimde saklanır; 5 yanlış denemede kilitlenir.
         </p>
       </div>

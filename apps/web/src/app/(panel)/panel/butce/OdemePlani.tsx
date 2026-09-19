@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import React, { useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
@@ -66,11 +68,11 @@ export default function OdemePlani({ donem, defter = 'TUMU' }: { donem: string; 
                 key={st}
                 onClick={() => setStrateji(st)}
                 className="rounded-lg px-2.5 py-1 text-[11px] transition"
-                style={{
+                style={portalStyle({
                   background: aktifStrateji === st ? `${GOLD}1f` : 'transparent',
                   border: `1px solid ${aktifStrateji === st ? `${GOLD}44` : 'transparent'}`,
                   color: aktifStrateji === st ? GOLD : MUTED,
-                }}
+                })}
               >
                 {st === 'CIG' ? 'Çığ (en pahalı önce)' : 'Kartopu (en küçük önce)'}
               </button>
@@ -110,18 +112,18 @@ export default function OdemePlani({ donem, defter = 'TUMU' }: { donem: string; 
       {(akis.data?.acikGunler?.length ?? 0) > 0 && (
         <div
           className="flex items-start gap-3 rounded-xl px-4 py-3"
-          style={{ background: `${TURUNCU}12`, border: `1px solid ${TURUNCU}33` }}
+          style={portalStyle({ background: `${TURUNCU}12`, border: `1px solid ${TURUNCU}33` })}
         >
-          <AlertTriangle size={16} style={{ color: TURUNCU }} className="mt-0.5" />
+          <AlertTriangle size={16} style={portalStyle({ color: TURUNCU })} className="mt-0.5" />
           <div>
-            <div className="text-[12.5px] font-semibold" style={{ color: TURUNCU }}>
+            <div className="text-[12.5px] font-semibold" style={portalStyle({ color: TURUNCU })}>
               Nakit akışında {akis.data!.acikGunler.length} gün para yetmiyor
             </div>
-            <div className="mt-0.5 text-[11.5px] leading-relaxed" style={{ color: MUTED }}>
+            <div className="mt-0.5 text-[11.5px] leading-relaxed" style={portalStyle({ color: MUTED })}>
               En düşük bakiye {para(akis.data!.enDusuk.tutar)} ₺ ·{' '}
               {new Date(akis.data!.enDusuk.tarih).toLocaleDateString('tr-TR')}. Buradaki plan ayın tamamına
               bakar; ödemelerin düştüğü günlerde para elinizde olmayabilir. Gün gün dökümü ve hangi hesaptan
-              nasıl kapatacağınız <strong style={{ color: TEXT }}>Nakit Akışı</strong> sekmesinde.
+              nasıl kapatacağınız <strong style={portalStyle({ color: TEXT })}>Nakit Akışı</strong> sekmesinde.
             </div>
           </div>
         </div>
@@ -135,23 +137,23 @@ export default function OdemePlani({ donem, defter = 'TUMU' }: { donem: string; 
           {s.acik > 0 && (
             <div
               className="flex items-start gap-3 rounded-xl px-4 py-3"
-              style={{ background: `${KIRMIZI}12`, border: `1px solid ${KIRMIZI}33` }}
+              style={portalStyle({ background: `${KIRMIZI}12`, border: `1px solid ${KIRMIZI}33` })}
             >
-              <AlertTriangle size={16} style={{ color: KIRMIZI }} className="mt-0.5" />
+              <AlertTriangle size={16} style={portalStyle({ color: KIRMIZI })} className="mt-0.5" />
               <div>
-                <div className="text-[12.5px] font-semibold" style={{ color: KIRMIZI }}>
+                <div className="text-[12.5px] font-semibold" style={portalStyle({ color: KIRMIZI })}>
                   Zorunlu ödemeleriniz aylık kapasitenizi {para(s.acik)} ₺ aşıyor
                 </div>
-                <div className="mt-0.5 text-[11.5px] leading-relaxed" style={{ color: MUTED }}>
+                <div className="mt-0.5 text-[11.5px] leading-relaxed" style={portalStyle({ color: MUTED })}>
                   {/* Kullanıcı bulgusu: aşağıdaki tabloda her şey ödenmiş görünüyor ama
                       burada "açık" yazıyordu; ikisi farklı şeyi ölçtüğü için çelişik
                       duruyordu. Tablo BU AYI (devreden bakiye dahil), bu uyarı HER AY TEKRAR
                       EDENİ ölçer. */}
                   Bu ay ödemeler tam görünüyor, çünkü{' '}
-                  <strong style={{ color: TEXT }}>{para(plan.birikim)} ₺ devreden bakiyeniz</strong> kullanılıyor.
+                  <strong style={portalStyle({ color: TEXT })}>{para(plan.birikim)} ₺ devreden bakiyeniz</strong> kullanılıyor.
                   Ancak her ay tekrar eden kapasiteniz{' '}
-                  <strong style={{ color: TEXT }}>{para(plan.kapasite)} ₺</strong>, şu anki zorunlu ödemeleriniz ise{' '}
-                  <strong style={{ color: TEXT }}>{para(plan.kapasite + s.acik)} ₺</strong>. Devreden bakiye
+                  <strong style={portalStyle({ color: TEXT })}>{para(plan.kapasite)} ₺</strong>, şu anki zorunlu ödemeleriniz ise{' '}
+                  <strong style={portalStyle({ color: TEXT })}>{para(plan.kapasite + s.acik)} ₺</strong>. Devreden bakiye
                   tükendikten sonra kredi taksitini tam ödeyemezsiniz — bu gecikme sayılır, gecikme faizi işler ve
                   kredi notunuzu etkiler. Yukarıdaki süre bu gecikmeyi hesaba katmaz. Borçlar kapandıkça fark
                   azalır; kalıcı çözüm için gelir artırmak ya da gideri azaltmak gerekir.
@@ -225,22 +227,22 @@ export default function OdemePlani({ donem, defter = 'TUMU' }: { donem: string; 
                   <div
                     key={x.id}
                     className="py-3.5"
-                    style={{ borderTop: i === 0 ? 'none' : `1px solid ${ROW_SEP}` }}
+                    style={portalStyle({ borderTop: i === 0 ? 'none' : `1px solid ${ROW_SEP}` })}
                   >
                     <div className="flex items-baseline justify-between gap-4">
-                      <span className="min-w-0 truncate text-[13.5px]" style={{ color: TEXT }}>
+                      <span className="min-w-0 truncate text-[13.5px]" style={portalStyle({ color: TEXT })}>
                         {x.ad}
                       </span>
-                      <span className="flex-shrink-0 text-[16px] tabular-nums" style={{ color: TEXT }}>
+                      <span className="flex-shrink-0 text-[16px] tabular-nums" style={portalStyle({ color: TEXT })}>
                         {para(x.toplam)} ₺
                       </span>
                     </div>
 
                     <div className="mt-1 flex items-baseline justify-between gap-4 text-[11.5px]">
-                      <span className="min-w-0 truncate" style={{ color: MUTED }}>
+                      <span className="min-w-0 truncate" style={portalStyle({ color: MUTED })}>
                         {parcalar.join(' · ')}
                       </span>
-                      <span className="flex-shrink-0 tabular-nums" style={{ color: kapandi ? OK : MUTED }}>
+                      <span className="flex-shrink-0 tabular-nums" style={portalStyle({ color: kapandi ? OK : MUTED })}>
                         {kapandi ? 'bu ay kapanıyor' : `kalan ${para(x.kalanSonra)} ₺`}
                       </span>
                     </div>
@@ -248,10 +250,10 @@ export default function OdemePlani({ donem, defter = 'TUMU' }: { donem: string; 
                     {/* Ne kadarı kapandı — ince, tek renk, dikkat çalmayan gösterge */}
                     <div
                       className="mt-2.5 h-[2px] w-full overflow-hidden rounded-full"
-                      style={{ background: 'rgba(255,255,255,0.06)' }}
+                      style={portalStyle({ background: 'rgba(255,255,255,0.06)' })}
                     >
                       <div
-                        style={{ width: `${oran}%`, height: '100%', background: kapandi ? OK : MAVI }}
+                        style={portalStyle({ width: `${oran}%`, height: '100%', background: kapandi ? OK : MAVI })}
                       />
                     </div>
                   </div>
@@ -261,17 +263,17 @@ export default function OdemePlani({ donem, defter = 'TUMU' }: { donem: string; 
               {/* Toplam — aynı hizada, biraz daha güçlü */}
               <div
                 className="flex items-baseline justify-between gap-4 pt-4"
-                style={{ borderTop: `1px solid ${CARD_BORDER}` }}
+                style={portalStyle({ borderTop: `1px solid ${CARD_BORDER}` })}
               >
-                <span className="text-[11.5px] uppercase tracking-[0.14em]" style={{ color: MUTED }}>
+                <span className="text-[11.5px] uppercase tracking-[0.14em]" style={portalStyle({ color: MUTED })}>
                   Toplam
                 </span>
-                <span className="text-[16px] tabular-nums" style={{ color: MAVI }}>
+                <span className="text-[16px] tabular-nums" style={portalStyle({ color: MAVI })}>
                   {para(s.ilkAy.reduce((t, x) => t + x.toplam, 0))} ₺
                 </span>
               </div>
             </div>
-            <p className="mt-3 text-[10.5px]" style={{ color: 'rgba(113,113,122,0.85)' }}>
+            <p className="mt-3 text-[10.5px]" style={portalStyle({ color: 'rgba(113,113,122,0.85)' })}>
               {plan.not}
             </p>
           </Kutu>
@@ -287,30 +289,30 @@ export default function OdemePlani({ donem, defter = 'TUMU' }: { donem: string; 
                     <div
                       key={st}
                       className="rounded-xl px-4 py-3"
-                      style={{
+                      style={portalStyle({
                         background: kazanan ? `${OK}10` : 'rgba(255,255,255,0.02)',
                         border: `1px solid ${kazanan ? `${OK}38` : ROW_SEP}`,
-                      }}
+                      })}
                     >
                       <div className="flex items-center justify-between">
-                        <span className="text-[12.5px] font-medium" style={{ color: TEXT }}>
+                        <span className="text-[12.5px] font-medium" style={portalStyle({ color: TEXT })}>
                           {st === 'CIG' ? 'Çığ yöntemi' : 'Kartopu yöntemi'}
                         </span>
                         {kazanan && <Rozet metin="daha ucuz" renk={OK} />}
                       </div>
-                      <div className="mt-1 text-[10.5px]" style={{ color: MUTED }}>
+                      <div className="mt-1 text-[10.5px]" style={portalStyle({ color: MUTED })}>
                         {st === 'CIG' ? 'En yüksek faizli borç önce kapanır' : 'En küçük borç önce kapanır (motivasyon)'}
                       </div>
                       <div className="mt-2 space-y-1 text-[12px]">
                         <div className="flex justify-between">
-                          <span style={{ color: MUTED }}>Süre</span>
-                          <span className="tabular-nums" style={{ color: TEXT }}>
+                          <span style={portalStyle({ color: MUTED })}>Süre</span>
+                          <span className="tabular-nums" style={portalStyle({ color: TEXT })}>
                             {r.ayAdedi ? `${r.ayAdedi} ay` : 'kapanmıyor'}
                           </span>
                         </div>
                         <div className="flex justify-between">
-                          <span style={{ color: MUTED }}>Toplam faiz</span>
-                          <span className="tabular-nums" style={{ color: TURUNCU }}>
+                          <span style={portalStyle({ color: MUTED })}>Toplam faiz</span>
+                          <span className="tabular-nums" style={portalStyle({ color: TURUNCU })}>
                             {para(r.toplamFaiz)} ₺
                           </span>
                         </div>
@@ -320,13 +322,13 @@ export default function OdemePlani({ donem, defter = 'TUMU' }: { donem: string; 
                 })}
               </div>
               {k.faizFarki !== 0 && (
-                <p className="mt-3 text-[11.5px] leading-relaxed" style={{ color: MUTED }}>
+                <p className="mt-3 text-[11.5px] leading-relaxed" style={portalStyle({ color: MUTED })}>
                   {k.onerilen === 'CIG' ? 'Çığ' : 'Kartopu'} yöntemi{' '}
-                  <b style={{ color: OK }}>{para(Math.abs(k.faizFarki))} ₺</b> daha az faiz ödetiyor
+                  <b style={portalStyle({ color: OK })}>{para(Math.abs(k.faizFarki))} ₺</b> daha az faiz ödetiyor
                   {k.ayFarki !== 0 && (
                     <>
                       {' '}
-                      ve borcu <b style={{ color: OK }}>{Math.abs(k.ayFarki)} ay</b> önce bitiriyor
+                      ve borcu <b style={portalStyle({ color: OK })}>{Math.abs(k.ayFarki)} ay</b> önce bitiriyor
                     </>
                   )}
                   .
@@ -344,14 +346,14 @@ export default function OdemePlani({ donem, defter = 'TUMU' }: { donem: string; 
                     <div key={x.id} className="flex items-center gap-3">
                       <span
                         className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[11px] font-semibold"
-                        style={{ background: `${MAVI}1f`, color: MAVI, border: `1px solid ${MAVI}44` }}
+                        style={portalStyle({ background: `${MAVI}1f`, color: MAVI, border: `1px solid ${MAVI}44` })}
                       >
                         {i + 1}
                       </span>
-                      <span className="flex-1 truncate text-[12.5px]" style={{ color: TEXT }}>
+                      <span className="flex-1 truncate text-[12.5px]" style={portalStyle({ color: TEXT })}>
                         {x.ad}
                       </span>
-                      <span className="text-[11.5px] tabular-nums" style={{ color: MUTED }}>
+                      <span className="text-[11.5px] tabular-nums" style={portalStyle({ color: MUTED })}>
                         {x.ay}. ay · {bitisAyi(x.ay)}
                       </span>
                     </div>
@@ -390,21 +392,21 @@ export default function OdemePlani({ donem, defter = 'TUMU' }: { donem: string; 
                   <div
                     key={f.id}
                     className="flex items-center justify-between gap-3 rounded-xl px-3.5 py-2.5"
-                    style={{
+                    style={portalStyle({
                       background: i === 0 ? `${OK}10` : 'rgba(255,255,255,0.02)',
                       border: `1px solid ${i === 0 ? `${OK}33` : ROW_SEP}`,
-                    }}
+                    })}
                   >
-                    <span className="flex items-center gap-2 text-[12.5px]" style={{ color: TEXT }}>
-                      {i === 0 && <Trophy size={13} style={{ color: OK }} />}
+                    <span className="flex items-center gap-2 text-[12.5px]" style={portalStyle({ color: TEXT })}>
+                      {i === 0 && <Trophy size={13} style={portalStyle({ color: OK })} />}
                       {f.ad}
                     </span>
-                    <span className="text-[12px] tabular-nums" style={{ color: i === 0 ? OK : MUTED }}>
+                    <span className="text-[12px] tabular-nums" style={portalStyle({ color: i === 0 ? OK : MUTED })}>
                       {para(f.kazanc)} ₺ faiz kazancı · {f.ay} ay
                     </span>
                   </div>
                 ))}
-                <p className="pt-1 text-[10.5px]" style={{ color: 'rgba(113,113,122,0.85)' }}>
+                <p className="pt-1 text-[10.5px]" style={portalStyle({ color: 'rgba(113,113,122,0.85)' })}>
                   Kazanç: bu tutar bugün kapatılırsa o borcun kalan ömrü boyunca işlemeyecek faiz.
                 </p>
               </div>

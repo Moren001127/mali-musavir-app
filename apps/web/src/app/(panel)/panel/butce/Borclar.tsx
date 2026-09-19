@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import React, { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -48,7 +50,7 @@ export default function Borclar() {
         renk={TURUNCU}
         sag={
           <div className="flex items-center gap-2">
-            <label className="flex items-center gap-1.5 text-[11px]" style={{ color: MUTED }}>
+            <label className="flex items-center gap-1.5 text-[11px]" style={portalStyle({ color: MUTED })}>
               <input type="checkbox" checked={hepsi} onChange={(e) => setHepsi(e.target.checked)} />
               Kapananları da göster
             </label>
@@ -70,20 +72,20 @@ export default function Borclar() {
                 <div
                   key={b.id}
                   className="rounded-xl px-4 py-3"
-                  style={{
+                  style={portalStyle({
                     background: 'rgba(255,255,255,0.02)',
                     border: `1px solid ${ROW_SEP}`,
                     opacity: b.durum === 'KAPANDI' ? 0.55 : 1,
-                  }}
+                  })}
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="flex items-center gap-2 text-[13px] font-medium" style={{ color: TEXT }}>
+                      <div className="flex items-center gap-2 text-[13px] font-medium" style={portalStyle({ color: TEXT })}>
                         {b.ad}
                         <Rozet metin={tur} renk={MUTED} />
                         {b.durum === 'KAPANDI' && <Rozet metin="kapandı" renk={OK} />}
                       </div>
-                      <div className="mt-0.5 text-[11px]" style={{ color: MUTED }}>
+                      <div className="mt-0.5 text-[11px]" style={portalStyle({ color: MUTED })}>
                         {b.kurum ? `${b.kurum} · ` : ''}
                         Yıllık %{b.yillikFaiz} (aylık %{b.aylikFaiz.toFixed(2)}) · Her ayın {b.odemeGunu}. günü
                         {b.toplamTaksit > 0 ? ` · ${b.odenenTaksit}/${b.toplamTaksit} taksit` : ''}
@@ -91,10 +93,10 @@ export default function Borclar() {
                     </div>
                     <div className="flex items-center gap-3">
                       <div className="text-right">
-                        <div className="text-[10.5px]" style={{ color: MUTED }}>
+                        <div className="text-[10.5px]" style={portalStyle({ color: MUTED })}>
                           Kalan
                         </div>
-                        <div className="text-[16px] font-semibold tabular-nums" style={{ color: TURUNCU }}>
+                        <div className="text-[16px] font-semibold tabular-nums" style={portalStyle({ color: TURUNCU })}>
                           {para(b.kalanAnapara)} ₺
                         </div>
                       </div>
@@ -107,14 +109,14 @@ export default function Borclar() {
                         <button
                           onClick={() => setModal(b)}
                           className="rounded-md p-1 transition hover:bg-white/[0.06]"
-                          style={{ color: MUTED }}
+                          style={portalStyle({ color: MUTED })}
                         >
                           <Pencil size={12} />
                         </button>
                         <button
                           onClick={() => sil.mutate(b.id)}
                           className="rounded-md p-1 transition hover:bg-white/[0.06]"
-                          style={{ color: KIRMIZI }}
+                          style={portalStyle({ color: KIRMIZI })}
                         >
                           <Trash2 size={12} />
                         </button>
@@ -123,10 +125,10 @@ export default function Borclar() {
                   </div>
 
                   <div className="mt-2.5 flex items-center gap-3">
-                    <div className="h-1.5 flex-1 overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.06)' }}>
-                      <div style={{ width: `${ilerleme}%`, height: '100%', background: OK }} />
+                    <div className="h-1.5 flex-1 overflow-hidden rounded-full" style={portalStyle({ background: 'rgba(255,255,255,0.06)' })}>
+                      <div style={portalStyle({ width: `${ilerleme}%`, height: '100%', background: OK })} />
                     </div>
-                    <span className="text-[10.5px] tabular-nums" style={{ color: MUTED }}>
+                    <span className="text-[10.5px] tabular-nums" style={portalStyle({ color: MUTED })}>
                       %{Math.round(ilerleme)} ödendi · taksit {para(b.taksitTutari)} ₺
                       {b.bitisTarihi ? ` · bitiş ${tarihTR(b.bitisTarihi)}` : ''}
                     </span>

@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 import React, { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Plus, Trash2 } from 'lucide-react';
@@ -47,27 +49,27 @@ export function YetkililerSection({ taxpayerId }: { taxpayerId: string }) {
   return (
     <div className="space-y-3">
       {isLoading ? (
-        <div className="text-[13px]" style={{ color: MUTED }}>Yükleniyor...</div>
+        <div className="text-[13px]" style={portalStyle({ color: MUTED })}>Yükleniyor...</div>
       ) : (
         <>
           {(yetkililer as any[]).length === 0 && !adding ? (
-            <div className="p-4 text-center text-[13px]" style={{ border: `1px solid ${LINE}`, borderRadius: R_ALAN, color: MUTED }}>
+            <div className="p-4 text-center text-[13px]" style={portalStyle({ border: `1px solid ${LINE}`, borderRadius: R_ALAN, color: MUTED })}>
               Henüz yetkili eklenmemiş.
             </div>
           ) : (
             <div className="space-y-2">
               {(yetkililer as any[]).map((y) => (
-                <div key={y.id} className="flex items-start gap-3 p-3" style={{ border: `1px solid ${y.isPrimary ? `${GOLD}55` : LINE}`, borderRadius: R_ALAN, background: y.isPrimary ? `${GOLD}0d` : 'rgba(0,0,0,0.18)' }}>
-                  <div className="flex h-[34px] w-[34px] shrink-0 items-center justify-center text-[11.5px] font-bold" style={ikonRozeti(y.isPrimary ? GOLD : MUTED)}>
+                <div key={y.id} className="flex items-start gap-3 p-3" style={portalStyle({ border: `1px solid ${y.isPrimary ? `${GOLD}55` : LINE}`, borderRadius: R_ALAN, background: y.isPrimary ? `${GOLD}0d` : 'rgba(0,0,0,0.18)' })}>
+                  <div className="flex h-[34px] w-[34px] shrink-0 items-center justify-center text-[11.5px] font-bold" style={portalStyle(ikonRozeti(y.isPrimary ? GOLD : MUTED))}>
                     {(y.firstName?.[0] || '') + (y.lastName?.[0] || '')}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <strong className="text-[13px] font-bold" style={{ color: TEXT }}>{y.firstName} {y.lastName}</strong>
+                      <strong className="text-[13px] font-bold" style={portalStyle({ color: TEXT })}>{y.firstName} {y.lastName}</strong>
                       {y.isPrimary && <Cip renk={GOLD}>Birincil</Cip>}
-                      {y.gorev && <span className="text-[11.5px]" style={{ color: MUTED }}>· {y.gorev}</span>}
+                      {y.gorev && <span className="text-[11.5px]" style={portalStyle({ color: MUTED })}>· {y.gorev}</span>}
                     </div>
-                    <div className="mt-1 flex flex-wrap gap-3 text-[11.5px]" style={{ color: MUTED }}>
+                    <div className="mt-1 flex flex-wrap gap-3 text-[11.5px]" style={portalStyle({ color: MUTED })}>
                       {y.tcNo && <span className="font-mono">TC: {y.tcNo}</span>}
                       {y.telefon && <span>{y.telefon}</span>}
                       {y.eposta && <span>{y.eposta}</span>}
@@ -79,7 +81,7 @@ export function YetkililerSection({ taxpayerId }: { taxpayerId: string }) {
                       if (confirm(`${y.firstName} ${y.lastName} silinsin mi?`)) deleteY(y.id);
                     }}
                     className="flex h-8 w-8 items-center justify-center transition hover:brightness-125"
-                    style={{ ...NOTR_DUGME, color: RED }}
+                    style={portalStyle({ ...NOTR_DUGME, color: RED })}
                     title="Sil"
                   >
                     <Trash2 size={13} />
@@ -90,8 +92,8 @@ export function YetkililerSection({ taxpayerId }: { taxpayerId: string }) {
           )}
 
           {adding ? (
-            <div className="p-4" style={{ border: `1px solid ${LINE}`, borderRadius: R_ALAN, background: 'rgba(0,0,0,0.18)' }}>
-              <div className="mb-3 text-[12px] font-bold" style={{ color: TEXT }}>Yeni yetkili</div>
+            <div className="p-4" style={portalStyle({ border: `1px solid ${LINE}`, borderRadius: R_ALAN, background: 'rgba(0,0,0,0.18)' })}>
+              <div className="mb-3 text-[12px] font-bold" style={portalStyle({ color: TEXT })}>Yeni yetkili</div>
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <Field label="Ad" required>
                   <InputBase value={newY.firstName} onChange={(e) => setNewY((p) => ({ ...p, firstName: e.target.value }))} />
@@ -107,7 +109,7 @@ export function YetkililerSection({ taxpayerId }: { taxpayerId: string }) {
                     value={newY.gorev}
                     onChange={(e) => setNewY((p) => ({ ...p, gorev: e.target.value }))}
                     className={SELECT_CLS}
-                    style={{ colorScheme: 'dark' }}
+                    style={portalStyle({ colorScheme: 'dark' })}
                   >
                     <option value="">Seçiniz</option>
                     <option value="MUDUR">Müdür</option>
@@ -123,18 +125,18 @@ export function YetkililerSection({ taxpayerId }: { taxpayerId: string }) {
                 <Field label="E-posta">
                   <InputBase type="email" value={newY.eposta} onChange={(e) => setNewY((p) => ({ ...p, eposta: e.target.value }))} />
                 </Field>
-                <label className="flex items-center gap-2 text-[13px] md:col-span-2" style={{ color: TEXT }}>
+                <label className="flex items-center gap-2 text-[13px] md:col-span-2" style={portalStyle({ color: TEXT })}>
                   <input
                     type="checkbox"
                     checked={newY.isPrimary}
                     onChange={(e) => setNewY((p) => ({ ...p, isPrimary: e.target.checked }))}
-                    style={{ accentColor: GOLD }}
+                    style={portalStyle({ accentColor: GOLD })}
                   />
                   Birincil iletişim kişisi olarak işaretle
                 </label>
               </div>
               <div className="mt-4 flex justify-end gap-2">
-                <button type="button" onClick={() => setAdding(false)} className="inline-flex h-9 items-center px-3.5 text-[13px] font-medium transition hover:brightness-125" style={NOTR_DUGME}>
+                <button type="button" onClick={() => setAdding(false)} className="inline-flex h-9 items-center px-3.5 text-[13px] font-medium transition hover:brightness-125" style={portalStyle(NOTR_DUGME)}>
                   İptal
                 </button>
                 <button
@@ -142,7 +144,7 @@ export function YetkililerSection({ taxpayerId }: { taxpayerId: string }) {
                   onClick={() => createY(newY)}
                   disabled={creating || !newY.firstName || !newY.lastName}
                   className="inline-flex h-9 items-center gap-1.5 px-4 text-[13px] font-bold disabled:opacity-50"
-                  style={ALTIN_DUGME}
+                  style={portalStyle(ALTIN_DUGME)}
                 >
                   {creating ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
                   Yetkili Ekle
@@ -154,7 +156,7 @@ export function YetkililerSection({ taxpayerId }: { taxpayerId: string }) {
               type="button"
               onClick={() => setAdding(true)}
               className="inline-flex h-9 items-center gap-2 px-3.5 text-[13px] font-medium transition hover:brightness-125"
-              style={{ ...NOTR_DUGME, borderStyle: 'dashed' }}
+              style={portalStyle({ ...NOTR_DUGME, borderStyle: 'dashed' })}
             >
               <Plus size={14} /> Yetkili Ekle
             </button>

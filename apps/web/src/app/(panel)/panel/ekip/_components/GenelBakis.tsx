@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { Eye, Square } from 'lucide-react';
@@ -66,11 +68,11 @@ export function SadeKart({
   children: ReactNode;
 }) {
   return (
-    <section className={`relative min-w-0 overflow-hidden rounded-[18px] ${className}`} style={{ background: CARD_BG, border: `1px solid ${SADE_KENAR}`, boxShadow: '0 18px 44px rgba(0,0,0,0.24)', ...style }}>
-      <div className="pointer-events-none absolute left-6 right-6 top-0 h-px" style={{ background: `linear-gradient(90deg, transparent, ${saydam(renk, '73')}, transparent)` }} />
+    <section className={`relative min-w-0 overflow-hidden rounded-[18px] ${className}`} style={portalStyle({ background: CARD_BG, border: `1px solid ${SADE_KENAR}`, boxShadow: '0 18px 44px rgba(0,0,0,0.24)', ...style })}>
+      <div className="pointer-events-none absolute left-6 right-6 top-0 h-px" style={portalStyle({ background: `linear-gradient(90deg, transparent, ${saydam(renk, '73')}, transparent)` })} />
       {baslik && (
         <header className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 px-6 pb-1.5 pt-[18px]">
-          <h3 className="text-[14px] font-semibold" style={{ color: TEXT }}>
+          <h3 className="text-[14px] font-semibold" style={portalStyle({ color: TEXT })}>
             {baslik}
           </h3>
           {sag}
@@ -84,9 +86,9 @@ export function SadeKart({
 /** Kart içi bölüm: 10.5px büyük harf aralıklı soluk etiket + sağda bağlantı/durum; bölümler ince çizgiyle ayrılır (ilk bölümde çizgi yok). */
 export function Bolum({ baslik, sag, ilk = false, children }: { baslik: ReactNode; sag?: ReactNode; ilk?: boolean; children: ReactNode }) {
   return (
-    <div className="px-6 py-3.5" style={ilk ? undefined : { borderTop: `1px solid ${SADE_AYRAC}` }}>
+    <div className="px-6 py-3.5" style={portalStyle(ilk ? undefined : { borderTop: `1px solid ${SADE_AYRAC}` })}>
       <div className="mb-2 flex items-center justify-between gap-3">
-        <span className="text-[10.5px] font-bold uppercase tracking-[0.2em]" style={{ color: SOLUK }}>
+        <span className="text-[10.5px] font-bold uppercase tracking-[0.2em]" style={portalStyle({ color: SOLUK })}>
           {baslik}
         </span>
         {sag}
@@ -99,7 +101,7 @@ export function Bolum({ baslik, sag, ilk = false, children }: { baslik: ReactNod
 /** Altın metin bağlantısı ("Tümü →", "Dönem panosu →"). */
 export function AltinBaglanti({ onClick, children, title }: { onClick: () => void; children: ReactNode; title?: string }) {
   return (
-    <button type="button" onClick={onClick} title={title} className="text-[11px] font-semibold transition hover:brightness-125" style={{ color: GOLD }}>
+    <button type="button" onClick={onClick} title={title} className="text-[11px] font-semibold transition hover:brightness-125" style={portalStyle({ color: GOLD })}>
       {children}
     </button>
   );
@@ -114,7 +116,7 @@ export function MetinDugme({ onClick, children, renk = GOLD, title, disabled, cl
       title={title}
       disabled={disabled}
       className={`inline-flex flex-shrink-0 items-center gap-1 whitespace-nowrap rounded-[9px] px-2.5 py-[5px] text-[11.5px] font-semibold transition hover:brightness-125 disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
-      style={{ color: renk, border: `1px solid ${saydam(renk, '47')}`, background: saydam(renk, '12') }}
+      style={portalStyle({ color: renk, border: `1px solid ${saydam(renk, '47')}`, background: saydam(renk, '12') })}
     >
       {children}
     </button>
@@ -127,7 +129,7 @@ export function GradyanAvatar({ kisaltma, renk, boyut = 28, halka = false, nabiz
     <span
       title={title}
       className={`inline-flex flex-shrink-0 items-center justify-center rounded-full font-extrabold ${nabiz ? 'animate-pulse' : ''} ${className}`}
-      style={{
+      style={portalStyle({
         width: boyut,
         height: boyut,
         fontSize: Math.max(9.5, Math.round(boyut * 0.29 * 2) / 2),
@@ -136,7 +138,7 @@ export function GradyanAvatar({ kisaltma, renk, boyut = 28, halka = false, nabiz
         boxShadow: `0 0 14px ${saydam(renk, '59')}`,
         outline: halka ? `2px solid ${MAVI}` : undefined,
         outlineOffset: halka ? 3 : undefined,
-      }}
+      })}
     >
       {kisaltma}
     </span>
@@ -236,37 +238,37 @@ function SuAnBolumu({
       ilk
       baslik="Şu an"
       sag={
-        <span className="text-[11px] font-medium" style={{ color: isler.length ? MAVI : MUTED }}>
+        <span className="text-[11px] font-medium" style={portalStyle({ color: isler.length ? MAVI : MUTED })}>
           {isler.length ? `${isler.length} sürüyor` : 'kadro boşta'}
         </span>
       }
     >
       {!isler.length ? (
-        <div className="text-[12.5px]" style={{ color: MUTED }}>
+        <div className="text-[12.5px]" style={portalStyle({ color: MUTED })}>
           Çalışan iş yok. Görev verdiğinizde ilerleme burada görünür.
         </div>
       ) : (
         <div className="-mt-1 flex flex-col">
           {isler.map((is, i) => (
-            <div key={is.anahtar} className="py-2.5" style={i ? { borderTop: `1px solid ${SADE_AYRAC}` } : undefined}>
+            <div key={is.anahtar} className="py-2.5" style={portalStyle(i ? { borderTop: `1px solid ${SADE_AYRAC}` } : undefined)}>
               <div className="flex items-center gap-3">
                 <GradyanAvatar kisaltma={ajanKisaltma(is.ajanId)} renk={MAVI} boyut={28} nabiz title={ajanTamAd(is.ajanId, ajanAd(is.ajanId))} />
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-[12.5px] font-semibold" style={{ color: TEXT }} title={`${is.mukellef} — ${is.konu}`}>
+                  <div className="truncate text-[12.5px] font-semibold" style={portalStyle({ color: TEXT })} title={`${is.mukellef} — ${is.konu}`}>
                     {konuKisalt(is.mukellef, 32)} — {is.konu}
                   </div>
-                  <div className="truncate text-[11px]" style={{ color: MUTED }}>
-                    {ajanKisaAd(is.ajanId, ajanAd(is.ajanId))} · <span className="tabular-nums" style={{ color: MAVI }}>{sayacMetni(Math.max(0, simdi - is.basladi))}</span> · {is.kuru ? 'kuru test' : <span style={{ color: KIRMIZI }}>canlı</span>}
+                  <div className="truncate text-[11px]" style={portalStyle({ color: MUTED })}>
+                    {ajanKisaAd(is.ajanId, ajanAd(is.ajanId))} · <span className="tabular-nums" style={portalStyle({ color: MAVI })}>{sayacMetni(Math.max(0, simdi - is.basladi))}</span> · {is.kuru ? 'kuru test' : <span style={portalStyle({ color: KIRMIZI })}>canlı</span>}
                   </div>
                 </div>
               </div>
-              <div className="mt-2 flex items-center gap-2 text-[11px]" style={{ color: MUTED }}>
+              <div className="mt-2 flex items-center gap-2 text-[11px]" style={portalStyle({ color: MUTED })}>
                 <span className="w-24 flex-shrink-0">{is.asama.ad}</span>
                 <Ilerleme yuzde={(is.asama.no / 4) * 100} />
                 <span className="tabular-nums">{is.asama.no}/4</span>
               </div>
-              <div className="mt-1.5 truncate text-[12px] leading-relaxed" style={{ color: TEXT }} title={is.suAn}>
-                <b className="font-semibold" style={{ color: MAVI }}>
+              <div className="mt-1.5 truncate text-[12px] leading-relaxed" style={portalStyle({ color: TEXT })} title={is.suAn}>
+                <b className="font-semibold" style={portalStyle({ color: MAVI })}>
                   Şu an:
                 </b>{' '}
                 {is.suAn}
@@ -366,7 +368,7 @@ function BugunBolumu({
     <>
       <Bolum ilk baslik="Son işler" sag={<AltinBaglanti onClick={onTumu}>Tümü →</AltinBaglanti>}>
         {!bitenler.length ? (
-          <div className="text-[12.5px]" style={{ color: MUTED }}>
+          <div className="text-[12.5px]" style={portalStyle({ color: MUTED })}>
             {yukleniyor ? 'İş akışı yükleniyor…' : hata ? 'Biten iş bilgisi alınamadı.' : 'Bugün henüz biten iş yok.'}
           </div>
         ) : (
@@ -385,16 +387,16 @@ function BugunBolumu({
                   type="button"
                   onClick={() => onSec(v.vakaId)}
                   className="flex w-full items-center gap-3 py-2.5 text-left transition hover:bg-white/[0.02]"
-                  style={i ? { borderTop: `1px solid ${SADE_AYRAC}` } : undefined}
+                  style={portalStyle(i ? { borderTop: `1px solid ${SADE_AYRAC}` } : undefined)}
                   title="Raporu aç"
                 >
                   <GradyanAvatar kisaltma={ajanKisaltma(ajanId)} renk={ajanRengi(ajanId)} boyut={28} title={ajanTamAd(ajanId, ajanAd(ajanId))} />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[12.5px] font-semibold" style={{ color: TEXT }} title={v.mukellef?.ad ? `${v.mukellef.ad} — ${v.konu}` : v.konu || 'Ofis geneli'}>
+                    <span className="block truncate text-[12.5px] font-semibold" style={portalStyle({ color: TEXT })} title={v.mukellef?.ad ? `${v.mukellef.ad} — ${v.konu}` : v.konu || 'Ofis geneli'}>
                       {v.mukellef?.ad ? konuKisalt(v.mukellef.ad, 32) : v.konu || 'Ofis geneli'}
                       {v.mukellef?.ad ? ` — ${v.konu}` : ''}
                     </span>
-                    <span className="block truncate text-[11px]" style={{ color: MUTED }}>
+                    <span className="block truncate text-[11px]" style={portalStyle({ color: MUTED })}>
                       {saatKisa(v.guncellendi).slice(0, 5)}
                       {ozet ? ` · ${ozet}` : ''}
                       {sure ? ` · ${sure}` : ''}
@@ -410,7 +412,7 @@ function BugunBolumu({
 
       <Bolum baslik="Öneriler" sag={<AltinBaglanti onClick={onPano}>Dönem panosu →</AltinBaglanti>}>
         {!oneriler.length ? (
-          <div className="text-[12.5px]" style={{ color: MUTED }}>
+          <div className="text-[12.5px]" style={portalStyle({ color: MUTED })}>
             {panoYukleniyor ? 'Öneriler yükleniyor…' : panoHata ? 'Öneriler alınamadı.' : 'Panoya göre sırada bekleyen adım yok.'}
           </div>
         ) : (
@@ -418,13 +420,13 @@ function BugunBolumu({
             {oneriler.slice(0, 2).map((o, i) => {
               const sablon = SABLONLAR.find((s) => s.id === o.sablonId);
               return (
-                <div key={o.taxpayerId} className="flex items-center gap-3 py-[9px]" style={i ? { borderTop: `1px solid ${SADE_AYRAC}` } : undefined}>
-                  <span className="shrink-0 text-[10px] font-semibold" style={{ color: GOLD }} aria-hidden="true">{basHarfler(o.unvan)}</span>
+                <div key={o.taxpayerId} className="flex items-center gap-3 py-[9px]" style={portalStyle(i ? { borderTop: `1px solid ${SADE_AYRAC}` } : undefined)}>
+                  <span className="shrink-0 text-[10px] font-semibold" style={portalStyle({ color: GOLD })} aria-hidden="true">{basHarfler(o.unvan)}</span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[12.5px] font-semibold" style={{ color: TEXT }} title={o.unvan}>
+                    <span className="block truncate text-[12.5px] font-semibold" style={portalStyle({ color: TEXT })} title={o.unvan}>
                       {konuKisalt(o.unvan, 32)}
                     </span>
-                    <span className="block truncate text-[11px]" style={{ color: MUTED }} title={`${o.metin} · ${o.neden}`}>
+                    <span className="block truncate text-[11px]" style={portalStyle({ color: MUTED })} title={`${o.metin} · ${o.neden}`}>
                       {o.metin}
                     </span>
                   </span>
@@ -491,17 +493,17 @@ export function AkisKutu({
 
   return (
     <SadeKart dolguYok className={`py-1 ${className}`}>
-      {!!hata && <p role="alert" className="px-6 py-3 text-[12px]" style={{ color: KIRMIZI }}>İş akışı yenilenemedi. Lütfen yeniden deneyin.</p>}
+      {!!hata && <p role="alert" className="px-6 py-3 text-[12px]" style={portalStyle({ color: KIRMIZI })}>İş akışı yenilenemedi. Lütfen yeniden deneyin.</p>}
       {calisanVar ? (
         <>
           <SuAnBolumu kosu={kosu} vakalar={vakalar} ajanAd={ajanAd} mukellefAd={mukellefAd} onIzle={onIzle} onDurdur={onDurdur} />
-          <details style={{ borderTop: `1px solid ${SADE_AYRAC}` }}>
-            <summary className="cursor-pointer px-6 py-3 text-[12px] font-medium" style={{ color: GOLD }}>Son işler ve öneriler</summary>
+          <details style={portalStyle({ borderTop: `1px solid ${SADE_AYRAC}` })}>
+            <summary className="cursor-pointer px-6 py-3 text-[12px] font-medium" style={portalStyle({ color: GOLD })}>Son işler ve öneriler</summary>
             {digerIsler}
           </details>
         </>
       ) : yukleniyor ? (
-        <Bolum ilk baslik="İş akışı"><p role="status" className="text-[12.5px]" style={{ color: MUTED }}>İş akışı yükleniyor…</p></Bolum>
+        <Bolum ilk baslik="İş akışı"><p role="status" className="text-[12.5px]" style={portalStyle({ color: MUTED })}>İş akışı yükleniyor…</p></Bolum>
       ) : digerIsler}
     </SadeKart>
   );
@@ -513,14 +515,14 @@ export function KadroSeridi({ ajanlar, kosular, yukleniyor, onKadro }: { ajanlar
   const calisiyor = (ajan: Ajan) => !!ajan.suAn || !!(kosular.get(ajan.id) && !kosular.get(ajan.id)?.bitti);
   const calisan = ajanlar.filter(calisiyor).length;
   return (
-    <SadeKart baslik="Kadro" sag={<span className="text-[11.5px]" style={{ color: MUTED }}>{ajanlar.length} personel · {calisan ? `${calisan} çalışıyor` : ajanlar.length ? 'hepsi boşta' : 'kadro bekleniyor'} · <AltinBaglanti onClick={onKadro}>Personel kartları →</AltinBaglanti></span>}>
-      {yukleniyor && !ajanlar.length ? <p role="status" className="text-[12px]" style={{ color: MUTED }}>Kadro yükleniyor…</p> : !ajanlar.length ? <p className="text-[12px]" style={{ color: MUTED }}>Gösterilecek personel yok.</p> : (
+    <SadeKart baslik="Kadro" sag={<span className="text-[11.5px]" style={portalStyle({ color: MUTED })}>{ajanlar.length} personel · {calisan ? `${calisan} çalışıyor` : ajanlar.length ? 'hepsi boşta' : 'kadro bekleniyor'} · <AltinBaglanti onClick={onKadro}>Personel kartları →</AltinBaglanti></span>}>
+      {yukleniyor && !ajanlar.length ? <p role="status" className="text-[12px]" style={portalStyle({ color: MUTED })}>Kadro yükleniyor…</p> : !ajanlar.length ? <p className="text-[12px]" style={portalStyle({ color: MUTED })}>Gösterilecek personel yok.</p> : (
         <div className="grid grid-cols-3 gap-x-2 gap-y-4 pt-2 sm:grid-cols-6 xl:grid-cols-12">
           {ajanlar.map((ajan) => (
-            <button key={ajan.id} type="button" onClick={onKadro} title={`${ajan.ad} — ${ajan.unvan}${calisiyor(ajan) ? ' · çalışıyor' : ''}`} className="flex min-w-0 flex-col items-center rounded-lg px-0.5 py-1 text-center transition hover:bg-white/[0.04] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2" style={{ outlineColor: GOLD }}>
+            <button key={ajan.id} type="button" onClick={onKadro} title={`${ajan.ad} — ${ajan.unvan}${calisiyor(ajan) ? ' · çalışıyor' : ''}`} className="flex min-w-0 flex-col items-center rounded-lg px-0.5 py-1 text-center transition hover:bg-white/[0.04] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2" style={portalStyle({ outlineColor: GOLD })}>
               <GradyanAvatar kisaltma={ajanKisaltma(ajan.id, ajan.ad)} renk={ajanRengi(ajan.id)} boyut={40} halka={calisiyor(ajan)} className="mb-2" />
-              <span className="w-full break-words text-[11px] font-semibold leading-tight" style={{ color: TEXT }}>{ajanKisaAd(ajan.id, ajan.ad)}</span>
-              <span className="mt-0.5 w-full break-words text-[10.5px] leading-tight" style={{ color: calisiyor(ajan) ? MAVI : MUTED }}>{calisiyor(ajan) ? 'Çalışıyor' : AJAN_UNVAN[ajan.id] || ajan.unvan}</span>
+              <span className="w-full break-words text-[11px] font-semibold leading-tight" style={portalStyle({ color: TEXT })}>{ajanKisaAd(ajan.id, ajan.ad)}</span>
+              <span className="mt-0.5 w-full break-words text-[10.5px] leading-tight" style={portalStyle({ color: calisiyor(ajan) ? MAVI : MUTED })}>{calisiyor(ajan) ? 'Çalışıyor' : AJAN_UNVAN[ajan.id] || ajan.unvan}</span>
             </button>
           ))}
         </div>

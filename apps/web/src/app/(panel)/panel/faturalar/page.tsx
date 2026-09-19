@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle, portalPaint } from '@/lib/portal-theme';
+
 
 import React, { useMemo, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
@@ -457,33 +459,33 @@ ${isPdf
       {/* Header — Fiş Yazdırma imzası: kart + üst renk şeridi + radial parıltı + degrade ikon kutusu */}
       <div
         className="relative overflow-hidden rounded-2xl border p-5"
-        style={{
+        style={portalStyle({
           borderColor: 'rgba(255,255,255,0.06)',
           background:
             'radial-gradient(120% 140% at 0% 0%, rgba(212,184,118,0.16), transparent 46%), radial-gradient(120% 140% at 100% 0%, rgba(139,118,73,0.12), transparent 48%), #0f0d0b',
-        }}
+        })}
       >
         <div
           className="absolute inset-x-0 top-0 h-1"
-          style={{ background: 'linear-gradient(90deg, #8b7649, #b8a06f, #d4b876, #e7cf95, #d4b876, #b8a06f)' }}
+          style={portalStyle({ background: 'linear-gradient(90deg, #8b7649, #b8a06f, #d4b876, #e7cf95, #d4b876, #b8a06f)' })}
         />
         <div className="flex items-center gap-2.5 mb-3">
-          <span className="w-[26px] h-px" style={{ background: '#d4b876' }} />
-          <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>Belge Yönetimi</span>
+          <span className="w-[26px] h-px" style={portalStyle({ background: '#d4b876' })} />
+          <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={portalStyle({ color: '#b8a06f' })}>Belge Yönetimi</span>
         </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
           <div className="flex items-center gap-3.5">
             <span
               className="grid place-items-center rounded-xl flex-shrink-0"
-              style={{ width: 46, height: 46, background: 'linear-gradient(135deg, #d4b876, #b8a06f)', boxShadow: '0 8px 22px rgba(212,184,118,0.32)' }}
+              style={portalStyle({ width: 46, height: 46, background: 'linear-gradient(135deg, #d4b876, #b8a06f)', boxShadow: '0 8px 22px rgba(212,184,118,0.32)' })}
             >
-              <Receipt size={24} style={{ color: '#1a1410' }} />
+              <Receipt size={24} style={portalStyle({ color: '#1a1410' })} />
             </span>
             <div>
-              <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 30, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em', lineHeight: 1.05, whiteSpace: 'nowrap' }}>
+              <h1 style={portalStyle({ fontFamily: 'Fraunces, serif', fontSize: 30, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em', lineHeight: 1.05, whiteSpace: 'nowrap' })}>
                 İşlenen Faturalar
               </h1>
-              <p className="text-[13px] mt-1.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
+              <p className="text-[13px] mt-1.5" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                 {selectedMukellef && invoices.length > 0
                   ? `${invoices.length} fatura · ${MONTH_NAMES[Number(month) - 1]} ${year} · ${selectedTaxpayer ? taxpayerName(selectedTaxpayer) : ''}`
                   : 'MIHSAP\'tan fatura çekme ve arşiv yönetimi'}
@@ -507,16 +509,16 @@ ${isPdf
       </div>
 
       {/* Tek satır araç çubuğu — Mükellef · Dönem · Çekme (eski büyük seçim kartı yerine) */}
-      <div className="flex items-center gap-2 flex-wrap rounded-[14px] p-2.5" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
+      <div className="flex items-center gap-2 flex-wrap rounded-[14px] p-2.5" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' })}>
         {/* Mükellef picker */}
         <button
           type="button"
           onClick={() => setMukellefPickerOpen(true)}
           className="flex-1 min-w-[220px] flex items-center gap-2 px-3 h-[38px] rounded-[10px] text-[13px] text-left hover:brightness-110 transition"
-          style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
+          style={portalStyle({ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' })}
         >
-          <Users size={13} style={{ color: 'rgba(250,250,249,0.5)' }} />
-          <span className="flex-1 truncate" style={{ color: selectedMukellef ? '#fafaf9' : 'rgba(250,250,249,0.45)' }}>
+          <Users size={13} style={portalStyle({ color: 'rgba(250,250,249,0.5)' })} />
+          <span className="flex-1 truncate" style={portalStyle({ color: selectedMukellef ? '#fafaf9' : 'rgba(250,250,249,0.45)' })}>
             {selectedMukellef === ALL_SENTINEL
               ? `Tümü (${taxpayers.filter((t) => t.mihsapId).length} mükellef)`
               : selectedMukellef
@@ -527,53 +529,53 @@ ${isPdf
             <span
               onClick={(e) => { e.stopPropagation(); setSelectedMukellef(''); }}
               className="p-0.5 rounded hover:bg-white/10"
-              style={{ color: 'rgba(250,250,249,0.5)' }}
+              style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}
             >
               <X size={13} />
             </span>
           )}
-          <ChevronDown size={14} style={{ color: 'rgba(250,250,249,0.45)' }} />
+          <ChevronDown size={14} style={portalStyle({ color: 'rgba(250,250,249,0.45)' })} />
         </button>
 
         {/* Yıl */}
-        <div className="flex items-center gap-1.5 px-2.5 h-[38px] rounded-[10px]" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
-          <Calendar size={13} style={{ color: 'rgba(250,250,249,0.45)' }} />
+        <div className="flex items-center gap-1.5 px-2.5 h-[38px] rounded-[10px]" style={portalStyle({ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' })}>
+          <Calendar size={13} style={portalStyle({ color: 'rgba(250,250,249,0.45)' })} />
           <select
             value={year}
             onChange={(e) => setYear(Number(e.target.value))}
             className="bg-transparent text-[13px] outline-none cursor-pointer"
-            style={{ color: '#fafaf9' }}
+            style={portalStyle({ color: '#fafaf9' })}
           >
             {[2024, 2025, 2026, 2027].map((y) => (
-              <option key={y} value={y} style={{ background: '#0f0d0b' }}>{y}</option>
+              <option key={y} value={y} style={portalStyle({ background: '#0f0d0b' })}>{y}</option>
             ))}
           </select>
         </div>
 
         {/* Ay */}
-        <div className="flex items-center px-2.5 h-[38px] rounded-[10px]" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
+        <div className="flex items-center px-2.5 h-[38px] rounded-[10px]" style={portalStyle({ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' })}>
           <select
             value={month}
             onChange={(e) => setMonth(e.target.value)}
             className="bg-transparent text-[13px] outline-none cursor-pointer"
-            style={{ color: '#fafaf9' }}
+            style={portalStyle({ color: '#fafaf9' })}
           >
             {MONTHS.map((m, i) => (
-              <option key={m} value={m} style={{ background: '#0f0d0b' }}>{MONTH_NAMES[i]}</option>
+              <option key={m} value={m} style={portalStyle({ background: '#0f0d0b' })}>{MONTH_NAMES[i]}</option>
             ))}
           </select>
         </div>
 
-        <span className="w-px h-6 mx-0.5 hidden md:block" style={{ background: 'rgba(255,255,255,0.08)' }} />
+        <span className="w-px h-6 mx-0.5 hidden md:block" style={portalStyle({ background: 'rgba(255,255,255,0.08)' })} />
 
         {/* Çekme butonları */}
         <button
           disabled={!selectedMukellef || fetchMut.isPending || !!activeJob || bulkProgress?.running}
           onClick={() => handleFetch('ALIS', false)}
           className="inline-flex items-center gap-1.5 h-[38px] px-3 rounded-[10px] text-[12.5px] font-bold disabled:opacity-60 disabled:cursor-not-allowed transition-all"
-          style={{ background: 'rgba(59,130,246,0.18)', color: '#93c5fd', border: '1px solid rgba(96,165,250,0.5)' }}
-          onMouseEnter={(e) => { if (!e.currentTarget.disabled) { e.currentTarget.style.background = 'rgba(59,130,246,0.32)'; e.currentTarget.style.color = '#dbeafe'; } }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(59,130,246,0.18)'; e.currentTarget.style.color = '#93c5fd'; }}
+          style={portalStyle({ background: 'rgba(59,130,246,0.18)', color: '#93c5fd', border: '1px solid rgba(96,165,250,0.5)' })}
+          onMouseEnter={(e) => { if (!e.currentTarget.disabled) { e.currentTarget.style.background = portalPaint('rgba(59,130,246,0.32)', 'background'); e.currentTarget.style.color = portalPaint('#dbeafe', 'color'); } }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = portalPaint('rgba(59,130,246,0.18)', 'background'); e.currentTarget.style.color = portalPaint('#93c5fd', 'color'); }}
           title="Alış faturalarını çek"
         >
           <Download size={13} /> Alış Çek
@@ -582,9 +584,9 @@ ${isPdf
           disabled={!selectedMukellef || fetchMut.isPending || !!activeJob || bulkProgress?.running}
           onClick={() => handleFetch('SATIS', false)}
           className="inline-flex items-center gap-1.5 h-[38px] px-3 rounded-[10px] text-[12.5px] font-bold disabled:opacity-60 disabled:cursor-not-allowed transition-all"
-          style={{ background: 'rgba(34,197,94,0.18)', color: '#86efac', border: '1px solid rgba(74,222,128,0.5)' }}
-          onMouseEnter={(e) => { if (!e.currentTarget.disabled) { e.currentTarget.style.background = 'rgba(34,197,94,0.32)'; e.currentTarget.style.color = '#dcfce7'; } }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(34,197,94,0.18)'; e.currentTarget.style.color = '#86efac'; }}
+          style={portalStyle({ background: 'rgba(34,197,94,0.18)', color: '#86efac', border: '1px solid rgba(74,222,128,0.5)' })}
+          onMouseEnter={(e) => { if (!e.currentTarget.disabled) { e.currentTarget.style.background = portalPaint('rgba(34,197,94,0.32)', 'background'); e.currentTarget.style.color = portalPaint('#dcfce7', 'color'); } }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = portalPaint('rgba(34,197,94,0.18)', 'background'); e.currentTarget.style.color = portalPaint('#86efac', 'color'); }}
           title="Satış faturalarını çek"
         >
           <Download size={13} /> Satış Çek
@@ -593,9 +595,9 @@ ${isPdf
           disabled={!selectedMukellef || fetchMut.isPending || !!activeJob || bulkProgress?.running}
           onClick={() => handleFetch(undefined, false)}
           className="inline-flex items-center gap-1.5 h-[38px] px-3.5 rounded-[10px] text-[12.5px] font-bold disabled:opacity-60 disabled:cursor-not-allowed transition-all"
-          style={{ background: 'linear-gradient(135deg, #d4b876, #b8a06f)', color: '#0f0d0b', boxShadow: '0 2px 10px rgba(212,184,118,0.32)' }}
-          onMouseEnter={(e) => { if (!e.currentTarget.disabled) { e.currentTarget.style.boxShadow = '0 4px 16px rgba(212,184,118,0.5)'; } }}
-          onMouseLeave={(e) => { e.currentTarget.style.boxShadow = '0 2px 10px rgba(212,184,118,0.32)'; }}
+          style={portalStyle({ background: 'linear-gradient(135deg, #d4b876, #b8a06f)', color: '#0f0d0b', boxShadow: '0 2px 10px rgba(212,184,118,0.32)' })}
+          onMouseEnter={(e) => { if (!e.currentTarget.disabled) { e.currentTarget.style.boxShadow = portalPaint('0 4px 16px rgba(212,184,118,0.5)', 'boxShadow'); } }}
+          onMouseLeave={(e) => { e.currentTarget.style.boxShadow = portalPaint('0 2px 10px rgba(212,184,118,0.32)', 'boxShadow'); }}
           title="Alış + Satış hepsini çek"
         >
           <Download size={13} />
@@ -609,7 +611,7 @@ ${isPdf
           disabled={!selectedMukellef || fetchMut.isPending || !!activeJob || bulkProgress?.running}
           onClick={() => handleFetch(tab === 'all' ? undefined : tab, true)}
           className="inline-flex items-center justify-center w-[38px] h-[38px] rounded-[10px] disabled:opacity-60 disabled:cursor-not-allowed transition-all"
-          style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(250,250,249,0.85)' }}
+          style={portalStyle({ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(250,250,249,0.85)' })}
           title={tab === 'all' ? 'Seçili dönemi yeniden indir' : `${tab === 'ALIS' ? 'Alış' : 'Satış'} yeniden indir`}
         >
           <RefreshCw size={13} />
@@ -617,7 +619,7 @@ ${isPdf
       </div>
 
       {/* İnce özet şeridi — eski 4 dev sayaç kutusu yerine */}
-      <div className="flex items-stretch flex-wrap rounded-[12px] overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
+      <div className="flex items-stretch flex-wrap rounded-[12px] overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' })}>
         {[
           { label: 'Toplam Fatura', value: invoices.length, sub: '', icon: Receipt },
           { label: 'Alış Faturası', value: alisInvoices.length, sub: `₺${totalAlis.toLocaleString('tr-TR', { maximumFractionDigits: 0 })}`, icon: FileText },
@@ -627,17 +629,17 @@ ${isPdf
           <div
             key={label}
             className="flex-1 min-w-[160px] flex items-center gap-2.5 px-4 py-2.5"
-            style={idx > 0 ? { borderLeft: '1px solid rgba(255,255,255,0.04)' } : undefined}
+            style={portalStyle(idx > 0 ? { borderLeft: '1px solid rgba(255,255,255,0.04)' } : undefined)}
           >
-            <div className="w-8 h-8 rounded-[9px] flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(184,160,111,0.08)', border: '1px solid rgba(184,160,111,0.15)', color: '#d4b876' }}>
+            <div className="w-8 h-8 rounded-[9px] flex items-center justify-center flex-shrink-0" style={portalStyle({ background: 'rgba(184,160,111,0.08)', border: '1px solid rgba(184,160,111,0.15)', color: '#d4b876' })}>
               <Icon size={15} />
             </div>
             <div className="min-w-0">
-              <p className="text-[10px] uppercase font-bold tracking-[.1em] truncate" style={{ color: 'rgba(250,250,249,0.3)' }}>{label}</p>
-              <p className="leading-tight tabular-nums" style={{ fontFamily: 'Fraunces, serif', fontWeight: 700, fontSize: 20, letterSpacing: '-0.02em', color: '#d4b876' }}>
+              <p className="text-[10px] uppercase font-bold tracking-[.1em] truncate" style={portalStyle({ color: 'rgba(250,250,249,0.3)' })}>{label}</p>
+              <p className="leading-tight tabular-nums" style={portalStyle({ fontFamily: 'Fraunces, serif', fontWeight: 700, fontSize: 20, letterSpacing: '-0.02em', color: '#d4b876' })}>
                 {value.toLocaleString('tr-TR')}
                 {sub && (
-                  <span className="ml-1.5 tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 11, fontWeight: 600, color: 'rgba(250,250,249,0.4)' }}>{sub}</span>
+                  <span className="ml-1.5 tabular-nums" style={portalStyle({ fontFamily: 'JetBrains Mono, monospace', fontSize: 11, fontWeight: 600, color: 'rgba(250,250,249,0.4)' })}>{sub}</span>
                 )}
               </p>
             </div>
@@ -649,29 +651,29 @@ ${isPdf
       {bulkProgress && (
         <div
           className="rounded-2xl p-4 border"
-          style={{
+          style={portalStyle({
             background: bulkProgress.running ? 'rgba(212,184,118,.08)' : 'rgba(34,197,94,.08)',
             borderColor: bulkProgress.running ? '#d4b876' : '#22c55e',
-          }}
+          })}
         >
           <div className="flex items-center gap-3">
             {bulkProgress.running ? (
-              <Loader2 size={18} className="animate-spin" style={{ color: '#d4b876' }} />
+              <Loader2 size={18} className="animate-spin" style={portalStyle({ color: '#d4b876' })} />
             ) : (
-              <CheckCircle2 size={18} style={{ color: '#22c55e' }} />
+              <CheckCircle2 size={18} style={portalStyle({ color: '#22c55e' })} />
             )}
             <div className="flex-1">
-              <div className="text-sm font-semibold" style={{ color: '#fafaf9' }}>
+              <div className="text-sm font-semibold" style={portalStyle({ color: '#fafaf9' })}>
                 Toplu fatura çekimi · {bulkProgress.current} / {bulkProgress.total}
                 {!bulkProgress.running && ' · TAMAMLANDI'}
               </div>
               {bulkProgress.running && bulkProgress.currentName && (
-                <div className="text-xs truncate" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                <div className="text-xs truncate" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                   → {bulkProgress.currentName}
                 </div>
               )}
               {bulkProgress.errors.length > 0 && (
-                <div className="text-xs mt-1" style={{ color: '#ef4444' }}>
+                <div className="text-xs mt-1" style={portalStyle({ color: '#ef4444' })}>
                   {bulkProgress.errors.length} hata
                 </div>
               )}
@@ -680,22 +682,22 @@ ${isPdf
               <button
                 onClick={() => setBulkProgress(null)}
                 className="text-xs px-2 py-1 rounded"
-                style={{ color: 'rgba(250,250,249,0.45)' }}
+                style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}
               >
                 Kapat
               </button>
             )}
           </div>
           {/* Progress bar */}
-          <div className="mt-2 h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
+          <div className="mt-2 h-1.5 rounded-full overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.08)' })}>
             <div
               className="h-full transition-all"
-              style={{
+              style={portalStyle({
                 width: `${(bulkProgress.current / bulkProgress.total) * 100}%`,
                 background: bulkProgress.running
                   ? 'linear-gradient(90deg, #d4b876, #b8a06f)'
                   : '#22c55e',
-              }}
+              })}
             />
           </div>
         </div>
@@ -705,17 +707,17 @@ ${isPdf
       {activeJob && (
         <div
           className="rounded-2xl p-4 border flex items-center gap-3"
-          style={{
+          style={portalStyle({
             background: 'rgba(212,184,118,.08)',
             borderColor: '#d4b876',
-          }}
+          })}
         >
-          <Loader2 size={18} className="animate-spin" style={{ color: '#d4b876' }} />
+          <Loader2 size={18} className="animate-spin" style={portalStyle({ color: '#d4b876' })} />
           <div className="flex-1">
-            <div className="text-sm font-semibold" style={{ color: '#fafaf9' }}>
+            <div className="text-sm font-semibold" style={portalStyle({ color: '#fafaf9' })}>
               Fatura çekiliyor ({activeJob.donem})
             </div>
-            <div className="text-xs" style={{ color: 'rgba(250,250,249,0.45)' }}>
+            <div className="text-xs" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
               {activeJob.fetchedCount} / {activeJob.totalCount} fatura
             </div>
           </div>
@@ -726,15 +728,15 @@ ${isPdf
       {donem && (
         <div
           className="rounded-2xl border overflow-hidden"
-          style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
+          style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' })}
         >
           <div
             className="px-5 py-4 flex items-center justify-between flex-wrap gap-2"
-            style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
+            style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.05)' })}
           >
             <div className="flex items-center gap-2.5">
-              <span className="w-[3px] h-4 rounded-sm" style={{ background: '#d4b876' }} />
-              <h3 className="text-[13.5px] font-semibold" style={{ color: '#fafaf9' }}>
+              <span className="w-[3px] h-4 rounded-sm" style={portalStyle({ background: '#d4b876' })} />
+              <h3 className="text-[13.5px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>
                 {selectedTaxpayer ? taxpayerName(selectedTaxpayer) : 'Tüm Mükellefler'} · {MONTH_NAMES[Number(month) - 1]} {year}
               </h3>
             </div>
@@ -749,11 +751,11 @@ ${isPdf
                       key={t}
                       onClick={() => setTab(t)}
                       className="px-3.5 py-1.5 rounded-[8px] text-[11.5px] font-semibold transition-all"
-                      style={{
+                      style={portalStyle({
                         background: active ? 'rgba(184,160,111,0.12)' : 'rgba(255,255,255,0.03)',
                         color: active ? '#d4b876' : 'rgba(250,250,249,0.55)',
                         border: `1px solid ${active ? 'rgba(184,160,111,0.3)' : 'rgba(255,255,255,0.08)'}`,
-                      }}
+                      })}
                     >
                       {t === 'all' ? 'Tümü' : t === 'ALIS' ? 'Alış' : 'Satış'} ({count})
                     </button>
@@ -766,11 +768,11 @@ ${isPdf
                   onClick={() => handleBulkPrint('ALIS')}
                   disabled={printing !== 'idle' || !donem}
                   className="px-3 py-1.5 rounded-[8px] text-[11.5px] font-semibold inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                  style={{
+                  style={portalStyle({
                     background: 'rgba(59,130,246,0.14)',
                     color: '#93c5fd',
                     border: '1px solid rgba(96,165,250,0.35)',
-                  }}
+                  })}
                   title={selectedMukellef ? 'Bu mükellefin alış faturalarını yazdır' : 'Tüm mükelleflerin alış faturalarını yazdır'}
                 >
                   {printing === 'ALIS' ? <Loader2 size={12} className="animate-spin" /> : <Printer size={12} />}
@@ -780,11 +782,11 @@ ${isPdf
                   onClick={() => handleBulkPrint('SATIS')}
                   disabled={printing !== 'idle' || !donem}
                   className="px-3 py-1.5 rounded-[8px] text-[11.5px] font-semibold inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                  style={{
+                  style={portalStyle({
                     background: 'rgba(34,197,94,0.14)',
                     color: '#86efac',
                     border: '1px solid rgba(74,222,128,0.35)',
-                  }}
+                  })}
                   title={selectedMukellef ? 'Bu mükellefin satış faturalarını yazdır' : 'Tüm mükelleflerin satış faturalarını yazdır'}
                 >
                   {printing === 'SATIS' ? <Loader2 size={12} className="animate-spin" /> : <Printer size={12} />}
@@ -794,19 +796,19 @@ ${isPdf
             </div>
           </div>
           {invLoading ? (
-            <div className="py-12 flex flex-col items-center gap-3" style={{ color: 'rgba(250,250,249,0.4)' }}>
-              <div className="w-8 h-8 rounded-full animate-spin" style={{ border: '2px solid rgba(255,255,255,0.08)', borderTopColor: '#d4b876' }} />
+            <div className="py-12 flex flex-col items-center gap-3" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>
+              <div className="w-8 h-8 rounded-full animate-spin" style={portalStyle({ border: '2px solid rgba(255,255,255,0.08)', borderTopColor: '#d4b876' })} />
               <span className="text-sm">Yükleniyor...</span>
             </div>
           ) : filteredInvoices.length === 0 ? (
             <div className="py-12 text-center">
-              <div className="w-14 h-14 mx-auto mb-3 rounded-2xl flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.05)' }}>
-                <Receipt size={24} style={{ color: 'rgba(250,250,249,0.35)' }} />
+              <div className="w-14 h-14 mx-auto mb-3 rounded-2xl flex items-center justify-center" style={portalStyle({ background: 'rgba(255,255,255,0.05)' })}>
+                <Receipt size={24} style={portalStyle({ color: 'rgba(250,250,249,0.35)' })} />
               </div>
-              <p className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>
+              <p className="text-[13px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>
                 Bu dönem için {tab === 'all' ? 'kayıtlı fatura' : tab === 'ALIS' ? 'alış faturası' : 'satış faturası'} yok
               </p>
-              <p className="text-[11.5px] mt-1" style={{ color: 'rgba(250,250,249,0.45)' }}>MIHSAP'tan çekim yapın veya başka bir dönem seçin</p>
+              <p className="text-[11.5px] mt-1" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>MIHSAP'tan çekim yapın veya başka bir dönem seçin</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -814,11 +816,11 @@ ${isPdf
                 <thead>
                   <tr
                     className="text-left text-[10px] font-semibold uppercase"
-                    style={{
+                    style={portalStyle({
                       background: 'rgba(255,255,255,0.015)',
                       color: 'rgba(250,250,249,0.4)',
                       letterSpacing: '0.12em',
-                    }}
+                    })}
                   >
                     <th className="px-5 py-3">Tür</th>
                     <th className="px-5 py-3">Belge No</th>
@@ -857,48 +859,48 @@ ${isPdf
       {mukellefPickerOpen && typeof document !== 'undefined' && createPortal(
         <div
           className="fixed inset-0 z-[60] flex items-start justify-center p-4 pt-[8vh]"
-          style={{ background: 'rgba(0,0,0,.6)', backdropFilter: 'blur(6px)' }}
+          style={portalStyle({ background: 'rgba(0,0,0,.6)', backdropFilter: 'blur(6px)' })}
           onClick={() => setMukellefPickerOpen(false)}
         >
           <div
             className="w-full max-w-xl rounded-2xl border shadow-2xl flex flex-col overflow-hidden"
-            style={{ background: 'rgba(17,14,12,0.98)', borderColor: 'rgba(255,255,255,0.05)', maxHeight: '84vh' }}
+            style={portalStyle({ background: 'rgba(17,14,12,0.98)', borderColor: 'rgba(255,255,255,0.05)', maxHeight: '84vh' })}
             onClick={(e) => e.stopPropagation()}
           >
             <div
               className="flex items-center justify-between px-5 py-4 border-b"
-              style={{ borderColor: 'rgba(255,255,255,0.05)', background: 'linear-gradient(135deg, rgba(184,160,111,.08), transparent)' }}
+              style={portalStyle({ borderColor: 'rgba(255,255,255,0.05)', background: 'linear-gradient(135deg, rgba(184,160,111,.08), transparent)' })}
             >
               <div>
-                <h3 className="text-lg font-bold" style={{ color: '#fafaf9' }}>Mükellef Seç</h3>
-                <p className="text-xs mt-0.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                <h3 className="text-lg font-bold" style={portalStyle({ color: '#fafaf9' })}>Mükellef Seç</h3>
+                <p className="text-xs mt-0.5" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                   MIHSAP ID tanımlı {taxpayers.filter((t) => t.mihsapId).length} mükellef · {taxpayers.length} toplam
                 </p>
               </div>
               <button
                 onClick={() => setMukellefPickerOpen(false)}
                 className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/5"
-                style={{ color: 'rgba(250,250,249,0.45)' }}
+                style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}
               >
                 <X size={16} />
               </button>
             </div>
-            <div className="px-5 py-3 border-b" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+            <div className="px-5 py-3 border-b" style={portalStyle({ borderColor: 'rgba(255,255,255,0.05)' })}>
               <div
                 className="flex items-center gap-2 px-3 py-2.5 rounded-lg border"
-                style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)' }}
+                style={portalStyle({ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)' })}
               >
-                <Search size={14} style={{ color: 'rgba(250,250,249,0.45)' }} />
+                <Search size={14} style={portalStyle({ color: 'rgba(250,250,249,0.45)' })} />
                 <input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Mükellef adı ara…"
                   autoFocus
                   className="flex-1 bg-transparent outline-none text-sm"
-                  style={{ color: '#fafaf9' }}
+                  style={portalStyle({ color: '#fafaf9' })}
                 />
                 {search && (
-                  <button onClick={() => setSearch('')} style={{ color: 'rgba(250,250,249,0.45)' }}>
+                  <button onClick={() => setSearch('')} style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                     <X size={13} />
                   </button>
                 )}
@@ -910,23 +912,23 @@ ${isPdf
                 type="button"
                 onClick={() => { setSelectedMukellef(ALL_SENTINEL); setMukellefPickerOpen(false); setSearch(''); }}
                 className="w-full flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg text-left transition-colors mb-1"
-                style={{
+                style={portalStyle({
                   background: selectedMukellef === ALL_SENTINEL ? 'rgba(184,160,111,.15)' : 'rgba(184,160,111,.05)',
                   color: '#fafaf9',
                   border: '1px dashed rgba(184,160,111,0.35)',
-                }}
+                })}
               >
                 <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0"
-                  style={{ background: 'linear-gradient(135deg, #b8a06f, #8b7649)', color: '#0f0d0b' }}>
+                  style={portalStyle({ background: 'linear-gradient(135deg, #b8a06f, #8b7649)', color: '#0f0d0b' })}>
                   ✓
                 </div>
-                <span className="flex-1 truncate font-semibold" style={{ color: '#b8a06f' }}>
+                <span className="flex-1 truncate font-semibold" style={portalStyle({ color: '#b8a06f' })}>
                   TÜMÜNÜ SEÇ ({taxpayers.filter((t) => t.mihsapId).length} mükellef)
                 </span>
               </button>
 
               {filteredTaxpayers.length === 0 ? (
-                <div className="text-sm p-8 text-center" style={{ color: 'rgba(250,250,249,0.45)' }}>Sonuç yok</div>
+                <div className="text-sm p-8 text-center" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>Sonuç yok</div>
               ) : (
                 filteredTaxpayers.map((t: Taxpayer) => {
                   const checked = selectedMukellef === t.id;
@@ -940,22 +942,22 @@ ${isPdf
                       disabled={disabled}
                       onClick={() => { setSelectedMukellef(t.id); setMukellefPickerOpen(false); setSearch(''); }}
                       className="w-full flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg text-left transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                      style={{ background: checked ? 'rgba(184,160,111,.08)' : 'transparent', color: '#fafaf9' }}
-                      onMouseEnter={(e) => { if (!checked && !disabled) (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,.03)'; }}
-                      onMouseLeave={(e) => { if (!checked) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+                      style={portalStyle({ background: checked ? 'rgba(184,160,111,.08)' : 'transparent', color: '#fafaf9' })}
+                      onMouseEnter={(e) => { if (!checked && !disabled) (e.currentTarget as HTMLElement).style.background = portalPaint('rgba(255,255,255,.03)', 'background'); }}
+                      onMouseLeave={(e) => { if (!checked) (e.currentTarget as HTMLElement).style.background = portalPaint('transparent', 'background'); }}
                     >
                       <div
                         className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0"
-                        style={{
+                        style={portalStyle({
                           background: checked ? 'linear-gradient(135deg, #b8a06f, #8b7649)' : 'rgba(255,255,255,0.05)',
                           color: checked ? '#0f0d0b' : 'rgba(250,250,249,0.45)',
-                        }}
+                        })}
                       >
                         {initial}
                       </div>
                       <span className="flex-1 truncate font-medium">{name}</span>
                       {disabled && (
-                        <span className="text-[10px] px-2 py-0.5 rounded" style={{ background: 'rgba(244,63,94,0.15)', color: '#fda4af' }}>
+                        <span className="text-[10px] px-2 py-0.5 rounded" style={portalStyle({ background: 'rgba(244,63,94,0.15)', color: '#fda4af' })}>
                           MIHSAP ID yok
                         </span>
                       )}
@@ -997,7 +999,7 @@ function DriveControls({
       <button
         onClick={onConnect}
         className="px-3 py-2 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 transition hover:brightness-110"
-        style={{ background: 'rgba(66,133,244,0.12)', color: '#8ab4f8', border: '1px solid rgba(66,133,244,0.4)' }}
+        style={portalStyle({ background: 'rgba(66,133,244,0.12)', color: '#8ab4f8', border: '1px solid rgba(66,133,244,0.4)' })}
         title="Faturaları Google Drive'a yedekle"
       >
         <Cloud size={14} /> Drive'a Bağla
@@ -1012,7 +1014,7 @@ function DriveControls({
     <div className="flex items-center gap-2">
       <div
         className="px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-2"
-        style={{ background: 'rgba(34,197,94,.12)', color: '#22c55e' }}
+        style={portalStyle({ background: 'rgba(34,197,94,.12)', color: '#22c55e' })}
         title={status?.email ? `Bağlı hesap: ${status.email}` : 'Google Drive bağlı'}
       >
         <Cloud size={14} /> Drive bağlı
@@ -1022,7 +1024,7 @@ function DriveControls({
         onClick={onBackup}
         disabled={running || backingUp || !donem}
         className="px-3 py-2 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed transition hover:brightness-110"
-        style={{ background: 'rgba(184,160,111,0.14)', color: '#d4b876', border: '1px solid rgba(184,160,111,0.35)' }}
+        style={portalStyle({ background: 'rgba(184,160,111,0.14)', color: '#d4b876', border: '1px solid rgba(184,160,111,0.35)' })}
         title="Bu dönemin faturalarını Drive'a yedekle (eksikleri ekler)"
       >
         {running ? (
@@ -1040,7 +1042,7 @@ function DriveControls({
           onClick={onBackupAll}
           disabled={running || backingUpAll}
           className="px-3 py-2 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed transition hover:brightness-110"
-          style={{ background: 'linear-gradient(135deg, #d4b876, #b8a06f)', color: '#0f0d0b', boxShadow: '0 2px 10px rgba(212,184,118,0.32)' }}
+          style={portalStyle({ background: 'linear-gradient(135deg, #d4b876, #b8a06f)', color: '#0f0d0b', boxShadow: '0 2px 10px rgba(212,184,118,0.32)' })}
           title="Tüm mükellef + tüm dönemlerdeki yedeklenmemiş faturaları Drive'a yedekle (tek seferlik geçiş). Biter bitmez bu buton kaybolur."
         >
           {running ? (
@@ -1063,10 +1065,10 @@ function MihsapConnectionBadge({ session }: { session: any }) {
   return (
     <div
       className="px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-2"
-      style={{
+      style={portalStyle({
         background: connected ? 'rgba(34,197,94,.12)' : 'rgba(244,63,94,.12)',
         color: connected ? '#22c55e' : '#f43f5e',
-      }}
+      })}
     >
       {connected ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
       {connected ? 'MIHSAP bağlı' : 'MIHSAP bağlı değil'}
@@ -1081,23 +1083,23 @@ function StatBox({ label, value, sub, color, icon: Icon }: any) {
   return (
     <div
       className="rounded-2xl p-4 border flex items-center gap-3"
-      style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
+      style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' })}
     >
       <div
         className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
-        style={{ background: 'rgba(212,184,118,0.08)', color: '#d4b876' }}
+        style={portalStyle({ background: 'rgba(212,184,118,0.08)', color: '#d4b876' })}
       >
         <Icon size={18} />
       </div>
       <div className="min-w-0">
-        <div className="text-xs truncate" style={{ color: 'rgba(250,250,249,0.45)' }}>
+        <div className="text-xs truncate" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
           {label}
         </div>
-        <div className="text-xl font-bold tabular-nums" style={{ color: '#d4b876' }}>
+        <div className="text-xl font-bold tabular-nums" style={portalStyle({ color: '#d4b876' })}>
           {typeof value === 'number' ? value.toLocaleString('tr-TR') : value}
         </div>
         {sub && (
-          <div className="text-xs tabular-nums truncate" style={{ color: 'rgba(250,250,249,0.35)' }}>
+          <div className="text-xs tabular-nums truncate" style={portalStyle({ color: 'rgba(250,250,249,0.35)' })}>
             {sub}
           </div>
         )}
@@ -1124,47 +1126,47 @@ function InvoiceRow({
   return (
     <tr
       className="cursor-pointer transition-colors"
-      style={{ borderTop: '1px solid rgba(255,255,255,0.03)' }}
+      style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.03)' })}
       onClick={() => canPreview && onPreview(invoice)}
-      onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(184,160,111,0.04)'; }}
-      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+      onMouseEnter={(e) => { e.currentTarget.style.background = portalPaint('rgba(184,160,111,0.04)', 'background'); }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = portalPaint('transparent', 'background'); }}
     >
       <td className="px-5 py-3">
         <span
           className="inline-block px-2 py-[2px] rounded-md text-[10px] font-bold uppercase"
-          style={{
+          style={portalStyle({
             background: isAlis ? 'rgba(96,165,250,0.12)' : 'rgba(74,222,128,0.12)',
             color: isAlis ? '#60a5fa' : '#4ade80',
             letterSpacing: '0.05em',
-          }}
+          })}
         >
           {isAlis ? 'ALIŞ' : 'SATIŞ'}
         </span>
-        <div className="text-[10px] mt-0.5 flex items-center gap-1" style={{ color: 'rgba(250,250,249,0.4)' }}>
+        <div className="text-[10px] mt-0.5 flex items-center gap-1" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>
           {invoice.belgeTuru}
           {invoice.kaynak === 'fm-arsiv' && (
-            <span title="Fatura İşleme Merkezi › Arşivim (Luca'ya aktarılan)" style={{ color: '#d4b876', fontWeight: 700 }}>· ARŞİVİM</span>
+            <span title="Fatura İşleme Merkezi › Arşivim (Luca'ya aktarılan)" style={portalStyle({ color: '#d4b876', fontWeight: 700 })}>· ARŞİVİM</span>
           )}
           {backedUp && (
-            <Cloud size={10} style={{ color: '#22c55e' }} aria-label="Drive'da yedekli" />
+            <Cloud size={10} style={portalStyle({ color: '#22c55e' })} aria-label="Drive'da yedekli" />
           )}
         </div>
       </td>
-      <td className="px-5 py-3 text-[12px] font-semibold" style={{ fontFamily: 'JetBrains Mono, monospace', color: '#d4b876' }}>{invoice.faturaNo}</td>
+      <td className="px-5 py-3 text-[12px] font-semibold" style={portalStyle({ fontFamily: 'JetBrains Mono, monospace', color: '#d4b876' })}>{invoice.faturaNo}</td>
       <td className="px-5 py-3">
-        <div className="truncate max-w-[240px] text-[13px] font-medium" style={{ color: '#fafaf9' }}>
+        <div className="truncate max-w-[240px] text-[13px] font-medium" style={portalStyle({ color: '#fafaf9' })}>
           {invoice.firmaUnvan || '—'}
         </div>
         {invoice.firmaKimlikNo && (
-          <div className="text-[10.5px] tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: 'rgba(250,250,249,0.4)' }}>
+          <div className="text-[10.5px] tabular-nums" style={portalStyle({ fontFamily: 'JetBrains Mono, monospace', color: 'rgba(250,250,249,0.4)' })}>
             {invoice.firmaKimlikNo}
           </div>
         )}
       </td>
-      <td className="px-5 py-3 text-[12px] tabular-nums" style={{ color: 'rgba(250,250,249,0.55)' }}>
+      <td className="px-5 py-3 text-[12px] tabular-nums" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>
         {date.toLocaleDateString('tr-TR')}
       </td>
-      <td className="px-5 py-3 text-right text-[13px] tabular-nums font-bold" style={{ fontFamily: 'JetBrains Mono, monospace', color: '#d4b876' }}>
+      <td className="px-5 py-3 text-right text-[13px] tabular-nums font-bold" style={portalStyle({ fontFamily: 'JetBrains Mono, monospace', color: '#d4b876' })}>
         ₺{invoice.toplamTutar.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
       </td>
       <td className="px-5 py-3 text-center">
@@ -1176,7 +1178,7 @@ function InvoiceRow({
                 onPreview(invoice);
               }}
               className="px-2.5 py-1 rounded-md inline-flex items-center gap-1 text-[11.5px] font-semibold transition-all"
-              style={{ background: 'rgba(184,160,111,0.12)', border: '1px solid rgba(184,160,111,0.25)', color: '#d4b876' }}
+              style={portalStyle({ background: 'rgba(184,160,111,0.12)', border: '1px solid rgba(184,160,111,0.25)', color: '#d4b876' })}
               title="Görüntüle"
             >
               <FileText size={12} /> Aç
@@ -1187,14 +1189,14 @@ function InvoiceRow({
                 onPrint(invoice.id, invoice.faturaNo);
               }}
               className="px-2.5 py-1 rounded-md inline-flex items-center gap-1 text-[11.5px] font-semibold transition-all"
-              style={{ background: 'rgba(156,70,86,0.16)', border: '1px solid rgba(156,70,86,0.35)', color: '#f4a5b2' }}
+              style={portalStyle({ background: 'rgba(156,70,86,0.16)', border: '1px solid rgba(156,70,86,0.35)', color: '#f4a5b2' })}
               title="Bu faturayı yazdır"
             >
               <Printer size={12} /> Yazdır
             </button>
           </div>
         ) : (
-          <span className="text-[10px]" style={{ color: 'rgba(250,250,249,0.35)' }}>
+          <span className="text-[10px]" style={portalStyle({ color: 'rgba(250,250,249,0.35)' })}>
             —
           </span>
         )}
@@ -1294,14 +1296,14 @@ function InvoicePreviewModal({
   const modalContent = (
     <div
       className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
-      style={{
+      style={portalStyle({
         background: 'rgba(0,0,0,.85)',
         position: 'fixed',
         top: 0,
         left: 0,
         right: 0,
         bottom: 0,
-      }}
+      })}
       onClick={onClose}
     >
       <div
@@ -1311,15 +1313,15 @@ function InvoicePreviewModal({
         {/* Üst bar */}
         <div
           className="flex items-center justify-between gap-3 px-4 py-3 rounded-t-xl"
-          style={{ background: 'rgba(15,13,11,.95)', color: '#fff' }}
+          style={portalStyle({ background: 'rgba(15,13,11,.95)', color: '#fff' })}
         >
           <div className="flex items-center gap-3 min-w-0">
             <span
               className="inline-block px-2 py-0.5 rounded text-[10px] font-semibold"
-              style={{
+              style={portalStyle({
                 background: isAlis ? 'rgba(59,130,246,.2)' : 'rgba(34,197,94,.2)',
                 color: isAlis ? '#60a5fa' : '#4ade80',
-              }}
+              })}
             >
               {isAlis ? 'ALIŞ' : 'SATIŞ'} · {invoice.belgeTuru}
             </span>
@@ -1341,7 +1343,7 @@ function InvoicePreviewModal({
                   target="_blank"
                   rel="noopener"
                   className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5"
-                  style={{ background: 'rgba(255,255,255,.15)', color: '#fff' }}
+                  style={portalStyle({ background: 'rgba(255,255,255,.15)', color: '#fff' })}
                 >
                   <FileText size={12} /> Yeni Sekmede Aç
                 </a>
@@ -1361,7 +1363,7 @@ function InvoicePreviewModal({
                       .catch(() => window.open(url, '_blank'));
                   }}
                   className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5"
-                  style={{ background: 'rgba(255,255,255,.15)', color: '#fff' }}
+                  style={portalStyle({ background: 'rgba(255,255,255,.15)', color: '#fff' })}
                 >
                   <Download size={12} /> İndir
                 </button>
@@ -1370,7 +1372,7 @@ function InvoicePreviewModal({
             <button
               onClick={onClose}
               className="w-8 h-8 rounded-lg flex items-center justify-center"
-              style={{ background: 'rgba(255,255,255,.15)', color: '#fff' }}
+              style={portalStyle({ background: 'rgba(255,255,255,.15)', color: '#fff' })}
               title="Kapat (ESC)"
             >
               <XCircle size={18} />
@@ -1380,13 +1382,13 @@ function InvoicePreviewModal({
         {/* İçerik */}
         <div
           className="flex-1 rounded-b-xl overflow-auto flex items-center justify-center"
-          style={{ background: 'rgba(15,13,11,.85)' }}
+          style={portalStyle({ background: 'rgba(15,13,11,.85)' })}
         >
           {loading && (
-            <Loader2 size={32} className="animate-spin" style={{ color: '#fff' }} />
+            <Loader2 size={32} className="animate-spin" style={portalStyle({ color: '#fff' })} />
           )}
           {error && (
-            <div className="text-center p-8" style={{ color: '#fca5a5' }}>
+            <div className="text-center p-8" style={portalStyle({ color: '#fca5a5' })}>
               <AlertCircle size={32} className="mx-auto mb-2" />
               <p className="text-sm">{error}</p>
             </div>

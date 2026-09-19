@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+import '@/components/dashboard/dashboard-white.css';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import {
@@ -111,18 +113,18 @@ const ACCENT_TONES: Record<StatAccent, { color: string; bg: string; border: stri
 function StatCard({ title, value, icon: Icon, href, sub, trend, trendKind, accent = 'gold' }: { title: string; value: number | string; icon: any; href?: string; sub?: string; trend?: string; trendKind?: 'up'|'down'|'flat'; accent?: StatAccent }) {
   const t = ACCENT_TONES[accent];
   const c = (
-    <div className="group relative overflow-hidden rounded-xl p-3 transition-all duration-300" style={{ background: `linear-gradient(135deg, ${t.bg}, rgba(255,255,255,0.012))`, border: `1px solid ${t.border}`, cursor: href ? 'pointer' : 'default' }}
+    <div data-dashboard-kpi={accent} className="group relative overflow-hidden rounded-xl p-3 transition-all duration-300" style={portalStyle({ background: `linear-gradient(135deg, ${t.bg}, rgba(255,255,255,0.012))`, border: `1px solid ${t.border}`, cursor: href ? 'pointer' : 'default' })}
       onMouseEnter={(e) => { const el = e.currentTarget as HTMLElement; el.style.background = t.hoverBg; el.style.borderColor = t.hoverBorder; el.style.transform = 'translateY(-2px)'; el.style.boxShadow = '0 8px 24px rgba(0,0,0,0.24)'; }}
       onMouseLeave={(e) => { const el = e.currentTarget as HTMLElement; el.style.background = `linear-gradient(135deg, ${t.bg}, rgba(255,255,255,0.012))`; el.style.borderColor = t.border; el.style.transform = 'translateY(0)'; el.style.boxShadow = 'none'; }}>
       {/* Üstten ince altın hairline (kendi tonunda, hover'da belirginleşir) */}
       <span className="absolute top-0 left-4 right-4 h-px transition-opacity duration-300 group-hover:opacity-100" style={{ background: `linear-gradient(90deg, transparent, ${t.color}, transparent)`, opacity: 0.35 }} />
       <div className="mb-2 flex items-center justify-between">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: 'rgba(15,13,11,0.28)', border: `1px solid ${t.border}`, color: t.color }}><Icon size={15} /></div>
-        {trend && <span className="text-[10px] font-bold px-2.5 py-[3px] rounded-md" style={{ background: trendKind === 'up' ? 'rgba(34,197,94,0.1)' : trendKind === 'down' ? 'rgba(244,63,94,0.1)' : 'rgba(255,255,255,0.04)', color: trendKind === 'up' ? '#22c55e' : trendKind === 'down' ? '#f43f5e' : 'rgba(250,250,249,0.35)' }}>{trend}</span>}
+        <div data-dashboard-kpi-icon className="flex h-8 w-8 items-center justify-center rounded-lg" style={portalStyle({ background: 'rgba(15,13,11,0.28)', border: `1px solid ${t.border}`, color: t.color })}><Icon size={15} /></div>
+        {trend && <span data-dashboard-kpi-badge className="text-[10px] font-bold px-2.5 py-[3px] rounded-md" style={portalStyle({ background: trendKind === 'up' ? 'rgba(34,197,94,0.1)' : trendKind === 'down' ? 'rgba(244,63,94,0.1)' : 'rgba(255,255,255,0.04)', color: trendKind === 'up' ? '#22c55e' : trendKind === 'down' ? '#f43f5e' : 'rgba(250,250,249,0.35)' })}>{trend}</span>}
       </div>
-      <p className="text-[10.5px] uppercase font-bold tracking-[.11em]" style={{ color: 'rgba(250,250,249,0.44)' }}>{title}</p>
-      <p className="mt-1 leading-none tabular-nums" style={{ fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', fontSize: 26, fontWeight: 900, letterSpacing: 0, color: t.color }}>{value ?? 0}</p>
-      {sub && <p className="text-[10.5px] mt-0.5" style={{ color: 'rgba(250,250,249,0.36)' }}>{sub}</p>}
+      <p className="text-[10.5px] uppercase font-bold tracking-[.11em]" style={portalStyle({ color: 'rgba(250,250,249,0.44)' })}>{title}</p>
+      <p className="mt-1 leading-none tabular-nums" style={portalStyle({ fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', fontSize: 26, fontWeight: 900, letterSpacing: 0, color: t.color })}>{value ?? 0}</p>
+      {sub && <p className="text-[10.5px] mt-0.5" style={portalStyle({ color: 'rgba(250,250,249,0.36)' })}>{sub}</p>}
     </div>
   );
   return href ? <Link href={href} className="block">{c}</Link> : c;
@@ -159,32 +161,32 @@ function WorkflowOverview({ counts, total, activeCount }: { counts?: WorkflowCou
 
   return (
     <div
-      className="rounded-2xl overflow-hidden"
-      style={{
+      data-dashboard-surface className="rounded-2xl overflow-hidden"
+      style={portalStyle({
         background: 'radial-gradient(circle at 8% 0%, rgba(125,211,252,0.10), transparent 30%), radial-gradient(circle at 92% 14%, rgba(143,215,189,0.07), transparent 28%), linear-gradient(180deg, rgba(8,15,16,0.96), rgba(5,9,10,0.92))',
         border: '1px solid rgba(125,211,252,0.14)',
         boxShadow: '0 14px 34px rgba(0,0,0,0.20), inset 0 1px 0 rgba(180,230,240,0.035)',
-      }}
+      })}
     >
-      <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4" style={{ borderBottom: '1px solid rgba(125,211,252,0.10)' }}>
+      <div data-dashboard-band="mint" className="flex flex-wrap items-center justify-between gap-3 px-5 py-4" style={portalStyle({ borderBottom: '1px solid rgba(125,211,252,0.10)' })}>
         <div className="flex items-center gap-3">
           <span className="w-[3px] h-8 rounded-sm" style={{ background: '#8bd3dd' }} />
           <div>
-            <h3 className="text-[17px] font-semibold leading-tight" style={{ color: '#eefafa' }}>Bu Ay İş Akışı</h3>
-            <p className="text-[12px] mt-1" style={{ color: 'rgba(250,250,249,0.50)' }}>
+            <h3 className="text-[17px] font-semibold leading-tight" style={portalStyle({ color: '#eefafa' })}>Bu Ay İş Akışı</h3>
+            <p className="text-[12px] mt-1" style={portalStyle({ color: 'rgba(250,250,249,0.50)' })}>
               {scopedTotal} mükellef akışta · {activeCount} aktif mükellef
             </p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[11.5px] font-semibold px-3 py-1 rounded-md" style={{ background: 'rgba(125,211,252,0.075)', border: '1px solid rgba(125,211,252,0.18)', color: '#8bd3dd' }}>
+          <span className="text-[11.5px] font-semibold px-3 py-1 rounded-md" style={portalStyle({ background: 'rgba(125,211,252,0.075)', border: '1px solid rgba(125,211,252,0.18)', color: '#8bd3dd' })}>
             {activeWork} aktif
           </span>
-          <span className="text-[11.5px] font-semibold px-3 py-1 rounded-md" style={{ background: 'rgba(134,199,160,0.075)', border: '1px solid rgba(134,199,160,0.16)', color: '#86c7a0' }}>
+          <span className="text-[11.5px] font-semibold px-3 py-1 rounded-md" style={portalStyle({ background: 'rgba(134,199,160,0.075)', border: '1px solid rgba(134,199,160,0.16)', color: '#86c7a0' })}>
             {completed} tamam
           </span>
           {outside > 0 && (
-            <span className="text-[11.5px] font-semibold px-3 py-1 rounded-md" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(250,250,249,0.56)' }}>
+            <span className="text-[11.5px] font-semibold px-3 py-1 rounded-md" style={portalStyle({ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(250,250,249,0.56)' })}>
               {outside} dışında
             </span>
           )}
@@ -202,29 +204,29 @@ function WorkflowOverview({ counts, total, activeCount }: { counts?: WorkflowCou
                 key={step.key}
                 href={step.href}
                 className="group min-h-[96px] rounded-lg px-3.5 py-3 transition-all"
-                style={{
+                style={portalStyle({
                   background: `linear-gradient(180deg, ${step.bg}, rgba(255,255,255,0.012))`,
                   border: `1px solid ${step.border}`,
                   boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.025)',
-                }}
+                })}
                 onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.background = 'rgba(255,255,255,0.032)'; }}
                 onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.background = `linear-gradient(180deg, ${step.bg}, rgba(255,255,255,0.012))`; }}
               >
                 <div className="flex items-start justify-between gap-2">
-                  <div className="w-8 h-8 rounded-md flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(5,7,7,0.24)', border: `1px solid ${step.border}`, color: step.color }}>
+                  <div className="w-8 h-8 rounded-md flex items-center justify-center flex-shrink-0" style={portalStyle({ background: 'rgba(5,7,7,0.24)', border: `1px solid ${step.border}`, color: step.color })}>
                     <Icon size={16} />
                   </div>
-                  <span className="rounded-md px-2 py-0.5 text-[10.5px] font-bold tabular-nums" style={{ color: step.color, background: 'rgba(0,0,0,0.14)', border: `1px solid ${step.border}` }}>
+                  <span className="rounded-md px-2 py-0.5 text-[10.5px] font-bold tabular-nums" style={portalStyle({ color: step.color, background: 'rgba(0,0,0,0.14)', border: `1px solid ${step.border}` })}>
                     %{pct}
                   </span>
                 </div>
                 <div className="mt-3">
-                  <div className="text-[25px] leading-none tabular-nums font-bold" style={{ color: step.color, fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', letterSpacing: 0 }}>{value}</div>
-                  <div className="mt-1 text-[12.5px] font-semibold truncate" style={{ color: '#fafaf9' }}>{step.label}</div>
-                  <div className="mt-0.5 text-[10.5px] truncate" style={{ color: 'rgba(250,250,249,0.46)' }}>{step.sub}</div>
+                  <div className="text-[25px] leading-none tabular-nums font-bold" style={portalStyle({ color: step.color, fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', letterSpacing: 0 })}>{value}</div>
+                  <div className="mt-1 text-[12.5px] font-semibold truncate" style={portalStyle({ color: '#fafaf9' })}>{step.label}</div>
+                  <div className="mt-0.5 text-[10.5px] truncate" style={portalStyle({ color: 'rgba(250,250,249,0.46)' })}>{step.sub}</div>
                 </div>
-                <div className="mt-3 h-1 overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.07)' }}>
-                  <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, background: step.color }} />
+                <div className="mt-3 h-1 overflow-hidden rounded-full" style={portalStyle({ background: 'rgba(255,255,255,0.07)' })}>
+                  <div className="h-full rounded-full transition-all duration-500" style={portalStyle({ width: `${pct}%`, background: step.color })} />
                 </div>
               </Link>
             );
@@ -271,20 +273,20 @@ function DashboardSectionBridge({
     <div className="relative my-12 flex items-center gap-4 px-2 sm:px-6">
       <div className="h-[2px] flex-1 rounded-full" style={{ background: `linear-gradient(90deg, transparent, ${tones.accent}88, ${tones.accent2}55)` }} />
         <div
-          className="flex min-w-0 flex-wrap items-center justify-center gap-2 rounded-2xl px-3 py-2 sm:flex-nowrap"
-          style={{
+          data-dashboard-surface className="flex min-w-0 flex-wrap items-center justify-center gap-2 rounded-2xl px-3 py-2 sm:flex-nowrap"
+          style={portalStyle({
             background: 'rgba(3,3,3,0.92)',
             border: `1px solid ${tones.border}`,
             boxShadow: `0 10px 24px rgba(0,0,0,0.26), 0 0 0 4px rgba(0,0,0,0.18)`,
-          }}
+          })}
         >
-          <span className="rounded-xl px-3 py-1.5 text-[10px] font-black uppercase tracking-[.14em]" style={{ background: `${tones.bg}`, color: tones.text, border: `1px solid ${tones.border}` }}>
+          <span className="rounded-xl px-3 py-1.5 text-[10px] font-black uppercase tracking-[.14em]" style={portalStyle({ background: `${tones.bg}`, color: tones.text, border: `1px solid ${tones.border}` })}>
             {from}
           </span>
-          <span className="flex h-7 w-7 items-center justify-center rounded-full" style={{ background: 'rgba(255,255,255,0.035)', color: tones.accent, border: `1px solid ${tones.border}` }}>
+          <span className="flex h-7 w-7 items-center justify-center rounded-full" style={portalStyle({ background: 'rgba(255,255,255,0.035)', color: tones.accent, border: `1px solid ${tones.border}` })}>
             <ArrowRight size={14} />
           </span>
-          <span className="rounded-xl px-3 py-1.5 text-[10px] font-black uppercase tracking-[.14em]" style={{ background: `${tones.bg}`, color: tones.text, border: `1px solid ${tones.border}` }}>
+          <span className="rounded-xl px-3 py-1.5 text-[10px] font-black uppercase tracking-[.14em]" style={portalStyle({ background: `${tones.bg}`, color: tones.text, border: `1px solid ${tones.border}` })}>
             {to}
           </span>
         </div>
@@ -295,13 +297,13 @@ function DashboardSectionBridge({
 
 function AgentMini({ href, icon: Icon, name, stat, running }: { href: string; icon: any; name: string; stat: string; running: boolean }) {
   return (
-    <Link href={href} className="flex items-center gap-3 p-3 rounded-xl transition-all duration-300" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}
+    <Link href={href} className="flex items-center gap-3 p-3 rounded-xl transition-all duration-300" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' })}
       onMouseEnter={(e) => { const el = e.currentTarget as HTMLElement; el.style.background = 'rgba(184,160,111,0.05)'; el.style.borderColor = 'rgba(184,160,111,0.22)'; el.style.transform = 'translateY(-3px)'; }}
       onMouseLeave={(e) => { const el = e.currentTarget as HTMLElement; el.style.background = 'rgba(255,255,255,0.02)'; el.style.borderColor = 'rgba(255,255,255,0.05)'; el.style.transform = 'translateY(0)'; }}>
-      <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(184,160,111,0.08)', border: '1px solid rgba(184,160,111,0.15)', color: GOLD }}><Icon size={16} /></div>
+      <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={portalStyle({ background: 'rgba(184,160,111,0.08)', border: '1px solid rgba(184,160,111,0.15)', color: GOLD })}><Icon size={16} /></div>
       <div className="flex-1 min-w-0">
-        <div className="text-[13px] font-semibold truncate" style={{ color: '#fafaf9' }}>{name}</div>
-        <div className="text-[10.5px] mt-0.5" style={{ fontFamily: 'JetBrains Mono, monospace', color: 'rgba(250,250,249,0.4)' }}>{stat}</div>
+        <div className="text-[13px] font-semibold truncate" style={portalStyle({ color: '#fafaf9' })}>{name}</div>
+        <div className="text-[10.5px] mt-0.5" style={portalStyle({ fontFamily: 'JetBrains Mono, monospace', color: 'rgba(250,250,249,0.4)' })}>{stat}</div>
       </div>
       <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: running ? '#22c55e' : 'rgba(255,255,255,0.18)', boxShadow: running ? '0 0 8px rgba(34,197,94,0.6)' : 'none', animation: running ? 'moren-pulse 2s infinite' : 'none' }} />
     </Link>
@@ -400,19 +402,19 @@ function ToplubeyannamePanel() {
 
   return (
     <div>
-      <div className="px-5 py-4" style={{ borderBottom: `1px solid ${BEYAN_TONE.border}` }}>
+      <div data-dashboard-band="plum" className="px-5 py-4" style={portalStyle({ borderBottom: `1px solid ${BEYAN_TONE.border}` })}>
         <div className="grid gap-3 xl:grid-cols-[minmax(300px,1fr)_auto] xl:items-center">
           <div className="flex min-w-0 items-center gap-2.5">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" style={{ background: BEYAN_TONE.bg, border: `1px solid ${BEYAN_TONE.border}`, color: BEYAN_TONE.accentSoft }}>
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" style={portalStyle({ background: BEYAN_TONE.bg, border: `1px solid ${BEYAN_TONE.border}`, color: BEYAN_TONE.accentSoft })}>
               <FileCheck2 size={15} />
             </span>
             <div className="min-w-0">
-              <h3 className="truncate text-[16px] font-semibold leading-tight" style={{ color: BEYAN_TONE.title }}>Beyanname Durum Takibi</h3>
-              <p className="mt-0.5 truncate text-[11.5px]" style={{ color: BEYAN_TONE.muted }}>{modeLabel} - {donemEtiket(selectedDonem)} - {modeNote}</p>
+              <h3 className="truncate text-[16px] font-semibold leading-tight" style={portalStyle({ color: BEYAN_TONE.title })}>Beyanname Durum Takibi</h3>
+              <p className="mt-0.5 truncate text-[11.5px]" style={portalStyle({ color: BEYAN_TONE.muted })}>{modeLabel} - {donemEtiket(selectedDonem)} - {modeNote}</p>
             </div>
           </div>
           <div className="flex flex-wrap items-center justify-start gap-2 xl:justify-end">
-            <div className="inline-flex rounded-lg p-0.5" style={{ background: 'rgba(244,239,229,0.03)', border: `1px solid ${BEYAN_TONE.borderSoft}` }}>
+            <div className="inline-flex rounded-lg p-0.5" style={portalStyle({ background: 'rgba(244,239,229,0.03)', border: `1px solid ${BEYAN_TONE.borderSoft}` })}>
               {([
                 ['VERILME', 'Verilme dönemi'],
                 ['VERGI', 'Vergi dönemi'],
@@ -422,11 +424,11 @@ function ToplubeyannamePanel() {
                   type="button"
                   onClick={() => setDonemTuru(value)}
                   className="rounded-md px-2.5 py-1 text-[11.5px] font-semibold transition"
-                  style={{
+                  style={portalStyle({
                     background: donemTuru === value ? BEYAN_TONE.bg : 'transparent',
                     color: donemTuru === value ? BEYAN_TONE.accentSoft : BEYAN_TONE.muted,
                     border: donemTuru === value ? `1px solid ${BEYAN_TONE.border}` : '1px solid transparent',
-                  }}
+                  })}
                 >
                   {label}
                 </button>
@@ -436,16 +438,16 @@ function ToplubeyannamePanel() {
               value={donem}
               onChange={(e) => setDonem(e.target.value)}
               className="h-9 w-[150px] cursor-pointer rounded-lg px-3 text-[12.5px] font-semibold outline-none"
-              style={{ background: 'rgba(244,239,229,0.035)', border: `1px solid ${BEYAN_TONE.border}`, color: BEYAN_TONE.title }}
+              style={portalStyle({ background: 'rgba(244,239,229,0.035)', border: `1px solid ${BEYAN_TONE.border}`, color: BEYAN_TONE.title })}
             >
               {donemOptions.map((o) => (
-                <option key={o.value} value={o.value} style={{ background: '#1a1814' }}>{o.label}</option>
+                <option key={o.value} value={o.value} style={portalStyle({ background: '#1a1814' })}>{o.label}</option>
               ))}
             </select>
             <button
               onClick={() => refetch()}
               className="inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-[12px] font-semibold transition-all"
-              style={{ background: 'rgba(140,200,255,0.09)', border: '1px solid rgba(140,200,255,0.22)', color: BEYAN_TONE.status }}
+              style={portalStyle({ background: 'rgba(140,200,255,0.09)', border: '1px solid rgba(140,200,255,0.22)', color: BEYAN_TONE.status })}
             >
               <SearchIcon size={13} /> Sorgula
             </button>
@@ -462,17 +464,17 @@ function ToplubeyannamePanel() {
       </div>
 
       {isLoading && (
-        <div className="px-5 py-12 text-center text-[13px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
+        <div className="px-5 py-12 text-center text-[13px]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
           Yükleniyor...
         </div>
       )}
 
       {!isLoading && beyanRows.length === 0 && !bildirgeRow && !edefterRow && (
         <div className="px-5 py-10 text-center">
-          <p className="text-[12.5px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
+          <p className="text-[12.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
             Bu dönem için takip edilecek beyanname bulunmadı.
           </p>
-          <p className="text-[11px] mt-1.5" style={{ color: 'rgba(250,250,249,0.3)' }}>
+          <p className="text-[11px] mt-1.5" style={portalStyle({ color: 'rgba(250,250,249,0.3)' })}>
             Mükellef kartlarındaki beyanname dönemleri ve türleri kontrol edilmeli.
           </p>
         </div>
@@ -509,17 +511,17 @@ function BeyanCompactTable({
   return (
     <div className={compact ? 'px-5 pb-4' : 'px-5 py-4'}>
       <div className="mb-2.5 flex items-center justify-between gap-3">
-        <div className="text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: BEYAN_TONE.accentSoft }}>
+        <div className="text-[11px] font-bold uppercase tracking-[0.14em]" style={portalStyle({ color: BEYAN_TONE.accentSoft })}>
           {title}
         </div>
-        <div className="text-[11px] font-semibold tabular-nums" style={{ color: BEYAN_TONE.muted, fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif' }}>
+        <div className="text-[11px] font-semibold tabular-nums" style={portalStyle({ color: BEYAN_TONE.muted, fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif' })}>
           {donemEtiket(donem)}
         </div>
       </div>
-      <div className="overflow-x-auto rounded-xl" style={{ border: `1px solid ${BEYAN_TONE.borderSoft}`, background: BEYAN_TONE.tableBg }}>
-        <table className="w-full min-w-[760px] border-collapse text-[12px]" style={{ color: BEYAN_TONE.title }}>
+      <div className="overflow-x-auto rounded-xl" style={portalStyle({ border: `1px solid ${BEYAN_TONE.borderSoft}`, background: BEYAN_TONE.tableBg })}>
+        <table className="w-full min-w-[760px] border-collapse text-[12px]" style={portalStyle({ color: BEYAN_TONE.title })}>
           <thead>
-            <tr style={{ background: BEYAN_TONE.headBg, borderBottom: `1px solid ${BEYAN_TONE.borderSoft}` }}>
+            <tr style={portalStyle({ background: BEYAN_TONE.headBg, borderBottom: `1px solid ${BEYAN_TONE.borderSoft}` })}>
               <BeyanHeaderCell align="left">Beyanname</BeyanHeaderCell>
               <BeyanHeaderCell>Takip</BeyanHeaderCell>
               <BeyanHeaderCell>{onayLabel}</BeyanHeaderCell>
@@ -552,10 +554,10 @@ function YardimciBeyanGrid({
   return (
     <div className="px-5 pb-4">
       <div className="mb-2.5 flex items-center justify-between gap-3">
-        <div className="text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: BEYAN_TONE.accentSoft }}>
+        <div className="text-[11px] font-bold uppercase tracking-[0.14em]" style={portalStyle({ color: BEYAN_TONE.accentSoft })}>
           Bildirge ve E-Defter
         </div>
-        <div className="text-[11px] font-semibold tabular-nums" style={{ color: BEYAN_TONE.muted, fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif' }}>
+        <div className="text-[11px] font-semibold tabular-nums" style={portalStyle({ color: BEYAN_TONE.muted, fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif' })}>
           {donemEtiket(donem)}
         </div>
       </div>
@@ -585,13 +587,13 @@ function YardimciBeyanCard({
   const onayText = row.beyanTipi === 'EDEFTER' ? 'Verilen' : 'Onaylanan';
 
   return (
-    <div className="overflow-hidden rounded-xl" style={{ background: BEYAN_TONE.rowAlt, border: `1px solid ${BEYAN_TONE.borderSoft}` }}>
+    <div className="overflow-hidden rounded-xl" style={portalStyle({ background: BEYAN_TONE.rowAlt, border: `1px solid ${BEYAN_TONE.borderSoft}` })}>
       <div className="grid grid-cols-[minmax(140px,1fr)_82px_92px_82px_minmax(150px,1fr)] items-center gap-0 px-3 py-2">
         <button
           type="button"
           onClick={() => onNumberClick(row.beyanTipi, 'toplam')}
           className="truncate text-left text-[13px] font-bold transition hover:underline decoration-dotted underline-offset-4"
-          style={{ color: BEYAN_TONE.title }}
+          style={portalStyle({ color: BEYAN_TONE.title })}
           title="Mükellef listesini göster"
         >
           {label} <span className="font-semibold opacity-55">({donemEtiket(row.vergiDonem)})</span>
@@ -601,13 +603,13 @@ function YardimciBeyanCard({
         <YardimciBeyanNumber label="Kalan" value={row.kalan} color={row.kalan > 0 ? BEYAN_TONE.remaining : BEYAN_TONE.approved} onClick={() => onNumberClick(row.beyanTipi, 'kalan')} />
         <div className="min-w-0 pl-3">
           <div className="flex items-center justify-between gap-2">
-            <span className="truncate text-[11px] font-bold" style={{ color: barColor }}>{statusLabel}</span>
-            <span className="text-[11px] font-bold tabular-nums" style={{ color: barColor, fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif' }}>{pct}%</span>
+            <span className="truncate text-[11px] font-bold" style={portalStyle({ color: barColor })}>{statusLabel}</span>
+            <span className="text-[11px] font-bold tabular-nums" style={portalStyle({ color: barColor, fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif' })}>{pct}%</span>
           </div>
-          <div className="mt-1 h-1.5 overflow-hidden rounded-full" style={{ background: 'rgba(244,239,229,0.08)' }}>
+          <div className="mt-1 h-1.5 overflow-hidden rounded-full" style={portalStyle({ background: 'rgba(244,239,229,0.08)' })}>
             <div
               className="h-full rounded-full transition-all duration-500"
-              style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${barColor}99, ${barColor})` }}
+              style={portalStyle({ width: `${pct}%`, background: `linear-gradient(90deg, ${barColor}99, ${barColor})` })}
             />
           </div>
         </div>
@@ -626,8 +628,8 @@ function YardimciBeyanNumber({ label, value, color, onClick }: { label: string; 
       className={`min-w-0 px-2 text-right transition ${clickable ? 'hover:bg-white/[0.055] hover:underline decoration-dotted underline-offset-4' : ''}`}
       title={clickable ? 'Mükellef listesini göster' : undefined}
     >
-      <div className="truncate text-[9.5px] font-black uppercase tracking-[0.08em]" style={{ color: BEYAN_TONE.header }}>{label}</div>
-      <div className="mt-0.5 text-[14px] font-bold leading-none tabular-nums" style={{ color, fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', letterSpacing: 0 }}>
+      <div className="truncate text-[9.5px] font-black uppercase tracking-[0.08em]" style={portalStyle({ color: BEYAN_TONE.header })}>{label}</div>
+      <div className="mt-0.5 text-[14px] font-bold leading-none tabular-nums" style={portalStyle({ color, fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', letterSpacing: 0 })}>
         {value}
       </div>
     </button>
@@ -638,7 +640,7 @@ function BeyanHeaderCell({ children, align = 'right' }: { children: ReactNode; a
   return (
     <th
       className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] ${align === 'right' ? 'text-right' : 'text-left'}`}
-      style={{ color: BEYAN_TONE.header }}
+      style={portalStyle({ color: BEYAN_TONE.header })}
     >
       {children}
     </th>
@@ -661,7 +663,7 @@ function BeyanCompactRow({
   return (
     <tr
       className="transition"
-      style={{ borderTop: `1px solid ${BEYAN_TONE.borderSoft}`, background: BEYAN_TONE.rowAlt }}
+      style={portalStyle({ borderTop: `1px solid ${BEYAN_TONE.borderSoft}`, background: BEYAN_TONE.rowAlt })}
       onMouseEnter={(e) => { e.currentTarget.style.background = BEYAN_TONE.bgSoft; }}
       onMouseLeave={(e) => { e.currentTarget.style.background = BEYAN_TONE.rowAlt; }}
     >
@@ -670,12 +672,12 @@ function BeyanCompactRow({
           type="button"
           onClick={() => onNumberClick(row.beyanTipi, 'toplam')}
           className="max-w-[250px] truncate text-left text-[13px] font-bold transition hover:underline decoration-dotted underline-offset-4"
-          style={{ color: BEYAN_TONE.title }}
+          style={portalStyle({ color: BEYAN_TONE.title })}
           title="Mükellef listesini göster"
         >
           {label}
         </button>
-        <div className="mt-0.5 text-[10px]" style={{ color: BEYAN_TONE.muted }}>
+        <div className="mt-0.5 text-[10px]" style={portalStyle({ color: BEYAN_TONE.muted })}>
           {donemEtiket(row.vergiDonem)}
         </div>
         <div className="hidden">
@@ -689,16 +691,16 @@ function BeyanCompactRow({
       <BeyanNumberCell value={row.kalan} color={row.kalan > 0 ? BEYAN_TONE.remaining : BEYAN_TONE.approved} onClick={() => onNumberClick(row.beyanTipi, 'kalan')} />
       <td className="px-3 py-2">
         <div className="grid grid-cols-[82px,1fr,38px] items-center gap-2">
-          <span className="text-[11px] font-bold" style={{ color: barColor }}>{statusLabel}</span>
-          <div className="h-1.5 overflow-hidden rounded-full" style={{ background: 'rgba(244,239,229,0.08)' }}>
+          <span className="text-[11px] font-bold" style={portalStyle({ color: barColor })}>{statusLabel}</span>
+          <div className="h-1.5 overflow-hidden rounded-full" style={portalStyle({ background: 'rgba(244,239,229,0.08)' })}>
             <div
               className="h-full rounded-full transition-all duration-500"
-              style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${barColor}99, ${barColor})` }}
+              style={portalStyle({ width: `${pct}%`, background: `linear-gradient(90deg, ${barColor}99, ${barColor})` })}
             />
           </div>
           <span
             className="text-right text-[11px] font-bold tabular-nums"
-            style={{ color: barColor, fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', letterSpacing: 0 }}
+            style={portalStyle({ color: barColor, fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', letterSpacing: 0 })}
           >
             {pct}%
           </span>
@@ -717,7 +719,7 @@ function BeyanNumberCell({ value, color, onClick }: { value: number; color: stri
         disabled={!clickable}
         onClick={clickable ? onClick : undefined}
         className={`min-w-8 rounded-md px-2 py-0.5 text-right text-[13px] font-bold tabular-nums transition ${clickable ? 'hover:bg-white/[0.055] hover:underline decoration-dotted underline-offset-4' : ''}`}
-        style={{ color, fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', letterSpacing: 0 }}
+        style={portalStyle({ color, fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', letterSpacing: 0 })}
         title={clickable ? 'Mükellef listesini göster' : undefined}
       >
         {value}
@@ -730,11 +732,11 @@ function BeyanMetric({ label, value, color, sub }: { label: string; value: numbe
   return (
     <div
       className="min-h-[76px] rounded-xl px-4 py-3 text-left"
-      style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)' }}
+      style={portalStyle({ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)' })}
     >
-      <div className="text-[10.5px] font-black uppercase tracking-[0.1em]" style={{ color: 'rgba(250,250,249,0.5)' }}>{label}</div>
-      <div className="mt-1 text-[28px] font-black leading-none tabular-nums" style={{ color, fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', textShadow: '0 1px 14px rgba(0,0,0,0.28)' }}>{value}</div>
-      {sub && <div className="mt-1 text-[11px]" style={{ color: 'rgba(250,250,249,0.42)' }}>{sub}</div>}
+      <div className="text-[10.5px] font-black uppercase tracking-[0.1em]" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>{label}</div>
+      <div className="mt-1 text-[28px] font-black leading-none tabular-nums" style={portalStyle({ color, fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', textShadow: '0 1px 14px rgba(0,0,0,0.28)' })}>{value}</div>
+      {sub && <div className="mt-1 text-[11px]" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>{sub}</div>}
     </div>
   );
 }
@@ -753,14 +755,14 @@ function BeyanStatusRow({
   return (
     <div
       className="grid gap-3 rounded-lg px-3.5 py-2.5 transition-all xl:grid-cols-[minmax(160px,.78fr)_minmax(410px,1.78fr)_minmax(180px,.66fr)]"
-      style={{ background: row.hatali > 0 ? 'rgba(244,114,182,0.035)' : row.kalan > 0 ? 'rgba(125,211,252,0.035)' : 'rgba(34,197,94,0.026)', border: `1px solid ${row.hatali > 0 ? 'rgba(244,114,182,0.22)' : row.kalan > 0 ? 'rgba(125,211,252,0.22)' : 'rgba(34,197,94,0.18)'}` }}
+      style={portalStyle({ background: row.hatali > 0 ? 'rgba(244,114,182,0.035)' : row.kalan > 0 ? 'rgba(125,211,252,0.035)' : 'rgba(34,197,94,0.026)', border: `1px solid ${row.hatali > 0 ? 'rgba(244,114,182,0.22)' : row.kalan > 0 ? 'rgba(125,211,252,0.22)' : 'rgba(34,197,94,0.18)'}` })}
     >
       <div className="min-w-0">
-        <div className="text-[14px] font-bold leading-tight" style={{ color: GOLD }}>{label}</div>
-        <div className="mt-0.5 text-[11px]" style={{ color: 'rgba(250,250,249,0.45)' }}>{row.toplam} mükellef takipte</div>
+        <div className="text-[14px] font-bold leading-tight" style={portalStyle({ color: GOLD })}>{label}</div>
+        <div className="mt-0.5 text-[11px]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>{row.toplam} mükellef takipte</div>
       </div>
 
-      <div className="grid min-w-0 grid-cols-5 overflow-hidden rounded-lg" style={{ background: 'rgba(255,255,255,0.026)', border: '1px solid rgba(255,255,255,0.055)' }}>
+      <div className="grid min-w-0 grid-cols-5 overflow-hidden rounded-lg" style={portalStyle({ background: 'rgba(255,255,255,0.026)', border: '1px solid rgba(255,255,255,0.055)' })}>
         <BeyanCount label="Toplam" value={row.toplam} color="#fafaf9" onClick={() => onNumberClick(row.beyanTipi, 'toplam')} />
         <BeyanCount label="Onay" value={row.onaylanan} color="#22c55e" onClick={() => onNumberClick(row.beyanTipi, 'onaylanan')} />
         <BeyanCount label="Bekleyen" value={row.bekleyen} color="rgba(250,250,249,0.62)" onClick={() => onNumberClick(row.beyanTipi, 'bekleyen')} />
@@ -770,13 +772,13 @@ function BeyanStatusRow({
 
       <div className="flex flex-col justify-center gap-1.5">
         <div className="flex items-center justify-between gap-2">
-          <span className="text-[11px] font-semibold" style={{ color: barColor }}>{statusLabel}</span>
-          <span className="text-[12px] font-bold tabular-nums" style={{ color: barColor, fontFamily: 'JetBrains Mono, monospace' }}>%{row.yuzde}</span>
+          <span className="text-[11px] font-semibold" style={portalStyle({ color: barColor })}>{statusLabel}</span>
+          <span className="text-[12px] font-bold tabular-nums" style={portalStyle({ color: barColor, fontFamily: 'JetBrains Mono, monospace' })}>%{row.yuzde}</span>
         </div>
-        <div className="h-2 overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.06)' }}>
+        <div className="h-2 overflow-hidden rounded-full" style={portalStyle({ background: 'rgba(255,255,255,0.06)' })}>
           <div
             className="h-full rounded-full transition-all duration-500"
-            style={{ width: `${Math.max(0, Math.min(100, row.yuzde))}%`, background: `linear-gradient(90deg, ${barColor}88, ${barColor})` }}
+            style={portalStyle({ width: `${Math.max(0, Math.min(100, row.yuzde))}%`, background: `linear-gradient(90deg, ${barColor}88, ${barColor})` })}
           />
         </div>
       </div>
@@ -790,13 +792,13 @@ function BeyanCount({ label, value, color, onClick }: { label: string; value: nu
       type="button"
       onClick={onClick}
       className="group min-w-0 px-2.5 py-1.5 text-left transition hover:bg-white/[0.035]"
-      style={{ background: 'transparent', borderRight: '1px solid rgba(255,255,255,0.052)' }}
+      style={portalStyle({ background: 'transparent', borderRight: '1px solid rgba(255,255,255,0.052)' })}
       title="Mükellef listesini göster"
     >
-      <div className="truncate text-[9.5px] font-black uppercase tracking-[0.08em]" style={{ color: 'rgba(250,250,249,0.48)' }}>{label}</div>
+      <div className="truncate text-[9.5px] font-black uppercase tracking-[0.08em]" style={portalStyle({ color: 'rgba(250,250,249,0.48)' })}>{label}</div>
       <div
         className="mt-0.5 text-[18px] font-black leading-none tabular-nums group-hover:underline decoration-dotted underline-offset-4"
-        style={{ color, fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', textShadow: '0 1px 12px rgba(0,0,0,0.35)' }}
+        style={portalStyle({ color, fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', textShadow: '0 1px 12px rgba(0,0,0,0.35)' })}
       >
         {value}
       </div>
@@ -853,26 +855,26 @@ function ToplubeyannameTableLegacy() {
   return (
     <div>
       {/* Başlık bandı */}
-      <div className="flex items-center justify-between px-5 py-4 flex-wrap gap-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+      <div className="flex items-center justify-between px-5 py-4 flex-wrap gap-3" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.04)' })}>
         <div className="flex items-center gap-2.5">
-          <FileCheck2 size={16} style={{ color: GOLD }} />
-          <h3 className="text-[13.5px] font-semibold" style={{ color: '#fafaf9' }}>Toplu Beyanname — SGK ve E-Defter Kontrol</h3>
+          <FileCheck2 size={16} style={portalStyle({ color: GOLD })} />
+          <h3 className="text-[13.5px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>Toplu Beyanname — SGK ve E-Defter Kontrol</h3>
         </div>
         <div className="flex items-center gap-2">
           <select
             value={donem}
             onChange={(e) => setDonem(e.target.value)}
             className="text-[12px] px-2.5 py-1.5 rounded-md outline-none cursor-pointer"
-            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(184,160,111,0.25)', color: '#fafaf9' }}
+            style={portalStyle({ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(184,160,111,0.25)', color: '#fafaf9' })}
           >
             {donemOptions.map((o) => (
-              <option key={o.value} value={o.value} style={{ background: '#1a1814' }}>{o.label}</option>
+              <option key={o.value} value={o.value} style={portalStyle({ background: '#1a1814' })}>{o.label}</option>
             ))}
           </select>
           <button
             onClick={() => refetch()}
             className="text-[11px] font-medium px-3 py-1.5 rounded-md transition-all inline-flex items-center gap-1.5"
-            style={{ background: 'rgba(184,160,111,0.12)', border: '1px solid rgba(184,160,111,0.3)', color: GOLD }}
+            style={portalStyle({ background: 'rgba(184,160,111,0.12)', border: '1px solid rgba(184,160,111,0.3)', color: GOLD })}
           >
             <SearchIcon size={11} /> Sorgula
           </button>
@@ -880,17 +882,17 @@ function ToplubeyannameTableLegacy() {
       </div>
 
       {isLoading && (
-        <div className="px-5 py-10 text-center text-[12px]" style={{ color: 'rgba(250,250,249,0.4)' }}>
+        <div className="px-5 py-10 text-center text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>
           Yükleniyor...
         </div>
       )}
 
       {!isLoading && beyanRows.length === 0 && !bildirgeRow && !edefterRow && (
         <div className="px-5 py-10 text-center">
-          <p className="text-[12.5px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
+          <p className="text-[12.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
             Bu dönem için hiçbir mükellefin beyan yükümlülüğü yok.
           </p>
-          <p className="text-[11px] mt-1.5" style={{ color: 'rgba(250,250,249,0.3)' }}>
+          <p className="text-[11px] mt-1.5" style={portalStyle({ color: 'rgba(250,250,249,0.3)' })}>
             Ayarlar → Mükellef Beyanname Takip sayfasından mükellef konfigürasyonlarını düzenle.
           </p>
         </div>
@@ -899,18 +901,18 @@ function ToplubeyannameTableLegacy() {
       {/* Beyannameler tablosu */}
       {beyanRows.length > 0 && (
         <div className="px-1.5 py-1.5">
-          <table className="w-full text-[12px]" style={{ color: 'rgba(250,250,249,0.85)', tableLayout: 'fixed' }}>
+          <table className="w-full text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.85)', tableLayout: 'fixed' })}>
             <colgroup>
-              <col style={{ width: '120px' }} />
-              <col style={{ width: '68px' }} />
-              <col style={{ width: '82px' }} />
-              <col style={{ width: '82px' }} />
-              <col style={{ width: '68px' }} />
-              <col style={{ width: '68px' }} />
+              <col style={portalStyle({ width: '120px' })} />
+              <col style={portalStyle({ width: '68px' })} />
+              <col style={portalStyle({ width: '82px' })} />
+              <col style={portalStyle({ width: '82px' })} />
+              <col style={portalStyle({ width: '68px' })} />
+              <col style={portalStyle({ width: '68px' })} />
               <col />
             </colgroup>
             <thead>
-              <tr style={{ background: 'rgba(184,160,111,0.08)' }}>
+              <tr style={portalStyle({ background: 'rgba(184,160,111,0.08)' })}>
                 <Th>Beyannameler ({data?.donem})</Th>
                 <Th right>Toplam</Th>
                 <Th right>Onaylanan</Th>
@@ -945,7 +947,7 @@ function Th({ children, right, className }: { children: ReactNode; right?: boole
   return (
     <th
       className={`text-[10.5px] font-semibold uppercase tracking-wider px-2.5 py-2 ${right ? 'text-right' : 'text-left'} ${className || ''}`}
-      style={{ color: 'rgba(250,250,249,0.6)' }}
+      style={portalStyle({ color: 'rgba(250,250,249,0.6)' })}
     >
       {children}
     </th>
@@ -970,7 +972,7 @@ function Num({
   return (
     <td
       className={`px-2.5 py-2 text-right tabular-nums ${bold ? 'font-semibold' : ''} ${clickable ? 'cursor-pointer hover:bg-white/5 hover:underline decoration-dotted underline-offset-2' : ''} transition`}
-      style={{ fontFamily: 'JetBrains Mono, monospace', color }}
+      style={portalStyle({ fontFamily: 'JetBrains Mono, monospace', color })}
       onClick={clickable ? onClick : undefined}
       title={clickable ? 'Mükellef listesini göster' : undefined}
     >
@@ -983,8 +985,8 @@ function BeyanTr({ row, onNumberClick }: { row: OzetRow; onNumberClick: (tip: Be
   const kind = row.yuzde >= 90 ? 'ok' : row.yuzde >= 50 ? 'warn' : 'danger';
   const barColor = kind === 'ok' ? '#22c55e' : kind === 'warn' ? TRACK_BLUE : '#ef4444';
   return (
-    <tr style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
-      <td className="px-2.5 py-2 font-semibold" style={{ color: GOLD }}>{BEYAN_ETIKETLER[row.beyanTipi]}</td>
+    <tr style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.04)' })}>
+      <td className="px-2.5 py-2 font-semibold" style={portalStyle({ color: GOLD })}>{BEYAN_ETIKETLER[row.beyanTipi]}</td>
       <Num value={row.toplam}    color="rgba(250,250,249,0.85)"                                              onClick={() => onNumberClick(row.beyanTipi, 'toplam')} />
       <Num value={row.onaylanan} color="#22c55e"                                                             onClick={() => onNumberClick(row.beyanTipi, 'onaylanan')} />
       <Num value={row.bekleyen}  color="rgba(250,250,249,0.5)"                                               onClick={() => onNumberClick(row.beyanTipi, 'bekleyen')} />
@@ -992,13 +994,13 @@ function BeyanTr({ row, onNumberClick }: { row: OzetRow; onNumberClick: (tip: Be
       <Num value={row.kalan}     color={row.kalan > 0 ? TRACK_BLUE : '#22c55e'} bold                          onClick={() => onNumberClick(row.beyanTipi, 'kalan')} />
       <td className="px-2.5 py-2">
         <div className="flex items-center gap-2">
-          <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.05)' }}>
+          <div className="flex-1 h-2 rounded-full overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.05)' })}>
             <div
               className="h-full transition-all duration-500 rounded-full"
-              style={{ width: `${row.yuzde}%`, background: `linear-gradient(90deg, ${barColor}aa, ${barColor})` }}
+              style={portalStyle({ width: `${row.yuzde}%`, background: `linear-gradient(90deg, ${barColor}aa, ${barColor})` })}
             />
           </div>
-          <span className="text-[10.5px] font-semibold tabular-nums w-[32px] text-right" style={{ color: barColor, fontFamily: 'JetBrains Mono, monospace' }}>%{row.yuzde}</span>
+          <span className="text-[10.5px] font-semibold tabular-nums w-[32px] text-right" style={portalStyle({ color: barColor, fontFamily: 'JetBrains Mono, monospace' })}>%{row.yuzde}</span>
         </div>
       </td>
     </tr>
@@ -1020,7 +1022,7 @@ function MiniTable({ title, row, donem, accent, onNumberClick }: { title: string
         <div className="text-[10px] uppercase tracking-wider opacity-70">{label}</div>
         <div
           className={`text-[16px] font-semibold tabular-nums ${clickable ? 'group-hover:underline decoration-dotted underline-offset-2' : ''}`}
-          style={{ color, fontFamily: 'JetBrains Mono, monospace' }}
+          style={portalStyle({ color, fontFamily: 'JetBrains Mono, monospace' })}
         >
           {value}
         </div>
@@ -1028,27 +1030,27 @@ function MiniTable({ title, row, donem, accent, onNumberClick }: { title: string
     );
   };
   return (
-    <div className="rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: `1px solid ${tone.border}` }}>
-      <div className="flex items-center justify-between px-4 py-2.5" style={{ background: tone.bg }}>
+    <div className="rounded-xl overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: `1px solid ${tone.border}` })}>
+      <div className="flex items-center justify-between px-4 py-2.5" style={portalStyle({ background: tone.bg })}>
         <div className="flex items-center gap-2">
           <span className="w-[3px] h-3.5 rounded-sm" style={{ background: tone.color }} />
-          <span className="text-[12px] font-semibold" style={{ color: tone.color }}>{title} ({donem})</span>
+          <span className="text-[12px] font-semibold" style={portalStyle({ color: tone.color })}>{title} ({donem})</span>
         </div>
       </div>
-      <div className="px-4 py-3 grid grid-cols-3 gap-3 text-[11px]" style={{ color: 'rgba(250,250,249,0.6)' }}>
+      <div className="px-4 py-3 grid grid-cols-3 gap-3 text-[11px]" style={portalStyle({ color: 'rgba(250,250,249,0.6)' })}>
         {miniCell('Toplam', row.toplam, '#fafaf9', 'toplam')}
         {miniCell(title === 'E-Defter' ? 'Verilen' : 'Onaylanan', row.onaylanan, '#22c55e', 'onaylanan')}
         {miniCell('Kalan', row.kalan, row.kalan > 0 ? TRACK_BLUE : '#22c55e', 'kalan')}
       </div>
       <div className="px-4 pb-3">
         <div className="flex items-center gap-2">
-          <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.05)' }}>
+          <div className="flex-1 h-2 rounded-full overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.05)' })}>
             <div
               className="h-full transition-all duration-500 rounded-full"
-              style={{ width: `${row.yuzde}%`, background: `linear-gradient(90deg, ${barColor}aa, ${barColor})` }}
+              style={portalStyle({ width: `${row.yuzde}%`, background: `linear-gradient(90deg, ${barColor}aa, ${barColor})` })}
             />
           </div>
-          <span className="text-[10.5px] font-semibold tabular-nums" style={{ color: barColor, fontFamily: 'JetBrains Mono, monospace' }}>%{row.yuzde}</span>
+          <span className="text-[10.5px] font-semibold tabular-nums" style={portalStyle({ color: barColor, fontFamily: 'JetBrains Mono, monospace' })}>%{row.yuzde}</span>
         </div>
       </div>
     </div>
@@ -1168,18 +1170,18 @@ function BeyanDetayModal({ state, onClose }: { state: { beyanTipi: BeyanTipi; fi
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="flex w-full max-w-4xl flex-col overflow-hidden rounded-2xl"
-        style={{ background: '#101412', border: `1px solid ${filterColor[state.filter]}55`, maxHeight: '86vh', boxShadow: '0 28px 90px rgba(0,0,0,0.48)' }}
+        data-dashboard-surface data-dashboard-root className="flex w-full max-w-4xl flex-col overflow-hidden rounded-2xl"
+        style={portalStyle({ background: '#101412', border: `1px solid ${filterColor[state.filter]}55`, maxHeight: '86vh', boxShadow: '0 28px 90px rgba(0,0,0,0.48)' })}
       >
-        <div className="flex items-start justify-between gap-4 px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.07)', background: 'linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.01))' }}>
+        <div data-dashboard-band="neutral" className="flex items-start justify-between gap-4 px-4 py-3" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.07)', background: 'linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.01))' })}>
           <div>
-            <div className="text-[11px] font-black uppercase tracking-[0.16em]" style={{ color: filterColor[state.filter] }}>
+            <div className="text-[11px] font-black uppercase tracking-[0.16em]" style={portalStyle({ color: filterColor[state.filter] })}>
               {BEYAN_ETIKETLER[state.beyanTipi]} · {periodModeText}: {donemEtiket(state.donem)}{vergiDonemKey ? ` · Vergi dönemi: ${donemEtiket(vergiDonemKey)}` : ''}
             </div>
-            <h3 className="mt-1 text-[24px] font-black leading-tight" style={{ color: '#fafaf9' }}>
+            <h3 className="mt-1 text-[24px] font-black leading-tight" style={portalStyle({ color: '#fafaf9' })}>
               {filterLabels[state.filter]}
             </h3>
-            <p className="mt-1 text-[12.5px]" style={{ color: 'rgba(250,250,249,0.48)' }}>
+            <p className="mt-1 text-[12.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.48)' })}>
               Sayaçtaki rakama dahil olan mükelleflerin dönem bazlı listesi.
             </p>
           </div>
@@ -1189,11 +1191,11 @@ function BeyanDetayModal({ state, onClose }: { state: { beyanTipi: BeyanTipi; fi
               onClick={downloadList}
               disabled={filteredItems.length === 0}
               className="inline-flex min-h-[38px] items-center gap-2 rounded-lg px-3 text-[12.5px] font-bold transition disabled:cursor-not-allowed disabled:opacity-45"
-              style={{ background: 'rgba(125,211,252,0.12)', border: '1px solid rgba(125,211,252,0.28)', color: TRACK_BLUE }}
+              style={portalStyle({ background: 'rgba(125,211,252,0.12)', border: '1px solid rgba(125,211,252,0.28)', color: TRACK_BLUE })}
             >
               <Download size={15} /> Listeyi İndir
             </button>
-            <button onClick={onClose} className="rounded-lg p-2 transition hover:bg-white/5" style={{ color: 'rgba(250,250,249,0.55)' }}>
+            <button onClick={onClose} className="rounded-lg p-2 transition hover:bg-white/5" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>
               <IconX size={19} />
             </button>
           </div>
@@ -1201,52 +1203,52 @@ function BeyanDetayModal({ state, onClose }: { state: { beyanTipi: BeyanTipi; fi
 
         <div className="flex-1 overflow-y-auto p-5">
           {isLoading && (
-            <div className="px-4 py-14 text-center text-[12px]" style={{ color: 'rgba(250,250,249,0.4)' }}>
+            <div className="px-4 py-14 text-center text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>
               Yükleniyor...
             </div>
           )}
           {!isLoading && filteredItems.length === 0 && (
-            <div className="rounded-xl px-4 py-14 text-center text-[13px]" style={{ color: 'rgba(250,250,249,0.48)', border: '1px dashed rgba(255,255,255,0.10)', background: 'rgba(255,255,255,0.018)' }}>
+            <div className="rounded-xl px-4 py-14 text-center text-[13px]" style={portalStyle({ color: 'rgba(250,250,249,0.48)', border: '1px dashed rgba(255,255,255,0.10)', background: 'rgba(255,255,255,0.018)' })}>
               {emptyText}
             </div>
           )}
           {!isLoading && filteredItems.length > 0 && (
-            <div className="overflow-hidden rounded-xl" style={{ border: '1px solid rgba(255,255,255,0.08)' }}>
-              <div className="grid grid-cols-[64px_minmax(260px,1.6fr)_160px_130px_150px] gap-0 px-4 py-3 text-[11px] font-black uppercase tracking-[0.11em]" style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(250,250,249,0.52)' }}>
+            <div className="overflow-hidden rounded-xl" style={portalStyle({ border: '1px solid rgba(255,255,255,0.08)' })}>
+              <div className="grid grid-cols-[64px_minmax(260px,1.6fr)_160px_130px_150px] gap-0 px-4 py-3 text-[11px] font-black uppercase tracking-[0.11em]" style={portalStyle({ background: 'rgba(255,255,255,0.04)', color: 'rgba(250,250,249,0.52)' })}>
                 <div>No</div>
                 <div>Mükellef</div>
                 <div>Durum</div>
                 <div>Tarih</div>
                 <div className="text-right">Tahakkuk</div>
               </div>
-              <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.055)' }}>
+              <div className="divide-y" style={portalStyle({ borderColor: 'rgba(255,255,255,0.055)' })}>
                 {filteredItems.map(({ taxpayer, beyan }, i) => {
                   const tone = durumRenk[beyan.durum] || 'rgba(250,250,249,0.6)';
                   return (
                     <div
                       key={`${taxpayer.taxpayerId}-${state.beyanTipi}`}
                       className="grid grid-cols-[64px_minmax(260px,1.6fr)_160px_130px_150px] items-center gap-0 px-4 py-3 text-[13px]"
-                      style={{ background: i % 2 === 0 ? `${tone}10` : 'rgba(255,255,255,0.012)' }}
+                      style={portalStyle({ background: i % 2 === 0 ? `${tone}10` : 'rgba(255,255,255,0.012)' })}
                     >
-                      <div className="font-black tabular-nums" style={{ color: 'rgba(250,250,249,0.42)', fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif' }}>{i + 1}</div>
+                      <div className="font-black tabular-nums" style={portalStyle({ color: 'rgba(250,250,249,0.42)', fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif' })}>{i + 1}</div>
                       <div className="min-w-0 pr-4">
-                        <div className="truncate text-[14px] font-black" style={{ color: '#fafaf9' }}>{taxpayer.ad}</div>
-                        <div className="mt-0.5 text-[11px]" style={{ color: 'rgba(250,250,249,0.42)' }}>
+                        <div className="truncate text-[14px] font-black" style={portalStyle({ color: '#fafaf9' })}>{taxpayer.ad}</div>
+                        <div className="mt-0.5 text-[11px]" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>
                           {BEYAN_ETIKETLER[state.beyanTipi]} · {donemEtiket(beyan.vergiDonem)}
                         </div>
                       </div>
                       <div>
                         <span
                           className="inline-flex rounded-md px-2.5 py-1 text-[10.5px] font-black uppercase tracking-[0.08em]"
-                          style={{ background: `${tone}1f`, border: `1px solid ${tone}55`, color: tone }}
+                          style={portalStyle({ background: `${tone}1f`, border: `1px solid ${tone}55`, color: tone })}
                         >
                           {durumEtiket[beyan.durum] || beyan.durum}
                         </span>
                       </div>
-                      <div className="text-[12px] font-semibold tabular-nums" style={{ color: 'rgba(250,250,249,0.66)' }}>
+                      <div className="text-[12px] font-semibold tabular-nums" style={portalStyle({ color: 'rgba(250,250,249,0.66)' })}>
                         {formatDate(beyan.onayTarihi)}
                       </div>
-                      <div className="text-right text-[12px] font-black tabular-nums" style={{ color: 'rgba(250,250,249,0.78)', fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif' }}>
+                      <div className="text-right text-[12px] font-black tabular-nums" style={portalStyle({ color: 'rgba(250,250,249,0.78)', fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif' })}>
                         {formatMoney(beyan.tahakkukTutari)}
                       </div>
                     </div>
@@ -1257,8 +1259,8 @@ function BeyanDetayModal({ state, onClose }: { state: { beyanTipi: BeyanTipi; fi
           )}
         </div>
 
-        <div className="flex items-center justify-between px-6 py-3 text-[11.5px]" style={{ borderTop: '1px solid rgba(255,255,255,0.07)', color: 'rgba(250,250,249,0.48)' }}>
-          <span><strong style={{ color: filterColor[state.filter] }}>{filteredItems.length}</strong> mükellef listeleniyor</span>
+        <div className="flex items-center justify-between px-6 py-3 text-[11.5px]" style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.07)', color: 'rgba(250,250,249,0.48)' })}>
+          <span><strong style={portalStyle({ color: filterColor[state.filter] })}>{filteredItems.length}</strong> mükellef listeleniyor</span>
           <button onClick={onClose} className="font-bold transition hover:text-cyan-300">Kapat</button>
         </div>
       </div>
@@ -1311,14 +1313,14 @@ function TrendChart({ events }: { events: any[] }) {
 
   return (
     <div>
-      <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+      <div className="flex items-center justify-between px-5 py-4" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.04)' })}>
         <div className="flex items-center gap-2.5">
           <span className="w-[3px] h-4 rounded-sm" style={{ background: GOLD }} />
-          <h3 className="text-[13.5px] font-semibold" style={{ color: '#fafaf9' }}>Aylık İşlem Trendi</h3>
+          <h3 className="text-[13.5px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>Aylık İşlem Trendi</h3>
         </div>
         <div className="flex gap-1">
-          <button onClick={() => setMode('weekly')} className="px-3 py-1.5 text-[11px] font-medium rounded-md transition-all" style={{ background: mode === 'weekly' ? 'rgba(184,160,111,0.12)' : 'rgba(255,255,255,0.03)', border: `1px solid ${mode === 'weekly' ? 'rgba(184,160,111,0.3)' : 'rgba(255,255,255,0.08)'}`, color: mode === 'weekly' ? GOLD : 'rgba(250,250,249,0.6)' }}>Haftalık</button>
-          <button onClick={() => setMode('monthly')} className="px-3 py-1.5 text-[11px] font-medium rounded-md transition-all" style={{ background: mode === 'monthly' ? 'rgba(184,160,111,0.12)' : 'rgba(255,255,255,0.03)', border: `1px solid ${mode === 'monthly' ? 'rgba(184,160,111,0.3)' : 'rgba(255,255,255,0.08)'}`, color: mode === 'monthly' ? GOLD : 'rgba(250,250,249,0.6)' }}>Aylık</button>
+          <button onClick={() => setMode('weekly')} className="px-3 py-1.5 text-[11px] font-medium rounded-md transition-all" style={portalStyle({ background: mode === 'weekly' ? 'rgba(184,160,111,0.12)' : 'rgba(255,255,255,0.03)', border: `1px solid ${mode === 'weekly' ? 'rgba(184,160,111,0.3)' : 'rgba(255,255,255,0.08)'}`, color: mode === 'weekly' ? GOLD : 'rgba(250,250,249,0.6)' })}>Haftalık</button>
+          <button onClick={() => setMode('monthly')} className="px-3 py-1.5 text-[11px] font-medium rounded-md transition-all" style={portalStyle({ background: mode === 'monthly' ? 'rgba(184,160,111,0.12)' : 'rgba(255,255,255,0.03)', border: `1px solid ${mode === 'monthly' ? 'rgba(184,160,111,0.3)' : 'rgba(255,255,255,0.08)'}`, color: mode === 'monthly' ? GOLD : 'rgba(250,250,249,0.6)' })}>Aylık</button>
         </div>
       </div>
       {hasAny ? (
@@ -1328,21 +1330,21 @@ function TrendChart({ events }: { events: any[] }) {
             return (
               <div key={i} className="flex-1 flex flex-col items-center h-full group/bar" title={`${b.label}: ${b.count} işlem`}>
                 <div className="flex-1 w-full flex items-end">
-                  <div className="w-full rounded-t-[4px] transition-all group-hover/bar:opacity-100" style={{ height: h, background: `linear-gradient(180deg, ${GOLD}, rgba(184,160,111,0.35))`, opacity: 0.85 }} />
+                  <div className="w-full rounded-t-[4px] transition-all group-hover/bar:opacity-100" style={portalStyle({ height: h, background: `linear-gradient(180deg, ${GOLD}, rgba(184,160,111,0.35))`, opacity: 0.85 })} />
                 </div>
-                <span className="text-[10px] font-semibold mt-1.5" style={{ color: 'rgba(250,250,249,0.32)' }}>{b.label}</span>
-                <span className="text-[9.5px] tabular-nums" style={{ color: 'rgba(250,250,249,0.5)', fontFamily: 'JetBrains Mono, monospace' }}>{b.count || ''}</span>
+                <span className="text-[10px] font-semibold mt-1.5" style={portalStyle({ color: 'rgba(250,250,249,0.32)' })}>{b.label}</span>
+                <span className="text-[9.5px] tabular-nums" style={portalStyle({ color: 'rgba(250,250,249,0.5)', fontFamily: 'JetBrains Mono, monospace' })}>{b.count || ''}</span>
               </div>
             );
           })}
         </div>
       ) : (
         <div className="flex items-center justify-center h-[130px] px-5">
-          <p className="text-[12px]" style={{ color: 'rgba(250,250,249,0.35)' }}>Henüz işlem verisi yok</p>
+          <p className="text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.35)' })}>Henüz işlem verisi yok</p>
         </div>
       )}
-      <div className="flex gap-4 px-[22px] py-2.5 pt-2" style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
-        <div className="flex items-center gap-1.5 text-[10.5px]" style={{ color: 'rgba(250,250,249,0.5)' }}>
+      <div className="flex gap-4 px-[22px] py-2.5 pt-2" style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.04)' })}>
+        <div className="flex items-center gap-1.5 text-[10.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
           <div className="w-2 h-2 rounded-[3px]" style={{ background: GOLD }} />Toplam İşlem Hacmi
         </div>
       </div>
@@ -1367,25 +1369,25 @@ function MukellefDonut({ total, segments }: { total: number; segments: { label: 
 
   return (
     <div>
-      <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+      <div className="flex items-center justify-between px-5 py-4" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.04)' })}>
         <div className="flex items-center gap-2.5">
           <span className="w-[3px] h-4 rounded-sm" style={{ background: GOLD }} />
-          <h3 className="text-[13.5px] font-semibold" style={{ color: '#fafaf9' }}>Mükellef Durumu</h3>
+          <h3 className="text-[13.5px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>Mükellef Durumu</h3>
         </div>
       </div>
       <div className="flex items-center justify-center gap-5 px-5 py-6">
-        <div className="w-[120px] h-[120px] rounded-full flex items-center justify-center flex-shrink-0" style={{ background: grad }}>
-          <div className="w-[76px] h-[76px] rounded-full flex flex-col items-center justify-center" style={{ background: '#0c0a08' }}>
-            <div style={{ fontFamily: 'Fraunces, serif', fontSize: 24, fontWeight: 700, color: GOLD }}>{total}</div>
-            <div className="text-[8.5px] font-semibold uppercase mt-0.5" style={{ color: 'rgba(250,250,249,0.35)', letterSpacing: '.14em' }}>Toplam</div>
+        <div className="w-[120px] h-[120px] rounded-full flex items-center justify-center flex-shrink-0" style={portalStyle({ background: grad })}>
+          <div className="w-[76px] h-[76px] rounded-full flex flex-col items-center justify-center" style={portalStyle({ background: '#0c0a08' })}>
+            <div style={portalStyle({ fontFamily: 'Fraunces, serif', fontSize: 24, fontWeight: 700, color: GOLD })}>{total}</div>
+            <div className="text-[8.5px] font-semibold uppercase mt-0.5" style={portalStyle({ color: 'rgba(250,250,249,0.35)', letterSpacing: '.14em' })}>Toplam</div>
           </div>
         </div>
         <div className="flex flex-col gap-2.5 flex-1">
           {segments.map((s, i) => (
-            <div key={i} className="flex items-center gap-2.5 text-[11.5px]" style={{ color: 'rgba(250,250,249,0.65)' }}>
-              <div className="w-2.5 h-2.5 rounded-[3px] flex-shrink-0" style={{ background: s.color }} />
+            <div key={i} className="flex items-center gap-2.5 text-[11.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.65)' })}>
+              <div className="w-2.5 h-2.5 rounded-[3px] flex-shrink-0" style={portalStyle({ background: s.color })} />
               {s.label}
-              <span className="ml-auto font-bold tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 12, color: '#fafaf9' }}>{s.value}</span>
+              <span className="ml-auto font-bold tabular-nums" style={portalStyle({ fontFamily: 'JetBrains Mono, monospace', fontSize: 12, color: '#fafaf9' })}>{s.value}</span>
             </div>
           ))}
         </div>
@@ -1470,28 +1472,28 @@ function MobilePortalHome({
     <div className="mobile-dashboard-home mx-auto max-w-[460px] space-y-4 overflow-x-hidden pb-2">
       <section
         className="rounded-lg p-4"
-        style={{
+        style={portalStyle({
           background: 'linear-gradient(135deg, rgba(212,184,118,0.11), rgba(15,13,11,0.98))',
           border: '1px solid rgba(212,184,118,0.22)',
-        }}
+        })}
       >
         <div className="flex items-center gap-3">
           <span
             className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg"
-            style={{ background: 'linear-gradient(135deg, #d4b876, #8b7649)', color: '#0f0d0b', fontFamily: 'Fraunces, serif', fontWeight: 800 }}
+            style={portalStyle({ background: 'linear-gradient(135deg, #d4b876, #8b7649)', color: '#0f0d0b', fontFamily: 'Fraunces, serif', fontWeight: 800 })}
           >
             M
           </span>
           <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-bold uppercase" style={{ color: GOLD, letterSpacing: 0 }}>
+            <p className="text-[10px] font-bold uppercase" style={portalStyle({ color: GOLD, letterSpacing: 0 })}>
               Kurulu Mobil Portal
             </p>
-            <h1 className="mt-1 text-[22px] leading-[1.1]" style={{ color: '#fafaf9', fontFamily: 'Fraunces, serif', letterSpacing: 0 }}>
+            <h1 className="mt-1 text-[22px] leading-[1.1]" style={portalStyle({ color: '#fafaf9', fontFamily: 'Fraunces, serif', letterSpacing: 0 })}>
               Moren Portal
             </h1>
           </div>
         </div>
-        <p className="mt-3 text-[13px] leading-6" style={{ color: 'rgba(250,250,249,0.62)' }}>
+        <p className="mt-3 text-[13px] leading-6" style={portalStyle({ color: 'rgba(250,250,249,0.62)' })}>
           Telefonda ilk ekran artık gerçek modüllere giden mobil ana menüdür. Masaüstü panel düzeni bu ekranda zorlanmaz.
         </p>
       </section>
@@ -1502,19 +1504,19 @@ function MobilePortalHome({
           return (
             <div
               key={stat.label}
-              className="min-h-[88px] rounded-lg p-3"
-              style={{ background: `${stat.color}10`, border: `1px solid ${stat.color}28` }}
+              data-dashboard-kpi={stat.label === 'Mükellef' ? 'sage' : stat.label === 'İş yükü' ? 'champagne' : stat.label === 'Görev' ? 'sky' : 'amber'} className="min-h-[88px] rounded-lg p-3"
+              style={portalStyle({ background: `${stat.color}10`, border: `1px solid ${stat.color}28` })}
             >
               <div className="mb-2 flex items-center justify-between gap-2">
-                <span className="text-[10px] font-bold uppercase" style={{ color: 'rgba(250,250,249,0.52)', letterSpacing: 0 }}>
+                <span className="text-[10px] font-bold uppercase" style={portalStyle({ color: 'rgba(250,250,249,0.52)', letterSpacing: 0 })}>
                   {stat.label}
                 </span>
-                <Icon size={14} style={{ color: stat.color }} />
+                <Icon size={14} style={portalStyle({ color: stat.color })} />
               </div>
-              <div className="tabular-nums text-[25px] leading-none" style={{ color: stat.color, fontFamily: 'Fraunces, serif', fontWeight: 700 }}>
+              <div className="tabular-nums text-[25px] leading-none" style={portalStyle({ color: stat.color, fontFamily: 'Fraunces, serif', fontWeight: 700 })}>
                 {stat.value}
               </div>
-              <div className="mt-1 truncate text-[11px]" style={{ color: 'rgba(250,250,249,0.46)' }}>
+              <div className="mt-1 truncate text-[11px]" style={portalStyle({ color: 'rgba(250,250,249,0.46)' })}>
                 {stat.sub}
               </div>
             </div>
@@ -1525,10 +1527,10 @@ function MobilePortalHome({
       <section className="space-y-2">
         <div className="flex items-end justify-between gap-3">
           <div>
-            <h2 className="text-[18px] leading-tight" style={{ color: '#fafaf9', fontFamily: 'Fraunces, serif', letterSpacing: 0 }}>
+            <h2 className="text-[18px] leading-tight" style={portalStyle({ color: '#fafaf9', fontFamily: 'Fraunces, serif', letterSpacing: 0 })}>
               Hızlı işlemler
             </h2>
-            <p className="mt-1 text-[12px]" style={{ color: 'rgba(250,250,249,0.46)' }}>
+            <p className="mt-1 text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.46)' })}>
               Telefonda en sık açılacak ekranlar
             </p>
           </div>
@@ -1541,16 +1543,16 @@ function MobilePortalHome({
                 key={item.href}
                 href={item.href}
                 className="block min-h-[104px] rounded-lg p-3"
-                style={{ background: `${item.color}0f`, border: `1px solid ${item.color}26` }}
+                style={portalStyle({ background: `${item.color}0f`, border: `1px solid ${item.color}26` })}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <Icon size={18} style={{ color: item.color }} />
-                  <ArrowRight size={15} style={{ color: 'rgba(250,250,249,0.42)' }} />
+                  <Icon size={18} style={portalStyle({ color: item.color })} />
+                  <ArrowRight size={15} style={portalStyle({ color: 'rgba(250,250,249,0.42)' })} />
                 </div>
-                <div className="mt-4 truncate text-[14px] font-bold" style={{ color: '#fafaf9' }}>
+                <div className="mt-4 truncate text-[14px] font-bold" style={portalStyle({ color: '#fafaf9' })}>
                   {item.label}
                 </div>
-                <div className="mt-1 truncate text-[11px]" style={{ color: 'rgba(250,250,249,0.46)' }}>
+                <div className="mt-1 truncate text-[11px]" style={portalStyle({ color: 'rgba(250,250,249,0.46)' })}>
                   {item.sub}
                 </div>
               </Link>
@@ -1562,14 +1564,14 @@ function MobilePortalHome({
       <section className="space-y-2">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h2 className="text-[18px] leading-tight" style={{ color: '#fafaf9', fontFamily: 'Fraunces, serif', letterSpacing: 0 }}>
+            <h2 className="text-[18px] leading-tight" style={portalStyle({ color: '#fafaf9', fontFamily: 'Fraunces, serif', letterSpacing: 0 })}>
               İlk PWA modülleri
             </h2>
-            <p className="mt-1 text-[12px]" style={{ color: 'rgba(250,250,249,0.46)' }}>
+            <p className="mt-1 text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.46)' })}>
               Kurulu uygulamada doğrudan erişim
             </p>
           </div>
-          <span className="rounded-lg px-2 py-1 text-[12px] font-bold" style={{ background: 'rgba(212,184,118,0.14)', color: GOLD }}>
+          <span className="rounded-lg px-2 py-1 text-[12px] font-bold" style={portalStyle({ background: 'rgba(212,184,118,0.14)', color: GOLD })}>
             {MOBILE_PRIORITY_MODULES.length}
           </span>
         </div>
@@ -1581,23 +1583,23 @@ function MobilePortalHome({
                 key={item.href}
                 href={item.href}
                 className="flex min-h-[58px] items-center gap-3 rounded-lg px-3 py-2"
-                style={{ background: `${item.color}0d`, border: `1px solid ${item.color}22` }}
+                style={portalStyle({ background: `${item.color}0d`, border: `1px solid ${item.color}22` })}
               >
                 <span
                   className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg"
-                  style={{ background: `${item.color}14`, border: `1px solid ${item.color}30`, color: item.color }}
+                  style={portalStyle({ background: `${item.color}14`, border: `1px solid ${item.color}30`, color: item.color })}
                 >
                   <Icon size={16} />
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[13.5px] font-bold" style={{ color: '#fafaf9' }}>
+                  <span className="block truncate text-[13.5px] font-bold" style={portalStyle({ color: '#fafaf9' })}>
                     {item.label}
                   </span>
-                  <span className="mt-0.5 block truncate text-[11px]" style={{ color: 'rgba(250,250,249,0.46)' }}>
+                  <span className="mt-0.5 block truncate text-[11px]" style={portalStyle({ color: 'rgba(250,250,249,0.46)' })}>
                     {item.sub}
                   </span>
                 </span>
-                <ArrowRight size={15} style={{ color: item.color }} />
+                <ArrowRight size={15} style={portalStyle({ color: item.color })} />
               </Link>
             );
           })}
@@ -1606,10 +1608,10 @@ function MobilePortalHome({
 
       <section className="space-y-2">
         <div>
-          <h2 className="text-[18px] leading-tight" style={{ color: '#fafaf9', fontFamily: 'Fraunces, serif', letterSpacing: 0 }}>
+          <h2 className="text-[18px] leading-tight" style={portalStyle({ color: '#fafaf9', fontFamily: 'Fraunces, serif', letterSpacing: 0 })}>
             Modül grupları
           </h2>
-          <p className="mt-1 text-[12px]" style={{ color: 'rgba(250,250,249,0.46)' }}>
+          <p className="mt-1 text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.46)' })}>
             Portal yapısı mobil menüde bu gruplarla açılır
           </p>
         </div>
@@ -1620,19 +1622,19 @@ function MobilePortalHome({
               <div
                 key={group.label}
                 className="flex min-h-[58px] items-center gap-3 rounded-lg px-3 py-2"
-                style={{ background: `${group.color}0d`, border: `1px solid ${group.color}22` }}
+                style={portalStyle({ background: `${group.color}0d`, border: `1px solid ${group.color}22` })}
               >
                 <span
                   className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg"
-                  style={{ background: `${group.color}14`, border: `1px solid ${group.color}30`, color: group.color }}
+                  style={portalStyle({ background: `${group.color}14`, border: `1px solid ${group.color}30`, color: group.color })}
                 >
                   <Icon size={16} />
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[13.5px] font-bold" style={{ color: '#fafaf9' }}>
+                  <span className="block truncate text-[13.5px] font-bold" style={portalStyle({ color: '#fafaf9' })}>
                     {group.label}
                   </span>
-                  <span className="mt-0.5 block text-[11px]" style={{ color: 'rgba(250,250,249,0.46)' }}>
+                  <span className="mt-0.5 block text-[11px]" style={portalStyle({ color: 'rgba(250,250,249,0.46)' })}>
                     {group.count}
                   </span>
                 </span>
@@ -1838,7 +1840,7 @@ export default function DashboardPage() {
   }, [tx, activeCount, passiveCount]);
 
   return (
-    <div className="max-w-full overflow-x-hidden">
+    <div data-dashboard-root className="max-w-full overflow-x-hidden">
       <section className="lg:hidden">
         <MobilePortalHome
           activeCount={activeCount}
@@ -1859,20 +1861,20 @@ export default function DashboardPage() {
       {dueTasks.length > 0 && (
         <div
           className="rounded-2xl px-5 py-4 flex items-center gap-4 flex-wrap"
-          style={{
+          style={portalStyle({
             background: 'linear-gradient(135deg, rgba(244,63,94,0.12), rgba(239,68,68,0.08))',
             border: '1px solid rgba(244,63,94,0.4)',
             animation: 'moren-banner-pulse 2.8s ease-in-out infinite',
-          }}
+          })}
         >
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(244,63,94,0.2)', border: '1px solid rgba(244,63,94,0.5)' }}>
-            <AlertTriangle size={18} style={{ color: '#f43f5e' }} />
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={portalStyle({ background: 'rgba(244,63,94,0.2)', border: '1px solid rgba(244,63,94,0.5)' })}>
+            <AlertTriangle size={18} style={portalStyle({ color: '#f43f5e' })} />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-[13.5px] font-bold mb-0.5" style={{ color: '#fafaf9' }}>
+            <div className="text-[13.5px] font-bold mb-0.5" style={portalStyle({ color: '#fafaf9' })}>
               {dueTasks.length} hatırlatma zamanı geldi
             </div>
-            <div className="text-[12px]" style={{ color: 'rgba(250,250,249,0.7)' }}>
+            <div className="text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.7)' })}>
               {dueTasks.slice(0, 3).map((t) => t.title).join(' · ')}
               {dueTasks.length > 3 && ` · +${dueTasks.length - 3} daha`}
             </div>
@@ -1882,7 +1884,7 @@ export default function DashboardPage() {
               <button
                 onClick={() => dismissReminder(dueTasks[0].id)}
                 className="text-[11.5px] font-medium px-3 py-1.5 rounded-md transition"
-                style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(250,250,249,0.85)' }}
+                style={portalStyle({ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(250,250,249,0.85)' })}
               >
                 Anladım
               </button>
@@ -1891,7 +1893,7 @@ export default function DashboardPage() {
               <button
                 onClick={() => dueTasks.forEach((t) => dismissReminder(t.id))}
                 className="text-[11.5px] font-medium px-3 py-1.5 rounded-md transition"
-                style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(250,250,249,0.85)' }}
+                style={portalStyle({ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(250,250,249,0.85)' })}
               >
                 Hepsini anladım
               </button>
@@ -1902,17 +1904,17 @@ export default function DashboardPage() {
 
       <div className="flex flex-col gap-3 px-0 py-1 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <div className="mb-1.5 flex items-center gap-2.5"><span className="w-[26px] h-px" style={{ background: GOLD }} /><span className="text-[9.5px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>Gösterge</span></div>
-          <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 28, fontWeight: 650, color: '#fafaf9', letterSpacing: '-.02em' }}>Ofis Paneli</h1>
-          <p className="text-[12.5px] mt-1" style={{ color: 'rgba(250,250,249,0.46)' }}>{new Date().toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })} · Mükellefler · Beyannameler · Ajanlar</p>
+          <div className="mb-1.5 flex items-center gap-2.5"><span className="w-[26px] h-px" style={{ background: GOLD }} /><span className="text-[9.5px] uppercase font-bold tracking-[.18em]" style={portalStyle({ color: '#b8a06f' })}>Gösterge</span></div>
+          <h1 style={portalStyle({ fontFamily: 'Fraunces, serif', fontSize: 28, fontWeight: 650, color: '#fafaf9', letterSpacing: '-.02em' })}>Ofis Paneli</h1>
+          <p className="text-[12.5px] mt-1" style={portalStyle({ color: 'rgba(250,250,249,0.46)' })}>{new Date().toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })} · Mükellefler · Beyannameler · Ajanlar</p>
         </div>
         <div className="flex items-center gap-2">
-          <Link href="/panel/evraklar" className="inline-flex items-center gap-1.5 rounded-[10px] px-3.5 py-2 text-[12.5px] font-semibold transition-all" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.75)' }}
+          <Link href="/panel/evraklar" data-dashboard-action className="inline-flex items-center gap-1.5 rounded-[10px] px-3.5 py-2 text-[12.5px] font-semibold transition-all" style={portalStyle({ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.75)' })}
             onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(184,160,111,0.08)'; e.currentTarget.style.borderColor = 'rgba(184,160,111,0.2)'; e.currentTarget.style.color = '#fafaf9'; }}
             onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = 'rgba(250,250,249,0.75)'; }}>
             <Download size={14} /> İçe Aktar
           </Link>
-          <Link href="/panel/mukellefler/yeni" className="inline-flex items-center gap-1.5 rounded-[10px] px-4 py-2 text-[12.5px] font-bold transition-all" style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}><Plus size={14} /> Yeni Mükellef</Link>
+          <Link href="/panel/mukellefler/yeni" className="inline-flex items-center gap-1.5 rounded-[10px] px-4 py-2 text-[12.5px] font-bold transition-all" style={portalStyle({ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' })}><Plus size={14} /> Yeni Mükellef</Link>
         </div>
       </div>
 
@@ -1965,12 +1967,12 @@ export default function DashboardPage() {
       <DashboardSectionBridge from="Bugünün İş Listesi" to="Beyanname Takibi" tone="mint" />
 
       <div
-        className="rounded-2xl overflow-hidden"
-        style={{
+        data-dashboard-surface className="rounded-2xl overflow-hidden"
+        style={portalStyle({
           background: 'radial-gradient(circle at 6% 0%, rgba(216,189,134,0.12), transparent 34%), radial-gradient(circle at 92% 12%, rgba(140,200,255,0.07), transparent 30%), linear-gradient(180deg, rgba(19,19,17,0.94), rgba(12,11,10,0.91))',
           border: `1px solid ${BEYAN_TONE.border}`,
           boxShadow: '0 18px 44px rgba(0,0,0,0.20), inset 0 1px 0 rgba(255,255,255,0.035)',
-        }}
+        })}
       >
         <ToplubeyannameTable />
       </div>

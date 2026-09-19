@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle, portalPaint } from '@/lib/portal-theme';
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
@@ -375,7 +377,7 @@ function NumInput({
         if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
       }}
       className="num-input w-full px-2.5 py-1 text-center tabular-nums transition-all focus:outline-none"
-      style={{
+      style={portalStyle({
         background: 'transparent',
         border: 'none',
         borderBottom: focused ? `1px solid ${GRID_LINE_STRONG}` : '1px solid transparent',
@@ -386,7 +388,7 @@ function NumInput({
         colorScheme: 'dark',
         fontWeight: inputWeight,
         letterSpacing: 0,
-      }}
+      })}
       onMouseEnter={(e) => {
         if (!disabled && !focused) (e.currentTarget as HTMLInputElement).style.borderBottom = `1px solid ${GRID_LINE}`;
       }}
@@ -555,19 +557,19 @@ export default function IsletmeHesapOzetiPage() {
       {/* Header — Fiş Yazdırma imzası: kart + üst renk şeridi + radial parıltı + degrade ikon kutusu */}
       <div
         className="relative overflow-hidden rounded-2xl border p-5"
-        style={{
+        style={portalStyle({
           borderColor: 'rgba(255,255,255,0.06)',
           background:
             'radial-gradient(120% 140% at 0% 0%, rgba(212,184,118,0.16), transparent 46%), radial-gradient(120% 140% at 100% 0%, rgba(139,118,73,0.12), transparent 48%), #0f0d0b',
-        }}
+        })}
       >
         <div
           className="absolute inset-x-0 top-0 h-1"
-          style={{ background: 'linear-gradient(90deg, #8b7649, #b8a06f, #d4b876, #e7cf95, #d4b876, #b8a06f)' }}
+          style={portalStyle({ background: 'linear-gradient(90deg, #8b7649, #b8a06f, #d4b876, #e7cf95, #d4b876, #b8a06f)' })}
         />
         <div className="flex items-center gap-2.5 mb-3">
-          <span className="w-[26px] h-px" style={{ background: GOLD }} />
-          <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>
+          <span className="w-[26px] h-px" style={portalStyle({ background: GOLD })} />
+          <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={portalStyle({ color: '#b8a06f' })}>
             <Sparkles size={10} className="inline mr-1" /> Mali Rapor
           </span>
         </div>
@@ -575,15 +577,15 @@ export default function IsletmeHesapOzetiPage() {
           <div className="flex items-center gap-3.5">
             <span
               className="grid place-items-center rounded-xl flex-shrink-0"
-              style={{ width: 46, height: 46, background: 'linear-gradient(135deg, #d4b876, #b8a06f)', boxShadow: '0 8px 22px rgba(212,184,118,0.32)' }}
+              style={portalStyle({ width: 46, height: 46, background: 'linear-gradient(135deg, #d4b876, #b8a06f)', boxShadow: '0 8px 22px rgba(212,184,118,0.32)' })}
             >
-              <BookOpen size={24} style={{ color: '#1a1410' }} />
+              <BookOpen size={24} style={portalStyle({ color: '#1a1410' })} />
             </span>
             <div className="min-w-0">
-              <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 30, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em', lineHeight: 1.05 }}>
+              <h1 style={portalStyle({ fontFamily: 'Fraunces, serif', fontSize: 30, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em', lineHeight: 1.05 })}>
                 İşletme Hesap Özeti
               </h1>
-              <p className="text-[13px] mt-1.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
+              <p className="text-[13px] mt-1.5" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                 Luca'dan otomatik çekim · sadece Satılan Malın Maliyeti ve Geçmiş Yıl Zararı manuel girilir
               </p>
             </div>
@@ -609,12 +611,12 @@ export default function IsletmeHesapOzetiPage() {
       {Object.entries(lucaJobs).filter(([, j]) => j).length > 0 && (
         <div
           className="rounded-xl border p-3 text-sm space-y-2"
-          style={{
+          style={portalStyle({
             background: 'rgba(212,184,118,0.04)',
             borderColor: 'rgba(212,184,118,0.18)',
-          }}
+          })}
         >
-          <div className="text-[10px] font-bold uppercase tracking-[.14em]" style={{ color: GOLD }}>
+          <div className="text-[10px] font-bold uppercase tracking-[.14em]" style={portalStyle({ color: GOLD })}>
             Luca İşlem Durumu
           </div>
           {Object.entries(lucaJobs)
@@ -648,26 +650,26 @@ export default function IsletmeHesapOzetiPage() {
               return (
                 <div key={donemStr} className="flex items-center gap-2">
                   {isWaitingSecurityCode ? (
-                    <KeyRound size={12} style={{ color: statusColor }} />
+                    <KeyRound size={12} style={portalStyle({ color: statusColor })} />
                   ) : isActive ? (
-                    <Loader2 size={12} className="animate-spin" style={{ color: statusColor }} />
+                    <Loader2 size={12} className="animate-spin" style={portalStyle({ color: statusColor })} />
                   ) : (
-                    <span style={{ color: statusColor, fontSize: 14 }}>
+                    <span style={portalStyle({ color: statusColor, fontSize: 14 })}>
                       {j.status === 'done' ? '✓' : j.status === 'failed' ? '✗' : '·'}
                     </span>
                   )}
-                  <span className="font-semibold" style={{ color: GOLD, minWidth: 70 }}>
+                  <span className="font-semibold" style={portalStyle({ color: GOLD, minWidth: 70 })}>
                     {donem}. dönem
                   </span>
                   <span
                     className="px-1.5 py-0.5 rounded text-[10px] font-bold"
-                    style={{ background: `${statusColor}22`, color: statusColor }}
+                    style={portalStyle({ background: `${statusColor}22`, color: statusColor })}
                   >
                     {statusText}
                   </span>
                   <span
                     className="font-mono text-xs flex-1 truncate"
-                    style={{ color: 'rgba(250,250,249,0.65)' }}
+                    style={portalStyle({ color: 'rgba(250,250,249,0.65)' })}
                     title={lastLine}
                   >
                     {lastLine}
@@ -680,7 +682,7 @@ export default function IsletmeHesapOzetiPage() {
 
       <div
         className="rounded-xl border border-white/10 p-4"
-        style={{ background: 'rgba(255,255,255,0.02)' }}
+        style={portalStyle({ background: 'rgba(255,255,255,0.02)' })}
       >
         <div className="flex flex-wrap items-end gap-3">
           <div className="relative min-w-[300px]">
@@ -700,14 +702,14 @@ export default function IsletmeHesapOzetiPage() {
             {tpDropdownOpen && (
               <div
                 className="absolute top-full left-0 z-10 mt-1 max-h-72 w-full overflow-auto rounded-md shadow-lg"
-                style={{
+                style={portalStyle({
                   background: '#12100c',
                   border: '1px solid rgba(255,255,255,0.1)',
-                }}
+                })}
               >
                 <div
                   className="sticky top-0 border-b border-white/5 p-2"
-                  style={{ background: '#12100c' }}
+                  style={portalStyle({ background: '#12100c' })}
                 >
                   <div className="relative">
                     <Search className="absolute left-2 top-2 h-4 w-4 text-stone-500" />
@@ -717,10 +719,10 @@ export default function IsletmeHesapOzetiPage() {
                       onChange={(e) => setSearch(e.target.value)}
                       placeholder="Ad / VKN ara…"
                       className="w-full rounded py-1.5 pl-8 pr-2 text-sm text-stone-100 outline-none placeholder:text-stone-500"
-                      style={{
+                      style={portalStyle({
                         background: 'rgba(255,255,255,0.04)',
                         border: '1px solid rgba(255,255,255,0.1)',
-                      }}
+                      })}
                     />
                   </div>
                 </div>
@@ -785,11 +787,11 @@ export default function IsletmeHesapOzetiPage() {
               type="button"
               onClick={() => window.dispatchEvent(new CustomEvent('iho-print'))}
               className="ml-auto inline-flex items-center gap-2 rounded-lg px-3 py-2 text-[12.5px] font-bold"
-              style={{
+              style={portalStyle({
                 background: 'rgba(122,162,204,0.13)',
                 border: '1px solid rgba(122,162,204,0.42)',
                 color: '#8fb3d9',
-              }}
+              })}
             >
               <Printer className="h-4 w-4" />
               Mükellef Çıktısı
@@ -801,21 +803,21 @@ export default function IsletmeHesapOzetiPage() {
       {!taxpayerId ? (
         <div
           className="rounded-xl border border-white/10 p-12 text-center text-sm text-stone-500"
-          style={{ background: 'rgba(255,255,255,0.02)' }}
+          style={portalStyle({ background: 'rgba(255,255,255,0.02)' })}
         >
           Görüntülemek için mükellef seçin.
         </div>
       ) : isLoading ? (
         <div
           className="rounded-xl border border-white/10 p-12 text-center"
-          style={{ background: 'rgba(255,255,255,0.02)' }}
+          style={portalStyle({ background: 'rgba(255,255,255,0.02)' })}
         >
           <Loader2 className="mx-auto h-6 w-6 animate-spin text-stone-500" />
         </div>
       ) : hicKayitYok ? (
         <div
           className="rounded-xl border border-white/10 p-12 text-center text-sm text-stone-500"
-          style={{ background: 'rgba(255,255,255,0.02)' }}
+          style={portalStyle({ background: 'rgba(255,255,255,0.02)' })}
         >
           {yil} yılı için henüz kayıt açılmamış. Yukarıdaki "Yılı Başlat" butonuyla 4 dönem boş kayıtları
           oluşturup tutarları manuel girebilirsin.
@@ -1244,45 +1246,45 @@ function KarsilastirmaTablosu({
           için %-tabanlı sütunlar birlikte hizalı kalır. */}
       <div
         className="space-y-0"
-        style={{ maxWidth: Math.min(1120, 320 + tersDonemler.length * 200), margin: '0 auto' }}
+        style={portalStyle({ maxWidth: Math.min(1120, 320 + tersDonemler.length * 200), margin: '0 auto' })}
       >
       {/* Üst dönem barı — tablonun sütun genişlikleriyle birebir hizalı */}
       <div
         className="rounded-t-xl overflow-hidden"
-        style={{
+        style={portalStyle({
           background: TABLE_HEADER_BG,
           borderTop: `1px solid ${GRID_LINE_STRONG}`,
           borderLeft: `1px solid ${GRID_LINE_STRONG}`,
           borderRight: `1px solid ${GRID_LINE_STRONG}`,
           boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
-        }}
+        })}
       >
         <div
           className="grid"
-          style={{
+          style={portalStyle({
             // Tablo colgroup ile aynı: 34% boş + 4 dönem × COL_WIDTH
             gridTemplateColumns: `24% repeat(${tersDonemler.length}, ${COL_WIDTH})`,
-          }}
+          })}
         >
           {/* Sol başlık — KAR/ZARAR ÖZETİ (tam-genişlik bant kaldırıldı, buraya taşındı;
               tablonun ilk kolonuyla aynı genişlik, dikey çizgiler kesintisiz iner) */}
           <div
             className="px-3 py-3 flex items-center gap-2"
-            style={{ borderRight: `1px solid ${GRID_LINE}` }}
+            style={portalStyle({ borderRight: `1px solid ${GRID_LINE}` })}
           >
             <span
               className="inline-flex h-6 w-6 items-center justify-center rounded-md flex-shrink-0"
-              style={{
+              style={portalStyle({
                 background: 'rgba(212,184,118,0.16)',
                 color: AMOUNT_ACCENT,
                 border: `1px solid ${GRID_LINE_STRONG}`,
-              }}
+              })}
             >
               <TrendingUp className="h-3.5 w-3.5" />
             </span>
             <span
               className="text-[10.5px] uppercase font-bold tracking-[.14em]"
-              style={{ color: AMOUNT_ACCENT }}
+              style={portalStyle({ color: AMOUNT_ACCENT })}
             >
               Kar / Zarar Özeti
             </span>
@@ -1297,30 +1299,30 @@ function KarsilastirmaTablosu({
               <div
                 key={d}
                 className="px-3 py-3 text-center"
-                style={{
+                style={portalStyle({
                   background: locked ? 'rgba(212,184,118,0.10)' : 'transparent',
                   borderRight: !isLast ? `1px solid ${GRID_LINE}` : 'none',
-                }}
+                })}
               >
                 {/* Dönem başlığı */}
                 <div
-                  style={{
+                  style={portalStyle({
                     color: c ? GOLD : 'rgba(250,250,249,0.4)',
                     fontFamily: 'Fraunces, serif',
                     fontWeight: 600,
                     fontSize: 14,
                     letterSpacing: '-0.01em',
-                  }}
+                  })}
                 >
                   {yil} · {DONEM_ROMAN[d]}. DÖNEM
                 </div>
                 <div
                   className="mt-0.5"
-                  style={{
+                  style={portalStyle({
                     fontSize: 11,
                     color: c ? 'rgba(250,250,249,0.55)' : 'rgba(250,250,249,0.3)',
                     fontFamily: 'Plus Jakarta Sans, sans-serif',
-                  }}
+                  })}
                 >
                   {DONEM_RANGE[d]}
                 </div>
@@ -1329,7 +1331,7 @@ function KarsilastirmaTablosu({
                 {locked && (
                   <span
                     className="inline-flex items-center gap-1 mt-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded"
-                    style={{ background: 'rgba(212,184,118,0.16)', color: AMOUNT_ACCENT, border: `1px solid ${GRID_LINE}` }}
+                    style={portalStyle({ background: 'rgba(212,184,118,0.16)', color: AMOUNT_ACCENT, border: `1px solid ${GRID_LINE}` })}
                   >
                     <Lock size={9} /> KESİN
                   </span>
@@ -1348,14 +1350,14 @@ function KarsilastirmaTablosu({
                       }}
                       title={fetching ? 'Bu döneme ait Luca çekimini iptal et' : "Luca'dan İşletme Defteri Excel'i çek"}
                       className="inline-flex items-center justify-center gap-1.5 text-[11px] font-semibold rounded"
-                      style={{
+                      style={portalStyle({
                         background: fetching ? 'rgba(239,68,68,0.12)' : 'rgba(122,162,204,0.13)',
                         color: fetching ? '#fca5a5' : '#8fb3d9',
                         border: `1px solid ${fetching ? 'rgba(239,68,68,0.35)' : 'rgba(122,162,204,0.42)'}`,
                         height: 28,
                         padding: '0 10px',
                         minWidth: 100,
-                      }}
+                      })}
                     >
                       {fetching ? (
                         <Loader2 className="h-3 w-3 animate-spin" />
@@ -1371,14 +1373,14 @@ function KarsilastirmaTablosu({
                         onClick={() => onLock(c.id)}
                         title="Kesin kayda al"
                         className="inline-flex items-center justify-center text-[11px] font-semibold rounded"
-                        style={{
+                        style={portalStyle({
                           background: 'rgba(122,162,204,0.13)',
                           color: '#8fb3d9',
                           border: '1px solid rgba(122,162,204,0.42)',
                           height: 28,
                           padding: '0 10px',
                           minWidth: 88,
-                        }}
+                        })}
                       >
                         Kesin Kayıt
                       </button>
@@ -1386,13 +1388,13 @@ function KarsilastirmaTablosu({
                         onClick={() => onDelete(c.id)}
                         title="İçerikleri temizle (kayıt kalır)"
                         className="inline-flex items-center justify-center rounded"
-                        style={{
+                        style={portalStyle({
                           background: 'rgba(244,63,94,0.1)',
                           color: '#f43f5e',
                           border: '1px solid rgba(244,63,94,0.25)',
                           height: 28,
                           width: 28,
-                        }}
+                        })}
                       >
                         <Trash2 className="h-3 w-3" />
                       </button>
@@ -1404,13 +1406,13 @@ function KarsilastirmaTablosu({
                       disabled={waLoading && waDonem === d}
                       title="Mükellefe WhatsApp'tan bu dönemin mali özetini gönder (önce önizleme)"
                       className="inline-flex items-center justify-center rounded"
-                      style={{
+                      style={portalStyle({
                         background: 'rgba(37,211,102,0.14)',
                         color: '#25D366',
                         border: '1px solid rgba(37,211,102,0.4)',
                         height: 28,
                         width: 28,
-                      }}
+                      })}
                     >
                       {waLoading && waDonem === d ? (
                         <Loader2 className="h-3 w-3 animate-spin" />
@@ -1424,20 +1426,20 @@ function KarsilastirmaTablosu({
                       onClick={() => onUnlock(c!.id)}
                       title="Kilidi aç (ADMIN)"
                       className="inline-flex items-center justify-center text-[11px] font-semibold rounded"
-                      style={{
+                      style={portalStyle({
                         background: 'rgba(244,63,94,0.12)',
                         color: '#f43f5e',
                         border: '1px solid rgba(244,63,94,0.3)',
                         height: 28,
                         padding: '0 10px',
                         minWidth: 80,
-                      }}
+                      })}
                     >
                       Kilidi Aç
                     </button>
                   )}
                   {!c && (
-                    <span className="text-[10px]" style={{ color: 'rgba(250,250,249,0.3)' }}>
+                    <span className="text-[10px]" style={portalStyle({ color: 'rgba(250,250,249,0.3)' })}>
                       Veri yok
                     </span>
                   )}
@@ -1458,11 +1460,11 @@ function KarsilastirmaTablosu({
         attached
         hideHeader
       >
-        <table className="w-full text-sm" style={REPORT_TABLE_STYLE}>
+        <table className="w-full text-sm" style={portalStyle(REPORT_TABLE_STYLE)}>
           <colgroup>
-            <col style={{ width: '24%' }} />
+            <col style={portalStyle({ width: '24%' })} />
             {tersDonemler.map((d) => (
-              <col key={d} style={{ width: COL_WIDTH }} />
+              <col key={d} style={portalStyle({ width: COL_WIDTH })} />
             ))}
           </colgroup>
           {/* v1.36.25: thead kaldirildi - boş yeşil çizgi yapıyordu, başlık direkt tablo */}
@@ -1558,11 +1560,11 @@ function KarsilastirmaTablosu({
         icon={<Package className="h-4 w-4" />}
         accent="amber"
       >
-        <table className="w-full text-sm" style={REPORT_TABLE_STYLE}>
+        <table className="w-full text-sm" style={portalStyle(REPORT_TABLE_STYLE)}>
           <colgroup>
-            <col style={{ width: '24%' }} />
+            <col style={portalStyle({ width: '24%' })} />
             {tersDonemler.map((d) => (
-              <col key={d} style={{ width: COL_WIDTH }} />
+              <col key={d} style={portalStyle({ width: COL_WIDTH })} />
             ))}
           </colgroup>
           <tbody>
@@ -1613,11 +1615,11 @@ function KarsilastirmaTablosu({
         icon={<Calculator className="h-4 w-4" />}
         accent="indigo"
       >
-        <table className="w-full text-sm" style={REPORT_TABLE_STYLE}>
+        <table className="w-full text-sm" style={portalStyle(REPORT_TABLE_STYLE)}>
           <colgroup>
-            <col style={{ width: '24%' }} />
+            <col style={portalStyle({ width: '24%' })} />
             {tersDonemler.map((d) => (
-              <col key={d} style={{ width: COL_WIDTH }} />
+              <col key={d} style={portalStyle({ width: COL_WIDTH })} />
             ))}
           </colgroup>
           <tbody>
@@ -1667,7 +1669,7 @@ function KarsilastirmaTablosu({
             <Row
               label="ÖDENECEK GEÇİCİ VERGİ"
               cols={tersDonemler.map((d) => (
-                <span key={d} className="text-base font-bold" style={{ color: AMOUNT_ACCENT }}>
+                <span key={d} className="text-base font-bold" style={portalStyle({ color: AMOUNT_ACCENT })}>
                   {formatTR(liveCalc(d).odenecek)}
                 </span>
               ))}
@@ -1683,16 +1685,16 @@ function KarsilastirmaTablosu({
           Her buton kendi sütunu içinde kalır, yan sütuna taşmaz. */}
       <div
         className="grid rounded-xl py-3 mt-3 items-center"
-        style={{
+        style={portalStyle({
           // Üst tablo ile aynı: 24% etiket + N × COL_WIDTH (her dönem 19%)
           gridTemplateColumns: `24% repeat(${tersDonemler.length}, ${COL_WIDTH})`,
           background: 'linear-gradient(135deg, rgba(212,184,118,0.08), rgba(212,184,118,0.02))',
           border: '1px solid rgba(212,184,118,0.25)',
-        }}
+        })}
       >
         <div
           className="flex items-center px-3 text-[11px] font-bold uppercase tracking-[.08em]"
-          style={{ color: 'rgba(212,184,118,0.85)' }}
+          style={portalStyle({ color: 'rgba(212,184,118,0.85)' })}
         >
           DÖNEM AKSİYONLARI
         </div>
@@ -1707,11 +1709,11 @@ function KarsilastirmaTablosu({
               <div key={d} className="px-2 flex items-center justify-center">
                 <div
                   className="inline-flex items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-[11.5px] font-semibold whitespace-nowrap w-full"
-                  style={{
+                  style={portalStyle({
                     background: 'linear-gradient(135deg, rgba(245,158,11,0.18), rgba(245,158,11,0.06))',
                     color: '#fbbf24',
                     border: '1px solid rgba(245,158,11,0.35)',
-                  }}
+                  })}
                   title={`${DONEM_ROMAN[d]}. Dönem kesin kayıtla kilitlendi`}
                 >
                   <Lock className="h-3 w-3 shrink-0" />
@@ -1725,22 +1727,22 @@ function KarsilastirmaTablosu({
               <button
                 onClick={() => saveDraft(d)}
                 className="inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-[12.5px] font-medium transition-all whitespace-nowrap w-full"
-                style={{
+                style={portalStyle({
                   background: 'rgba(244,63,94,0.06)',
                   color: '#fafaf9',
                   border: '1px solid rgba(244,63,94,0.20)',
-                }}
+                })}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'rgba(244,63,94,0.12)';
-                  e.currentTarget.style.borderColor = 'rgba(244,63,94,0.35)';
+                  e.currentTarget.style.background = portalPaint('rgba(244,63,94,0.12)', 'background');
+                  e.currentTarget.style.borderColor = portalPaint('rgba(244,63,94,0.35)', 'borderColor');
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'rgba(244,63,94,0.06)';
-                  e.currentTarget.style.borderColor = 'rgba(244,63,94,0.20)';
+                  e.currentTarget.style.background = portalPaint('rgba(244,63,94,0.06)', 'background');
+                  e.currentTarget.style.borderColor = portalPaint('rgba(244,63,94,0.20)', 'borderColor');
                 }}
                 title={`${DONEM_ROMAN[d]}. Dönem manuel düzeltmelerini kaydet`}
               >
-                <Save className="h-4 w-4 shrink-0" style={{ color: 'rgba(250,250,249,0.85)' }} />
+                <Save className="h-4 w-4 shrink-0" style={portalStyle({ color: 'rgba(250,250,249,0.85)' })} />
                 <span className="truncate">{DONEM_ROMAN[d]}. Dönemi Kaydet</span>
               </button>
             </div>
@@ -1752,12 +1754,12 @@ function KarsilastirmaTablosu({
       {waOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ background: 'rgba(0,0,0,0.65)' }}
+          style={portalStyle({ background: 'rgba(0,0,0,0.65)' })}
           onClick={() => !waLoading && setWaOpen(false)}
         >
           <div
             className="w-full max-w-md rounded-2xl border p-5"
-            style={{ background: '#14110d', borderColor: 'rgba(37,211,102,0.3)' }}
+            style={portalStyle({ background: '#14110d', borderColor: 'rgba(37,211,102,0.3)' })}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-2 mb-3">
@@ -1776,7 +1778,7 @@ function KarsilastirmaTablosu({
             <label className="block text-xs text-stone-500 mb-1">Gidecek mesaj (önizleme)</label>
             <pre
               className="whitespace-pre-wrap rounded-md border border-white/10 p-3 text-xs text-stone-200 max-h-72 overflow-auto mb-4"
-              style={{ background: 'rgba(0,0,0,0.35)', fontFamily: 'inherit' }}
+              style={portalStyle({ background: 'rgba(0,0,0,0.35)', fontFamily: 'inherit' })}
             >
               {waPreview?.mesaj || ''}
             </pre>
@@ -1792,7 +1794,7 @@ function KarsilastirmaTablosu({
                 onClick={waGonder}
                 disabled={waLoading || !waPhone.trim()}
                 className="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-bold text-white disabled:opacity-50"
-                style={{ background: '#25D366' }}
+                style={portalStyle({ background: '#25D366' })}
               >
                 {waLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <WhatsAppIcon size={14} color="#ffffff" />}
                 Onayla ve Gönder
@@ -1847,52 +1849,52 @@ function BlockCard({
   return (
     <div
       className={`overflow-hidden relative ${attached ? 'rounded-b-2xl' : 'rounded-2xl'}`}
-      style={{
+      style={portalStyle({
         background: TABLE_SURFACE,
         borderLeft: `1px solid ${c.border}`,
         borderRight: `1px solid ${c.border}`,
         borderBottom: `1px solid ${c.border}`,
         borderTop: attached ? 'none' : `1px solid ${c.border}`,
         boxShadow: '0 10px 28px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.03)',
-      }}
+      })}
     >
       {/* Üst altın hairline — Brifing kartı deseni */}
       {!attached && (
         <span
           className="absolute top-0 left-6 right-6 h-px"
-          style={{
+          style={portalStyle({
             background: `linear-gradient(90deg, transparent, ${GOLD}, transparent)`,
             opacity: 0.55,
-          }}
+          })}
         />
       )}
       {!hideHeader && (
         <div
           className="flex items-center gap-3 px-5 py-3"
-          style={{
+          style={portalStyle({
             background: attached ? TABLE_SECTION_BG : c.headerBg,
             borderBottom: `1px solid ${c.border}`,
-          }}
+          })}
         >
           <span
             className="inline-flex h-7 w-7 items-center justify-center rounded-lg"
-            style={{
+            style={portalStyle({
               background: c.iconBg,
               color: c.iconText,
               border: `1px solid ${GRID_LINE_STRONG}`,
               boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05)',
-            }}
+            })}
           >
             {icon}
           </span>
           <h2
             className="text-[11px] font-bold uppercase"
-            style={{
+            style={portalStyle({
               color: c.text,
               letterSpacing: '0.18em',
               fontFamily: NUM_FONT,
               fontWeight: 700,
-            }}
+            })}
           >
             {title}
           </h2>
@@ -1940,17 +1942,17 @@ function Row({
 
   return (
     <tr
-      style={{ background: rowBg, transition: 'background-color 120ms' }}
+      style={portalStyle({ background: rowBg, transition: 'background-color 120ms' })}
       onMouseEnter={(e) => {
-        (e.currentTarget as HTMLTableRowElement).style.background = 'rgba(212,184,118,0.03)';
+        (e.currentTarget as HTMLTableRowElement).style.background = portalPaint('rgba(212,184,118,0.03)', 'background');
       }}
       onMouseLeave={(e) => {
-        (e.currentTarget as HTMLTableRowElement).style.background = rowBg;
+        (e.currentTarget as HTMLTableRowElement).style.background = portalPaint(rowBg, 'background');
       }}
     >
       <td
         className="px-4 py-2"
-        style={{
+        style={portalStyle({
           color: manuel ? MANUAL_TEXT : bold ? REPORT_TEXT : REPORT_MUTED,
           borderTop: `1px solid ${GRID_LINE}`,
           borderRight: `1px solid ${GRID_LINE}`,
@@ -1962,13 +1964,13 @@ function Row({
           fontWeight: bold ? 700 : 600,
           letterSpacing: bold ? '0.04em' : '0.01em',
           textTransform: bold ? 'uppercase' as any : 'none',
-        }}
+        })}
       >
         {label}
         {hint && (
           <span
             className="ml-2 normal-case"
-            style={{ color: REPORT_DIM, fontSize: 10.5, fontWeight: 400, letterSpacing: 0, fontFamily: 'inherit' }}
+            style={portalStyle({ color: REPORT_DIM, fontSize: 10.5, fontWeight: 400, letterSpacing: 0, fontFamily: 'inherit' })}
           >
             {hint}
           </span>
@@ -1976,13 +1978,13 @@ function Row({
         {manuel && (
           <span
             className="ml-2 inline-flex items-center rounded-md px-2 py-[3px] text-[9px] font-bold uppercase tracking-[0.14em] normal-case"
-            style={{
+            style={portalStyle({
               background: 'rgba(212,184,118,0.14)',
               border: '1px solid rgba(212,184,118,0.32)',
               color: MANUAL_TEXT,
               letterSpacing: '0.14em',
               textTransform: 'uppercase',
-            }}
+            })}
           >
             Manuel
           </span>
@@ -2010,31 +2012,31 @@ function Row({
           <td
             key={i}
             className="px-4 py-2 text-center tabular-nums"
-            style={{
+            style={portalStyle({
               borderTop: `1px solid ${GRID_LINE}`,
               borderLeft: `1px solid ${GRID_LINE}`,
               background: 'transparent',
               fontVariantNumeric: 'tabular-nums',
               lineHeight: 1.2,
-            }}
+            })}
           >
             {showRatio ? (
               <div className="flex flex-col items-center justify-center gap-1">
                 <span
                   className="tabular-nums"
-                  style={{
+                  style={portalStyle({
                     fontFamily: NUM_FONT,
                     fontSize: 15,
                     fontWeight: bold ? 700 : 600,
                     letterSpacing: 0,
                     color: amountColor,
-                  }}
+                  })}
                 >
                   {c}
                 </span>
                 <span
                   className="inline-block tabular-nums"
-                  style={{
+                  style={portalStyle({
                     color: rColor!,
                     fontWeight: 700,
                     fontSize: 10.5,
@@ -2043,7 +2045,7 @@ function Row({
                     borderRadius: 4,
                     background: isRatioNeg ? 'rgba(248,113,113,0.08)' : 'rgba(212,184,118,0.10)',
                     border: `1px solid ${isRatioNeg ? 'rgba(248,113,113,0.22)' : 'rgba(212,184,118,0.20)'}`,
-                  }}
+                  })}
                 >
                   {ratios![i]}
                 </span>
@@ -2051,13 +2053,13 @@ function Row({
             ) : (
               <span
                 className="tabular-nums"
-                style={{
+                style={portalStyle({
                   fontFamily: NUM_FONT,
                   fontSize: 15,
                   fontWeight: bold ? 700 : 600,
                   letterSpacing: 0,
                   color: amountColor,
-                }}
+                })}
               >
                 {c}
               </span>

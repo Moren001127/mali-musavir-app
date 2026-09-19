@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
@@ -155,23 +157,23 @@ export default function HgsIhlalPage() {
       {/* ═══ BAŞLIK (camgöbeği / gece mavisi) ═══ */}
       <header
         className="relative overflow-hidden rounded-2xl border p-5"
-        style={{
+        style={portalStyle({
           borderColor: 'rgba(255,255,255,0.08)',
           background:
             'radial-gradient(120% 140% at 0% 0%, rgba(34,211,238,0.16), transparent 45%), radial-gradient(120% 140% at 100% 0%, rgba(59,130,246,0.12), transparent 45%), #0f0d0b',
-        }}
+        })}
       >
-        <div className="absolute inset-x-0 top-0 h-1" style={{ background: 'linear-gradient(90deg, #22d3ee, #38bdf8, #60a5fa, #818cf8)' }} />
-        <Link href="/panel" className="inline-flex items-center gap-1.5 text-[12px] font-medium" style={{ color: 'rgba(250,250,249,0.58)' }}>
+        <div className="absolute inset-x-0 top-0 h-1" style={portalStyle({ background: 'linear-gradient(90deg, #22d3ee, #38bdf8, #60a5fa, #818cf8)' })} />
+        <Link href="/panel" className="inline-flex items-center gap-1.5 text-[12px] font-medium" style={portalStyle({ color: 'rgba(250,250,249,0.58)' })}>
           <ArrowLeft size={14} /> Panel
         </Link>
         <div className="mt-2 flex items-center justify-between gap-3 flex-wrap">
-          <h1 className="flex items-center gap-2.5 text-[28px] font-semibold leading-tight" style={{ color: '#fafaf9' }}>
+          <h1 className="flex items-center gap-2.5 text-[28px] font-semibold leading-tight" style={portalStyle({ color: '#fafaf9' })}>
             <span
               className="grid h-10 w-10 place-items-center rounded-xl"
-              style={{ background: `linear-gradient(135deg, ${ACCENT}, ${ACCENT_DEEP})`, boxShadow: '0 6px 18px rgba(34,211,238,0.32)' }}
+              style={portalStyle({ background: `linear-gradient(135deg, ${ACCENT}, ${ACCENT_DEEP})`, boxShadow: '0 6px 18px rgba(34,211,238,0.32)' })}
             >
-              <Gavel size={22} style={{ color: INK }} />
+              <Gavel size={22} style={portalStyle({ color: INK })} />
             </span>
             HGS İhlal Sorgulama
           </h1>
@@ -181,20 +183,20 @@ export default function HgsIhlalPage() {
               target="_blank"
               rel="noopener"
               className="inline-flex items-center gap-1.5 px-[18px] py-2.5 text-[13px] font-medium rounded-[10px] transition-all"
-              style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.85)' }}
+              style={portalStyle({ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.85)' })}
             >
               <ExternalLink size={14} /> KGM Sitesini Aç
             </a>
             <button
               onClick={() => setAddOpen(true)}
               className="inline-flex items-center gap-1.5 px-5 py-2.5 text-[13px] font-bold rounded-[10px] transition-all"
-              style={{ background: `linear-gradient(135deg, ${ACCENT}, ${ACCENT_DEEP})`, color: INK }}
+              style={portalStyle({ background: `linear-gradient(135deg, ${ACCENT}, ${ACCENT_DEEP})`, color: INK })}
             >
               <Plus size={14} /> Araç Ekle
             </button>
           </div>
         </div>
-        <p className="mt-2 max-w-2xl text-[13px]" style={{ color: 'rgba(250,250,249,0.6)' }}>
+        <p className="mt-2 max-w-2xl text-[13px]" style={portalStyle({ color: 'rgba(250,250,249,0.6)' })}>
           Araç plakalarını kaydet, KGM sisteminden ihlalli geçişlerini sorgula ve raporla.
         </p>
       </header>
@@ -212,31 +214,31 @@ export default function HgsIhlalPage() {
       {/* ═══ OTOMASYON KOMUT KARTI (canlı log entegre) ═══ */}
       <section
         className="relative overflow-hidden rounded-2xl border"
-        style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.07)' }}
+        style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.07)' })}
       >
-        <div className="absolute inset-x-0 top-0 h-[3px]" style={{ background: `linear-gradient(90deg, ${ACCENT}, #818cf8, transparent)` }} />
+        <div className="absolute inset-x-0 top-0 h-[3px]" style={portalStyle({ background: `linear-gradient(90deg, ${ACCENT}, #818cf8, transparent)` })} />
         <div className="p-5 flex items-center gap-4 flex-wrap">
           <div className="flex items-center gap-3 flex-1 min-w-[280px]">
             <div
               className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
-              style={{ background: 'rgba(34,211,238,0.1)', border: '1px solid rgba(34,211,238,0.25)' }}
+              style={portalStyle({ background: 'rgba(34,211,238,0.1)', border: '1px solid rgba(34,211,238,0.25)' })}
             >
-              <Bot size={19} style={{ color: ACCENT }} />
+              <Bot size={19} style={portalStyle({ color: ACCENT })} />
             </div>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-[14px] font-semibold" style={{ color: '#fafaf9' }}>Otomatik HGS Sorgu</span>
+                <span className="text-[14px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>Otomatik HGS Sorgu</span>
                 {agentInfo?.canli ? (
-                  <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: 'rgba(34,197,94,0.15)', color: GREEN }}>
-                    <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: GREEN }} /> Agent Çevrimiçi
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full" style={portalStyle({ background: 'rgba(34,197,94,0.15)', color: GREEN })}>
+                    <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={portalStyle({ background: GREEN })} /> Agent Çevrimiçi
                   </span>
                 ) : (
-                  <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: 'rgba(250,250,249,0.05)', color: 'rgba(250,250,249,0.5)' }}>
-                    <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'rgba(250,250,249,0.4)' }} /> Agent Kapalı
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full" style={portalStyle({ background: 'rgba(250,250,249,0.05)', color: 'rgba(250,250,249,0.5)' })}>
+                    <span className="w-1.5 h-1.5 rounded-full" style={portalStyle({ background: 'rgba(250,250,249,0.4)' })} /> Agent Kapalı
                   </span>
                 )}
               </div>
-              <div className="text-[11.5px] mt-0.5" style={{ color: 'rgba(250,250,249,0.55)' }}>
+              <div className="text-[11.5px] mt-0.5" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>
                 {agentInfo?.aktifKomut
                   ? <>Çalışıyor — <b>{agentInfo.aktifKomut.status === 'running' ? 'işleme alındı' : 'kuyrukta'}</b></>
                   : agentInfo?.sonKomut
@@ -249,7 +251,7 @@ export default function HgsIhlalPage() {
             onClick={() => topluSorguMut.mutate()}
             disabled={topluSorguMut.isPending || agentCalisiyor}
             className="inline-flex items-center gap-1.5 px-5 py-2.5 text-[13px] font-bold rounded-[10px] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            style={{ background: `linear-gradient(135deg, ${ACCENT}, ${ACCENT_DEEP})`, color: INK }}
+            style={portalStyle({ background: `linear-gradient(135deg, ${ACCENT}, ${ACCENT_DEEP})`, color: INK })}
           >
             {topluSorguMut.isPending
               ? <><RefreshCw size={14} className="animate-spin" /> Başlatılıyor...</>
@@ -263,7 +265,7 @@ export default function HgsIhlalPage() {
                 .catch((err) => toast.error(err?.message || 'PDF açılamadı'));
             }}
             className="inline-flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium rounded-[10px] transition-all"
-            style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.85)' }}
+            style={portalStyle({ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.85)' })}
           >
             <FileText size={14} /> PDF Rapor
           </button>
@@ -275,7 +277,7 @@ export default function HgsIhlalPage() {
             disabled={kgmTestMut.isPending}
             title="Sunucudan (Railway) tek plaka KGM testi — KGM sunucu IP'sini engelliyor mu?"
             className="inline-flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium rounded-[10px] transition-all disabled:opacity-50"
-            style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.85)' }}
+            style={portalStyle({ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.85)' })}
           >
             {kgmTestMut.isPending
               ? <><RefreshCw size={14} className="animate-spin" /> Test ediliyor...</>
@@ -290,7 +292,7 @@ export default function HgsIhlalPage() {
               }}
               disabled={iptalMut.isPending}
               className="inline-flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium rounded-[10px] transition-all disabled:opacity-50"
-              style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.4)', color: '#ef4444' }}
+              style={portalStyle({ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.4)', color: '#ef4444' })}
             >
               <Square size={14} /> İptal Et
             </button>
@@ -300,12 +302,12 @@ export default function HgsIhlalPage() {
       </section>
 
       {/* ═══ HGS SONUÇ ALICILARI (WhatsApp) ═══ */}
-      <section className="rounded-2xl border p-5" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' }}>
+      <section className="rounded-2xl border p-5" style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' })}>
         <div className="flex items-center gap-2 mb-1.5">
-          <Send size={15} style={{ color: ACCENT }} />
-          <span className="text-[14px] font-semibold" style={{ color: '#fafaf9' }}>HGS Sonuç Alıcıları (WhatsApp)</span>
+          <Send size={15} style={portalStyle({ color: ACCENT })} />
+          <span className="text-[14px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>HGS Sonuç Alıcıları (WhatsApp)</span>
         </div>
-        <p className="text-[11.5px] mb-3" style={{ color: 'rgba(250,250,249,0.55)' }}>
+        <p className="text-[11.5px] mb-3" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>
           Sorgu bitince ihlal/borç özeti bu numaralara WhatsApp&apos;tan otomatik gönderilir. Numaraları virgülle ayır (örn: <b>0532 111 22 33, 0535 058 74 75</b>). Boş bırakırsan eski varsayılan numaralara gider. Not: Daha önce bizim hattımızla hiç yazışmamış numarada ilk mesaj WhatsApp&apos;ın güvenlik gecikmesine takılıp birkaç dakika sonra düşebilir.
         </p>
         <div className="flex items-end gap-2 flex-wrap">
@@ -315,13 +317,13 @@ export default function HgsIhlalPage() {
             rows={2}
             placeholder="0532 111 22 33, 0535 058 74 75"
             className="flex-1 min-w-[260px] px-3 py-2 text-[13px] rounded-lg outline-none resize-y"
-            style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
+            style={portalStyle({ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' })}
           />
           <button
             onClick={() => aliciKaydetMut.mutate()}
             disabled={aliciKaydetMut.isPending || !aliciEdited}
             className="inline-flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-bold rounded-[10px] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            style={{ background: `linear-gradient(135deg, ${ACCENT}, ${ACCENT_DEEP})`, color: INK }}
+            style={portalStyle({ background: `linear-gradient(135deg, ${ACCENT}, ${ACCENT_DEEP})`, color: INK })}
           >
             {aliciKaydetMut.isPending
               ? <><RefreshCw size={14} className="animate-spin" /> Kaydediliyor...</>
@@ -331,48 +333,48 @@ export default function HgsIhlalPage() {
       </section>
 
       {/* ═══ ARAÇ LİSTESİ ═══ */}
-      <section className="rounded-2xl border overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' }}>
-        <div className="px-5 py-3.5 flex items-center justify-between gap-3 flex-wrap" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-          <h2 className="flex items-center gap-2 text-[15px] font-semibold" style={{ color: '#fafaf9' }}>
-            <Car size={16} style={{ color: ACCENT }} /> Araçlar
-            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ background: 'rgba(34,211,238,0.12)', color: ACCENT }}>
+      <section className="rounded-2xl border overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' })}>
+        <div className="px-5 py-3.5 flex items-center justify-between gap-3 flex-wrap" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.06)' })}>
+          <h2 className="flex items-center gap-2 text-[15px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>
+            <Car size={16} style={portalStyle({ color: ACCENT })} /> Araçlar
+            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={portalStyle({ background: 'rgba(34,211,238,0.12)', color: ACCENT })}>
               {araclar.length}
             </span>
           </h2>
           <div className="relative w-full sm:w-72">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: 'rgba(250,250,249,0.4)' }} />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })} />
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Plaka, marka, model, sahip ara..."
               className="w-full pl-9 pr-3 py-2 text-[13px] rounded-lg outline-none"
-              style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
+              style={portalStyle({ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' })}
             />
           </div>
         </div>
 
         {isLoading ? (
-          <div className="px-5 py-16 text-center text-[13px]" style={{ color: 'rgba(250,250,249,0.5)' }}>
+          <div className="px-5 py-16 text-center text-[13px]" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
             <RefreshCw size={18} className="animate-spin inline mr-2" /> Yükleniyor...
           </div>
         ) : araclar.length === 0 ? (
           <div className="px-5 py-16 text-center">
-            <Car className="w-12 h-12 mx-auto mb-4" style={{ color: 'rgba(250,250,249,0.2)' }} />
-            <p className="text-[14px]" style={{ color: 'rgba(250,250,249,0.55)' }}>
+            <Car className="w-12 h-12 mx-auto mb-4" style={portalStyle({ color: 'rgba(250,250,249,0.2)' })} />
+            <p className="text-[14px]" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>
               {search ? 'Aramaya uyan araç yok.' : 'Henüz araç kaydedilmemiş.'}
             </p>
             {!search && (
-              <button onClick={() => setAddOpen(true)} className="mt-4 text-[13px] font-semibold" style={{ color: ACCENT }}>
+              <button onClick={() => setAddOpen(true)} className="mt-4 text-[13px] font-semibold" style={portalStyle({ color: ACCENT })}>
                 + İlk aracı ekle
               </button>
             )}
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-[13px]" style={{ color: 'rgba(250,250,249,0.85)' }}>
-              <thead style={{ background: 'rgba(255,255,255,0.025)' }}>
-                <tr className="text-left text-[10.5px] uppercase tracking-wider font-semibold" style={{ color: 'rgba(250,250,249,0.5)' }}>
+            <table className="w-full text-[13px]" style={portalStyle({ color: 'rgba(250,250,249,0.85)' })}>
+              <thead style={portalStyle({ background: 'rgba(255,255,255,0.025)' })}>
+                <tr className="text-left text-[10.5px] uppercase tracking-wider font-semibold" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
                   <th className="px-4 py-3">Plaka</th>
                   <th className="px-4 py-3">Marka / Model</th>
                   <th className="px-4 py-3">Sahip</th>
@@ -400,10 +402,10 @@ export default function HgsIhlalPage() {
       </section>
 
       {/* Bilgilendirme */}
-      <div className="rounded-xl p-4 text-[12px] flex items-start gap-2.5" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.7)' }}>
-        <span className="mt-0.5 flex-shrink-0 grid h-5 w-5 place-items-center rounded-md" style={{ background: 'rgba(34,211,238,0.12)', color: ACCENT }}>i</span>
+      <div className="rounded-xl p-4 text-[12px] flex items-start gap-2.5" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.7)' })}>
+        <span className="mt-0.5 flex-shrink-0 grid h-5 w-5 place-items-center rounded-md" style={portalStyle({ background: 'rgba(34,211,238,0.12)', color: ACCENT })}>i</span>
         <span>
-          <strong style={{ color: ACCENT }}>Otomatik sorgu:</strong> Chrome eklentisi her Pazartesi sabahı tüm araçları tek tek sorgulayıp sonuçları buraya kaydedebilir. Manuel sorgu için satırdaki <b>Sorgula</b>, sonucu elle girmek için <b>Sonuç</b> butonunu kullan.
+          <strong style={portalStyle({ color: ACCENT })}>Otomatik sorgu:</strong> Chrome eklentisi her Pazartesi sabahı tüm araçları tek tek sorgulayıp sonuçları buraya kaydedebilir. Manuel sorgu için satırdaki <b>Sorgula</b>, sonucu elle girmek için <b>Sonuç</b> butonunu kullan.
         </span>
       </div>
 
@@ -423,7 +425,7 @@ function PlateBadge({ text, size = 'md' }: { text: string; size?: 'sm' | 'md' })
   return (
     <span
       className={`inline-flex items-center rounded-md font-bold tabular-nums ${size === 'sm' ? 'px-2 py-0.5 text-[12px]' : 'px-2.5 py-1 text-[13px]'}`}
-      style={{ background: 'rgba(34,211,238,0.09)', border: '1px solid rgba(34,211,238,0.28)', color: '#67e8f9', fontFamily: 'JetBrains Mono, monospace' }}
+      style={portalStyle({ background: 'rgba(34,211,238,0.09)', border: '1px solid rgba(34,211,238,0.28)', color: '#67e8f9', fontFamily: 'JetBrains Mono, monospace' })}
     >
       {text}
     </span>
@@ -437,15 +439,15 @@ function OzetCard({ label, value, icon: Icon, valueColor = '#fafaf9' }: { label:
   return (
     <div
       className="rounded-2xl border p-4"
-      style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.07)' }}
+      style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.07)' })}
     >
       <div className="flex items-center justify-between">
-        <span className="text-[10px] uppercase font-bold tracking-[.16em]" style={{ color: 'rgba(250,250,249,0.5)' }}>{label}</span>
-        <span className="grid h-7 w-7 place-items-center rounded-lg flex-shrink-0" style={{ background: 'rgba(34,211,238,0.1)', border: '1px solid rgba(34,211,238,0.22)' }}>
-          <Icon size={14} style={{ color: ACCENT }} />
+        <span className="text-[10px] uppercase font-bold tracking-[.16em]" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>{label}</span>
+        <span className="grid h-7 w-7 place-items-center rounded-lg flex-shrink-0" style={portalStyle({ background: 'rgba(34,211,238,0.1)', border: '1px solid rgba(34,211,238,0.22)' })}>
+          <Icon size={14} style={portalStyle({ color: ACCENT })} />
         </span>
       </div>
-      <div className="mt-3 text-[26px] font-semibold tabular-nums leading-none" style={{ color: valueColor, fontFamily: 'JetBrains Mono, monospace' }}>{value}</div>
+      <div className="mt-3 text-[26px] font-semibold tabular-nums leading-none" style={portalStyle({ color: valueColor, fontFamily: 'JetBrains Mono, monospace' })}>{value}</div>
     </div>
   );
 }
@@ -472,32 +474,32 @@ function AracRow({
 
   return (
     <>
-      <tr className="group transition-colors hover:bg-white/[0.02]" style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+      <tr className="group transition-colors hover:bg-white/[0.02]" style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.04)' })}>
         <td className="px-4 py-2.5">
           <PlateBadge text={arac.plakaGorunum || arac.plaka} />
         </td>
         <td className="px-4 py-2.5 text-[12.5px]">
           {arac.marka || arac.model
-            ? <span>{arac.marka} {arac.model && <span style={{ color: 'rgba(250,250,249,0.5)' }}>{arac.model}</span>}</span>
-            : <span style={{ color: 'rgba(250,250,249,0.35)' }}>—</span>}
+            ? <span>{arac.marka} {arac.model && <span style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>{arac.model}</span>}</span>
+            : <span style={portalStyle({ color: 'rgba(250,250,249,0.35)' })}>—</span>}
         </td>
         <td className="px-4 py-2.5 text-[12.5px]">
-          {arac.sahipAd || <span style={{ color: 'rgba(250,250,249,0.35)' }}>—</span>}
+          {arac.sahipAd || <span style={portalStyle({ color: 'rgba(250,250,249,0.35)' })}>—</span>}
         </td>
         <td className="px-4 py-2.5 text-[12px]">
           {s ? (
             <div className="flex items-center gap-2">
-              {s.durum === 'basarili' && <CheckCircle2 size={13} style={{ color: GREEN }} />}
-              {s.durum === 'hatali' && <AlertCircle size={13} style={{ color: '#ef4444' }} />}
-              {s.durum === 'beklemede' && <Clock size={13} style={{ color: AMBER }} />}
-              <span style={{ color: 'rgba(250,250,249,0.7)' }}>{fmtTarih(s.sorguTarihi)}</span>
+              {s.durum === 'basarili' && <CheckCircle2 size={13} style={portalStyle({ color: GREEN })} />}
+              {s.durum === 'hatali' && <AlertCircle size={13} style={portalStyle({ color: '#ef4444' })} />}
+              {s.durum === 'beklemede' && <Clock size={13} style={portalStyle({ color: AMBER })} />}
+              <span style={portalStyle({ color: 'rgba(250,250,249,0.7)' })}>{fmtTarih(s.sorguTarihi)}</span>
             </div>
-          ) : <span style={{ color: 'rgba(250,250,249,0.35)' }}>henüz yok</span>}
+          ) : <span style={portalStyle({ color: 'rgba(250,250,249,0.35)' })}>henüz yok</span>}
         </td>
-        <td className="px-4 py-2.5 text-right tabular-nums font-semibold" style={{ fontFamily: 'JetBrains Mono, monospace', color: ihlalliMi ? ROSE : 'rgba(250,250,249,0.55)' }}>
+        <td className="px-4 py-2.5 text-right tabular-nums font-semibold" style={portalStyle({ fontFamily: 'JetBrains Mono, monospace', color: ihlalliMi ? ROSE : 'rgba(250,250,249,0.55)' })}>
           {s ? s.ihlalSayisi : '—'}
         </td>
-        <td className="px-4 py-2.5 text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: ihlalliMi ? '#fafaf9' : 'rgba(250,250,249,0.6)' }}>
+        <td className="px-4 py-2.5 text-right tabular-nums" style={portalStyle({ fontFamily: 'JetBrains Mono, monospace', color: ihlalliMi ? '#fafaf9' : 'rgba(250,250,249,0.6)' })}>
           {s ? fmtTL(s.toplamTutar) : '—'}
         </td>
         <td className="px-4 py-2.5 text-right">
@@ -506,7 +508,7 @@ function AracRow({
               onClick={() => onSorgula(arac.id)}
               disabled={sorguPending || sorguDisabled}
               className="text-[11px] font-bold px-2.5 py-1.5 rounded-md transition inline-flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{ background: `linear-gradient(135deg, ${ACCENT}, ${ACCENT_DEEP})`, color: INK }}
+              style={portalStyle({ background: `linear-gradient(135deg, ${ACCENT}, ${ACCENT_DEEP})`, color: INK })}
               title="Agent ile arka planda sorgula"
             >
               {sorguPending
@@ -518,7 +520,7 @@ function AracRow({
             <button
               onClick={() => setSonucOpen(true)}
               className="text-[11px] font-medium px-2.5 py-1.5 rounded-md transition inline-flex items-center gap-1"
-              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(250,250,249,0.8)' }}
+              style={portalStyle({ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(250,250,249,0.8)' })}
               title="Sonuç kaydet"
             >
               <Save size={11} /> Sonuç
@@ -530,7 +532,7 @@ function AracRow({
                 }
               }}
               className="opacity-0 group-hover:opacity-100 p-1.5 rounded-md hover:bg-rose-500/10 transition"
-              style={{ color: 'rgba(244,63,94,0.7)' }}
+              style={portalStyle({ color: 'rgba(244,63,94,0.7)' })}
               title="Aracı sil"
             >
               <Trash2 size={13} />
@@ -564,12 +566,12 @@ function AddAracModal({ onClose, onDone }: { onClose: () => void; onDone: () => 
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }} onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} className="relative w-full max-w-md rounded-2xl overflow-hidden" style={{ background: '#0f0d0b', border: '1px solid rgba(255,255,255,0.1)' }}>
-        <div className="absolute inset-x-0 top-0 h-[3px]" style={{ background: `linear-gradient(90deg, ${ACCENT}, #818cf8, transparent)` }} />
-        <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-          <h3 className="flex items-center gap-2 text-[17px] font-semibold" style={{ color: '#fafaf9' }}>
-            <span className="grid h-8 w-8 place-items-center rounded-lg" style={{ background: `linear-gradient(135deg, ${ACCENT}, ${ACCENT_DEEP})` }}><Car size={16} style={{ color: INK }} /></span>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={portalStyle({ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' })} onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} className="relative w-full max-w-md rounded-2xl overflow-hidden" style={portalStyle({ background: '#0f0d0b', border: '1px solid rgba(255,255,255,0.1)' })}>
+        <div className="absolute inset-x-0 top-0 h-[3px]" style={portalStyle({ background: `linear-gradient(90deg, ${ACCENT}, #818cf8, transparent)` })} />
+        <div className="px-5 py-4 flex items-center justify-between" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.06)' })}>
+          <h3 className="flex items-center gap-2 text-[17px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>
+            <span className="grid h-8 w-8 place-items-center rounded-lg" style={portalStyle({ background: `linear-gradient(135deg, ${ACCENT}, ${ACCENT_DEEP})` })}><Car size={16} style={portalStyle({ color: INK })} /></span>
             Araç Ekle
           </h3>
           <button onClick={onClose} className="text-stone-400 hover:text-stone-200"><IconX size={18} /></button>
@@ -578,37 +580,37 @@ function AddAracModal({ onClose, onDone }: { onClose: () => void; onDone: () => 
           <Field label="Plaka" required>
             <input value={plaka} onChange={(e) => setPlaka(e.target.value.toUpperCase())} placeholder="34 ABC 123" autoFocus
               className="w-full px-3 py-2 rounded-md text-[14px] font-mono outline-none"
-              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9', fontFamily: 'JetBrains Mono, monospace' }} />
+              style={portalStyle({ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9', fontFamily: 'JetBrains Mono, monospace' })} />
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Marka (ops.)">
               <input value={marka} onChange={(e) => setMarka(e.target.value)} placeholder="Ford"
                 className="w-full px-3 py-2 rounded-md text-[13px] outline-none"
-                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }} />
+                style={portalStyle({ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' })} />
             </Field>
             <Field label="Model (ops.)">
               <input value={model} onChange={(e) => setModel(e.target.value)} placeholder="Transit"
                 className="w-full px-3 py-2 rounded-md text-[13px] outline-none"
-                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }} />
+                style={portalStyle({ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' })} />
             </Field>
           </div>
           <Field label="Sahip / Müşteri Adı (ops.)">
             <input value={sahipAd} onChange={(e) => setSahipAd(e.target.value)} placeholder="Örn: Ahmet Yılmaz Galerisi"
               className="w-full px-3 py-2 rounded-md text-[13px] outline-none"
-              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }} />
+              style={portalStyle({ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' })} />
           </Field>
           <Field label="Notlar (ops.)">
             <textarea value={notlar} onChange={(e) => setNotlar(e.target.value)} rows={2}
               className="w-full px-3 py-2 rounded-md text-[13px] outline-none resize-none"
-              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }} />
+              style={portalStyle({ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' })} />
           </Field>
         </div>
-        <div className="px-5 py-3 flex justify-end gap-2" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+        <div className="px-5 py-3 flex justify-end gap-2" style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.06)' })}>
           <button onClick={onClose} className="px-4 py-2 text-[12.5px] font-medium rounded-md"
-            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.75)' }}>İptal</button>
+            style={portalStyle({ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.75)' })}>İptal</button>
           <button onClick={() => createMut.mutate()} disabled={!plaka.trim() || createMut.isPending}
             className="px-5 py-2 text-[12.5px] font-bold rounded-md disabled:opacity-40 inline-flex items-center gap-1.5"
-            style={{ background: `linear-gradient(135deg, ${ACCENT}, ${ACCENT_DEEP})`, color: INK }}>
+            style={portalStyle({ background: `linear-gradient(135deg, ${ACCENT}, ${ACCENT_DEEP})`, color: INK })}>
             <Plus size={13} /> {createMut.isPending ? 'Ekleniyor...' : 'Ekle'}
           </button>
         </div>
@@ -650,12 +652,12 @@ function SonucKaydetModal({ arac, onClose }: { arac: Arac; onClose: () => void }
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }} onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} className="relative w-full max-w-2xl rounded-2xl overflow-hidden flex flex-col" style={{ background: '#0f0d0b', border: '1px solid rgba(255,255,255,0.1)', maxHeight: '85vh' }}>
-        <div className="absolute inset-x-0 top-0 h-[3px]" style={{ background: `linear-gradient(90deg, ${ACCENT}, #818cf8, transparent)` }} />
-        <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={portalStyle({ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' })} onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} className="relative w-full max-w-2xl rounded-2xl overflow-hidden flex flex-col" style={portalStyle({ background: '#0f0d0b', border: '1px solid rgba(255,255,255,0.1)', maxHeight: '85vh' })}>
+        <div className="absolute inset-x-0 top-0 h-[3px]" style={portalStyle({ background: `linear-gradient(90deg, ${ACCENT}, #818cf8, transparent)` })} />
+        <div className="px-5 py-4 flex items-center justify-between" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.06)' })}>
           <div className="flex items-center gap-3">
-            <h3 className="text-[17px] font-semibold" style={{ color: '#fafaf9' }}>HGS Sorgu Sonucu</h3>
+            <h3 className="text-[17px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>HGS Sorgu Sonucu</h3>
             <PlateBadge text={arac.plakaGorunum || arac.plaka} size="sm" />
           </div>
           <button onClick={onClose} className="text-stone-400 hover:text-stone-200"><IconX size={18} /></button>
@@ -668,15 +670,15 @@ function SonucKaydetModal({ arac, onClose }: { arac: Arac; onClose: () => void }
             target="_blank"
             rel="noopener"
             className="block rounded-xl p-4 transition"
-            style={{ background: 'rgba(34,211,238,0.06)', border: '1px solid rgba(34,211,238,0.25)' }}
+            style={portalStyle({ background: 'rgba(34,211,238,0.06)', border: '1px solid rgba(34,211,238,0.25)' })}
           >
             <div className="flex items-center gap-3">
-              <ExternalLink size={16} style={{ color: ACCENT }} />
+              <ExternalLink size={16} style={portalStyle({ color: ACCENT })} />
               <div className="flex-1">
-                <div className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>
+                <div className="text-[13px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>
                   1) KGM sitesini aç ve plakayı sorgula
                 </div>
-                <div className="text-[11.5px] mt-0.5" style={{ color: 'rgba(250,250,249,0.6)' }}>
+                <div className="text-[11.5px] mt-0.5" style={portalStyle({ color: 'rgba(250,250,249,0.6)' })}>
                   webihlaltakip.kgm.gov.tr — CAPTCHA çöz, plaka "{arac.plakaGorunum}" yaz, Sorgula
                 </div>
               </div>
@@ -684,48 +686,48 @@ function SonucKaydetModal({ arac, onClose }: { arac: Arac; onClose: () => void }
           </a>
 
           {/* Sonuç giriş formu */}
-          <div className="rounded-xl p-4" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
-            <h4 className="text-[13px] font-semibold mb-3" style={{ color: '#fafaf9' }}>2) Sonucu buraya kaydet</h4>
+          <div className="rounded-xl p-4" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' })}>
+            <h4 className="text-[13px] font-semibold mb-3" style={portalStyle({ color: '#fafaf9' })}>2) Sonucu buraya kaydet</h4>
             <div className="grid grid-cols-2 gap-3 mb-3">
               <Field label="İhlal Sayısı">
                 <input type="number" min="0" value={ihlalSayisi} onChange={(e) => setIhlalSayisi(e.target.value)}
                   className="w-full px-3 py-2 rounded-md text-[14px] tabular-nums outline-none"
-                  style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9', fontFamily: 'JetBrains Mono, monospace' }} />
+                  style={portalStyle({ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9', fontFamily: 'JetBrains Mono, monospace' })} />
               </Field>
               <Field label="Toplam Tutar (TL)">
                 <input type="text" value={toplamTutar} onChange={(e) => setToplamTutar(e.target.value)} placeholder="0"
                   className="w-full px-3 py-2 rounded-md text-[14px] tabular-nums outline-none"
-                  style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9', fontFamily: 'JetBrains Mono, monospace' }} />
+                  style={portalStyle({ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9', fontFamily: 'JetBrains Mono, monospace' })} />
               </Field>
             </div>
             <Field label="Not / Detay (ops.)">
               <textarea value={notlar} onChange={(e) => setNotlar(e.target.value)} rows={2}
                 placeholder="Örn: 3 ihlal, Avrasya Tünelinden. 2 ihlal HGS yetersiz bakiye."
                 className="w-full px-3 py-2 rounded-md text-[13px] outline-none resize-none"
-                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }} />
+                style={portalStyle({ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' })} />
             </Field>
           </div>
 
           {/* Geçmiş sorgular */}
           {gecmis.length > 0 && (
-            <div className="rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
-              <div className="px-4 py-2.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                <h4 className="text-[12.5px] font-semibold" style={{ color: 'rgba(250,250,249,0.75)' }}>Geçmiş Sorgular ({gecmis.length})</h4>
+            <div className="rounded-xl overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' })}>
+              <div className="px-4 py-2.5" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.04)' })}>
+                <h4 className="text-[12.5px] font-semibold" style={portalStyle({ color: 'rgba(250,250,249,0.75)' })}>Geçmiş Sorgular ({gecmis.length})</h4>
               </div>
-              <ul className="max-h-[220px] overflow-y-auto divide-y" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
+              <ul className="max-h-[220px] overflow-y-auto divide-y" style={portalStyle({ borderColor: 'rgba(255,255,255,0.04)' })}>
                 {gecmis.map((g) => (
                   <li key={g.id} className="px-4 py-2 text-[12px] flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      {g.durum === 'basarili' && <CheckCircle2 size={13} style={{ color: GREEN }} />}
-                      {g.durum === 'hatali' && <AlertCircle size={13} style={{ color: '#ef4444' }} />}
-                      <span style={{ color: 'rgba(250,250,249,0.7)' }}>{fmtTarih(g.sorguTarihi)}</span>
+                      {g.durum === 'basarili' && <CheckCircle2 size={13} style={portalStyle({ color: GREEN })} />}
+                      {g.durum === 'hatali' && <AlertCircle size={13} style={portalStyle({ color: '#ef4444' })} />}
+                      <span style={portalStyle({ color: 'rgba(250,250,249,0.7)' })}>{fmtTarih(g.sorguTarihi)}</span>
                       <span className="text-[10.5px] uppercase tracking-wider opacity-60">{g.kaynak}</span>
                     </div>
                     <div className="flex items-center gap-4">
-                      <span className="tabular-nums font-semibold" style={{ color: g.ihlalSayisi > 0 ? ROSE : GREEN, fontFamily: 'JetBrains Mono, monospace' }}>
+                      <span className="tabular-nums font-semibold" style={portalStyle({ color: g.ihlalSayisi > 0 ? ROSE : GREEN, fontFamily: 'JetBrains Mono, monospace' })}>
                         {g.ihlalSayisi} ihlal
                       </span>
-                      <span className="tabular-nums" style={{ color: g.toplamTutar ? AMBER : 'rgba(250,250,249,0.4)', fontFamily: 'JetBrains Mono, monospace' }}>
+                      <span className="tabular-nums" style={portalStyle({ color: g.toplamTutar ? AMBER : 'rgba(250,250,249,0.4)', fontFamily: 'JetBrains Mono, monospace' })}>
                         {fmtTL(g.toplamTutar)}
                       </span>
                     </div>
@@ -736,12 +738,12 @@ function SonucKaydetModal({ arac, onClose }: { arac: Arac; onClose: () => void }
           )}
         </div>
 
-        <div className="px-5 py-3 flex justify-end gap-2" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+        <div className="px-5 py-3 flex justify-end gap-2" style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.06)' })}>
           <button onClick={onClose} className="px-4 py-2 text-[12.5px] font-medium rounded-md"
-            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.75)' }}>İptal</button>
+            style={portalStyle({ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.75)' })}>İptal</button>
           <button onClick={() => kaydetMut.mutate()} disabled={kaydetMut.isPending}
             className="px-5 py-2 text-[12.5px] font-bold rounded-md inline-flex items-center gap-1.5"
-            style={{ background: `linear-gradient(135deg, ${ACCENT}, ${ACCENT_DEEP})`, color: INK }}>
+            style={portalStyle({ background: `linear-gradient(135deg, ${ACCENT}, ${ACCENT_DEEP})`, color: INK })}>
             <Save size={13} /> {kaydetMut.isPending ? 'Kaydediliyor...' : 'Kaydet'}
           </button>
         </div>
@@ -753,8 +755,8 @@ function SonucKaydetModal({ arac, onClose }: { arac: Arac; onClose: () => void }
 function Field({ label, children, required }: { label: string; children: React.ReactNode; required?: boolean }) {
   return (
     <div>
-      <label className="block text-[10.5px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'rgba(250,250,249,0.55)' }}>
-        {label} {required && <span style={{ color: ROSE }}>*</span>}
+      <label className="block text-[10.5px] font-semibold uppercase tracking-wider mb-1.5" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>
+        {label} {required && <span style={portalStyle({ color: ROSE })}>*</span>}
       </label>
       {children}
     </div>

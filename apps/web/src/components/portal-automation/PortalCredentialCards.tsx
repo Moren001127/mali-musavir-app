@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -75,7 +77,7 @@ export function AdvisorPortalCredentialCard() {
   );
 
   return (
-    <section className="rounded-lg border bg-[#0f0d0b]/80 p-5" style={{ borderColor: LINE }}>
+    <section className="rounded-lg border bg-[#0f0d0b]/80 p-5" style={portalStyle({ borderColor: LINE })}>
       <CardHeader
         icon={KeyRound}
         title="Mali Müşavir e-Beyanname Şifresi"
@@ -268,7 +270,7 @@ function CredentialEditor({
             )}
           </FormGrup>
           {credential?.lastError && (
-            <div className="rounded-[8px] px-3 py-2 text-[12.5px]" style={{ background: 'rgba(240,183,85,0.08)', border: '1px solid rgba(240,183,85,0.28)', color: '#f0b755' }}>
+            <div className="rounded-[8px] px-3 py-2 text-[12.5px]" style={portalStyle({ background: 'rgba(240,183,85,0.08)', border: '1px solid rgba(240,183,85,0.28)', color: '#f0b755' })}>
               Son giriş denemesi: {credential.lastError}
             </div>
           )}
@@ -289,16 +291,16 @@ function CredentialEditor({
 
   return (
     <>
-      <div className="rounded-xl border p-4" style={{ background: compact ? 'rgba(255,255,255,0.025)' : SOFT, borderColor: LINE }}>
+      <div className="rounded-xl border p-4" style={portalStyle({ background: compact ? 'rgba(255,255,255,0.025)' : SOFT, borderColor: LINE })}>
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold" style={{ color: TEXT }}>{PROVIDER_TITLES[provider]}</h3>
-          <p className="mt-0.5 text-[11.5px]" style={{ color: credential ? '#86efac' : MUTED }}>
+          <h3 className="text-sm font-semibold" style={portalStyle({ color: TEXT })}>{PROVIDER_TITLES[provider]}</h3>
+          <p className="mt-0.5 text-[11.5px]" style={portalStyle({ color: credential ? '#86efac' : MUTED })}>
             {credential ? 'Kayıtlı' : 'Kayıt yok'}
           </p>
         </div>
         {credential?.lastSuccessAt && (
-          <span className="rounded-md border px-2 py-1 text-[10.5px] font-semibold" style={{ borderColor: 'rgba(134,239,172,0.25)', background: 'rgba(34,197,94,0.10)', color: '#86efac' }}>
+          <span className="rounded-md border px-2 py-1 text-[10.5px] font-semibold" style={portalStyle({ borderColor: 'rgba(134,239,172,0.25)', background: 'rgba(34,197,94,0.10)', color: '#86efac' })}>
             Çalışıyor
           </span>
         )}
@@ -361,7 +363,7 @@ function CredentialEditor({
         disabled={disabled}
         onClick={() => saveMut.mutate()}
         className="mt-4 inline-flex h-9 items-center gap-1.5 rounded-lg px-4 text-[12.5px] font-bold transition disabled:opacity-50"
-        style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DEEP})`, color: '#0f0d0b' }}
+        style={portalStyle({ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DEEP})`, color: '#0f0d0b' })}
       >
         {saveMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
         Şifreyi Kaydet
@@ -397,7 +399,7 @@ function CredentialValidationNoticeDialog({
   return (
     <div
       className="fixed inset-0 z-[10000] flex items-center justify-center p-4"
-      style={{ background: 'rgba(0,0,0,0.66)', backdropFilter: 'blur(5px)' }}
+      style={portalStyle({ background: 'rgba(0,0,0,0.66)', backdropFilter: 'blur(5px)' })}
       role="alertdialog"
       aria-modal="true"
       aria-labelledby="credential-validation-title"
@@ -405,26 +407,26 @@ function CredentialValidationNoticeDialog({
     >
       <div
         className="w-full max-w-[520px] overflow-hidden rounded-[8px]"
-        style={{
+        style={portalStyle({
           background: 'linear-gradient(180deg, rgba(25,24,22,0.98), rgba(10,10,10,0.98))',
           border: '1px solid rgba(212,184,118,0.34)',
           boxShadow: '0 28px 90px rgba(0,0,0,0.56), inset 0 1px 0 rgba(255,255,255,0.05)',
-        }}
+        })}
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="flex items-start justify-between gap-3 px-5 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+        <div className="flex items-start justify-between gap-3 px-5 py-4" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.08)' })}>
           <div className="flex items-start gap-3">
             <div
               className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[8px]"
-              style={{ background: 'rgba(239,68,68,0.14)', border: '1px solid rgba(248,113,113,0.28)', color: '#f87171' }}
+              style={portalStyle({ background: 'rgba(239,68,68,0.14)', border: '1px solid rgba(248,113,113,0.28)', color: '#f87171' })}
             >
               <AlertTriangle size={20} />
             </div>
             <div>
-              <h2 id="credential-validation-title" className="text-[17px] font-black leading-tight" style={{ color: TEXT }}>
+              <h2 id="credential-validation-title" className="text-[17px] font-black leading-tight" style={portalStyle({ color: TEXT })}>
                 Şifre kaydedildi, giriş doğrulanamadı
               </h2>
-              <p className="mt-1 text-[12.5px] font-semibold" style={{ color: MUTED }}>
+              <p className="mt-1 text-[12.5px] font-semibold" style={portalStyle({ color: MUTED })}>
                 {label} bilgileri kaydedildi. Portal doğrulaması hata verdi.
               </p>
             </div>
@@ -433,7 +435,7 @@ function CredentialValidationNoticeDialog({
             type="button"
             onClick={onClose}
             className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[7px] transition hover:bg-white/[0.07]"
-            style={{ color: MUTED }}
+            style={portalStyle({ color: MUTED })}
             aria-label="Uyarıyı kapat"
           >
             <X size={17} />
@@ -443,11 +445,11 @@ function CredentialValidationNoticeDialog({
         <div className="px-5 py-4">
           <div
             className="rounded-[8px] px-3.5 py-3 text-[13px] font-semibold leading-relaxed"
-            style={{
+            style={portalStyle({
               background: 'rgba(239,68,68,0.09)',
               border: '1px solid rgba(248,113,113,0.22)',
               color: '#fecaca',
-            }}
+            })}
           >
             {notice.error}
           </div>
@@ -456,7 +458,7 @@ function CredentialValidationNoticeDialog({
               type="button"
               onClick={onClose}
               className="inline-flex h-9 items-center gap-1.5 rounded-[8px] px-4 text-[12.5px] font-black transition hover:brightness-110"
-              style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DEEP})`, color: '#0f0d0b' }}
+              style={portalStyle({ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DEEP})`, color: '#0f0d0b' })}
             >
               <CheckCircle2 size={15} />
               Tamam
@@ -474,12 +476,12 @@ function CardHeader({ icon: Icon, title, subtitle, accent = 'gold' }: { icon: Re
   const aLine = accent === 'steel' ? STEEL_LN : LINE_GOLD;
   return (
     <div className="mb-5 flex items-center gap-3">
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border" style={{ borderColor: aLine, background: aBg, color: aColor }}>
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border" style={portalStyle({ borderColor: aLine, background: aBg, color: aColor })}>
         <Icon size={18} />
       </div>
       <div className="min-w-0">
-        <h2 className="text-[16px] font-semibold" style={{ color: TEXT }}>{title}</h2>
-        <p className="mt-1 text-[12.5px]" style={{ color: MUTED }}>{subtitle}</p>
+        <h2 className="text-[16px] font-semibold" style={portalStyle({ color: TEXT })}>{title}</h2>
+        <p className="mt-1 text-[12.5px]" style={portalStyle({ color: MUTED })}>{subtitle}</p>
       </div>
     </div>
   );
@@ -498,14 +500,14 @@ function TextInput({
 }) {
   return (
     <label className="block">
-      <span className="mb-1.5 block text-[11.5px] font-semibold" style={{ color: MUTED }}>{label}</span>
+      <span className="mb-1.5 block text-[11.5px] font-semibold" style={portalStyle({ color: MUTED })}>{label}</span>
       <input
         type="text"
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
         className="h-10 w-full rounded-lg border px-3 text-sm outline-none"
-        style={{ background: SOFT, borderColor: LINE, color: TEXT }}
+        style={portalStyle({ background: SOFT, borderColor: LINE, color: TEXT })}
       />
     </label>
   );
@@ -525,7 +527,7 @@ function PasswordInput({
   const [visible, setVisible] = useState(false);
   return (
     <label className="block">
-      <span className="mb-1.5 block text-[11.5px] font-semibold" style={{ color: MUTED }}>{label}</span>
+      <span className="mb-1.5 block text-[11.5px] font-semibold" style={portalStyle({ color: MUTED })}>{label}</span>
       <div className="relative">
         <input
           type={visible ? 'text' : 'password'}
@@ -533,10 +535,10 @@ function PasswordInput({
           onChange={(event) => onChange(event.target.value)}
           placeholder={hasSaved ? 'Kayitli - degistirmek icin yaz' : ''}
           className="h-10 w-full rounded-lg border px-3 pr-10 text-sm outline-none placeholder:text-transparent"
-          style={{ background: SOFT, borderColor: LINE, color: TEXT }}
+          style={portalStyle({ background: SOFT, borderColor: LINE, color: TEXT })}
         />
         {hasSaved && !value && (
-          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm tracking-[0.18em]" style={{ color: MUTED }}>
+          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm tracking-[0.18em]" style={portalStyle({ color: MUTED })}>
             &bull;&bull;&bull;&bull;&bull;&bull;
           </span>
         )}
@@ -544,7 +546,7 @@ function PasswordInput({
           type="button"
           onClick={() => setVisible((current) => !current)}
           className="absolute right-2 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md transition hover:bg-white/[0.06]"
-          style={{ color: MUTED }}
+          style={portalStyle({ color: MUTED })}
           title={visible ? 'Sifreyi gizle' : 'Sifreyi goster'}
         >
           {visible ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -571,7 +573,7 @@ function SifreAlani({ value, onChange, hasSaved }: { value: string; onChange: (v
         type="button"
         onClick={() => setVisible((current) => !current)}
         className="absolute right-1.5 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md transition hover:bg-white/[0.06]"
-        style={{ color: MUTED }}
+        style={portalStyle({ color: MUTED })}
         title={visible ? 'Şifreyi gizle' : 'Şifreyi göster'}
         aria-label={visible ? 'Şifreyi gizle' : 'Şifreyi göster'}
       >
@@ -583,7 +585,7 @@ function SifreAlani({ value, onChange, hasSaved }: { value: string; onChange: (v
 
 function LoadingLine() {
   return (
-    <div className="flex items-center gap-2 text-sm" style={{ color: MUTED }}>
+    <div className="flex items-center gap-2 text-sm" style={portalStyle({ color: MUTED })}>
       <Loader2 size={14} className="animate-spin" />
       Yükleniyor...
     </div>

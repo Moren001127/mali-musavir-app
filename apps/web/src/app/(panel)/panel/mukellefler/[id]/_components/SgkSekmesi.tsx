@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 import React, { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Loader2, Shield } from 'lucide-react';
@@ -55,12 +57,12 @@ export function SgkTab({ taxpayerId }: { taxpayerId: string }) {
       <SekmeBasligi title="SGK — Tahakkuk Fişleri & Hizmet Listeleri" text={`${rows.length} belge · satıra tıklayınca belge (PDF) açılır.`} />
       <TabloSarmal maxHeight={560} minWidth={720}>
         <colgroup>
-          <col style={{ width: 110 }} />
-          <col style={{ width: 120 }} />
+          <col style={portalStyle({ width: 110 })} />
+          <col style={portalStyle({ width: 120 })} />
           <col />
-          <col style={{ width: 100 }} />
-          <col style={{ width: 140 }} />
-          <col style={{ width: 64 }} />
+          <col style={portalStyle({ width: 100 })} />
+          <col style={portalStyle({ width: 140 })} />
+          <col style={portalStyle({ width: 64 })} />
         </colgroup>
         <thead>
           <tr>
@@ -75,12 +77,12 @@ export function SgkTab({ taxpayerId }: { taxpayerId: string }) {
             const baslik = `${tahakkuk ? 'SGK Tahakkuk Fişi' : 'SGK Hizmet Listesi'} · ${m.donem || ''}`;
             return (
               <tr key={d.id} onClick={() => openDoc(d.id, baslik)} className="cursor-pointer transition-colors hover:bg-white/[0.03]">
-                <Td tabular style={{ fontWeight: 700 }}>{m.donem || '—'}</Td>
+                <Td tabular style={portalStyle({ fontWeight: 700 })}>{m.donem || '—'}</Td>
                 <Td><Cip>{tahakkuk ? 'Tahakkuk' : 'Hizmet L.'}</Cip></Td>
                 <Td muted>{m.mahiyet || '—'}</Td>
                 <Td right tabular>{m.calisan || '—'}</Td>
-                <Td right tabular style={{ color: m.tutar ? undefined : FAINT, fontWeight: 700 }}>{m.tutar ? `${m.tutar} ₺` : '—'}</Td>
-                <Td center style={{ padding: '4px 6px' }}>
+                <Td right tabular style={portalStyle({ color: m.tutar ? undefined : FAINT, fontWeight: 700 })}>{m.tutar ? `${m.tutar} ₺` : '—'}</Td>
+                <Td center style={portalStyle({ padding: '4px 6px' })}>
                   <DocBtn label="Belgeyi aç" busy={busy === d.id} onClick={() => openDoc(d.id, baslik)} />
                 </Td>
               </tr>

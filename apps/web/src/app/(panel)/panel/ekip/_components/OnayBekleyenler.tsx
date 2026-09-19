@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Loader2, Send } from 'lucide-react';
@@ -37,7 +39,7 @@ export function OnayTeyit({
   }, [kalan, mesgul]);
 
   return (
-    <div className="mt-2 flex flex-col gap-2 rounded-lg px-3 py-2 text-[12.5px]" style={{ background: 'rgba(214,69,69,0.08)', border: `1px solid ${SAKIN.kirmizi}88`, color: SAKIN.metin }}>
+    <div className="mt-2 flex flex-col gap-2 rounded-lg px-3 py-2 text-[12.5px]" style={portalStyle({ background: 'rgba(214,69,69,0.08)', border: `1px solid ${SAKIN.kirmizi}88`, color: SAKIN.metin })}>
       <span className="min-w-0 leading-snug">{metin}</span>
       <div className="flex flex-wrap items-center gap-2">
         <button
@@ -45,7 +47,7 @@ export function OnayTeyit({
           disabled={mesgul}
           onClick={onEvet}
           className="flex items-center gap-1 rounded-md px-3 py-1.5 text-[12px] font-semibold disabled:opacity-50"
-          style={{ background: SAKIN.kirmizi, border: `1px solid ${SAKIN.kirmizi}`, color: '#fff' }}
+          style={portalStyle({ background: SAKIN.kirmizi, border: `1px solid ${SAKIN.kirmizi}`, color: '#fff' })}
         >
           {mesgul ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />} {evetEtiketi}
         </button>
@@ -54,7 +56,7 @@ export function OnayTeyit({
           disabled={mesgul}
           onClick={onVazgec}
           className="rounded-md px-3 py-1.5 text-[12px] font-semibold disabled:opacity-50"
-          style={sakinDugme('ikincil')}
+          style={portalStyle(sakinDugme('ikincil'))}
         >
           Vazgeç {!mesgul && <span className="opacity-60">({kalan})</span>}
         </button>

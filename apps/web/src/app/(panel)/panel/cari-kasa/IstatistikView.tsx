@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 /**
  * Cari Kasa > İstatistik — tahakkuk/tahsilat göstergeleri.
@@ -83,30 +85,30 @@ function ViewHeader({ icon: Icon, title, subtitle, actions }: {
   return (
     <header
       className="relative overflow-hidden rounded-2xl px-5 py-4"
-      style={{
+      style={portalStyle({
         background: 'linear-gradient(140deg, rgba(230,200,120,0.08), rgba(255,255,255,0.01) 58%)',
         border: `1px solid ${CARD_BORDER}`,
-      }}
+      })}
     >
       <span
         className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full opacity-[0.22]"
-        style={{ background: `radial-gradient(circle, ${GOLD}, transparent 66%)` }}
+        style={portalStyle({ background: `radial-gradient(circle, ${GOLD}, transparent 66%)` })}
       />
       <div className="relative flex items-start justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3.5 min-w-0">
           <span
             className="grid h-10 w-10 shrink-0 place-items-center rounded-xl"
-            style={{
+            style={portalStyle({
               background: `linear-gradient(140deg, ${GOLD}2e, rgba(255,255,255,0.01) 65%)`,
               border: `1px solid ${GOLD}3d`,
               color: GOLD,
-            }}
+            })}
           >
             <Icon className="h-[18px] w-[18px]" />
           </span>
           <div className="min-w-0">
-            <h1 className="text-[20px] font-bold tracking-tight leading-none" style={{ color: '#fff' }}>{title}</h1>
-            {subtitle && <p className="mt-1.5 text-[12.5px]" style={{ color: SOFT }}>{subtitle}</p>}
+            <h1 className="text-[20px] font-bold tracking-tight leading-none" style={portalStyle({ color: '#fff' })}>{title}</h1>
+            {subtitle && <p className="mt-1.5 text-[12.5px]" style={portalStyle({ color: SOFT })}>{subtitle}</p>}
           </div>
         </div>
         {actions && <div className="flex items-center gap-2 shrink-0 flex-wrap">{actions}</div>}
@@ -130,25 +132,25 @@ function KpiCard({ label, value, color = TEXT, accent = false, suffix = '₺' }:
     <div
       className="relative overflow-hidden rounded-2xl px-4 py-3.5"
       style={
-        accent
+        portalStyle(accent
           ? {
               background: `linear-gradient(140deg, ${vurguRenk}1f, rgba(255,255,255,0.01) 60%)`,
               border: `1px solid ${vurguRenk}3d`,
               boxShadow: '0 14px 32px rgba(0,0,0,0.20)',
             }
-          : { ...cardline, boxShadow: '0 14px 32px rgba(0,0,0,0.20)' }
+          : { ...cardline, boxShadow: '0 14px 32px rgba(0,0,0,0.20)' })
       }
     >
       <span
         className="pointer-events-none absolute -right-6 -top-8 h-24 w-24 rounded-full opacity-[0.16]"
-        style={{ background: `radial-gradient(circle, ${vurguRenk}, transparent 68%)` }}
+        style={portalStyle({ background: `radial-gradient(circle, ${vurguRenk}, transparent 68%)` })}
       />
-      <div className="relative text-[11px] font-medium uppercase tracking-wider" style={{ color: SOFT }}>{label}</div>
+      <div className="relative text-[11px] font-medium uppercase tracking-wider" style={portalStyle({ color: SOFT })}>{label}</div>
       <div
         className="relative mt-1.5 text-[21px] font-semibold"
-        style={{ color: vurguRenk, fontVariantNumeric: 'tabular-nums' }}
+        style={portalStyle({ color: vurguRenk, fontVariantNumeric: 'tabular-nums' })}
       >
-        {value}{suffix ? <span className="text-[14px] ml-1" style={{ color: SOFT }}>{suffix}</span> : null}
+        {value}{suffix ? <span className="text-[14px] ml-1" style={portalStyle({ color: SOFT })}>{suffix}</span> : null}
       </div>
     </div>
   );
@@ -157,7 +159,7 @@ function KpiCard({ label, value, color = TEXT, accent = false, suffix = '₺' }:
 
 function LoadingPanel({ label = 'Hesaplanıyor...' }: { label?: string }) {
   return (
-    <div className="py-16 text-center text-[14px] font-medium" style={{ color: SOFT }}>
+    <div className="py-16 text-center text-[14px] font-medium" style={portalStyle({ color: SOFT })}>
       <Loader2 className="animate-spin inline mr-2" size={16} />{label}
     </div>
   );
@@ -165,7 +167,7 @@ function LoadingPanel({ label = 'Hesaplanıyor...' }: { label?: string }) {
 
 function EmptyState({ label }: { label: string }) {
   return (
-    <div className="rounded-2xl px-5 py-12 text-center text-[14px]" style={{ ...cardline, color: SOFT }}>
+    <div className="rounded-2xl px-5 py-12 text-center text-[14px]" style={portalStyle({ ...cardline, color: SOFT })}>
       {label}
     </div>
   );
@@ -199,7 +201,7 @@ export function IstatistikView() {
   };
 
   return (
-    <div style={{ fontFamily: SANS }}>
+    <div style={portalStyle({ fontFamily: SANS })}>
       <ViewHeader icon={BarChart3} title="İstatistik" subtitle="Son 12 ay · genel bakış" />
 
       {!hasData ? (
@@ -215,34 +217,34 @@ export function IstatistikView() {
           </div>
 
           {/* BAR CHART */}
-          <div className="mt-6 rounded-2xl px-5 sm:px-6 py-5" style={cardline}>
+          <div className="mt-6 rounded-2xl px-5 sm:px-6 py-5" style={portalStyle(cardline)}>
             <div className="flex items-center justify-between flex-wrap gap-2">
-              <div className="text-[14px] font-semibold" style={{ color: TEXT }}>Son 12 ay · tahakkuk / tahsilat</div>
-              <div className="flex items-center gap-4 text-[12px]" style={{ color: '#a1a1aa' }}>
-                <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ background: OK }} />Tahakkuk</span>
-                <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ background: DEBT }} />Tahsilat</span>
+              <div className="text-[14px] font-semibold" style={portalStyle({ color: TEXT })}>Son 12 ay · tahakkuk / tahsilat</div>
+              <div className="flex items-center gap-4 text-[12px]" style={portalStyle({ color: '#a1a1aa' })}>
+                <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={portalStyle({ background: OK })} />Tahakkuk</span>
+                <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={portalStyle({ background: DEBT })} />Tahsilat</span>
               </div>
             </div>
-            <div className="mt-7 flex items-end justify-between gap-2 sm:gap-3" style={{ height: 200 }}>
+            <div className="mt-7 flex items-end justify-between gap-2 sm:gap-3" style={portalStyle({ height: 200 })}>
               {trend.map((m) => (
                 <div key={m.ay} className="flex h-full flex-1 items-end justify-center gap-[3px] sm:gap-1.5" title={`${ayKisaLabel(m.ay)} · Tahakkuk ${fmt(m.tahakkuk)} ₺ · Tahsilat ${fmt(m.tahsilat)} ₺`}>
-                  <div className="w-full max-w-[14px]" style={{ height: `${Math.max(2, (m.tahakkuk / maxTrend) * 100)}%`, background: OK, borderRadius: '5px 5px 2px 2px' }} />
-                  <div className="w-full max-w-[14px]" style={{ height: `${Math.max(2, (m.tahsilat / maxTrend) * 100)}%`, background: DEBT, borderRadius: '5px 5px 2px 2px' }} />
+                  <div className="w-full max-w-[14px]" style={portalStyle({ height: `${Math.max(2, (m.tahakkuk / maxTrend) * 100)}%`, background: OK, borderRadius: '5px 5px 2px 2px' })} />
+                  <div className="w-full max-w-[14px]" style={portalStyle({ height: `${Math.max(2, (m.tahsilat / maxTrend) * 100)}%`, background: DEBT, borderRadius: '5px 5px 2px 2px' })} />
                 </div>
               ))}
             </div>
-            <div className="mt-2.5 flex items-center justify-between gap-2 sm:gap-3 text-[11px]" style={{ color: SOFT }}>
-              {trend.map((m) => <div key={m.ay} className="flex-1 text-center" style={{ fontVariantNumeric: 'tabular-nums' }}>{ayKisaLabel(m.ay)}</div>)}
+            <div className="mt-2.5 flex items-center justify-between gap-2 sm:gap-3 text-[11px]" style={portalStyle({ color: SOFT })}>
+              {trend.map((m) => <div key={m.ay} className="flex-1 text-center" style={portalStyle({ fontVariantNumeric: 'tabular-nums' })}>{ayKisaLabel(m.ay)}</div>)}
             </div>
           </div>
 
           {/* İKİ KOLON */}
           <div className="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-3">
             {/* Ödeme yöntemi dağılımı */}
-            <div className="rounded-2xl px-5 sm:px-6 py-5" style={cardline}>
-              <div className="text-[14px] font-semibold" style={{ color: TEXT }}>Tahsilat · ödeme yöntemi dağılımı</div>
+            <div className="rounded-2xl px-5 sm:px-6 py-5" style={portalStyle(cardline)}>
+              <div className="text-[14px] font-semibold" style={portalStyle({ color: TEXT })}>Tahsilat · ödeme yöntemi dağılımı</div>
               {odeme.length === 0 ? (
-                <div className="mt-5 text-[13px]" style={{ color: SOFT }}>Tahsilat kaydı yok.</div>
+                <div className="mt-5 text-[13px]" style={portalStyle({ color: SOFT })}>Tahsilat kaydı yok.</div>
               ) : (
                 <div className="mt-5 space-y-4">
                   {odeme.map((o, i) => {
@@ -250,11 +252,11 @@ export function IstatistikView() {
                     return (
                       <div key={o.yontem}>
                         <div className="flex items-center justify-between text-[13px]">
-                          <span style={{ color: '#d4d4d8' }}>{odemeYontemiLabel(o.yontem)}</span>
-                          <span className="font-semibold" style={{ color: TEXT, fontVariantNumeric: 'tabular-nums' }}>%{pct} · {fmt(o.tutar)} ₺</span>
+                          <span style={portalStyle({ color: '#d4d4d8' })}>{odemeYontemiLabel(o.yontem)}</span>
+                          <span className="font-semibold" style={portalStyle({ color: TEXT, fontVariantNumeric: 'tabular-nums' })}>%{pct} · {fmt(o.tutar)} ₺</span>
                         </div>
-                        <div className="mt-2 h-2 w-full overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.05)' }}>
-                          <div className="h-full rounded-full" style={{ width: `${pct}%`, background: odemePalette[i % odemePalette.length] }} />
+                        <div className="mt-2 h-2 w-full overflow-hidden rounded-full" style={portalStyle({ background: 'rgba(255,255,255,0.05)' })}>
+                          <div className="h-full rounded-full" style={portalStyle({ width: `${pct}%`, background: odemePalette[i % odemePalette.length] })} />
                         </div>
                       </div>
                     );
@@ -264,22 +266,22 @@ export function IstatistikView() {
             </div>
 
             {/* En borçlu mükellefler */}
-            <div className="rounded-2xl px-5 sm:px-6 py-5" style={cardline}>
+            <div className="rounded-2xl px-5 sm:px-6 py-5" style={portalStyle(cardline)}>
               <div className="flex items-center justify-between">
-                <div className="text-[14px] font-semibold" style={{ color: TEXT }}>En borçlu mükellefler</div>
-                <div className="text-[12px]" style={{ color: SOFT }}>{kpi.borcluMukellefAdet} borçlu · {fmt(kpi.toplamAktifBorc)} ₺</div>
+                <div className="text-[14px] font-semibold" style={portalStyle({ color: TEXT })}>En borçlu mükellefler</div>
+                <div className="text-[12px]" style={portalStyle({ color: SOFT })}>{kpi.borcluMukellefAdet} borçlu · {fmt(kpi.toplamAktifBorc)} ₺</div>
               </div>
               {borclular.length === 0 ? (
-                <div className="mt-4 text-[13px]" style={{ color: SOFT }}>Borçlu mükellef yok.</div>
+                <div className="mt-4 text-[13px]" style={portalStyle({ color: SOFT })}>Borçlu mükellef yok.</div>
               ) : (
                 <div className="mt-3">
                   {borclular.map((d) => (
-                    <div key={d.id} className="flex items-center justify-between py-3" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
+                    <div key={d.id} className="flex items-center justify-between py-3" style={portalStyle({ borderTop: `1px solid ${ROW_LINE}` })}>
                       <div className="min-w-0">
-                        <div className="text-[14px] truncate" style={{ color: '#e4e4e7' }}>{d.ad}</div>
-                        {d.taxNumber && <div className="text-[11.5px]" style={{ color: SOFT, fontVariantNumeric: 'tabular-nums' }}>{d.taxNumber}</div>}
+                        <div className="text-[14px] truncate" style={portalStyle({ color: '#e4e4e7' })}>{d.ad}</div>
+                        {d.taxNumber && <div className="text-[11.5px]" style={portalStyle({ color: SOFT, fontVariantNumeric: 'tabular-nums' })}>{d.taxNumber}</div>}
                       </div>
-                      <span className="text-[14px] font-bold whitespace-nowrap ml-3" style={{ color: DEBT, fontVariantNumeric: 'tabular-nums' }}>{fmt(d.bakiye)} ₺</span>
+                      <span className="text-[14px] font-bold whitespace-nowrap ml-3" style={portalStyle({ color: DEBT, fontVariantNumeric: 'tabular-nums' })}>{fmt(d.bakiye)} ₺</span>
                     </div>
                   ))}
                 </div>

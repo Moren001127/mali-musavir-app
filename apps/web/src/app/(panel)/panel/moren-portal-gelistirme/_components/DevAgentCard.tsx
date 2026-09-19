@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle, portalPaint } from '@/lib/portal-theme';
+
 
 import type { DevAgent } from './team';
 
@@ -26,42 +28,42 @@ export function DevAgentCard({
     <div
       onClick={onClick}
       className="group rounded-2xl p-4 transition-all duration-300 relative overflow-hidden cursor-pointer"
-      style={{
+      style={portalStyle({
         background: selected ? hoverBg : bgGradient,
         border: `1px solid ${selected ? hoverBorder : border}`,
         transform: selected ? 'translateY(-2px)' : 'translateY(0)',
         boxShadow: selected ? '0 10px 30px rgba(0,0,0,0.3)' : 'none',
-      }}
+      })}
       onMouseEnter={(e) => {
         const el = e.currentTarget as HTMLElement;
-        el.style.background = hoverBg;
-        el.style.borderColor = hoverBorder;
+        el.style.background = portalPaint(hoverBg, 'background');
+        el.style.borderColor = portalPaint(hoverBorder, 'borderColor');
         el.style.transform = 'translateY(-3px)';
-        el.style.boxShadow = '0 10px 30px rgba(0,0,0,0.3)';
+        el.style.boxShadow = portalPaint('0 10px 30px rgba(0,0,0,0.3)', 'boxShadow');
       }}
       onMouseLeave={(e) => {
         if (selected) return;
         const el = e.currentTarget as HTMLElement;
-        el.style.background = bgGradient;
-        el.style.borderColor = border;
+        el.style.background = portalPaint(bgGradient, 'background');
+        el.style.borderColor = portalPaint(border, 'borderColor');
         el.style.transform = 'translateY(0)';
-        el.style.boxShadow = 'none';
+        el.style.boxShadow = portalPaint('none', 'boxShadow');
       }}
     >
       {/* Üst hairline */}
       <span
         className="absolute top-0 left-4 right-4 h-px transition-opacity duration-300"
-        style={{
+        style={portalStyle({
           background: `linear-gradient(90deg, transparent, ${accent}, transparent)`,
           opacity: selected ? 0.7 : 0.3,
-        }}
+        })}
       />
 
       {/* Üst: initials avatar + hazır rozeti */}
       <div className="flex items-center justify-between mb-3 relative">
         <div
           className="w-12 h-12 rounded-xl flex items-center justify-center"
-          style={{
+          style={portalStyle({
             background: `linear-gradient(135deg, ${accent}, ${accent}99)`,
             border: `1px solid ${accent}66`,
             color: '#0f0d0b',
@@ -70,20 +72,20 @@ export function DevAgentCard({
             fontWeight: 700,
             letterSpacing: '-0.02em',
             boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.25), 0 2px 8px rgba(0,0,0,0.3)',
-          }}
+          })}
         >
           {initials}
         </div>
         <span
           className="text-[10px] font-bold px-2 py-[3px] rounded-md flex items-center gap-1"
-          style={{
+          style={portalStyle({
             background: 'rgba(34,197,94,0.10)',
             color: '#86efac',
-          }}
+          })}
         >
           <span
             className="w-1.5 h-1.5 rounded-full"
-            style={{ background: '#22c55e' }}
+            style={portalStyle({ background: '#22c55e' })}
           />
           HAZIR
         </span>
@@ -92,13 +94,13 @@ export function DevAgentCard({
       {/* İsim — büyük */}
       <p
         className="leading-none tabular-nums mb-2"
-        style={{
+        style={portalStyle({
           fontFamily: 'Fraunces, serif',
           fontSize: 26,
           fontWeight: 700,
           letterSpacing: '-0.02em',
           color: accent,
-        }}
+        })}
       >
         {agent.displayName}
       </p>
@@ -106,11 +108,11 @@ export function DevAgentCard({
       {/* Rol + tam isim */}
       <p
         className="text-[11px] uppercase font-semibold tracking-[.10em] mb-1"
-        style={{ color: 'rgba(250,250,249,0.55)' }}
+        style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}
       >
         {agent.role.split('&')[0].split('/')[0].trim()}
       </p>
-      <p className="text-[10.5px]" style={{ color: 'rgba(250,250,249,0.4)' }}>
+      <p className="text-[10.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>
         {agent.fullName} · {agent.age} yaş
       </p>
     </div>

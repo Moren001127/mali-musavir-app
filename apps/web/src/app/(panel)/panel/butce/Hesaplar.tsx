@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import React, { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -177,24 +179,24 @@ export default function Hesaplar() {
                 <div
                   key={h.id}
                   className="relative overflow-hidden rounded-xl p-3"
-                  style={{
+                  style={portalStyle({
                     background: `linear-gradient(150deg, ${renk}14, rgba(255,255,255,0.012) 55%)`,
                     border: `1px solid ${renk}33`,
                     opacity: h.aktif ? 1 : 0.55,
-                  }}
+                  })}
                 >
                   <div
                     className="pointer-events-none absolute -right-8 -top-10 h-24 w-24 rounded-full opacity-20"
-                    style={{ background: `radial-gradient(circle, ${renk}, transparent 68%)` }}
+                    style={portalStyle({ background: `radial-gradient(circle, ${renk}, transparent 68%)` })}
                   />
 
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-1.5 text-[12.5px] font-semibold" style={{ color: TEXT }}>
+                      <div className="flex flex-wrap items-center gap-1.5 text-[12.5px] font-semibold" style={portalStyle({ color: TEXT })}>
                         {h.bankaAdi} · {h.ad}
                         {!h.aktif && <Rozet metin="pasif" renk={MUTED} />}
                       </div>
-                      <div className="mt-0.5 text-[11px]" style={{ color: MUTED }}>
+                      <div className="mt-0.5 text-[11px]" style={portalStyle({ color: MUTED })}>
                         {h.iban4 ? `**** ${h.iban4} · ` : ''}
                         {kmh ? 'Ek hesaplı (KMH)' : 'Vadesiz hesap'}
                       </div>
@@ -208,11 +210,11 @@ export default function Hesaplar() {
                   <div className="mt-2">
                     <div
                       className="text-[20px] font-semibold leading-tight tabular-nums"
-                      style={{ color: h.bakiye < 0 ? KIRMIZI : renk }}
+                      style={portalStyle({ color: h.bakiye < 0 ? KIRMIZI : renk })}
                     >
                       {para(h.bakiye)} ₺
                     </div>
-                    <div className="mt-0.5 text-[10.5px]" style={{ color: MUTED }}>
+                    <div className="mt-0.5 text-[10.5px]" style={portalStyle({ color: MUTED })}>
                       Kullanılabilir {para(h.kullanilabilir)} ₺
                     </div>
                   </div>
@@ -220,26 +222,26 @@ export default function Hesaplar() {
                   {kmh && (
                     <div
                       className="mt-2 rounded-lg px-2.5 py-2"
-                      style={{ background: 'rgba(0,0,0,0.25)', border: `1px solid ${ROW_SEP}` }}
+                      style={portalStyle({ background: 'rgba(0,0,0,0.25)', border: `1px solid ${ROW_SEP}` })}
                     >
-                      <div className="flex items-center justify-between gap-2 text-[11px]" style={{ color: MUTED }}>
+                      <div className="flex items-center justify-between gap-2 text-[11px]" style={portalStyle({ color: MUTED })}>
                         <span>Ek hesap kullanımı</span>
-                        <span className="tabular-nums" style={{ color: dolulukRenk }}>
+                        <span className="tabular-nums" style={portalStyle({ color: dolulukRenk })}>
                           %{Math.round(doluluk)}
                         </span>
                       </div>
                       <div
                         className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full"
-                        style={{ background: 'rgba(255,255,255,0.06)' }}
+                        style={portalStyle({ background: 'rgba(255,255,255,0.06)' })}
                       >
-                        <div style={{ width: `${doluluk}%`, height: '100%', background: dolulukRenk }} />
+                        <div style={portalStyle({ width: `${doluluk}%`, height: '100%', background: dolulukRenk })} />
                       </div>
-                      <div className="mt-1.5 text-[11px]" style={{ color: TEXT }}>
+                      <div className="mt-1.5 text-[11px]" style={portalStyle({ color: TEXT })}>
                         Borç {para(h.kmhBorcu)} ₺ · kalan {para(h.kmhKalanLimit)} ₺
                       </div>
                       <div
                         className="mt-0.5 text-[10.5px]"
-                        style={{ color: h.kmhAylikFaiz > 0 ? (h.kmhBorcu > 0 ? TURUNCU : MUTED) : TURUNCU }}
+                        style={portalStyle({ color: h.kmhAylikFaiz > 0 ? (h.kmhBorcu > 0 ? TURUNCU : MUTED) : TURUNCU })}
                       >
                         {h.kmhAylikFaiz > 0
                           ? `Aylık faiz %${h.kmhAylikFaiz} · günlük ~${para(gunlukFaiz(h))} ₺`
@@ -269,24 +271,24 @@ export default function Hesaplar() {
             {kasaVar && (
               <div
                 className="relative overflow-hidden rounded-xl p-3"
-                style={{
+                style={portalStyle({
                   background: `linear-gradient(150deg, ${MOR}14, rgba(255,255,255,0.012) 55%)`,
                   border: `1px dashed ${MOR}44`,
-                }}
+                })}
               >
                 <div
                   className="pointer-events-none absolute -right-8 -top-10 h-24 w-24 rounded-full opacity-20"
-                  style={{ background: `radial-gradient(circle, ${MOR}, transparent 68%)` }}
+                  style={portalStyle({ background: `radial-gradient(circle, ${MOR}, transparent 68%)` })}
                 />
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div className="min-w-0">
                     <div
                       className="flex flex-wrap items-center gap-1.5 text-[12.5px] font-semibold"
-                      style={{ color: TEXT }}
+                      style={portalStyle({ color: TEXT })}
                     >
-                      <Wallet size={13} style={{ color: MOR }} /> Nakit kasa
+                      <Wallet size={13} style={portalStyle({ color: MOR })} /> Nakit kasa
                     </div>
-                    <div className="mt-0.5 text-[11px]" style={{ color: MUTED }}>
+                    <div className="mt-0.5 text-[11px]" style={portalStyle({ color: MUTED })}>
                       Hesap seçilmeden girilen hareketler
                     </div>
                   </div>
@@ -296,11 +298,11 @@ export default function Hesaplar() {
                 <div className="mt-2">
                   <div
                     className="text-[20px] font-semibold leading-tight tabular-nums"
-                    style={{ color: kasa!.bakiye < 0 ? KIRMIZI : MOR }}
+                    style={portalStyle({ color: kasa!.bakiye < 0 ? KIRMIZI : MOR })}
                   >
                     {para(kasa!.bakiye)} ₺
                   </div>
-                  <div className="mt-0.5 text-[10.5px]" style={{ color: MUTED }}>
+                  <div className="mt-0.5 text-[10.5px]" style={portalStyle({ color: MUTED })}>
                     Giren {para(kasa!.giris)} ₺ · çıkan {para(kasa!.cikis)} ₺
                   </div>
                 </div>
@@ -311,7 +313,7 @@ export default function Hesaplar() {
                   </Dugme>
                 </div>
 
-                <p className="mt-2 text-[10px] leading-relaxed" style={{ color: 'rgba(113,113,122,0.9)' }}>
+                <p className="mt-2 text-[10px] leading-relaxed" style={portalStyle({ color: 'rgba(113,113,122,0.9)' })}>
                   Bu paranın hangi bankada olduğunu bilmek isterseniz, ilgili kayıtları düzenleyip
                   ödeme kaynağına hesap seçin; tutar o hesabın bakiyesine geçer.
                 </p>
@@ -358,9 +360,9 @@ export default function Hesaplar() {
           <div className="space-y-3">
             <div
               className="flex items-start gap-2 rounded-xl px-3 py-2.5 text-[11.5px]"
-              style={{ background: `${TURUNCU}12`, border: `1px solid ${TURUNCU}30`, color: MUTED }}
+              style={portalStyle({ background: `${TURUNCU}12`, border: `1px solid ${TURUNCU}30`, color: MUTED })}
             >
-              <AlertTriangle size={13} style={{ color: TURUNCU }} className="mt-0.5 flex-shrink-0" />
+              <AlertTriangle size={13} style={portalStyle({ color: TURUNCU })} className="mt-0.5 flex-shrink-0" />
               <span>
                 Bu hesaba bağlı kayıt (işlem, ödeme veya aktarım) varsa hesap silinmez, pasife alınır.
                 Geçmiş kayıtlarınız olduğu gibi kalır; hesap yalnızca yeni kayıt listelerinde çıkmaz.
@@ -491,7 +493,7 @@ function HesapModal({
         >
           <div className="flex items-center gap-2">
             {isaretGoster && (
-              <div className="flex flex-shrink-0 overflow-hidden rounded-lg" style={{ border: `1px solid ${CARD_BORDER}` }}>
+              <div className="flex flex-shrink-0 overflow-hidden rounded-lg" style={portalStyle({ border: `1px solid ${CARD_BORDER}` })}>
                 {[
                   { eksi: false, etiket: '+' },
                   { eksi: true, etiket: '−' },
@@ -504,7 +506,7 @@ function HesapModal({
                       type="button"
                       onClick={() => setForm({ ...form, acilisEksi: s.eksi })}
                       className="px-2.5 py-[7px] text-[12px] transition"
-                      style={{ background: secili ? `${c}22` : 'transparent', color: secili ? c : MUTED }}
+                      style={portalStyle({ background: secili ? `${c}22` : 'transparent', color: secili ? c : MUTED })}
                     >
                       {s.etiket}
                     </button>
@@ -560,7 +562,7 @@ function HesapModal({
         </Alan>
 
         <div className="flex items-center justify-between gap-3 sm:col-span-2">
-          <span className="text-[11.5px]" style={{ color: MUTED }}>
+          <span className="text-[11.5px]" style={portalStyle({ color: MUTED })}>
             Hesap aktif · kapalı hesaplar listelerde ve toplamlarda görünmez
           </span>
           <Anahtar acik={form.aktif} degistir={(v) => setForm({ ...form, aktif: v })} />
@@ -569,7 +571,7 @@ function HesapModal({
         {/* Her hesaba tahsilat gelmez; işaretlenmeyen hesap tahsilat kutusunu
             kalabalıklaştırmasın diye bu seçim var. */}
         <div className="flex items-center justify-between gap-3 sm:col-span-2">
-          <span className="text-[11.5px]" style={{ color: MUTED }}>
+          <span className="text-[11.5px]" style={portalStyle({ color: MUTED })}>
             Cari tahsilatta görünsün · Tahsilat Merkezi&apos;nde hesap seçilirken listeye girer,
             oraya girilen tahsilat bu hesabın bakiyesine işlenir
           </span>
@@ -734,7 +736,7 @@ function AktarimModal({
         {ayniHesap && (
           <div
             className="flex items-start gap-2 rounded-xl px-3 py-2.5 text-[11.5px] sm:col-span-2"
-            style={{ background: `${KIRMIZI}12`, border: `1px solid ${KIRMIZI}30`, color: KIRMIZI }}
+            style={portalStyle({ background: `${KIRMIZI}12`, border: `1px solid ${KIRMIZI}30`, color: KIRMIZI })}
           >
             <AlertTriangle size={13} className="mt-0.5 flex-shrink-0" />
             <span>Kaynak ve hedef aynı hesap olamaz. Farklı bir hesap seçin.</span>
@@ -743,9 +745,9 @@ function AktarimModal({
 
         <div
           className="flex items-start gap-2 rounded-xl px-3 py-2.5 text-[11px] sm:col-span-2"
-          style={{ background: `${MAVI}12`, border: `1px solid ${MAVI}30`, color: MUTED }}
+          style={portalStyle({ background: `${MAVI}12`, border: `1px solid ${MAVI}30`, color: MUTED })}
         >
-          <ArrowLeftRight size={13} style={{ color: MAVI }} className="mt-0.5 flex-shrink-0" />
+          <ArrowLeftRight size={13} style={portalStyle({ color: MAVI })} className="mt-0.5 flex-shrink-0" />
           <span>
             Aktarım gelir ya da gider sayılmaz; para bir hesaptan diğerine geçer, toplamlarınız değişmez.
             Aktarım gelir/gider sayılmaz.
@@ -818,31 +820,31 @@ function HareketModal({ hesap, kapat }: { hesap: BankaHesap; kapat: () => void }
       <div className="mb-3 flex items-center justify-between gap-2">
         <div
           className="flex items-center gap-1 rounded-xl px-1.5 py-1"
-          style={{ background: 'rgba(0,0,0,0.3)', border: `1px solid ${CARD_BORDER}` }}
+          style={portalStyle({ background: 'rgba(0,0,0,0.3)', border: `1px solid ${CARD_BORDER}` })}
         >
           <button
             type="button"
             onClick={() => setDonem(donemKaydir(donem, -1))}
             className="rounded-lg p-1 transition hover:bg-white/[0.06]"
-            style={{ color: MUTED }}
+            style={portalStyle({ color: MUTED })}
             aria-label="Önceki ay"
           >
             <ChevronLeft size={15} />
           </button>
-          <span className="min-w-[110px] text-center text-[12.5px] font-medium" style={{ color: GOLD }}>
+          <span className="min-w-[110px] text-center text-[12.5px] font-medium" style={portalStyle({ color: GOLD })}>
             {donemTR(donem)}
           </span>
           <button
             type="button"
             onClick={() => setDonem(donemKaydir(donem, 1))}
             className="rounded-lg p-1 transition hover:bg-white/[0.06]"
-            style={{ color: MUTED }}
+            style={portalStyle({ color: MUTED })}
             aria-label="Sonraki ay"
           >
             <ChevronRight size={15} />
           </button>
         </div>
-        <span className="text-[11px] tabular-nums" style={{ color: MUTED }}>
+        <span className="text-[11px] tabular-nums" style={portalStyle({ color: MUTED })}>
           Güncel bakiye {para(hesap.bakiye)} ₺
         </span>
       </div>
@@ -855,8 +857,8 @@ function HareketModal({ hesap, kapat }: { hesap: BankaHesap; kapat: () => void }
         <div className="max-h-[440px] overflow-y-auto pr-1">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[620px] text-[12px]">
-              <thead className="sticky top-0" style={{ background: '#0c0c0e' }}>
-                <tr className="text-left text-[10.5px] uppercase tracking-wider" style={{ color: MUTED }}>
+              <thead className="sticky top-0" style={portalStyle({ background: '#0c0c0e' })}>
+                <tr className="text-left text-[10.5px] uppercase tracking-wider" style={portalStyle({ color: MUTED })}>
                   <th className="pb-2 font-medium">Tarih</th>
                   <th className="pb-2 font-medium">Açıklama</th>
                   <th className="pb-2 font-medium">Defter</th>
@@ -872,14 +874,14 @@ function HareketModal({ hesap, kapat }: { hesap: BankaHesap; kapat: () => void }
                   const tur = KAYIT_TURU[h.kayitTuru] || KAYIT_TURU.ISLEM;
                   const giren = h.tutar >= 0;
                   return (
-                    <tr key={h.id} className="border-t" style={{ borderColor: ROW_SEP }}>
-                      <td className="py-1.5 whitespace-nowrap tabular-nums" style={{ color: MUTED }}>
+                    <tr key={h.id} className="border-t" style={portalStyle({ borderColor: ROW_SEP })}>
+                      <td className="py-1.5 whitespace-nowrap tabular-nums" style={portalStyle({ color: MUTED })}>
                         {tarihTR(h.tarih)}
                       </td>
-                      <td className="py-1.5 pr-3" style={{ color: TEXT }}>
+                      <td className="py-1.5 pr-3" style={portalStyle({ color: TEXT })}>
                         {h.aciklama}
                         {h.kategori && (
-                          <span className="ml-1.5 text-[10.5px]" style={{ color: MUTED }}>
+                          <span className="ml-1.5 text-[10.5px]" style={portalStyle({ color: MUTED })}>
                             · {h.kategori}
                           </span>
                         )}
@@ -890,14 +892,14 @@ function HareketModal({ hesap, kapat }: { hesap: BankaHesap; kapat: () => void }
                       </td>
                       <td
                         className="py-1.5 whitespace-nowrap text-right tabular-nums"
-                        style={{ color: giren ? OK : KIRMIZI }}
+                        style={portalStyle({ color: giren ? OK : KIRMIZI })}
                       >
                         {giren ? '+' : '−'}
                         {para(Math.abs(h.tutar))} ₺
                       </td>
                       <td
                         className="py-1.5 whitespace-nowrap text-right tabular-nums"
-                        style={{ color: yurur < 0 ? KIRMIZI : TEXT }}
+                        style={portalStyle({ color: yurur < 0 ? KIRMIZI : TEXT })}
                       >
                         {para(yurur)} ₺
                       </td>
@@ -937,21 +939,21 @@ function KasaHareketModal({ kapat }: { kapat: () => void }) {
           <Girdi type="month" value={donem} onChange={(e) => setDonem(e.target.value)} />
         </Alan>
         <div className="flex gap-4 text-[12px]">
-          <span style={{ color: MUTED }}>
+          <span style={portalStyle({ color: MUTED })}>
             Giren{' '}
-            <strong className="tabular-nums" style={{ color: OK }}>
+            <strong className="tabular-nums" style={portalStyle({ color: OK })}>
               {para(giren)} ₺
             </strong>
           </span>
-          <span style={{ color: MUTED }}>
+          <span style={portalStyle({ color: MUTED })}>
             Çıkan{' '}
-            <strong className="tabular-nums" style={{ color: KIRMIZI }}>
+            <strong className="tabular-nums" style={portalStyle({ color: KIRMIZI })}>
               {para(cikan)} ₺
             </strong>
           </span>
-          <span style={{ color: MUTED }}>
+          <span style={portalStyle({ color: MUTED })}>
             Kalan{' '}
-            <strong className="tabular-nums" style={{ color: MOR }}>
+            <strong className="tabular-nums" style={portalStyle({ color: MOR })}>
               {para(giren - cikan)} ₺
             </strong>
           </span>
@@ -969,20 +971,20 @@ function KasaHareketModal({ kapat }: { kapat: () => void }) {
               <div
                 key={h.id}
                 className="flex items-center justify-between gap-3 rounded-lg px-3 py-2"
-                style={{ background: 'rgba(255,255,255,0.02)', border: `1px solid ${ROW_SEP}` }}
+                style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: `1px solid ${ROW_SEP}` })}
               >
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[12.5px]" style={{ color: TEXT }}>
+                  <span className="block truncate text-[12.5px]" style={portalStyle({ color: TEXT })}>
                     {h.aciklama || h.kategori?.ad || '—'}
                   </span>
-                  <span className="flex flex-wrap items-center gap-1.5 text-[11px]" style={{ color: MUTED }}>
+                  <span className="flex flex-wrap items-center gap-1.5 text-[11px]" style={portalStyle({ color: MUTED })}>
                     <span className="tabular-nums">{tarihTR(h.tarih)}</span>
                     {h.kategori?.ad && (
                       <>
                         <span>·</span>
                         <span className="inline-flex items-center gap-1">
                           {h.kategori.renk && (
-                            <i className="h-2 w-2 rounded-sm" style={{ background: h.kategori.renk }} />
+                            <i className="h-2 w-2 rounded-sm" style={portalStyle({ background: h.kategori.renk })} />
                           )}
                           {h.kategori.ad}
                         </span>
@@ -998,7 +1000,7 @@ function KasaHareketModal({ kapat }: { kapat: () => void }) {
                 </span>
                 <span
                   className="flex-shrink-0 text-[13px] font-semibold tabular-nums"
-                  style={{ color: h.tur === 'GELIR' ? OK : KIRMIZI }}
+                  style={portalStyle({ color: h.tur === 'GELIR' ? OK : KIRMIZI })}
                 >
                   {h.tur === 'GELIR' ? '+' : '−'}
                   {para(h.tutar)} ₺
@@ -1009,7 +1011,7 @@ function KasaHareketModal({ kapat }: { kapat: () => void }) {
         )}
       </div>
 
-      <p className="mt-3 text-[10.5px] leading-relaxed" style={{ color: 'rgba(113,113,122,0.9)' }}>
+      <p className="mt-3 text-[10.5px] leading-relaxed" style={portalStyle({ color: 'rgba(113,113,122,0.9)' })}>
         Bu hareketler bir banka hesabına bağlanmadığı için kasada görünür. Bir kaydı düzenleyip ödeme
         kaynağına hesap seçerseniz tutar o hesabın bakiyesine geçer ve kasadan düşer.
       </p>

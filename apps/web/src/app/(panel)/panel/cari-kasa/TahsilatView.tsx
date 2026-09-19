@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import React, { useMemo, useState } from 'react';
 import {
@@ -191,7 +193,7 @@ export default function TahsilatView({
 
       {/* BUGÜN NE YAPMALIYIM — asıl navigasyon burası */}
       <div>
-        <div className="mb-2.5 text-[12px]" style={{ color: SOLUK }}>
+        <div className="mb-2.5 text-[12px]" style={portalStyle({ color: SOLUK })}>
           Bugün ne yapmalıyım
         </div>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -239,23 +241,23 @@ export default function TahsilatView({
       </div>
 
       {/* LİSTE */}
-      <div className="rounded-xl" style={{ background: KART, border: `1px solid ${CIZGI}` }}>
+      <div className="rounded-xl" style={portalStyle({ background: KART, border: `1px solid ${CIZGI}` })}>
         <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
           <span className="flex items-baseline gap-2">
-            <span className="text-[12.5px]" style={{ color: METIN }}>
+            <span className="text-[12.5px]" style={portalStyle({ color: METIN })}>
               {kuyruk === 'hepsi' ? 'Tüm mükellefler' :
                kuyruk === 'riskli' ? 'Elle görüşülmesi gerekenler' :
                kuyruk === 'ulasilamiyor' ? 'Ulaşılamayanlar' :
                kuyruk === 'buAy' ? 'Bu ay ödeme görünmeyenler' : 'Borçlular'}
             </span>
-            <span className="text-[11px] tabular-nums" style={{ color: SOLUK }}>
+            <span className="text-[11px] tabular-nums" style={portalStyle({ color: SOLUK })}>
               {gosterilen.length}
             </span>
             {kuyruk !== 'hepsi' && (
               <button
                 onClick={() => setKuyruk('hepsi')}
                 className="text-[11px] underline underline-offset-2"
-                style={{ color: SOLUK }}
+                style={portalStyle({ color: SOLUK })}
               >
                 süzgeci kaldır
               </button>
@@ -263,23 +265,23 @@ export default function TahsilatView({
           </span>
 
           <div className="relative w-full sm:w-[260px]">
-            <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" style={{ color: SOLUK }} />
+            <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" style={portalStyle({ color: SOLUK })} />
             <input
               value={arama}
               onChange={(e) => setArama(e.target.value)}
               placeholder="Mükellef ara…"
               className="w-full rounded-lg py-2 pl-9 pr-3 text-[12.5px] outline-none"
-              style={{ border: `1px solid ${CIZGI}`, background: 'rgba(0,0,0,0.25)', color: METIN }}
+              style={portalStyle({ border: `1px solid ${CIZGI}`, background: 'rgba(0,0,0,0.25)', color: METIN })}
             />
           </div>
         </div>
 
         {isLoading ? (
-          <div className="px-4 py-12 text-center text-[12.5px]" style={{ color: SOLUK }}>
+          <div className="px-4 py-12 text-center text-[12.5px]" style={portalStyle({ color: SOLUK })}>
             Yükleniyor…
           </div>
         ) : gosterilen.length === 0 ? (
-          <div className="px-4 py-12 text-center text-[12.5px]" style={{ color: SOLUK }}>
+          <div className="px-4 py-12 text-center text-[12.5px]" style={portalStyle({ color: SOLUK })}>
             Bu süzgece uyan mükellef yok.
           </div>
         ) : (
@@ -290,16 +292,16 @@ export default function TahsilatView({
             <table className="w-full table-fixed text-[13px]">
               <colgroup>
                 <col />
-                <col style={{ width: 120 }} />
-                <col style={{ width: 132 }} />
-                <col style={{ width: 132 }} />
-                <col style={{ width: 132 }} />
-                <col style={{ width: 128 }} />
+                <col style={portalStyle({ width: 120 })} />
+                <col style={portalStyle({ width: 132 })} />
+                <col style={portalStyle({ width: 132 })} />
+                <col style={portalStyle({ width: 132 })} />
+                <col style={portalStyle({ width: 128 })} />
               </colgroup>
               <thead>
                 <tr
                   className="text-[10.5px] uppercase tracking-wider"
-                  style={{ color: SOLUK, borderTop: `1px solid ${SATIR_CIZGI}` }}
+                  style={portalStyle({ color: SOLUK, borderTop: `1px solid ${SATIR_CIZGI}` })}
                 >
                   <th className="px-4 py-2.5 text-left font-medium">Mükellef</th>
                   <th className="px-3 py-2.5 text-right font-medium">Aylık ücret</th>
@@ -320,21 +322,21 @@ export default function TahsilatView({
                     <tr
                       key={r.id}
                       className="group transition"
-                      style={{ borderTop: `1px solid ${SATIR_CIZGI}` }}
+                      style={portalStyle({ borderTop: `1px solid ${SATIR_CIZGI}` })}
                     >
                       <td className="px-4 py-2.5">
                         <button onClick={() => onOpen(r)} className="flex w-full min-w-0 items-center gap-2.5 text-left">
                           <span
                             className="h-1.5 w-1.5 flex-shrink-0 rounded-full"
-                            style={{ background: borclu ? yas.renk : OK }}
+                            style={portalStyle({ background: borclu ? yas.renk : OK })}
                           />
                           <span className="min-w-0">
                             <span className="flex items-center gap-1.5">
-                              <span className="truncate text-[13px]" style={{ color: METIN }}>{r.ad}</span>
-                              {!r.telefonVar && borclu && <PhoneOff size={11} style={{ color: UYARI }} />}
+                              <span className="truncate text-[13px]" style={portalStyle({ color: METIN })}>{r.ad}</span>
+                              {!r.telefonVar && borclu && <PhoneOff size={11} style={portalStyle({ color: UYARI })} />}
                             </span>
                             {/* İkincil satır: borç yaşı ve son tahsilat — sayı sütunlarında yeri yok */}
-                            <span className="mt-0.5 block truncate text-[11px]" style={{ color: SOLUK }}>
+                            <span className="mt-0.5 block truncate text-[11px]" style={portalStyle({ color: SOLUK })}>
                               {borclu ? yas.metin : 'borcu yok'}
                               {' · '}
                               {odendi ? 'bu ay ödendi' : 'bu ay ödeme yok'}
@@ -344,18 +346,18 @@ export default function TahsilatView({
                           </span>
                         </button>
                       </td>
-                      <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums" style={{ color: r.aylikMuhasebeUcreti > 0 ? METIN : 'rgba(113,113,122,0.5)' }}>
+                      <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums" style={portalStyle({ color: r.aylikMuhasebeUcreti > 0 ? METIN : 'rgba(113,113,122,0.5)' })}>
                         {r.aylikMuhasebeUcreti > 0 ? para(r.aylikMuhasebeUcreti) : '—'}
                       </td>
-                      <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums" style={{ color: SOLUK }}>
+                      <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums" style={portalStyle({ color: SOLUK })}>
                         {para(r.tahakkuk)}
                       </td>
-                      <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums" style={{ color: OK }}>
+                      <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums" style={portalStyle({ color: OK })}>
                         {para(r.tahsilat)}
                       </td>
                       <td
                         className="whitespace-nowrap px-3 py-2.5 text-right font-semibold tabular-nums"
-                        style={{ color: borclu ? yas.renk : SOLUK }}
+                        style={portalStyle({ color: borclu ? yas.renk : SOLUK })}
                       >
                         {para(r.bakiye)}
                       </td>
@@ -371,7 +373,7 @@ export default function TahsilatView({
                             pasif={!r.whatsappUygun}
                           />
                           <Eylem ikon={<Plus size={13} />} baslik="Tahsilat ekle" renk={MAVI} onClick={() => onQuickTahsilat(r)} />
-                          <ChevronRight size={14} style={{ color: SOLUK }} />
+                          <ChevronRight size={14} style={portalStyle({ color: SOLUK })} />
                         </span>
                       </td>
                     </tr>
@@ -380,20 +382,20 @@ export default function TahsilatView({
 
                 {/* TOPLAM — süzgeçten geçen satırların toplamı; hangi kümeye
                     baktığınızın karşılığı aşağıda dursun. */}
-                <tr style={{ borderTop: `1px solid ${CIZGI}`, background: 'rgba(255,255,255,0.022)' }}>
-                  <td className="px-4 py-3 text-[11.5px] uppercase tracking-wider" style={{ color: SOLUK }}>
+                <tr style={portalStyle({ borderTop: `1px solid ${CIZGI}`, background: 'rgba(255,255,255,0.022)' })}>
+                  <td className="px-4 py-3 text-[11.5px] uppercase tracking-wider" style={portalStyle({ color: SOLUK })}>
                     Toplam · {gosterilen.length} mükellef
                   </td>
-                  <td className="whitespace-nowrap px-3 py-3 text-right font-semibold tabular-nums" style={{ color: METIN }}>
+                  <td className="whitespace-nowrap px-3 py-3 text-right font-semibold tabular-nums" style={portalStyle({ color: METIN })}>
                     {para(toplamlar.ucret)}
                   </td>
-                  <td className="whitespace-nowrap px-3 py-3 text-right font-semibold tabular-nums" style={{ color: METIN }}>
+                  <td className="whitespace-nowrap px-3 py-3 text-right font-semibold tabular-nums" style={portalStyle({ color: METIN })}>
                     {para(toplamlar.tahakkuk)}
                   </td>
-                  <td className="whitespace-nowrap px-3 py-3 text-right font-semibold tabular-nums" style={{ color: OK }}>
+                  <td className="whitespace-nowrap px-3 py-3 text-right font-semibold tabular-nums" style={portalStyle({ color: OK })}>
                     {para(toplamlar.tahsilat)}
                   </td>
-                  <td className="whitespace-nowrap px-3 py-3 text-right font-semibold tabular-nums" style={{ color: RISK }}>
+                  <td className="whitespace-nowrap px-3 py-3 text-right font-semibold tabular-nums" style={portalStyle({ color: RISK })}>
                     {para(toplamlar.bakiye)}
                   </td>
                   <td />
@@ -418,7 +420,7 @@ function Eylem({
       onClick={onClick}
       disabled={pasif}
       className="rounded-md p-1.5 transition hover:bg-white/[0.06] disabled:cursor-not-allowed"
-      style={{ color: renk, opacity: pasif ? 0.4 : 1 }}
+      style={portalStyle({ color: renk, opacity: pasif ? 0.4 : 1 })}
     >
       {ikon}
     </button>

@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle, portalPaint } from '@/lib/portal-theme';
+
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -153,23 +155,23 @@ export default function TaxpayerSelect({
         disabled={disabled}
         onClick={() => !disabled && setOpen((v) => !v)}
         className={`w-full px-3 py-2.5 rounded-[10px] text-[13px] outline-none flex items-center justify-between gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${className || ''}`}
-        style={{
+        style={portalStyle({
           background: 'rgba(255,255,255,0.03)',
           border: '1px solid rgba(255,255,255,0.08)',
           color: '#fafaf9',
           ...style,
-        }}
+        })}
       >
-        <span className="truncate text-left flex-1" style={{ color: selected ? '#fafaf9' : 'rgba(250,250,249,0.45)' }}>
+        <span className="truncate text-left flex-1" style={portalStyle({ color: selected ? '#fafaf9' : 'rgba(250,250,249,0.45)' })}>
           {selected || placeholder}
         </span>
-        <ChevronDown size={14} style={{ color: 'rgba(250,250,249,0.5)', flexShrink: 0 }} />
+        <ChevronDown size={14} style={portalStyle({ color: 'rgba(250,250,249,0.5)', flexShrink: 0 })} />
       </button>
 
       {open && typeof window !== 'undefined' && createPortal(
         <div
           ref={panelRef}
-          style={{
+          style={portalStyle({
             position: 'fixed',
             top: pos.top,
             left: pos.left,
@@ -183,18 +185,18 @@ export default function TaxpayerSelect({
             overflow: 'hidden',
             display: 'flex',
             flexDirection: 'column',
-          }}
+          })}
         >
           {/* Search */}
-          <div style={{ padding: 8, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-            <div style={{ position: 'relative' }}>
-              <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'rgba(250,250,249,0.4)' }} />
+          <div style={portalStyle({ padding: 8, borderBottom: '1px solid rgba(255,255,255,0.05)' })}>
+            <div style={portalStyle({ position: 'relative' })}>
+              <Search size={14} style={portalStyle({ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'rgba(250,250,249,0.4)' })} />
               <input
                 autoFocus
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Ara — ad veya VKN…"
-                style={{
+                style={portalStyle({
                   width: '100%',
                   padding: '8px 30px 8px 32px',
                   fontSize: 13,
@@ -203,12 +205,12 @@ export default function TaxpayerSelect({
                   borderRadius: 8,
                   color: '#fafaf9',
                   outline: 'none',
-                }}
+                })}
               />
               {search && (
                 <button
                   onClick={() => setSearch('')}
-                  style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 0, padding: 4, cursor: 'pointer', color: 'rgba(250,250,249,0.5)' }}
+                  style={portalStyle({ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 0, padding: 4, cursor: 'pointer', color: 'rgba(250,250,249,0.5)' })}
                 >
                   <X size={14} />
                 </button>
@@ -217,11 +219,11 @@ export default function TaxpayerSelect({
           </div>
 
           {/* List */}
-          <div style={{ overflowY: 'auto', flex: 1 }}>
+          <div style={portalStyle({ overflowY: 'auto', flex: 1 })}>
             {allLabel && (
               <div
                 onClick={() => select(allValue)}
-                style={{
+                style={portalStyle({
                   padding: '10px 14px',
                   cursor: 'pointer',
                   fontSize: 13,
@@ -232,16 +234,16 @@ export default function TaxpayerSelect({
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                }}
-                onMouseEnter={(e) => { if (value !== allValue) e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; }}
-                onMouseLeave={(e) => { if (value !== allValue) e.currentTarget.style.background = 'transparent'; }}
+                })}
+                onMouseEnter={(e) => { if (value !== allValue) e.currentTarget.style.background = portalPaint('rgba(255,255,255,0.03)', 'background'); }}
+                onMouseLeave={(e) => { if (value !== allValue) e.currentTarget.style.background = portalPaint('transparent', 'background'); }}
               >
                 <span>{allLabel}</span>
                 {value === allValue && <Check size={14} />}
               </div>
             )}
             {filtered.length === 0 ? (
-              <div style={{ padding: '24px 16px', textAlign: 'center', color: 'rgba(250,250,249,0.4)', fontSize: 12.5 }}>
+              <div style={portalStyle({ padding: '24px 16px', textAlign: 'center', color: 'rgba(250,250,249,0.4)', fontSize: 12.5 })}>
                 {search ? 'Eşleşen mükellef yok' : 'Mükellef yok'}
               </div>
             ) : (
@@ -252,7 +254,7 @@ export default function TaxpayerSelect({
                   <div
                     key={t.id}
                     onClick={() => select(t.id)}
-                    style={{
+                    style={portalStyle({
                       padding: '10px 14px',
                       cursor: 'pointer',
                       fontSize: 13,
@@ -262,21 +264,21 @@ export default function TaxpayerSelect({
                       alignItems: 'center',
                       justifyContent: 'space-between',
                       gap: 8,
-                    }}
-                    onMouseEnter={(e) => { if (!sel) e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; }}
-                    onMouseLeave={(e) => { if (!sel) e.currentTarget.style.background = 'transparent'; }}
+                    })}
+                    onMouseEnter={(e) => { if (!sel) e.currentTarget.style.background = portalPaint('rgba(255,255,255,0.03)', 'background'); }}
+                    onMouseLeave={(e) => { if (!sel) e.currentTarget.style.background = portalPaint('transparent', 'background'); }}
                   >
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <div style={portalStyle({ flex: 1, minWidth: 0 })}>
+                      <div style={portalStyle({ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' })}>
                         {name}
                       </div>
                       {t.taxNumber && (
-                        <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10.5, color: 'rgba(250,250,249,0.4)', marginTop: 1 }}>
+                        <div style={portalStyle({ fontFamily: 'JetBrains Mono, monospace', fontSize: 10.5, color: 'rgba(250,250,249,0.4)', marginTop: 1 })}>
                           {t.taxNumber}
                         </div>
                       )}
                     </div>
-                    {sel && <Check size={14} style={{ flexShrink: 0 }} />}
+                    {sel && <Check size={14} style={portalStyle({ flexShrink: 0 })} />}
                   </div>
                 );
               })
@@ -284,7 +286,7 @@ export default function TaxpayerSelect({
           </div>
 
           {/* Footer count */}
-          <div style={{ padding: '6px 12px', borderTop: '1px solid rgba(255,255,255,0.05)', fontSize: 11, color: 'rgba(250,250,249,0.4)' }}>
+          <div style={portalStyle({ padding: '6px 12px', borderTop: '1px solid rgba(255,255,255,0.05)', fontSize: 11, color: 'rgba(250,250,249,0.4)' })}>
             {filtered.length} / {sortedTaxpayers.length} mükellef
           </div>
         </div>,

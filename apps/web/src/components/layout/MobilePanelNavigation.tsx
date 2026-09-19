@@ -1,4 +1,5 @@
 'use client';
+import { ownedThemeStyle } from '@/components/layout/owned-theme';
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -189,20 +190,20 @@ export default function MobilePanelNavigation() {
 
   return (
     <>
-      <header
+      <header data-moren-owned="navigation" data-portal-navigation="true"
         className="lg:hidden sticky top-0 z-40 flex h-14 items-center justify-between px-4"
-        style={{
-          background: 'rgba(15,13,11,0.96)',
+        style={ownedThemeStyle({
+          background: 'var(--moren-owned-nav-background, rgba(15,13,11,0.96))',
           borderBottom: '1px solid rgba(212,184,118,0.16)',
           backdropFilter: 'blur(14px)',
-        }}
+        })}
       >
         <button
           type="button"
           onClick={() => setOpen(true)}
           aria-label="Modül menüsünü aç"
           className="flex h-10 w-10 items-center justify-center rounded-lg"
-          style={{ border: '1px solid rgba(212,184,118,0.22)', color: '#d4b876' }}
+          style={ownedThemeStyle({ border: '1px solid rgba(212,184,118,0.22)', color: '#d4b876' })}
         >
           <Menu size={19} />
         </button>
@@ -210,11 +211,11 @@ export default function MobilePanelNavigation() {
         <Link href="/panel" className="flex items-center gap-2" aria-label="Moren panel">
           <span
             className="flex h-8 w-8 items-center justify-center rounded-lg text-[14px] font-bold"
-            style={{ background: 'linear-gradient(135deg, #d4b876, #8b7649)', color: '#0f0d0b', fontFamily: 'Fraunces, serif' }}
+            style={ownedThemeStyle({ background: 'linear-gradient(135deg, #d4b876, #8b7649)', color: '#0f0d0b', fontFamily: 'Fraunces, serif' })}
           >
             M
           </span>
-          <span className="text-[14px] font-semibold" style={{ color: '#fafaf9', fontFamily: 'Fraunces, serif' }}>
+          <span className="text-[14px] font-semibold" style={ownedThemeStyle({ color: '#fafaf9', fontFamily: 'Fraunces, serif' })}>
             Moren Portal
           </span>
         </Link>
@@ -222,20 +223,20 @@ export default function MobilePanelNavigation() {
         <Link
           href="/panel/bildirimler"
           className="flex h-10 w-10 items-center justify-center rounded-lg"
-          style={{ border: '1px solid rgba(255,255,255,0.06)', color: 'rgba(250,250,249,0.76)' }}
+          style={ownedThemeStyle({ border: '1px solid rgba(255,255,255,0.06)', color: 'rgba(250,250,249,0.76)' })}
           aria-label="Bildirimler"
         >
           <BellRing size={18} />
         </Link>
       </header>
 
-      <nav
+      <nav data-moren-owned="navigation" data-portal-navigation="true"
         className="lg:hidden fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 gap-1 px-2 pb-[calc(env(safe-area-inset-bottom)+8px)] pt-2"
-        style={{
-          background: 'rgba(15,13,11,0.97)',
+        style={ownedThemeStyle({
+          background: 'var(--moren-owned-nav-background, rgba(15,13,11,0.97))',
           borderTop: '1px solid rgba(212,184,118,0.18)',
           backdropFilter: 'blur(14px)',
-        }}
+        })}
         aria-label="Mobil hızlı menü"
       >
         {bottomItems.map((item) => {
@@ -246,11 +247,11 @@ export default function MobilePanelNavigation() {
               key={item.href}
               href={item.href}
               className="flex h-12 flex-col items-center justify-center gap-1 rounded-lg text-[10px] font-semibold"
-              style={{
+              style={ownedThemeStyle({
                 background: active ? 'rgba(212,184,118,0.16)' : 'transparent',
                 border: active ? '1px solid rgba(212,184,118,0.28)' : '1px solid transparent',
                 color: active ? '#d4b876' : 'rgba(250,250,249,0.52)',
-              }}
+              })}
             >
               <Icon size={17} />
               <span className="leading-none">{item.label}</span>
@@ -260,28 +261,28 @@ export default function MobilePanelNavigation() {
       </nav>
 
       {open && (
-        <div className="lg:hidden fixed inset-0 z-50" role="dialog" aria-modal="true">
+        <div data-moren-owned="navigation" data-portal-navigation="true" className="lg:hidden fixed inset-0 z-50" role="dialog" aria-modal="true">
           <button
             type="button"
             className="absolute inset-0 h-full w-full"
             aria-label="Menüyü kapat"
             onClick={() => setOpen(false)}
-            style={{ background: 'rgba(0,0,0,0.56)' }}
+            style={ownedThemeStyle({ background: 'rgba(0,0,0,0.56)' })}
           />
           <aside
             className="absolute inset-y-0 left-0 flex w-[min(92vw,380px)] flex-col"
-            style={{
-              background: '#0f0d0b',
+            style={ownedThemeStyle({
+              background: 'var(--moren-owned-nav-background, #0f0d0b)',
               borderRight: '1px solid rgba(212,184,118,0.18)',
               boxShadow: '20px 0 50px rgba(0,0,0,0.42)',
-            }}
+            })}
           >
-            <div className="flex h-16 items-center justify-between px-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+            <div className="flex h-16 items-center justify-between px-4" style={ownedThemeStyle({ borderBottom: '1px solid rgba(255,255,255,0.06)' })}>
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-[.16em]" style={{ color: '#d4b876' }}>
+                <p className="text-[10px] font-bold uppercase tracking-[.16em]" style={ownedThemeStyle({ color: '#d4b876' })}>
                   Mevcut Portal
                 </p>
-                <h2 className="text-[17px] font-semibold" style={{ color: '#fafaf9', fontFamily: 'Fraunces, serif', letterSpacing: 0 }}>
+                <h2 className="text-[17px] font-semibold" style={ownedThemeStyle({ color: '#fafaf9', fontFamily: 'Fraunces, serif', letterSpacing: 0 })}>
                   Modüller
                 </h2>
               </div>
@@ -290,7 +291,7 @@ export default function MobilePanelNavigation() {
                 onClick={() => setOpen(false)}
                 aria-label="Menüyü kapat"
                 className="flex h-10 w-10 items-center justify-center rounded-lg"
-                style={{ border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.72)' }}
+                style={ownedThemeStyle({ border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.72)' })}
               >
                 <X size={18} />
               </button>
@@ -301,9 +302,9 @@ export default function MobilePanelNavigation() {
                 const GroupIcon = group.icon;
                 return (
                   <section key={group.label}>
-                    <div className="mb-2 flex items-center gap-2 rounded-lg px-2 py-2" style={{ background: `${group.color}12`, border: `1px solid ${group.color}24` }}>
-                      <GroupIcon size={15} style={{ color: group.color }} />
-                      <h3 className="text-[11px] font-bold uppercase" style={{ color: group.color, letterSpacing: 0 }}>
+                    <div className="mb-2 flex items-center gap-2 rounded-lg px-2 py-2" style={ownedThemeStyle({ background: `${group.color}12`, border: `1px solid ${group.color}24` })}>
+                      <GroupIcon size={15} style={ownedThemeStyle({ color: group.color })} />
+                      <h3 className="text-[11px] font-bold uppercase" style={ownedThemeStyle({ color: group.color, letterSpacing: 0 })}>
                         {group.label}
                       </h3>
                     </div>
@@ -317,15 +318,15 @@ export default function MobilePanelNavigation() {
                             key={item.href}
                             href={item.href}
                             className="flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium"
-                            style={{
+                            style={ownedThemeStyle({
                               background: active ? `${group.color}18` : 'rgba(255,255,255,0.022)',
                               border: `1px solid ${active ? `${group.color}42` : 'rgba(255,255,255,0.055)'}`,
                               color: active ? '#fafaf9' : 'rgba(250,250,249,0.68)',
-                            }}
+                            })}
                           >
                             <span
                               className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
-                              style={{ background: `${group.color}14`, color: group.color }}
+                              style={ownedThemeStyle({ background: `${group.color}14`, color: group.color })}
                             >
                               <Icon size={15} />
                             </span>
@@ -333,7 +334,7 @@ export default function MobilePanelNavigation() {
                             {planned && (
                               <span
                                 className="rounded-md px-1.5 py-0.5 text-[9px] font-bold uppercase"
-                                style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(250,250,249,0.46)' }}
+                                style={ownedThemeStyle({ background: 'rgba(255,255,255,0.06)', color: 'rgba(250,250,249,0.46)' })}
                               >
                                 Plan
                               </span>

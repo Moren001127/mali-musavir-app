@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import { useMemo, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
@@ -374,13 +376,13 @@ export default function ProfillerPage() {
   return (
     <div className="flex max-w-[1680px] flex-col gap-5 xl:h-full xl:min-h-0">
       <section className="relative shrink-0 overflow-hidden rounded-xl border border-white/[0.06] bg-[#0f0d0b]">
-        <div className="h-[3px] w-full" style={{ background: 'linear-gradient(90deg,#8b7cf0,#a78bfa 35%,#6d5fd1 60%,#8b7cf0)' }} />
-        <div className="pointer-events-none absolute inset-0" style={{ background: 'radial-gradient(420px 130px at 20% -70%, rgba(139,124,240,.16), transparent 70%)' }} />
+        <div className="h-[3px] w-full" style={portalStyle({ background: 'linear-gradient(90deg,#8b7cf0,#a78bfa 35%,#6d5fd1 60%,#8b7cf0)' })} />
+        <div className="pointer-events-none absolute inset-0" style={portalStyle({ background: 'radial-gradient(420px 130px at 20% -70%, rgba(139,124,240,.16), transparent 70%)' })} />
         <div className="relative flex flex-wrap items-center justify-between gap-3 px-5 py-3">
           <div className="flex min-w-0 items-center gap-3">
             <div
               className="flex h-10 w-10 flex-none items-center justify-center rounded-xl"
-              style={{ background: 'linear-gradient(145deg,#8b7cf0,#6d5fd1)', boxShadow: '0 8px 22px -10px rgba(139,124,240,.55)' }}
+              style={portalStyle({ background: 'linear-gradient(145deg,#8b7cf0,#6d5fd1)', boxShadow: '0 8px 22px -10px rgba(139,124,240,.55)' })}
             >
               <ShieldCheck size={20} className="text-[#0b0a14]" />
             </div>
@@ -390,7 +392,7 @@ export default function ProfillerPage() {
                 <span className="h-3 w-px bg-white/15" />
                 <h1
                   className="truncate text-[21px] font-semibold leading-none text-[#fafaf9]"
-                  style={{ fontFamily: 'Fraunces, serif', letterSpacing: '-0.02em' }}
+                  style={portalStyle({ fontFamily: 'Fraunces, serif', letterSpacing: '-0.02em' })}
                 >
                   Mükellef Profilleri
                 </h1>
@@ -431,11 +433,11 @@ export default function ProfillerPage() {
                 key={f.key}
                 onClick={() => setListFilter(f.key)}
                 className="flex-1 rounded-lg border px-2 py-1.5 text-[11.5px] font-semibold transition"
-                style={{
+                style={portalStyle({
                   borderColor: listFilter === f.key ? 'rgba(139,124,240,.4)' : 'rgba(255,255,255,.07)',
                   background: listFilter === f.key ? 'rgba(139,124,240,.14)' : 'rgba(255,255,255,.03)',
                   color: listFilter === f.key ? '#c4b5fd' : 'rgba(250,250,249,.5)',
-                }}
+                })}
               >
                 {f.label}
               </button>
@@ -460,15 +462,15 @@ export default function ProfillerPage() {
                   key={t.id}
                   onClick={() => selectTaxpayer(name)}
                   className="group relative mb-1 grid w-full grid-cols-[14px_minmax(0,1fr)_auto] items-center gap-2.5 rounded-xl px-3 py-2.5 text-left transition"
-                  style={{
+                  style={portalStyle({
                     background: active ? 'linear-gradient(90deg, rgba(139,124,240,.16), rgba(139,124,240,.04))' : 'transparent',
                     border: active ? '1px solid rgba(139,124,240,.28)' : '1px solid transparent',
-                  }}
+                  })}
                 >
                   {active && <span className="absolute left-0 top-2.5 bottom-2.5 w-[3px] rounded-full bg-[#8b7cf0]" />}
                   <span className={`h-2.5 w-2.5 justify-self-center rounded-full ${dotClass}`} />
                   <span className="min-w-0">
-                    <span className="block truncate text-[13.5px] font-semibold" style={{ color: active ? '#d9cffb' : '#e5e7eb' }}>{name}</span>
+                    <span className="block truncate text-[13.5px] font-semibold" style={portalStyle({ color: active ? '#d9cffb' : '#e5e7eb' })}>{name}</span>
                     <span className="mt-0.5 block truncate text-[11px] text-white/35">{meta}</span>
                   </span>
                   <span className="flex flex-col items-end gap-1">
@@ -476,11 +478,11 @@ export default function ProfillerPage() {
                       <>
                         <span className="flex items-center gap-1.5">
                           <span className="h-1 w-[46px] overflow-hidden rounded-full bg-white/10">
-                            <span className="block h-full rounded-full" style={{ width: `${score}%`, background: 'linear-gradient(90deg,#6d5fd1,#a78bfa)' }} />
+                            <span className="block h-full rounded-full" style={portalStyle({ width: `${score}%`, background: 'linear-gradient(90deg,#6d5fd1,#a78bfa)' })} />
                           </span>
                           <span className="w-8 text-right text-[10.5px] tabular-nums text-white/45">%{score}</span>
                         </span>
-                        <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold" style={{ color: '#bcaef4', background: 'rgba(139,124,240,.13)', border: '1px solid rgba(139,124,240,.22)' }}>
+                        <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold" style={portalStyle({ color: '#bcaef4', background: 'rgba(139,124,240,.13)', border: '1px solid rgba(139,124,240,.22)' })}>
                           {kod} kod · {kural} kural
                         </span>
                       </>
@@ -569,7 +571,7 @@ function ProfileForm({
 
   return (
     <div className="flex w-full flex-1 flex-col min-h-0">
-      <div className="shrink-0 rounded-t-xl border-b border-white/[0.06] px-5 py-4" style={{ background: 'rgba(255,255,255,0.015)' }}>
+      <div className="shrink-0 rounded-t-xl border-b border-white/[0.06] px-5 py-4" style={portalStyle({ background: 'rgba(255,255,255,0.015)' })}>
         <div className="flex items-start justify-between gap-4">
           <div className="flex min-w-0 items-center gap-3.5">
             <ScoreRing value={score} />
@@ -581,11 +583,11 @@ function ProfileForm({
                   <FileText size={13} className="text-white/30" /> {profile.sektor || 'Sektör yok'}
                 </span>
                 <span className="text-white/15">·</span>
-                <span className="inline-flex items-center gap-1.5" style={{ color: kdvCodeCount ? 'rgba(159,227,191,.85)' : 'rgba(236,201,135,.85)' }}>
+                <span className="inline-flex items-center gap-1.5" style={portalStyle({ color: kdvCodeCount ? 'rgba(159,227,191,.85)' : 'rgba(236,201,135,.85)' })}>
                   <ReceiptText size={13} /> {kdvCodeCount} hesap kodu
                 </span>
                 <span className="text-white/15">·</span>
-                <span className="inline-flex items-center gap-1.5" style={{ color: ruleCount ? 'rgba(159,227,191,.85)' : 'rgba(236,201,135,.85)' }}>
+                <span className="inline-flex items-center gap-1.5" style={portalStyle({ color: ruleCount ? 'rgba(159,227,191,.85)' : 'rgba(236,201,135,.85)' })}>
                   <ListChecks size={13} /> {ruleCount} kural
                 </span>
               </div>
@@ -596,7 +598,7 @@ function ProfileForm({
               onClick={onCopy}
               title="Profili başka mükellefe kopyala"
               className="inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-[13px] font-semibold"
-              style={{ color: '#c4b5fd', background: 'rgba(139,124,240,.1)', borderColor: 'rgba(139,124,240,.3)' }}
+              style={portalStyle({ color: '#c4b5fd', background: 'rgba(139,124,240,.1)', borderColor: 'rgba(139,124,240,.3)' })}
             >
               <Copy size={15} /> <span className="hidden sm:inline">Kopyala</span>
             </button>
@@ -613,7 +615,7 @@ function ProfileForm({
               onClick={onSave}
               disabled={saving}
               className="inline-flex h-9 items-center gap-2 rounded-lg px-4 text-[13px] font-bold text-[#0b0a14] disabled:opacity-50"
-              style={{ background: 'linear-gradient(145deg,#8b7cf0,#6d5fd1)' }}
+              style={portalStyle({ background: 'linear-gradient(145deg,#8b7cf0,#6d5fd1)' })}
             >
               <Save size={15} /> {saving ? 'Kaydediliyor...' : 'Kaydet'}
             </button>
@@ -626,11 +628,11 @@ function ProfileForm({
               key={key}
               onClick={() => setTab(key)}
               className="inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-sm font-semibold transition"
-              style={{
+              style={portalStyle({
                 borderColor: tab === key ? 'rgba(139,124,240,.45)' : 'rgba(255,255,255,.07)',
                 background: tab === key ? 'rgba(139,124,240,.14)' : 'rgba(255,255,255,.03)',
                 color: tab === key ? '#c4b5fd' : 'rgba(250,250,249,.62)',
-              }}
+              })}
             >
               {tabIcons[key]}
               {tabLabels[key]}
@@ -853,15 +855,15 @@ function FilterStat({
       type="button"
       onClick={onClick}
       className="relative min-w-[84px] rounded-xl border px-3.5 py-2 text-left transition"
-      style={{
+      style={portalStyle({
         borderColor: active ? 'rgba(139,124,240,.55)' : 'rgba(255,255,255,.07)',
         background: active
           ? 'linear-gradient(160deg, rgba(139,124,240,.18), rgba(139,124,240,.05))'
           : 'rgba(255,255,255,.025)',
-      }}
+      })}
     >
       <div className="text-[9px] font-bold uppercase tracking-[.12em] text-white/35">{label}</div>
-      <div className="mt-0.5 text-[18px] font-bold leading-tight" style={{ color }}>{value}</div>
+      <div className="mt-0.5 text-[18px] font-bold leading-tight" style={portalStyle({ color })}>{value}</div>
       {active && <span className="absolute inset-x-3 -bottom-px h-0.5 rounded bg-[#8b7cf0]" />}
     </button>
   );
@@ -872,10 +874,10 @@ function ScoreRing({ value }: { value: number }) {
   return (
     <div
       className="relative flex h-[54px] w-[54px] flex-none items-center justify-center rounded-full"
-      style={{ background: `conic-gradient(${ring} ${value * 3.6}deg, rgba(255,255,255,.08) 0)` }}
+      style={portalStyle({ background: `conic-gradient(${ring} ${value * 3.6}deg, rgba(255,255,255,.08) 0)` })}
     >
       <div className="absolute inset-[5px] rounded-full bg-[#10100f]" />
-      <span className="relative text-[13px] font-bold" style={{ color: value >= 35 ? '#c4b5fd' : 'rgba(250,250,249,.5)' }}>
+      <span className="relative text-[13px] font-bold" style={portalStyle({ color: value >= 35 ? '#c4b5fd' : 'rgba(250,250,249,.5)' })}>
         %{value}
       </span>
     </div>
@@ -889,7 +891,7 @@ function EmptyState({ missingCount, missing, onPick }: { missingCount: number; m
       <div className="w-full max-w-[520px] text-center">
         <div
           className="mx-auto mb-5 flex h-[70px] w-[70px] items-center justify-center rounded-[20px] border border-[#8b7cf0]/25"
-          style={{ background: 'linear-gradient(145deg, rgba(139,124,240,.2), rgba(139,124,240,.05))' }}
+          style={portalStyle({ background: 'linear-gradient(145deg, rgba(139,124,240,.2), rgba(139,124,240,.05))' })}
         >
           <ShieldCheck size={34} className="text-[#a78bfa]" />
         </div>
@@ -957,17 +959,17 @@ function CopyModal({
   return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: 'rgba(5,5,8,.66)', backdropFilter: 'blur(2px)' }}
+      style={portalStyle({ background: 'rgba(5,5,8,.66)', backdropFilter: 'blur(2px)' })}
       onClick={onClose}
     >
       <div
         className="w-full max-w-[560px] overflow-hidden rounded-2xl border border-[#8b7cf0]/25 bg-[#0f0d0b]"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="h-[3px] w-full" style={{ background: 'linear-gradient(90deg,#8b7cf0,#a78bfa,#6d5fd1)' }} />
+        <div className="h-[3px] w-full" style={portalStyle({ background: 'linear-gradient(90deg,#8b7cf0,#a78bfa,#6d5fd1)' })} />
         <div className="flex items-center justify-between gap-3 border-b border-white/[0.06] px-5 py-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl" style={{ background: 'linear-gradient(145deg,#8b7cf0,#6d5fd1)' }}>
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl" style={portalStyle({ background: 'linear-gradient(145deg,#8b7cf0,#6d5fd1)' })}>
               <Copy size={18} className="text-[#0b0a14]" />
             </div>
             <div>
@@ -980,7 +982,7 @@ function CopyModal({
           </button>
         </div>
         <div className="flex flex-col gap-3 px-5 py-4">
-          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[#8b7cf0]/20 px-3 py-2.5 text-[13px]" style={{ background: 'rgba(139,124,240,.08)' }}>
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[#8b7cf0]/20 px-3 py-2.5 text-[13px]" style={portalStyle({ background: 'rgba(139,124,240,.08)' })}>
             <span className="text-[11px] font-bold uppercase tracking-[.08em] text-[#c4b5fd]">Kaynak</span>
             <b className="text-[#fafaf9]">{source}</b>
             <span className="text-white/35">· %{score} dolu · {kod} kod · {kural} kural</span>
@@ -1003,19 +1005,19 @@ function CopyModal({
                   key={name}
                   onClick={() => onToggle(name)}
                   className="flex items-center gap-3 rounded-xl border px-3 py-2.5 text-left text-[13px] transition"
-                  style={{
+                  style={portalStyle({
                     borderColor: sel ? 'rgba(139,124,240,.45)' : 'rgba(255,255,255,.07)',
                     background: sel ? 'rgba(139,124,240,.1)' : 'rgba(255,255,255,.02)',
-                  }}
+                  })}
                 >
                   <span
                     className="flex h-[18px] w-[18px] flex-none items-center justify-center rounded-md border"
-                    style={{ background: sel ? '#8b7cf0' : 'transparent', borderColor: sel ? '#8b7cf0' : 'rgba(255,255,255,.25)' }}
+                    style={portalStyle({ background: sel ? '#8b7cf0' : 'transparent', borderColor: sel ? '#8b7cf0' : 'rgba(255,255,255,.25)' })}
                   >
                     {sel && <Check size={12} className="text-[#0b0a14]" strokeWidth={3} />}
                   </span>
                   <span className="flex-1 truncate text-[#e5e7eb]">{name}</span>
-                  <span className="flex-none text-[11px]" style={{ color: has ? '#d4a85f' : 'rgba(250,250,249,.32)' }}>
+                  <span className="flex-none text-[11px]" style={portalStyle({ color: has ? '#d4a85f' : 'rgba(250,250,249,.32)' })}>
                     {has ? 'profil var' : 'profil yok'}
                   </span>
                 </button>
@@ -1036,7 +1038,7 @@ function CopyModal({
               onClick={onConfirm}
               disabled={busy || targets.size === 0}
               className="inline-flex h-10 items-center gap-2 rounded-lg border px-4 text-[13px] font-bold text-[#0b0a14] disabled:opacity-40"
-              style={{ background: 'linear-gradient(145deg,#8b7cf0,#6d5fd1)', borderColor: 'rgba(139,124,240,.5)' }}
+              style={portalStyle({ background: 'linear-gradient(145deg,#8b7cf0,#6d5fd1)', borderColor: 'rgba(139,124,240,.5)' })}
             >
               <Copy size={15} /> {busy ? 'Kopyalanıyor...' : `${targets.size ? `${targets.size} ` : ''}Mükellefe Kopyala`}
             </button>
@@ -1498,11 +1500,11 @@ function Toggle({ label, checked, onChange }: { label: string; checked: boolean;
       <span className="text-sm font-semibold text-white/70">{label}</span>
       <span
         className="relative h-6 w-11 rounded-full transition"
-        style={{ background: checked ? 'rgba(16,185,129,.45)' : 'rgba(255,255,255,.12)' }}
+        style={portalStyle({ background: checked ? 'rgba(16,185,129,.45)' : 'rgba(255,255,255,.12)' })}
       >
         <span
           className="absolute top-1 h-4 w-4 rounded-full bg-white transition"
-          style={{ left: checked ? 22 : 4 }}
+          style={portalStyle({ left: checked ? 22 : 4 })}
         />
       </span>
     </button>

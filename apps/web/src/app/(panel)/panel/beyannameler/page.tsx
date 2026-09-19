@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle, portalPaint } from '@/lib/portal-theme';
+
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
@@ -526,25 +528,25 @@ function BeyannamelerIcerik() {
       {/* ===================== KOMUT KONSOLU ===================== */}
       <section
         className="relative overflow-hidden rounded-2xl"
-        style={{
+        style={portalStyle({
           background: 'linear-gradient(135deg, rgba(17,22,28,0.96), rgba(10,12,16,0.99))',
           border: '1px solid rgba(76,198,245,0.16)',
           boxShadow: '0 24px 60px -32px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.04)',
-        }}
+        })}
       >
-        <div className="absolute inset-x-0 top-0 h-[2px]" style={{ background: 'linear-gradient(90deg, transparent, #4cc6f5, #f4c451, transparent)', opacity: 0.8 }} />
-        <div className="pointer-events-none absolute" style={{ width: 420, height: 420, left: -60, top: -220, borderRadius: '50%', background: 'radial-gradient(circle, rgba(76,198,245,0.16), transparent 62%)' }} />
-        <div className="pointer-events-none absolute" style={{ width: 420, height: 420, right: -80, top: -260, borderRadius: '50%', background: 'radial-gradient(circle, rgba(244,196,81,0.10), transparent 62%)' }} />
+        <div className="absolute inset-x-0 top-0 h-[2px]" style={portalStyle({ background: 'linear-gradient(90deg, transparent, #4cc6f5, #f4c451, transparent)', opacity: 0.8 })} />
+        <div className="pointer-events-none absolute" style={portalStyle({ width: 420, height: 420, left: -60, top: -220, borderRadius: '50%', background: 'radial-gradient(circle, rgba(76,198,245,0.16), transparent 62%)' })} />
+        <div className="pointer-events-none absolute" style={portalStyle({ width: 420, height: 420, right: -80, top: -260, borderRadius: '50%', background: 'radial-gradient(circle, rgba(244,196,81,0.10), transparent 62%)' })} />
 
         <div className="relative px-4 pt-3 sm:px-5">
           <div className="flex flex-wrap items-center gap-4">
             <div className="flex min-w-0 items-center gap-3">
-              <div className="grid flex-none place-items-center" style={{ width: 38, height: 38, borderRadius: 11, background: 'linear-gradient(150deg, rgba(76,198,245,0.22), rgba(76,198,245,0.05))', border: '1px solid rgba(76,198,245,0.3)' }}>
-                <FileText size={19} style={{ color: '#bfe9ff' }} />
+              <div className="grid flex-none place-items-center" style={portalStyle({ width: 38, height: 38, borderRadius: 11, background: 'linear-gradient(150deg, rgba(76,198,245,0.22), rgba(76,198,245,0.05))', border: '1px solid rgba(76,198,245,0.3)' })}>
+                <FileText size={19} style={portalStyle({ color: '#bfe9ff' })} />
               </div>
               <div className="min-w-0">
-                <div className="text-[10px] font-extrabold uppercase tracking-[0.2em]" style={{ color: '#7fcdee' }}>e-Beyanname · GİB</div>
-                <h1 className="text-[18px] font-bold tracking-[-0.02em]" style={{ color: '#f3f5f7' }}>Beyanname İndirme</h1>
+                <div className="text-[10px] font-extrabold uppercase tracking-[0.2em]" style={portalStyle({ color: '#7fcdee' })}>e-Beyanname · GİB</div>
+                <h1 className="text-[18px] font-bold tracking-[-0.02em]" style={portalStyle({ color: '#f3f5f7' })}>Beyanname İndirme</h1>
               </div>
             </div>
 
@@ -552,15 +554,15 @@ function BeyannamelerIcerik() {
 
             <div className="flex flex-col items-end gap-1.5">
               <div className="flex flex-wrap items-stretch justify-end gap-2">
-                <div className="flex items-center overflow-hidden rounded-[11px]" style={{ border: '1px solid rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.03)' }}>
+                <div className="flex items-center overflow-hidden rounded-[11px]" style={portalStyle({ border: '1px solid rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.03)' })}>
                   <label className="flex flex-col gap-px px-2.5 py-1">
-                    <span className="text-[9px] font-bold uppercase tracking-[0.14em]" style={{ color: 'rgba(243,245,247,0.4)' }}>Başlangıç</span>
-                    <input type="date" value={pullFrom} onChange={(e) => setPullFrom(e.target.value)} onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }} className="bg-transparent text-[13px] font-semibold outline-none cursor-pointer" style={{ color: '#f3f5f7', colorScheme: 'dark' }} />
+                    <span className="text-[9px] font-bold uppercase tracking-[0.14em]" style={portalStyle({ color: 'rgba(243,245,247,0.4)' })}>Başlangıç</span>
+                    <input type="date" value={pullFrom} onChange={(e) => setPullFrom(e.target.value)} onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }} className="bg-transparent text-[13px] font-semibold outline-none cursor-pointer" style={portalStyle({ color: '#f3f5f7', colorScheme: 'dark' })} />
                   </label>
-                  <div className="self-stretch" style={{ width: 1, background: 'rgba(255,255,255,0.07)' }} />
+                  <div className="self-stretch" style={portalStyle({ width: 1, background: 'rgba(255,255,255,0.07)' })} />
                   <label className="flex flex-col gap-px px-2.5 py-1">
-                    <span className="text-[9px] font-bold uppercase tracking-[0.14em]" style={{ color: 'rgba(243,245,247,0.4)' }}>Bitiş</span>
-                    <input type="date" value={pullTo} onChange={(e) => setPullTo(e.target.value)} onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }} className="bg-transparent text-[13px] font-semibold outline-none cursor-pointer" style={{ color: '#f3f5f7', colorScheme: 'dark' }} />
+                    <span className="text-[9px] font-bold uppercase tracking-[0.14em]" style={portalStyle({ color: 'rgba(243,245,247,0.4)' })}>Bitiş</span>
+                    <input type="date" value={pullTo} onChange={(e) => setPullTo(e.target.value)} onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }} className="bg-transparent text-[13px] font-semibold outline-none cursor-pointer" style={portalStyle({ color: '#f3f5f7', colorScheme: 'dark' })} />
                   </label>
                 </div>
                 <button
@@ -569,7 +571,7 @@ function BeyannamelerIcerik() {
                   disabled={pullMut.isPending}
                   title="Eski e-Beyanname sisteminden beyanname + tahakkuk indirir"
                   className="inline-flex h-[38px] items-center justify-center gap-2 rounded-[10px] px-4 text-[13px] font-bold"
-                  style={{ background: 'linear-gradient(135deg, #f4c451, #e0a93c)', color: '#1a1407', boxShadow: '0 12px 26px -12px rgba(244,196,81,0.6)', opacity: pullMut.isPending ? 0.65 : 1 }}
+                  style={portalStyle({ background: 'linear-gradient(135deg, #f4c451, #e0a93c)', color: '#1a1407', boxShadow: '0 12px 26px -12px rgba(244,196,81,0.6)', opacity: pullMut.isPending ? 0.65 : 1 })}
                 >
                   {pullMut.isPending ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
                   Beyannameleri Çek
@@ -580,7 +582,7 @@ function BeyannamelerIcerik() {
                   disabled={pullNewMut.isPending}
                   title="Yeni GİB e-Beyan sisteminden (ebeyan.gib.gov.tr) çeker — eski sistemden ayrı"
                   className="inline-flex h-[38px] items-center justify-center gap-2 rounded-[10px] px-3.5 text-[13px] font-bold"
-                  style={{ background: 'rgba(52,211,153,0.08)', border: '1px solid rgba(52,211,153,0.38)', color: '#6ee7b7', opacity: pullNewMut.isPending ? 0.65 : 1 }}
+                  style={portalStyle({ background: 'rgba(52,211,153,0.08)', border: '1px solid rgba(52,211,153,0.38)', color: '#6ee7b7', opacity: pullNewMut.isPending ? 0.65 : 1 })}
                 >
                   {pullNewMut.isPending ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
                   Yeni Beyanname Sitesinden Çek
@@ -595,7 +597,7 @@ function BeyannamelerIcerik() {
                   disabled={pullMut.isPending}
                   title="Yenile (force) — var olanları da yeniden indir, Tutar okunamadı / eksik PDF kayıtlarını düzeltir"
                   className="inline-flex h-[38px] w-[38px] items-center justify-center rounded-[10px]"
-                  style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(243,245,247,0.62)' }}
+                  style={portalStyle({ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(243,245,247,0.62)' })}
                 >
                   {pullMut.isPending ? <Loader2 size={17} className="animate-spin" /> : <RotateCcw size={17} />}
                 </button>
@@ -605,20 +607,20 @@ function BeyannamelerIcerik() {
           </div>
 
           {/* canlı durum: son iş + runner/şifre */}
-          <div className="mt-2.5 flex flex-wrap items-center gap-3 py-2" style={{ borderTop: '1px solid rgba(255,255,255,0.07)' }}>
+          <div className="mt-2.5 flex flex-wrap items-center gap-3 py-2" style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.07)' })}>
             <ConsoleJob
               job={latestBeyanJob}
               onCancel={isBeyanJobActive && latestBeyanJob ? () => cancelJobMut.mutate(latestBeyanJob.id) : undefined}
               cancelPending={cancelJobMut.isPending}
             />
             <div className="ml-auto flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-2 text-[12px] font-semibold" style={{ color: 'rgba(243,245,247,0.62)' }}>
-                <span className="inline-block h-2 w-2 rounded-full" style={{ background: portalSummary?.runner?.enabled ? '#4ade80' : '#fb7185', boxShadow: `0 0 0 3px ${portalSummary?.runner?.enabled ? 'rgba(74,222,128,0.16)' : 'rgba(251,113,133,0.16)'}` }} /> Runner
+              <span className="inline-flex items-center gap-2 text-[12px] font-semibold" style={portalStyle({ color: 'rgba(243,245,247,0.62)' })}>
+                <span className="inline-block h-2 w-2 rounded-full" style={portalStyle({ background: portalSummary?.runner?.enabled ? '#4ade80' : '#fb7185', boxShadow: `0 0 0 3px ${portalSummary?.runner?.enabled ? 'rgba(74,222,128,0.16)' : 'rgba(251,113,133,0.16)'}` })} /> Runner
               </span>
-              <span className="inline-flex items-center gap-2 text-[12px] font-semibold" style={{ color: 'rgba(243,245,247,0.62)' }}>
-                <span className="inline-block h-2 w-2 rounded-full" style={{ background: portalSummary?.credentials.eBeyannameReady ? '#4ade80' : '#fb7185', boxShadow: `0 0 0 3px ${portalSummary?.credentials.eBeyannameReady ? 'rgba(74,222,128,0.16)' : 'rgba(251,113,133,0.16)'}` }} /> Şifre
+              <span className="inline-flex items-center gap-2 text-[12px] font-semibold" style={portalStyle({ color: 'rgba(243,245,247,0.62)' })}>
+                <span className="inline-block h-2 w-2 rounded-full" style={portalStyle({ background: portalSummary?.credentials.eBeyannameReady ? '#4ade80' : '#fb7185', boxShadow: `0 0 0 3px ${portalSummary?.credentials.eBeyannameReady ? 'rgba(74,222,128,0.16)' : 'rgba(251,113,133,0.16)'}` })} /> Şifre
               </span>
-              <Link href="/panel/ayarlar" className="inline-flex h-[34px] items-center gap-1.5 rounded-[9px] px-3 text-[12px] font-semibold" style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(243,245,247,0.62)' }}>
+              <Link href="/panel/ayarlar" className="inline-flex h-[34px] items-center gap-1.5 rounded-[9px] px-3 text-[12px] font-semibold" style={portalStyle({ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(243,245,247,0.62)' })}>
                 <KeyRound size={13} /> Şifre Ayarları
               </Link>
             </div>
@@ -626,19 +628,19 @@ function BeyannamelerIcerik() {
         </div>
 
         {isBeyanJobActive && (
-          <div className="relative mt-1 h-[3px] overflow-hidden" style={{ background: 'rgba(255,255,255,0.05)' }}>
-            <div className="absolute inset-y-0 left-0 transition-all" style={{ width: `${Math.max(6, Math.min(100, portalJobProgress(latestBeyanJob).pct ?? (isBeyanJobRunning ? 45 : 12)))}%`, background: 'linear-gradient(90deg, #4cc6f5, #f4c451)' }} />
+          <div className="relative mt-1 h-[3px] overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.05)' })}>
+            <div className="absolute inset-y-0 left-0 transition-all" style={portalStyle({ width: `${Math.max(6, Math.min(100, portalJobProgress(latestBeyanJob).pct ?? (isBeyanJobRunning ? 45 : 12)))}%`, background: 'linear-gradient(90deg, #4cc6f5, #f4c451)' })} />
           </div>
         )}
       </section>
 
       {/* ===================== LİSTE ===================== */}
-      <section className="rounded-2xl overflow-hidden" style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.015))', border: '1px solid rgba(255,255,255,0.07)' }}>
-        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+      <section className="rounded-2xl overflow-hidden" style={portalStyle({ background: 'linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.015))', border: '1px solid rgba(255,255,255,0.07)' })}>
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.06)' })}>
           <div>
-            <h2 className="text-[15px] font-semibold" style={{ color: '#fafaf9' }}>Beyanname Listesi</h2>
-            <p className="mt-0.5 text-[12px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
-              {toplam > 0 ? <><b style={{ color: 'rgba(250,250,249,0.75)' }}>{toplam.toLocaleString('tr-TR')}</b> kayıt </> : null}</p>
+            <h2 className="text-[15px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>Beyanname Listesi</h2>
+            <p className="mt-0.5 text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
+              {toplam > 0 ? <><b style={portalStyle({ color: 'rgba(250,250,249,0.75)' })}>{toplam.toLocaleString('tr-TR')}</b> kayıt </> : null}</p>
           </div>
           <button
             type="button"
@@ -646,26 +648,26 @@ function BeyannamelerIcerik() {
             disabled={csvYaziliyor || toplam === 0}
             title={toplam > CSV_TAVAN ? `Geçerli süzgeçle ilk ${CSV_TAVAN} kayıt` : 'Geçerli süzgeçle CSV indir'}
             className="inline-flex h-9 items-center gap-1.5 rounded-[9px] px-3 text-[12px] font-semibold disabled:opacity-50"
-            style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.72)' }}
+            style={portalStyle({ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.72)' })}
           >
             {csvYaziliyor ? <Loader2 size={14} className="animate-spin" /> : <FileSpreadsheet size={14} />} CSV
           </button>
         </div>
 
         {/* Süzgeç bandı — e-Defter seçici bandı dili: küçük büyük-harf etiket üstte + hizalı kutu (hepsi sunucuda) */}
-        <div className="flex flex-wrap items-end gap-x-3 gap-y-3 px-4 py-3.5" style={{ background: 'rgba(0,0,0,0.22)', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+        <div className="flex flex-wrap items-end gap-x-3 gap-y-3 px-4 py-3.5" style={portalStyle({ background: 'rgba(0,0,0,0.22)', borderBottom: '1px solid rgba(255,255,255,0.07)' })}>
           <label className="flex min-w-[220px] flex-[1.7] flex-col gap-1.5">
-            <span className="text-[9px] font-bold uppercase tracking-[.16em]" style={{ color: 'rgba(250,250,249,0.42)' }}>Ara</span>
-            <span className="flex items-center gap-2 rounded-xl px-3" style={SUZGEC_KUTU}>
-              <Search size={14} className="shrink-0" style={{ color: 'rgba(250,250,249,0.4)' }} />
-              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Mükellef, VKN, onay no" className="w-full bg-transparent text-[13px] outline-none" style={{ color: '#fafaf9' }} />
+            <span className="text-[9px] font-bold uppercase tracking-[.16em]" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>Ara</span>
+            <span className="flex items-center gap-2 rounded-xl px-3" style={portalStyle(SUZGEC_KUTU)}>
+              <Search size={14} className="shrink-0" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })} />
+              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Mükellef, VKN, onay no" className="w-full bg-transparent text-[13px] outline-none" style={portalStyle({ color: '#fafaf9' })} />
               {search && (
-                <button type="button" onClick={() => setSearch('')} title="Aramayı temizle" className="shrink-0" style={{ color: 'rgba(250,250,249,0.4)' }}><IconX size={13} /></button>
+                <button type="button" onClick={() => setSearch('')} title="Aramayı temizle" className="shrink-0" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}><IconX size={13} /></button>
               )}
             </span>
           </label>
           <div className="flex min-w-[200px] flex-[1.3] flex-col gap-1.5">
-            <span className="text-[9px] font-bold uppercase tracking-[.16em]" style={{ color: 'rgba(250,250,249,0.42)' }}>Mükellef</span>
+            <span className="text-[9px] font-bold uppercase tracking-[.16em]" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>Mükellef</span>
             <SelectBox value={selectedTaxpayer} onChange={suzgec(setSelectedTaxpayer)}>
               <option value="all">Tümü</option>
               {taxpayerOptions.map((t) => (
@@ -674,7 +676,7 @@ function BeyannamelerIcerik() {
             </SelectBox>
           </div>
           <div className="flex min-w-[130px] flex-1 flex-col gap-1.5">
-            <span className="text-[9px] font-bold uppercase tracking-[.16em]" style={{ color: 'rgba(250,250,249,0.42)' }}>Tür</span>
+            <span className="text-[9px] font-bold uppercase tracking-[.16em]" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>Tür</span>
             <SelectBox value={typeFilter} onChange={(v) => suzgec(setTypeFilter)(v as FilterKey)}>
               {FILTER_KEYS.map((f) => (
                 <option key={f.key} value={f.key}>{f.label}</option>
@@ -682,7 +684,7 @@ function BeyannamelerIcerik() {
             </SelectBox>
           </div>
           <div className="flex min-w-[130px] flex-1 flex-col gap-1.5">
-            <span className="text-[9px] font-bold uppercase tracking-[.16em]" style={{ color: 'rgba(250,250,249,0.42)' }}>Belge</span>
+            <span className="text-[9px] font-bold uppercase tracking-[.16em]" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>Belge</span>
             <SelectBox value={docFilter} onChange={(v) => suzgec(setDocFilter)(v as BeyanBelgeSuzgec)}>
               <option value="all">Tümü</option>
               <option value="beyanname">Beyanname</option>
@@ -690,7 +692,7 @@ function BeyannamelerIcerik() {
             </SelectBox>
           </div>
           <div className="flex min-w-[130px] flex-1 flex-col gap-1.5">
-            <span className="text-[9px] font-bold uppercase tracking-[.16em]" style={{ color: 'rgba(250,250,249,0.42)' }}>İletim</span>
+            <span className="text-[9px] font-bold uppercase tracking-[.16em]" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>İletim</span>
             <SelectBox value={iletimFilter} onChange={(v) => suzgec(setIletimFilter)(v as BeyanIletimSuzgec)}>
               <option value="all">Tümü</option>
               <option value="iletildi">İletildi</option>
@@ -699,11 +701,11 @@ function BeyannamelerIcerik() {
             </SelectBox>
           </div>
           <div className="flex flex-col gap-1.5">
-            <span className="text-[9px] font-bold uppercase tracking-[.16em]" style={{ color: 'rgba(250,250,249,0.42)' }}>Dönem</span>
-            <div className="flex items-center gap-1 rounded-xl px-2.5" style={SUZGEC_KUTU} title="Beyanname dönem aralığı (ay olarak)">
-              <input type="date" value={periodStart ? `${periodStart}-01` : ''} onChange={(e) => suzgec(setPeriodStart)(e.target.value ? e.target.value.slice(0, 7) : '')} onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }} aria-label="Dönem başlangıç" className="bg-transparent text-[12.5px] font-semibold outline-none cursor-pointer" style={{ color: periodStart ? '#fafaf9' : 'rgba(250,250,249,0.45)', colorScheme: 'dark', width: 104 }} />
-              <span className="shrink-0" style={{ color: 'rgba(250,250,249,0.3)' }}>–</span>
-              <input type="date" value={periodEnd ? `${periodEnd}-01` : ''} onChange={(e) => suzgec(setPeriodEnd)(e.target.value ? e.target.value.slice(0, 7) : '')} onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }} aria-label="Dönem bitiş" className="bg-transparent text-[12.5px] font-semibold outline-none cursor-pointer" style={{ color: periodEnd ? '#fafaf9' : 'rgba(250,250,249,0.45)', colorScheme: 'dark', width: 104 }} />
+            <span className="text-[9px] font-bold uppercase tracking-[.16em]" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>Dönem</span>
+            <div className="flex items-center gap-1 rounded-xl px-2.5" style={portalStyle(SUZGEC_KUTU)} title="Beyanname dönem aralığı (ay olarak)">
+              <input type="date" value={periodStart ? `${periodStart}-01` : ''} onChange={(e) => suzgec(setPeriodStart)(e.target.value ? e.target.value.slice(0, 7) : '')} onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }} aria-label="Dönem başlangıç" className="bg-transparent text-[12.5px] font-semibold outline-none cursor-pointer" style={portalStyle({ color: periodStart ? '#fafaf9' : 'rgba(250,250,249,0.45)', colorScheme: 'dark', width: 104 })} />
+              <span className="shrink-0" style={portalStyle({ color: 'rgba(250,250,249,0.3)' })}>–</span>
+              <input type="date" value={periodEnd ? `${periodEnd}-01` : ''} onChange={(e) => suzgec(setPeriodEnd)(e.target.value ? e.target.value.slice(0, 7) : '')} onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }} aria-label="Dönem bitiş" className="bg-transparent text-[12.5px] font-semibold outline-none cursor-pointer" style={portalStyle({ color: periodEnd ? '#fafaf9' : 'rgba(250,250,249,0.45)', colorScheme: 'dark', width: 104 })} />
             </div>
           </div>
           <button
@@ -711,7 +713,7 @@ function BeyannamelerIcerik() {
             onClick={clearFilters}
             disabled={!suzgecAktif}
             className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-xl px-3 text-[12px] font-semibold transition disabled:opacity-35"
-            style={{ background: suzgecAktif ? 'rgba(212,184,118,0.10)' : 'transparent', border: `1px solid ${suzgecAktif ? 'rgba(212,184,118,0.35)' : 'rgba(255,255,255,0.10)'}`, color: suzgecAktif ? GOLD : 'rgba(250,250,249,0.5)' }}
+            style={portalStyle({ background: suzgecAktif ? 'rgba(212,184,118,0.10)' : 'transparent', border: `1px solid ${suzgecAktif ? 'rgba(212,184,118,0.35)' : 'rgba(255,255,255,0.10)'}`, color: suzgecAktif ? GOLD : 'rgba(250,250,249,0.5)' })}
             title="Süzgeçleri temizle"
           >
             <RotateCcw size={13} /> Temizle
@@ -719,8 +721,8 @@ function BeyannamelerIcerik() {
         </div>
 
         {/* Toplu işlemler — ÜSTTE, tek sayaç */}
-        <div className="flex flex-wrap items-center gap-2 px-4 py-2.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', background: seciliSayi ? 'rgba(212,184,118,0.05)' : 'transparent' }}>
-          <span className="mr-1 text-[12.5px] font-semibold tabular-nums" style={{ color: seciliSayi ? GOLD : 'rgba(250,250,249,0.45)' }}>
+        <div className="flex flex-wrap items-center gap-2 px-4 py-2.5" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.06)', background: seciliSayi ? 'rgba(212,184,118,0.05)' : 'transparent' })}>
+          <span className="mr-1 text-[12.5px] font-semibold tabular-nums" style={portalStyle({ color: seciliSayi ? GOLD : 'rgba(250,250,249,0.45)' })}>
             {seciliSayi ? `Seçili ${seciliSayi.toLocaleString('tr-TR')} kayıt` : 'Seçili kayıt yok'}
           </span>
           <ToolbarButton icon={MessageCircle} label="WhatsApp gönder" tone="whatsapp" disabled={!seciliSayi} onClick={() => gonderimBaslat('WHATSAPP', seciliKayitlar)} />
@@ -735,44 +737,44 @@ function BeyannamelerIcerik() {
         </div>
 
         {isLoading ? (
-          <div className="p-10 text-center text-[13px]" style={{ color: 'rgba(250,250,249,0.5)' }}>
+          <div className="p-10 text-center text-[13px]" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
             <Loader2 size={18} className="animate-spin mx-auto mb-3" /> Kayıtlar yükleniyor…
           </div>
         ) : rows.length === 0 ? (
           <div className="p-12 text-center">
-            <FileQuestion size={34} className="mx-auto mb-3" style={{ color: 'rgba(250,250,249,0.24)' }} />
+            <FileQuestion size={34} className="mx-auto mb-3" style={portalStyle({ color: 'rgba(250,250,249,0.24)' })} />
             {suzgecAktif ? (
               <>
-                <p className="text-[14px] font-semibold" style={{ color: 'rgba(250,250,249,0.78)' }}>Süzgeçle eşleşen kayıt yok</p>
-                <button type="button" onClick={clearFilters} className="mt-3 text-[12.5px] font-semibold" style={{ color: GOLD }}>
+                <p className="text-[14px] font-semibold" style={portalStyle({ color: 'rgba(250,250,249,0.78)' })}>Süzgeçle eşleşen kayıt yok</p>
+                <button type="button" onClick={clearFilters} className="mt-3 text-[12.5px] font-semibold" style={portalStyle({ color: GOLD })}>
                   Süzgeçleri temizle
                 </button>
               </>
             ) : (
               <>
-                <p className="text-[14px] font-semibold" style={{ color: 'rgba(250,250,249,0.78)' }}>Henüz indirilmiş beyanname yok</p>
-                <p className="mt-1.5 text-[12.5px]" style={{ color: 'rgba(250,250,249,0.5)' }}>
-                  Üstteki <b style={{ color: GOLD }}>Beyannameleri Çek</b> ile mali müşavir şifresiyle e-Beyanname sisteminden indirin.
+                <p className="text-[14px] font-semibold" style={portalStyle({ color: 'rgba(250,250,249,0.78)' })}>Henüz indirilmiş beyanname yok</p>
+                <p className="mt-1.5 text-[12.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
+                  Üstteki <b style={portalStyle({ color: GOLD })}>Beyannameleri Çek</b> ile mali müşavir şifresiyle e-Beyanname sisteminden indirin.
                 </p>
               </>
             )}
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-[13px]" style={{ tableLayout: 'fixed', minWidth: 920 }}>
+            <table className="w-full text-[13px]" style={portalStyle({ tableLayout: 'fixed', minWidth: 920 })}>
               <colgroup>
-                <col style={{ width: 40 }} />
+                <col style={portalStyle({ width: 40 })} />
                 <col />
-                <col style={{ width: 78 }} />
-                <col style={{ width: 108 }} />
-                <col style={{ width: 82 }} />
-                <col style={{ width: 112 }} />
-                <col style={{ width: 84 }} />
-                <col style={{ width: 84 }} />
-                <col style={{ width: 104 }} />
+                <col style={portalStyle({ width: 78 })} />
+                <col style={portalStyle({ width: 108 })} />
+                <col style={portalStyle({ width: 82 })} />
+                <col style={portalStyle({ width: 112 })} />
+                <col style={portalStyle({ width: 84 })} />
+                <col style={portalStyle({ width: 84 })} />
+                <col style={portalStyle({ width: 104 })} />
               </colgroup>
-              <thead style={{ background: 'rgba(255,255,255,0.025)' }}>
-                <tr className="text-left uppercase tracking-[.12em] text-[10.5px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
+              <thead style={portalStyle({ background: 'rgba(255,255,255,0.025)' })}>
+                <tr className="text-left uppercase tracking-[.12em] text-[10.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                   <th className="w-[42px] px-3 py-3">
                     <input
                       type="checkbox"
@@ -792,7 +794,7 @@ function BeyannamelerIcerik() {
                   <th className="px-3 py-3 text-right">Eylemler</th>
                 </tr>
               </thead>
-              <tbody style={{ opacity: isFetching && !isLoading ? 0.7 : 1, transition: 'opacity .15s' }}>
+              <tbody style={portalStyle({ opacity: isFetching && !isLoading ? 0.7 : 1, transition: 'opacity .15s' })}>
                 {rows.map((row) => (
                   <BeyanSatiri
                     key={row.id}
@@ -839,18 +841,18 @@ function BeyannamelerIcerik() {
       {previewPortalReady && pdfPreview && createPortal((
         <div
           className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4"
-          style={{ background: 'rgba(0,0,0,0.72)' }}
+          style={portalStyle({ background: 'rgba(0,0,0,0.72)' })}
           onClick={closePdfPreview}
         >
           <div
             className="flex h-[min(92vh,900px)] w-full max-w-[1180px] flex-col overflow-hidden rounded-[10px]"
-            style={{ background: '#12100d', border: '1px solid rgba(255,255,255,0.12)' }}
+            style={portalStyle({ background: '#12100d', border: '1px solid rgba(255,255,255,0.12)' })}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between gap-3 px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+            <div className="flex items-center justify-between gap-3 px-4 py-3" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.08)' })}>
               <div className="min-w-0">
-                <div className="truncate text-[14px] font-semibold" style={{ color: '#fafaf9' }}>{pdfPreview.title}</div>
-                <div className="mt-0.5 truncate text-[11.5px]" style={{ color: 'rgba(250,250,249,0.48)' }}>{pdfPreview.subtitle}</div>
+                <div className="truncate text-[14px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>{pdfPreview.title}</div>
+                <div className="mt-0.5 truncate text-[11.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.48)' })}>{pdfPreview.subtitle}</div>
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <a
@@ -858,7 +860,7 @@ function BeyannamelerIcerik() {
                   download={dosyaAdiTemizle(`${pdfPreview.title}.pdf`)}
                   className="inline-flex h-9 w-9 items-center justify-center rounded-[9px]"
                   title="PDF indir"
-                  style={{ background: 'rgba(56,189,248,0.12)', border: '1px solid rgba(56,189,248,0.24)', color: '#bae6fd' }}
+                  style={portalStyle({ background: 'rgba(56,189,248,0.12)', border: '1px solid rgba(56,189,248,0.24)', color: '#bae6fd' })}
                 >
                   <Download size={15} />
                 </a>
@@ -870,7 +872,7 @@ function BeyannamelerIcerik() {
                   }}
                   className="inline-flex h-9 w-9 items-center justify-center rounded-[9px]"
                   title="Yazdır"
-                  style={{ background: 'rgba(255,255,255,0.045)', border: '1px solid rgba(255,255,255,0.09)', color: 'rgba(250,250,249,0.72)' }}
+                  style={portalStyle({ background: 'rgba(255,255,255,0.045)', border: '1px solid rgba(255,255,255,0.09)', color: 'rgba(250,250,249,0.72)' })}
                 >
                   <Printer size={15} />
                 </button>
@@ -879,7 +881,7 @@ function BeyannamelerIcerik() {
                   onClick={closePdfPreview}
                   className="inline-flex h-9 w-9 items-center justify-center rounded-[9px]"
                   title="Kapat"
-                  style={{ background: 'rgba(244,63,94,0.10)', border: '1px solid rgba(244,63,94,0.24)', color: '#fda4af' }}
+                  style={portalStyle({ background: 'rgba(244,63,94,0.10)', border: '1px solid rgba(244,63,94,0.24)', color: '#fda4af' })}
                 >
                   <IconX size={16} />
                 </button>
@@ -908,7 +910,7 @@ function ToolbarButton({ icon: Icon, label, onClick, disabled, tone }: { icon: a
       onClick={onClick}
       disabled={disabled}
       className="inline-flex h-8 items-center gap-1.5 rounded-[8px] px-2.5 text-[12px] font-semibold disabled:cursor-not-allowed disabled:opacity-40"
-      style={{ background: c.background, border: `1px solid ${c.border}`, color: c.color }}
+      style={portalStyle({ background: c.background, border: `1px solid ${c.border}`, color: c.color })}
     >
       <Icon size={13} strokeWidth={2.2} /> {label}
     </button>
@@ -931,23 +933,23 @@ function ConsoleJob({ job, onCancel, cancelPending }: { job?: PortalJob; onCance
     : noRecords ? 'Bu aralıkta indirilecek kayıt yok'
     : `${Number(job.recordCount || 0).toLocaleString('tr-TR')} işlem · ${fmtDateTime(job.createdAt)}`;
   return (
-    <div className="my-1 flex items-center gap-3 rounded-[13px] px-3 py-2" style={{ background: 'rgba(76,198,245,0.06)', border: '1px solid rgba(76,198,245,0.18)', minWidth: 230 }}>
-      <div className="grid flex-none place-items-center" style={{ width: 34, height: 34, borderRadius: '50%', background: `conic-gradient(${active ? '#4cc6f5' : '#4ade80'} 0 ${pct}%, rgba(255,255,255,0.08) ${pct}% 100%)` }}>
-        <span className="grid place-items-center" style={{ width: 26, height: 26, borderRadius: '50%', background: '#0c1117', fontSize: 9.5, fontWeight: 800, color: active ? '#bfe9ff' : '#86efac' }}>
+    <div className="my-1 flex items-center gap-3 rounded-[13px] px-3 py-2" style={portalStyle({ background: 'rgba(76,198,245,0.06)', border: '1px solid rgba(76,198,245,0.18)', minWidth: 230 })}>
+      <div className="grid flex-none place-items-center" style={portalStyle({ width: 34, height: 34, borderRadius: '50%', background: `conic-gradient(${active ? '#4cc6f5' : '#4ade80'} 0 ${pct}%, rgba(255,255,255,0.08) ${pct}% 100%)` })}>
+        <span className="grid place-items-center" style={portalStyle({ width: 26, height: 26, borderRadius: '50%', background: '#0c1117', fontSize: 9.5, fontWeight: 800, color: active ? '#bfe9ff' : '#86efac' })}>
           {active ? `%${Math.round(pct)}` : (noRecords ? '0' : '✓')}
         </span>
       </div>
       <div className="min-w-0">
         <div className="flex items-center gap-2">
-          <b className="text-[12.5px]" style={{ color: '#f3f5f7' }}>Son iş</b>
-          <span className="rounded-[6px] px-[7px] py-[2px] text-[9.5px] font-extrabold tracking-[0.06em]" style={{ background: status.bg, color: status.color }}>{status.label}</span>
+          <b className="text-[12.5px]" style={portalStyle({ color: '#f3f5f7' })}>Son iş</b>
+          <span className="rounded-[6px] px-[7px] py-[2px] text-[9.5px] font-extrabold tracking-[0.06em]" style={portalStyle({ background: status.bg, color: status.color })}>{status.label}</span>
           {onCancel && (
-            <button type="button" onClick={onCancel} disabled={cancelPending} className="inline-flex h-6 items-center gap-1 rounded-[6px] px-1.5 text-[10px] font-bold disabled:opacity-50" style={{ background: 'rgba(248,113,113,0.12)', border: '1px solid rgba(248,113,113,0.28)', color: '#fca5a5' }}>
+            <button type="button" onClick={onCancel} disabled={cancelPending} className="inline-flex h-6 items-center gap-1 rounded-[6px] px-1.5 text-[10px] font-bold disabled:opacity-50" style={portalStyle({ background: 'rgba(248,113,113,0.12)', border: '1px solid rgba(248,113,113,0.28)', color: '#fca5a5' })}>
               {cancelPending ? <Loader2 size={10} className="animate-spin" /> : <IconX size={10} />} İptal
             </button>
           )}
         </div>
-        <div className="truncate text-[11px]" style={{ color: 'rgba(243,245,247,0.42)', maxWidth: 300 }}>
+        <div className="truncate text-[11px]" style={portalStyle({ color: 'rgba(243,245,247,0.42)', maxWidth: 300 })}>
           {sub}{active && progress.current != null && progress.total != null ? ` · ${progress.current}/${progress.total}` : ''}
         </div>
       </div>
@@ -1005,10 +1007,10 @@ function SelectBox({ icon: Icon, etiket, value, onChange, children }: { icon?: a
         type="button"
         onClick={() => setOpen((v) => !v)}
         className={`w-full h-10 ${Icon ? 'pl-9' : 'pl-3'} pr-8 rounded-xl text-[13px] font-semibold outline-none text-left flex items-center transition`}
-        style={{ background: 'rgba(255,255,255,0.05)', border: `1px solid ${aktifSecim ? 'rgba(212,184,118,0.45)' : 'rgba(255,255,255,0.12)'}`, color: aktifSecim ? '#d4b876' : '#fafaf9' }}
+        style={portalStyle({ background: 'rgba(255,255,255,0.05)', border: `1px solid ${aktifSecim ? 'rgba(212,184,118,0.45)' : 'rgba(255,255,255,0.12)'}`, color: aktifSecim ? '#d4b876' : '#fafaf9' })}
       >
-        {Icon && <Icon size={14} className="absolute left-3 pointer-events-none" style={{ color: aktifSecim ? '#d4b876' : 'rgba(250,250,249,0.4)' }} />}
-        {etiket && <span className="mr-1.5 shrink-0 font-semibold" style={{ color: 'rgba(250,250,249,0.45)' }}>{etiket}:</span>}
+        {Icon && <Icon size={14} className="absolute left-3 pointer-events-none" style={portalStyle({ color: aktifSecim ? '#d4b876' : 'rgba(250,250,249,0.4)' })} />}
+        {etiket && <span className="mr-1.5 shrink-0 font-semibold" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>{etiket}:</span>}
         <span className="truncate">{currentLabel}</span>
         <svg className="absolute right-2.5 pointer-events-none" width="12" height="12" viewBox="0 0 12 12" fill="none">
           <path d="M3 4.5L6 7.5L9 4.5" stroke="#d4b876" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
@@ -1017,7 +1019,7 @@ function SelectBox({ icon: Icon, etiket, value, onChange, children }: { icon?: a
       {open && (
         <div
           className="absolute mt-1.5 max-h-[320px] overflow-y-auto rounded-xl py-1"
-          style={{
+          style={portalStyle({
             top: '100%',
             left: 0,
             right: 0,
@@ -1025,10 +1027,10 @@ function SelectBox({ icon: Icon, etiket, value, onChange, children }: { icon?: a
             background: '#121110',
             border: '1px solid rgba(255,255,255,0.10)',
             boxShadow: '0 18px 44px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.04)',
-          }}
+          })}
         >
           {items.length === 0 ? (
-            <div className="px-3 py-2 text-[12px]" style={{ color: 'rgba(250,250,249,0.45)' }}>Liste boş</div>
+            <div className="px-3 py-2 text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>Liste boş</div>
           ) : (
             items.map((it) => {
               const active = it.value === value;
@@ -1038,16 +1040,16 @@ function SelectBox({ icon: Icon, etiket, value, onChange, children }: { icon?: a
                   type="button"
                   onClick={() => { onChange(it.value); setOpen(false); }}
                   className="w-full text-left px-3 py-[7px] text-[12.5px] flex items-center justify-between transition"
-                  style={{
+                  style={portalStyle({
                     background: active ? 'rgba(212,184,118,0.10)' : 'transparent',
                     color: active ? '#d4b876' : 'rgba(250,250,249,0.85)',
                     fontWeight: active ? 600 : 500,
-                  }}
-                  onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
-                  onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = 'transparent'; }}
+                  })}
+                  onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = portalPaint('rgba(255,255,255,0.04)', 'background'); }}
+                  onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = portalPaint('transparent', 'background'); }}
                 >
                   <span className="truncate">{it.label}</span>
-                  {active && <span style={{ color: '#d4b876' }}>✓</span>}
+                  {active && <span style={portalStyle({ color: '#d4b876' })}>✓</span>}
                 </button>
               );
             })
@@ -1105,14 +1107,14 @@ function LegacyBeyannamelerPage() {
   return (
     <div className="space-y-5 max-w-7xl">
       {/* HEADER */}
-      <div className="flex items-end justify-between pb-5 flex-wrap gap-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+      <div className="flex items-end justify-between pb-5 flex-wrap gap-3" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.05)' })}>
         <div>
           <div className="flex items-center gap-2.5 mb-2">
-            <span className="w-[26px] h-px" style={{ background: GOLD }} />
-            <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>Belgeler</span>
+            <span className="w-[26px] h-px" style={portalStyle({ background: GOLD })} />
+            <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={portalStyle({ color: '#b8a06f' })}>Belgeler</span>
           </div>
-          <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 36, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em' }}>Beyannameler</h1>
-          <p className="text-[13px] mt-1.5" style={{ color: 'rgba(250,250,249,0.42)' }}>
+          <h1 style={portalStyle({ fontFamily: 'Fraunces, serif', fontSize: 36, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em' })}>Beyannameler</h1>
+          <p className="text-[13px] mt-1.5" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>
             Hattat'tan veya başka kaynaktan PDF klasörünü yükle, her beyanname otomatik parse edilip arşivlenir.
           </p>
         </div>
@@ -1121,7 +1123,7 @@ function LegacyBeyannamelerPage() {
             type="button"
             onClick={() => setImportModal(true)}
             className="inline-flex items-center gap-1.5 px-5 py-2.5 text-[13px] font-bold rounded-[10px] transition-all"
-            style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}
+            style={portalStyle({ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' })}
           >
             <FolderUp size={15} /> PDF Klasörü Aktar
           </button>
@@ -1143,14 +1145,14 @@ function LegacyBeyannamelerPage() {
       {/* ARAMA + FİLTRELER */}
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative flex-1 min-w-[260px] max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: 'rgba(250,250,249,0.4)' }} />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })} />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Mükellef, VKN, onay no, dönem ara..."
             className="w-full pl-10 pr-3 py-2.5 text-[13px] rounded-[10px] outline-none"
-            style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
+            style={portalStyle({ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' })}
           />
         </div>
         <div className="flex gap-1 flex-wrap">
@@ -1162,11 +1164,11 @@ function LegacyBeyannamelerPage() {
                 key={f.key}
                 onClick={() => setFilter(f.key)}
                 className="text-[11.5px] font-medium px-3 py-1.5 rounded-md transition-all"
-                style={{
+                style={portalStyle({
                   background: active ? 'rgba(212,184,118,0.16)' : 'rgba(255,255,255,0.03)',
                   border: `1px solid ${active ? 'rgba(212,184,118,0.4)' : 'rgba(255,255,255,0.08)'}`,
                   color: active ? GOLD : 'rgba(250,250,249,0.65)',
-                }}
+                })}
               >
                 {f.label} {count > 0 && <span className="opacity-60 ml-0.5">({count})</span>}
               </button>
@@ -1179,16 +1181,16 @@ function LegacyBeyannamelerPage() {
       {isLoading && <div className="text-stone-500 text-sm">Yükleniyor...</div>}
 
       {!isLoading && filtered.length === 0 && (
-        <div className="rounded-xl p-16 text-center" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
-          <FileText className="w-12 h-12 mx-auto mb-4" style={{ color: 'rgba(250,250,249,0.2)' }} />
-          <p className="text-[14px]" style={{ color: 'rgba(250,250,249,0.55)' }}>
+        <div className="rounded-xl p-16 text-center" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' })}>
+          <FileText className="w-12 h-12 mx-auto mb-4" style={portalStyle({ color: 'rgba(250,250,249,0.2)' })} />
+          <p className="text-[14px]" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>
             {search || filter !== 'all' ? 'Filtreye uyan kayıt yok.' : 'Henüz beyanname kaydedilmemiş.'}
           </p>
           {kayitlar.length === 0 && (
             <button
               onClick={() => setImportModal(true)}
               className="mt-4 text-[13px] font-semibold"
-              style={{ color: GOLD }}
+              style={portalStyle({ color: GOLD })}
             >
               + Hattat'tan PDF klasörü yükle
             </button>
@@ -1197,10 +1199,10 @@ function LegacyBeyannamelerPage() {
       )}
 
       {filtered.length > 0 && (
-        <div className="rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
-          <table className="w-full text-[13px]" style={{ color: 'rgba(250,250,249,0.85)' }}>
-            <thead style={{ background: 'rgba(184,160,111,0.08)' }}>
-              <tr className="text-left text-[10.5px] uppercase tracking-wider font-semibold" style={{ color: 'rgba(250,250,249,0.55)' }}>
+        <div className="rounded-xl overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' })}>
+          <table className="w-full text-[13px]" style={portalStyle({ color: 'rgba(250,250,249,0.85)' })}>
+            <thead style={portalStyle({ background: 'rgba(184,160,111,0.08)' })}>
+              <tr className="text-left text-[10.5px] uppercase tracking-wider font-semibold" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>
                 <th className="px-4 py-3">Mükellef</th>
                 <th className="px-4 py-3">Tip</th>
                 <th className="px-4 py-3">Dönem</th>
@@ -1211,22 +1213,22 @@ function LegacyBeyannamelerPage() {
             </thead>
             <tbody>
               {filtered.map((k) => (
-                <tr key={k.id} className="group" style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+                <tr key={k.id} className="group" style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.04)' })}>
                   <td className="px-4 py-2.5">
-                    <div className="font-medium truncate max-w-[260px]" style={{ color: '#fafaf9' }}>
+                    <div className="font-medium truncate max-w-[260px]" style={portalStyle({ color: '#fafaf9' })}>
                       {beyanKaydiMukellefAdi(k)}
                     </div>
-                    <div className="text-[11px] font-mono" style={{ color: 'rgba(250,250,249,0.4)' }}>
+                    <div className="text-[11px] font-mono" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>
                       {k.taxpayer?.taxNumber}
                     </div>
                   </td>
                   <td className="px-4 py-2.5">
-                    <span className="text-[11px] font-semibold px-2 py-[3px] rounded-md" style={{ background: 'rgba(212,184,118,0.12)', color: GOLD, border: '1px solid rgba(212,184,118,0.25)' }}>
+                    <span className="text-[11px] font-semibold px-2 py-[3px] rounded-md" style={portalStyle({ background: 'rgba(212,184,118,0.12)', color: GOLD, border: '1px solid rgba(212,184,118,0.25)' })}>
                       {declarationTypeLabel(k)}
                     </span>
                   </td>
                   <td className="px-4 py-2.5 text-[12.5px]">{fmtDonem(k.donem)}</td>
-                  <td className="px-4 py-2.5 text-[12px] font-mono" style={{ color: 'rgba(250,250,249,0.55)' }}>
+                  <td className="px-4 py-2.5 text-[12px] font-mono" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>
                     {k.onayNo || '—'}
                   </td>
                   <td className="px-4 py-2.5">
@@ -1237,12 +1239,12 @@ function LegacyBeyannamelerPage() {
                           target="_blank"
                           rel="noopener"
                           className="inline-flex items-center gap-1 px-2 py-[3px] rounded-md"
-                          style={{ background: 'rgba(34,197,94,0.1)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.25)' }}
+                          style={portalStyle({ background: 'rgba(34,197,94,0.1)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.25)' })}
                         >
                           <FileText size={11} /> Beyanname
                         </a>
                       ) : (
-                        <span className="text-[10.5px] italic" style={{ color: 'rgba(250,250,249,0.35)' }}>—</span>
+                        <span className="text-[10.5px] italic" style={portalStyle({ color: 'rgba(250,250,249,0.35)' })}>—</span>
                       )}
                       {k.pdfUrl && (
                         <a
@@ -1250,7 +1252,7 @@ function LegacyBeyannamelerPage() {
                           target="_blank"
                           rel="noopener"
                           className="inline-flex items-center gap-1 px-2 py-[3px] rounded-md"
-                          style={{ background: 'rgba(212,184,118,0.1)', color: GOLD, border: '1px solid rgba(212,184,118,0.25)' }}
+                          style={portalStyle({ background: 'rgba(212,184,118,0.1)', color: GOLD, border: '1px solid rgba(212,184,118,0.25)' })}
                         >
                           <FileText size={11} /> Tahakkuk
                         </a>
@@ -1266,7 +1268,7 @@ function LegacyBeyannamelerPage() {
                           }
                         }}
                         className="p-1.5 rounded-md hover:bg-rose-500/10"
-                        style={{ color: 'rgba(244,63,94,0.7)' }}
+                        style={portalStyle({ color: 'rgba(244,63,94,0.7)' })}
                         title="Sil"
                       >
                         <Trash2 size={14} />
@@ -1296,13 +1298,13 @@ function LegacyBeyannamelerPage() {
 // ════════════════════════════════════════════════════════════
 function OzetCard({ label, value, icon: Icon }: { label: string; value: number | string; icon: any }) {
   return (
-    <div className="rounded-xl p-4 flex items-center gap-3" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
-      <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(212,184,118,0.1)', border: '1px solid rgba(212,184,118,0.25)', color: GOLD }}>
+    <div className="rounded-xl p-4 flex items-center gap-3" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' })}>
+      <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={portalStyle({ background: 'rgba(212,184,118,0.1)', border: '1px solid rgba(212,184,118,0.25)', color: GOLD })}>
         <Icon size={18} />
       </div>
       <div className="min-w-0 flex-1">
-        <div className="text-[10.5px] uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.5)' }}>{label}</div>
-        <div className="text-[18px] font-semibold tabular-nums mt-0.5" style={{ color: '#fafaf9', fontFamily: 'JetBrains Mono, monospace' }}>{value}</div>
+        <div className="text-[10.5px] uppercase tracking-wider" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>{label}</div>
+        <div className="text-[18px] font-semibold tabular-nums mt-0.5" style={portalStyle({ color: '#fafaf9', fontFamily: 'JetBrains Mono, monospace' })}>{value}</div>
       </div>
     </div>
   );
@@ -1380,22 +1382,22 @@ function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }}
+      style={portalStyle({ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' })}
       onClick={uploading ? undefined : onClose}
     >
       <div
         onClick={(e) => e.stopPropagation()}
         className="w-full max-w-2xl rounded-2xl flex flex-col overflow-hidden"
-        style={{ background: '#11100c', border: '1px solid rgba(184,160,111,0.3)', maxHeight: '85vh' }}
+        style={portalStyle({ background: '#11100c', border: '1px solid rgba(184,160,111,0.3)', maxHeight: '85vh' })}
       >
-        <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        <div className="px-5 py-4 flex items-center justify-between" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.06)' })}>
           <div>
-            <h3 style={{ fontFamily: 'Fraunces, serif', fontSize: 20, fontWeight: 600, color: '#fafaf9' }}>PDF Klasörü Aktar</h3>
-            <p className="text-[12px] mt-0.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
+            <h3 style={portalStyle({ fontFamily: 'Fraunces, serif', fontSize: 20, fontWeight: 600, color: '#fafaf9' })}>PDF Klasörü Aktar</h3>
+            <p className="text-[12px] mt-0.5" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
               Hattat'tan indirdiğin tahakkuk fişi PDF'lerini toplu yükle. AI her dosyayı okuyup arşive kaydeder.
             </p>
           </div>
-          <button onClick={onClose} disabled={uploading} className="p-1.5 rounded-md hover:bg-white/5 disabled:opacity-40" style={{ color: 'rgba(250,250,249,0.5)' }}>
+          <button onClick={onClose} disabled={uploading} className="p-1.5 rounded-md hover:bg-white/5 disabled:opacity-40" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
             <IconX size={18} />
           </button>
         </div>
@@ -1404,15 +1406,15 @@ function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
           {!results && (
             <>
               {/* Mod sekmeleri — ZIP vs PDF */}
-              <div className="flex rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.08)' }}>
+              <div className="flex rounded-xl overflow-hidden" style={portalStyle({ border: '1px solid rgba(255,255,255,0.08)' })}>
                 <button
                   type="button"
                   onClick={() => setMode('zip')}
                   className="flex-1 py-3 text-[13px] font-semibold transition inline-flex items-center justify-center gap-2"
-                  style={{
+                  style={portalStyle({
                     background: mode === 'zip' ? 'rgba(212,184,118,0.14)' : 'transparent',
                     color: mode === 'zip' ? GOLD : 'rgba(250,250,249,0.55)',
-                  }}
+                  })}
                 >
                   <Archive size={15} /> Hattat ZIP (Önerilen)
                 </button>
@@ -1420,11 +1422,11 @@ function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
                   type="button"
                   onClick={() => setMode('pdf')}
                   className="flex-1 py-3 text-[13px] font-semibold transition inline-flex items-center justify-center gap-2"
-                  style={{
+                  style={portalStyle({
                     background: mode === 'pdf' ? 'rgba(212,184,118,0.14)' : 'transparent',
                     color: mode === 'pdf' ? GOLD : 'rgba(250,250,249,0.55)',
                     borderLeft: '1px solid rgba(255,255,255,0.08)',
-                  }}
+                  })}
                 >
                   <Sparkles size={15} /> PDF/Klasor (Hizli)
                 </button>
@@ -1432,13 +1434,13 @@ function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
 
               {/* Açıklama */}
               {mode === 'zip' && (
-                <div className="text-[12px] rounded-lg px-3 py-2.5" style={{ background: 'rgba(212,184,118,0.06)', border: '1px solid rgba(212,184,118,0.2)', color: 'rgba(250,250,249,0.75)' }}>
-                  <strong style={{ color: GOLD }}>Hattat ZIP modu</strong> — Hattat'tan dönem bazlı indirdiğin ZIP dosyasını olduğu gibi yükle. Klasör yapısı ve dosya adlarından otomatik parse edilir. AI'a gerek yok, hızlı + doğru.
+                <div className="text-[12px] rounded-lg px-3 py-2.5" style={portalStyle({ background: 'rgba(212,184,118,0.06)', border: '1px solid rgba(212,184,118,0.2)', color: 'rgba(250,250,249,0.75)' })}>
+                  <strong style={portalStyle({ color: GOLD })}>Hattat ZIP modu</strong> — Hattat'tan dönem bazlı indirdiğin ZIP dosyasını olduğu gibi yükle. Klasör yapısı ve dosya adlarından otomatik parse edilir. AI'a gerek yok, hızlı + doğru.
                 </div>
               )}
               {mode === 'pdf' && (
-                <div className="text-[12px] rounded-lg px-3 py-2.5" style={{ background: 'rgba(212,184,118,0.06)', border: '1px solid rgba(212,184,118,0.2)', color: 'rgba(250,250,249,0.75)' }}>
-                  <strong style={{ color: GOLD }}>PDF modu</strong> — Tek tek PDF seçersin, Claude AI her birini okuyup parse eder. ZIP modu varsa ONU kullan — çok daha hızlı.
+                <div className="text-[12px] rounded-lg px-3 py-2.5" style={portalStyle({ background: 'rgba(212,184,118,0.06)', border: '1px solid rgba(212,184,118,0.2)', color: 'rgba(250,250,249,0.75)' })}>
+                  <strong style={portalStyle({ color: GOLD })}>PDF modu</strong> — Tek tek PDF seçersin, Claude AI her birini okuyup parse eder. ZIP modu varsa ONU kullan — çok daha hızlı.
                 </div>
               )}
 
@@ -1454,31 +1456,31 @@ function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
                     }}
                     onClick={() => zipRef.current?.click()}
                     className="rounded-xl p-8 text-center cursor-pointer transition-all"
-                    style={{
+                    style={portalStyle({
                       background: zipFile ? 'rgba(34,197,94,0.06)' : 'rgba(212,184,118,0.04)',
                       border: `2px dashed ${zipFile ? 'rgba(34,197,94,0.4)' : 'rgba(212,184,118,0.35)'}`,
-                    }}
+                    })}
                   >
-                    <Archive className="w-12 h-12 mx-auto mb-3" style={{ color: zipFile ? '#22c55e' : GOLD }} />
+                    <Archive className="w-12 h-12 mx-auto mb-3" style={portalStyle({ color: zipFile ? '#22c55e' : GOLD })} />
                     {zipFile ? (
                       <>
-                        <p className="text-[14px] font-semibold" style={{ color: '#fafaf9' }}>{zipFile.name}</p>
-                        <p className="text-[12px] mt-1 tabular-nums" style={{ color: 'rgba(250,250,249,0.6)' }}>
+                        <p className="text-[14px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>{zipFile.name}</p>
+                        <p className="text-[12px] mt-1 tabular-nums" style={portalStyle({ color: 'rgba(250,250,249,0.6)' })}>
                           {(zipFile.size / 1024 / 1024).toFixed(1)} MB · Yüklemeye hazır
                         </p>
                         <button
                           type="button"
                           onClick={(e) => { e.stopPropagation(); setZipFile(null); }}
                           className="text-[11px] mt-2"
-                          style={{ color: '#f43f5e' }}
+                          style={portalStyle({ color: '#f43f5e' })}
                         >
                           Kaldır
                         </button>
                       </>
                     ) : (
                       <>
-                        <p className="text-[14px] font-semibold" style={{ color: '#fafaf9' }}>Hattat ZIP dosyasını buraya bırak</p>
-                        <p className="text-[12px] mt-1" style={{ color: 'rgba(250,250,249,0.5)' }}>
+                        <p className="text-[14px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>Hattat ZIP dosyasını buraya bırak</p>
+                        <p className="text-[12px] mt-1" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
                           Örn. "2025 1. DÖNEM.zip" · Max 500 MB
                         </p>
                       </>
@@ -1503,17 +1505,17 @@ function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
                 onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
                 onDrop={(e) => { e.preventDefault(); e.stopPropagation(); addFiles(e.dataTransfer.files); }}
                 className="rounded-xl p-8 text-center cursor-pointer transition-all"
-                style={{
+                style={portalStyle({
                   background: 'rgba(212,184,118,0.04)',
                   border: '2px dashed rgba(212,184,118,0.35)',
-                }}
+                })}
                 onClick={() => inputRef.current?.click()}
               >
-                <FolderUp className="w-12 h-12 mx-auto mb-3" style={{ color: GOLD }} />
-                <p className="text-[14px] font-semibold" style={{ color: '#fafaf9' }}>
+                <FolderUp className="w-12 h-12 mx-auto mb-3" style={portalStyle({ color: GOLD })} />
+                <p className="text-[14px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>
                   PDF dosyaları buraya sürükle
                 </p>
-                <p className="text-[12px] mt-1" style={{ color: 'rgba(250,250,249,0.5)' }}>
+                <p className="text-[12px] mt-1" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
                   veya aşağıdaki butonlardan seç — tek dosya veya tüm klasör
                 </p>
                 <div className="flex items-center justify-center gap-2 mt-4">
@@ -1521,7 +1523,7 @@ function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
                     type="button"
                     onClick={(e) => { e.stopPropagation(); inputRef.current?.click(); }}
                     className="inline-flex items-center gap-1.5 text-[12px] font-medium px-3 py-1.5 rounded-md"
-                    style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(250,250,249,0.85)' }}
+                    style={portalStyle({ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(250,250,249,0.85)' })}
                   >
                     <Upload size={13} /> Dosya Seç
                   </button>
@@ -1529,7 +1531,7 @@ function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
                     type="button"
                     onClick={(e) => { e.stopPropagation(); folderRef.current?.click(); }}
                     className="inline-flex items-center gap-1.5 text-[12px] font-medium px-3 py-1.5 rounded-md"
-                    style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(250,250,249,0.85)' }}
+                    style={portalStyle({ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(250,250,249,0.85)' })}
                   >
                     <FolderUp size={13} /> Klasör Seç
                   </button>
@@ -1550,22 +1552,22 @@ function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
 
               {/* Dosya listesi */}
               {files.length > 0 && (
-                <div className="rounded-xl" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                  <div className="px-4 py-2.5 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                    <span className="text-[12.5px] font-semibold" style={{ color: '#fafaf9' }}>
+                <div className="rounded-xl" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' })}>
+                  <div className="px-4 py-2.5 flex items-center justify-between" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.04)' })}>
+                    <span className="text-[12.5px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>
                       {files.length} PDF dosyası hazır
                     </span>
-                    <button onClick={() => setFiles([])} className="text-[11px]" style={{ color: '#f43f5e' }}>Temizle</button>
+                    <button onClick={() => setFiles([])} className="text-[11px]" style={portalStyle({ color: '#f43f5e' })}>Temizle</button>
                   </div>
-                  <ul className="max-h-[200px] overflow-y-auto divide-y" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
+                  <ul className="max-h-[200px] overflow-y-auto divide-y" style={portalStyle({ borderColor: 'rgba(255,255,255,0.04)' })}>
                     {files.slice(0, 50).map((f, i) => (
-                      <li key={i} className="px-4 py-1.5 flex items-center justify-between text-[12px]" style={{ color: 'rgba(250,250,249,0.7)' }}>
+                      <li key={i} className="px-4 py-1.5 flex items-center justify-between text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.7)' })}>
                         <span className="truncate flex-1">{((f as any).webkitRelativePath || f.name) as string}</span>
-                        <span className="text-[10.5px] font-mono ml-3" style={{ color: 'rgba(250,250,249,0.4)' }}>{(f.size / 1024).toFixed(0)} KB</span>
+                        <span className="text-[10.5px] font-mono ml-3" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>{(f.size / 1024).toFixed(0)} KB</span>
                       </li>
                     ))}
                     {files.length > 50 && (
-                      <li className="px-4 py-1.5 text-center text-[11px] italic" style={{ color: 'rgba(250,250,249,0.4)' }}>
+                      <li className="px-4 py-1.5 text-center text-[11px] italic" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>
                         ... ve {files.length - 50} dosya daha
                       </li>
                     )}
@@ -1578,17 +1580,17 @@ function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
 
           {/* Upload progress */}
           {uploading && (
-            <div className="rounded-xl p-4" style={{ background: 'rgba(212,184,118,0.06)', border: '1px solid rgba(212,184,118,0.25)' }}>
+            <div className="rounded-xl p-4" style={portalStyle({ background: 'rgba(212,184,118,0.06)', border: '1px solid rgba(212,184,118,0.25)' })}>
               <div className="flex items-center gap-3 mb-3">
-                <Loader2 className="animate-spin" size={16} style={{ color: GOLD }} />
-                <span className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>
+                <Loader2 className="animate-spin" size={16} style={portalStyle({ color: GOLD })} />
+                <span className="text-[13px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>
                   {progress < 100 ? `Yükleniyor: %${progress}` : 'AI dosyaları parse ediyor...'}
                 </span>
               </div>
-              <div className="h-2 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
-                <div className="h-full transition-all" style={{ width: `${progress}%`, background: `linear-gradient(90deg, ${GOLD}aa, ${GOLD})` }} />
+              <div className="h-2 rounded-full overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.06)' })}>
+                <div className="h-full transition-all" style={portalStyle({ width: `${progress}%`, background: `linear-gradient(90deg, ${GOLD}aa, ${GOLD})` })} />
               </div>
-              <p className="text-[11px] mt-2" style={{ color: 'rgba(250,250,249,0.5)' }}>
+              <p className="text-[11px] mt-2" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
                 {progress < 100
                   ? 'Dosyalar sunucuya gönderiliyor...'
                   : 'Her PDF Claude AI ile okunuyor, VKN/tip/dönem/tutar çıkarılıyor. Dosya başına ~3-5 saniye sürer.'}
@@ -1599,48 +1601,48 @@ function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
           {/* ZIP özet kartları (zip modunda) */}
           {zipOzet && (
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-[11.5px]">
-              <div className="rounded-lg px-3 py-2" style={{ background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)' }}>
-                <div className="text-[10px] uppercase tracking-wider opacity-70" style={{ color: '#22c55e' }}>Eklendi</div>
-                <div className="text-[18px] font-bold tabular-nums" style={{ color: '#22c55e' }}>{zipOzet.kayitEklendi}</div>
+              <div className="rounded-lg px-3 py-2" style={portalStyle({ background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)' })}>
+                <div className="text-[10px] uppercase tracking-wider opacity-70" style={portalStyle({ color: '#22c55e' })}>Eklendi</div>
+                <div className="text-[18px] font-bold tabular-nums" style={portalStyle({ color: '#22c55e' })}>{zipOzet.kayitEklendi}</div>
               </div>
-              <div className="rounded-lg px-3 py-2" style={{ background: 'rgba(250,250,249,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
-                <div className="text-[10px] uppercase tracking-wider opacity-70" style={{ color: 'rgba(250,250,249,0.7)' }}>Zaten Var</div>
-                <div className="text-[18px] font-bold tabular-nums" style={{ color: 'rgba(250,250,249,0.7)' }}>{zipOzet.mevcut}</div>
+              <div className="rounded-lg px-3 py-2" style={portalStyle({ background: 'rgba(250,250,249,0.03)', border: '1px solid rgba(255,255,255,0.08)' })}>
+                <div className="text-[10px] uppercase tracking-wider opacity-70" style={portalStyle({ color: 'rgba(250,250,249,0.7)' })}>Zaten Var</div>
+                <div className="text-[18px] font-bold tabular-nums" style={portalStyle({ color: 'rgba(250,250,249,0.7)' })}>{zipOzet.mevcut}</div>
               </div>
-              <div className="rounded-lg px-3 py-2" style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.2)' }}>
-                <div className="text-[10px] uppercase tracking-wider opacity-70" style={{ color: '#22c55e' }}>Mükellef Eşleşti</div>
-                <div className="text-[18px] font-bold tabular-nums" style={{ color: '#22c55e' }}>{zipOzet.mukellefBulundu}</div>
+              <div className="rounded-lg px-3 py-2" style={portalStyle({ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.2)' })}>
+                <div className="text-[10px] uppercase tracking-wider opacity-70" style={portalStyle({ color: '#22c55e' })}>Mükellef Eşleşti</div>
+                <div className="text-[18px] font-bold tabular-nums" style={portalStyle({ color: '#22c55e' })}>{zipOzet.mukellefBulundu}</div>
               </div>
-              <div className="rounded-lg px-3 py-2" style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)' }}>
-                <div className="text-[10px] uppercase tracking-wider opacity-70" style={{ color: '#f59e0b' }}>Mükellef Yok</div>
-                <div className="text-[18px] font-bold tabular-nums" style={{ color: '#f59e0b' }}>{zipOzet.mukellefYok}</div>
+              <div className="rounded-lg px-3 py-2" style={portalStyle({ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)' })}>
+                <div className="text-[10px] uppercase tracking-wider opacity-70" style={portalStyle({ color: '#f59e0b' })}>Mükellef Yok</div>
+                <div className="text-[18px] font-bold tabular-nums" style={portalStyle({ color: '#f59e0b' })}>{zipOzet.mukellefYok}</div>
               </div>
-              <div className="rounded-lg px-3 py-2" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)' }}>
-                <div className="text-[10px] uppercase tracking-wider opacity-70" style={{ color: '#ef4444' }}>Parse Hatası</div>
-                <div className="text-[18px] font-bold tabular-nums" style={{ color: '#ef4444' }}>{zipOzet.parseHatasi}</div>
+              <div className="rounded-lg px-3 py-2" style={portalStyle({ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)' })}>
+                <div className="text-[10px] uppercase tracking-wider opacity-70" style={portalStyle({ color: '#ef4444' })}>Parse Hatası</div>
+                <div className="text-[18px] font-bold tabular-nums" style={portalStyle({ color: '#ef4444' })}>{zipOzet.parseHatasi}</div>
               </div>
             </div>
           )}
 
           {/* Eşleşmeyen mükellefler listesi */}
           {eslesmeyenler.length > 0 && (
-            <div className="rounded-xl overflow-hidden" style={{ background: 'rgba(245,158,11,0.04)', border: '1px solid rgba(245,158,11,0.3)' }}>
-              <div className="px-4 py-2.5" style={{ borderBottom: '1px solid rgba(245,158,11,0.2)' }}>
-                <h4 className="text-[13px] font-semibold" style={{ color: '#f59e0b' }}>
+            <div className="rounded-xl overflow-hidden" style={portalStyle({ background: 'rgba(245,158,11,0.04)', border: '1px solid rgba(245,158,11,0.3)' })}>
+              <div className="px-4 py-2.5" style={portalStyle({ borderBottom: '1px solid rgba(245,158,11,0.2)' })}>
+                <h4 className="text-[13px] font-semibold" style={portalStyle({ color: '#f59e0b' })}>
                   ⚠ {eslesmeyenler.length} mükellef portalınızda eşleşmedi
                 </h4>
-                <p className="text-[11px] mt-1" style={{ color: 'rgba(250,250,249,0.55)' }}>
+                <p className="text-[11px] mt-1" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>
                   Bu mükellefleri ya portal'a eklemeniz ya da isim/VKN'sini Hattat'taki ile eşitlemeniz gerek:
                 </p>
               </div>
-              <ul className="max-h-[200px] overflow-y-auto divide-y text-[12px]" style={{ borderColor: 'rgba(245,158,11,0.1)' }}>
+              <ul className="max-h-[200px] overflow-y-auto divide-y text-[12px]" style={portalStyle({ borderColor: 'rgba(245,158,11,0.1)' })}>
                 {eslesmeyenler.map((e, i) => (
                   <li key={i} className="px-4 py-1.5 flex items-center justify-between gap-3">
                     <div className="flex-1 min-w-0">
-                      <div className="font-medium truncate" style={{ color: '#fafaf9' }}>{e.ad}</div>
-                      <div className="text-[10.5px] font-mono" style={{ color: 'rgba(250,250,249,0.4)' }}>Hattat ID: {e.hattatId}</div>
+                      <div className="font-medium truncate" style={portalStyle({ color: '#fafaf9' })}>{e.ad}</div>
+                      <div className="text-[10.5px] font-mono" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>Hattat ID: {e.hattatId}</div>
                     </div>
-                    <span className="text-[10.5px] opacity-60 whitespace-nowrap" style={{ color: 'rgba(250,250,249,0.6)' }}>{e.pdfSayisi} PDF</span>
+                    <span className="text-[10.5px] opacity-60 whitespace-nowrap" style={portalStyle({ color: 'rgba(250,250,249,0.6)' })}>{e.pdfSayisi} PDF</span>
                   </li>
                 ))}
               </ul>
@@ -1649,37 +1651,37 @@ function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
 
           {/* Sonuç listesi */}
           {results && (
-            <div className="rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
-              <div className="px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                <h4 className="text-[13.5px] font-semibold" style={{ color: '#fafaf9' }}>İşlem Sonucu</h4>
+            <div className="rounded-xl overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' })}>
+              <div className="px-4 py-3" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.04)' })}>
+                <h4 className="text-[13.5px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>İşlem Sonucu</h4>
                 <div className="flex items-center gap-4 mt-2 text-[11.5px]">
-                  <span className="flex items-center gap-1.5" style={{ color: '#22c55e' }}>
+                  <span className="flex items-center gap-1.5" style={portalStyle({ color: '#22c55e' })}>
                     <CheckCircle2 size={13} /> {results.filter((r) => r.durum === 'ok').length} eklendi
                   </span>
-                  <span className="flex items-center gap-1.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
+                  <span className="flex items-center gap-1.5" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
                     <FileQuestion size={13} /> {results.filter((r) => r.durum === 'mevcut').length} zaten var
                   </span>
-                  <span className="flex items-center gap-1.5" style={{ color: '#f59e0b' }}>
+                  <span className="flex items-center gap-1.5" style={portalStyle({ color: '#f59e0b' })}>
                     <AlertCircle size={13} /> {results.filter((r) => r.durum === 'mukellef_yok').length} mükellef yok
                   </span>
-                  <span className="flex items-center gap-1.5" style={{ color: '#ef4444' }}>
+                  <span className="flex items-center gap-1.5" style={portalStyle({ color: '#ef4444' })}>
                     <FileX2 size={13} /> {results.filter((r) => r.durum === 'parse_hatasi' || r.durum === 'hata').length} hata
                   </span>
                 </div>
               </div>
-              <ul className="max-h-[300px] overflow-y-auto divide-y" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
+              <ul className="max-h-[300px] overflow-y-auto divide-y" style={portalStyle({ borderColor: 'rgba(255,255,255,0.04)' })}>
                 {results.map((r, i) => (
                   <li key={i} className="px-4 py-2 text-[12px]">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
-                        <div className="font-medium truncate" style={{ color: '#fafaf9' }}>{r.dosyaAdi}</div>
+                        <div className="font-medium truncate" style={portalStyle({ color: '#fafaf9' })}>{r.dosyaAdi}</div>
                         {r.parsed?.mukellefAdi && (
-                          <div className="text-[10.5px] mt-0.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
+                          <div className="text-[10.5px] mt-0.5" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
                             {r.parsed.mukellefAdi} · {r.parsed.beyanTipi || '?'} · {r.parsed.donem || '?'}
                           </div>
                         )}
                         {r.sebep && (
-                          <div className="text-[10.5px] mt-0.5 italic" style={{ color: '#f59e0b' }}>{r.sebep}</div>
+                          <div className="text-[10.5px] mt-0.5 italic" style={portalStyle({ color: '#f59e0b' })}>{r.sebep}</div>
                         )}
                       </div>
                       <ResultBadge durum={r.durum} />
@@ -1692,10 +1694,10 @@ function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
         </div>
 
         {/* FOOTER */}
-        <div className="px-5 py-3 flex items-center justify-between gap-3" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+        <div className="px-5 py-3 flex items-center justify-between gap-3" style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.06)' })}>
           {!results ? (
             <>
-              <span className="text-[11px]" style={{ color: 'rgba(250,250,249,0.4)' }}>
+              <span className="text-[11px]" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>
                 {mode === 'zip'
                   ? 'ZIP içeriği sunucuda açılır, klasör/dosya adları parse edilir — AI yok, saniyeler içinde biter.'
                   : 'Her PDF için Claude AI ~3-5 saniye sürer. 100 PDF = ~6-8 dakika.'}
@@ -1705,7 +1707,7 @@ function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
                   onClick={onClose}
                   disabled={uploading}
                   className="px-4 py-2 text-[12.5px] font-medium rounded-md disabled:opacity-40"
-                  style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.75)' }}
+                  style={portalStyle({ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.75)' })}
                 >
                   İptal
                 </button>
@@ -1713,7 +1715,7 @@ function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
                   onClick={start}
                   disabled={uploading || (mode === 'pdf' ? files.length === 0 : !zipFile)}
                   className="px-5 py-2 text-[12.5px] font-bold rounded-md disabled:opacity-40"
-                  style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}
+                  style={portalStyle({ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' })}
                 >
                   {uploading
                     ? 'Yükleniyor...'
@@ -1728,14 +1730,14 @@ function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
               <button
                 onClick={reset}
                 className="px-4 py-2 text-[12.5px] font-medium rounded-md"
-                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.75)' }}
+                style={portalStyle({ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.75)' })}
               >
                 Yeni Yükleme
               </button>
               <button
                 onClick={onClose}
                 className="px-5 py-2 text-[12.5px] font-bold rounded-md"
-                style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}
+                style={portalStyle({ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' })}
               >
                 Kapat
               </button>
@@ -1757,7 +1759,7 @@ function ResultBadge({ durum }: { durum: ImportResult['durum'] }) {
   };
   const c = cfg[durum];
   return (
-    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md flex-shrink-0" style={{ background: c.bg, color: c.color }}>
+    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md flex-shrink-0" style={portalStyle({ background: c.bg, color: c.color })}>
       {c.label}
     </span>
   );

@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 /**
  * Mükellef Günlük Brifing — ofis BrifingKart bileşeninin BİREBİR görsel kopyası,
@@ -65,31 +67,31 @@ export function MukellefBrifing({ userName }: { userName?: string }) {
   return (
     <div
       className="rounded-2xl overflow-hidden relative"
-      style={{
+      style={portalStyle({
         background: 'radial-gradient(circle at 7% 0%, rgba(143,215,189,0.11), transparent 34%), radial-gradient(circle at 95% 10%, rgba(216,189,134,0.08), transparent 31%), linear-gradient(180deg, rgba(8,14,13,0.96), rgba(5,7,7,0.94))',
         border: '1px solid rgba(143,215,189,0.18)',
         boxShadow: '0 18px 44px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.035)',
-      }}
+      })}
     >
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-px" style={{ background: 'linear-gradient(90deg, transparent, rgba(143,215,189,0.65), rgba(216,189,134,0.38), transparent)' }} />
-      <div className="pointer-events-none absolute inset-y-5 left-0 w-[3px] rounded-r-full" style={{ background: 'linear-gradient(180deg, #8fd7bd, #d8bd86)', boxShadow: '0 0 18px rgba(143,215,189,0.22)' }} />
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-px" style={portalStyle({ background: 'linear-gradient(90deg, transparent, rgba(143,215,189,0.65), rgba(216,189,134,0.38), transparent)' })} />
+      <div className="pointer-events-none absolute inset-y-5 left-0 w-[3px] rounded-r-full" style={portalStyle({ background: 'linear-gradient(180deg, #8fd7bd, #d8bd86)', boxShadow: '0 0 18px rgba(143,215,189,0.22)' })} />
 
-      <div className="px-5 pt-4 pb-2 flex items-center justify-between gap-3 flex-wrap" style={{ borderBottom: '1px solid rgba(143,215,189,0.08)' }}>
+      <div className="px-5 pt-4 pb-2 flex items-center justify-between gap-3 flex-wrap" style={portalStyle({ borderBottom: '1px solid rgba(143,215,189,0.08)' })}>
         <div className="flex items-center gap-2.5">
-          <Sparkles size={14} style={{ color: CHROME.color }} />
-          <span className="text-[10px] uppercase font-bold tracking-[.22em]" style={{ color: CHROME.text }}>Bugünkü Brifing</span>
+          <Sparkles size={14} style={portalStyle({ color: CHROME.color })} />
+          <span className="text-[10px] uppercase font-bold tracking-[.22em]" style={portalStyle({ color: CHROME.text })}>Bugünkü Brifing</span>
           {data && (
-            <span className="text-[9.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ml-1 inline-flex items-center gap-1" style={{ background: focusTone.bg, color: focusTone.color, border: `1px solid ${focusTone.border}` }}>
-              <span className="w-1 h-1 rounded-full" style={{ background: focusTone.color }} />{focusTone.label}
+            <span className="text-[9.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ml-1 inline-flex items-center gap-1" style={portalStyle({ background: focusTone.bg, color: focusTone.color, border: `1px solid ${focusTone.border}` })}>
+              <span className="w-1 h-1 rounded-full" style={portalStyle({ background: focusTone.color })} />{focusTone.label}
             </span>
           )}
           {data && (
-            <span className="text-[9.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md inline-flex items-center gap-1" style={{ background: 'rgba(216,189,134,0.075)', color: '#d8c38f', border: '1px solid rgba(216,189,134,0.18)' }}>AI Destekli</span>
+            <span className="text-[9.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md inline-flex items-center gap-1" style={portalStyle({ background: 'rgba(216,189,134,0.075)', color: '#d8c38f', border: '1px solid rgba(216,189,134,0.18)' })}>AI Destekli</span>
           )}
         </div>
         <div className="flex items-center gap-2">
-          {data?.generatedAt && <span className="text-[10.5px]" style={{ color: 'rgba(250,250,249,0.4)' }}>{data.fromCache ? '↻' : '✓'} {formatRelativeTime(data.generatedAt)}</span>}
-          <button onClick={handleRefresh} disabled={isFetching} title="Brifingi yeniden üret" className="text-[11px] inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md transition disabled:opacity-50" style={{ background: 'rgba(143,215,189,0.055)', border: '1px solid rgba(143,215,189,0.14)', color: 'rgba(221,246,238,0.72)' }}>
+          {data?.generatedAt && <span className="text-[10.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>{data.fromCache ? '↻' : '✓'} {formatRelativeTime(data.generatedAt)}</span>}
+          <button onClick={handleRefresh} disabled={isFetching} title="Brifingi yeniden üret" className="text-[11px] inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md transition disabled:opacity-50" style={portalStyle({ background: 'rgba(143,215,189,0.055)', border: '1px solid rgba(143,215,189,0.14)', color: 'rgba(221,246,238,0.72)' })}>
             {isFetching ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />} Yenile
           </button>
         </div>
@@ -97,15 +99,15 @@ export function MukellefBrifing({ userName }: { userName?: string }) {
 
       <div className="px-5 pt-3 pb-2 grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(400px,580px)] xl:items-stretch">
         <div className="min-w-0 flex flex-col justify-center">
-          <h2 style={{ fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', fontSize: 22, fontWeight: 800, color: '#f6fbf7', lineHeight: 1.1 }}>Bugünkü Öncelikler</h2>
-          <p className="text-[12px] mt-1 tabular-nums" style={{ color: 'rgba(250,250,249,0.42)' }}>{KISA_TARIH}{adi ? ` · ${adi}` : ''}</p>
+          <h2 style={portalStyle({ fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', fontSize: 22, fontWeight: 800, color: '#f6fbf7', lineHeight: 1.1 })}>Bugünkü Öncelikler</h2>
+          <p className="text-[12px] mt-1 tabular-nums" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>{KISA_TARIH}{adi ? ` · ${adi}` : ''}</p>
         </div>
         {!isLoading && data?.motivation && (
-          <div className="w-full rounded-xl px-4 py-3.5 flex items-center gap-3.5 select-none xl:justify-self-end" style={{ background: 'linear-gradient(135deg, rgba(143,215,189,0.10), rgba(216,189,134,0.06))', border: '1px solid rgba(143,215,189,0.2)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.03)' }}>
-            <span className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ background: focusTone.bg, border: `1px solid ${focusTone.border}`, color: focusTone.color }}><Sparkles size={19} /></span>
+          <div className="w-full rounded-xl px-4 py-3.5 flex items-center gap-3.5 select-none xl:justify-self-end" style={portalStyle({ background: 'linear-gradient(135deg, rgba(143,215,189,0.10), rgba(216,189,134,0.06))', border: '1px solid rgba(143,215,189,0.2)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.03)' })}>
+            <span className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={portalStyle({ background: focusTone.bg, border: `1px solid ${focusTone.border}`, color: focusTone.color })}><Sparkles size={19} /></span>
             <span className="min-w-0 flex-1">
-              <span className="flex items-center gap-1.5 text-[9.5px] uppercase font-black tracking-[.16em]" style={{ color: '#d8c38f' }}><Sparkles size={11} /> Günün Notu</span>
-              <span className="block mt-1 text-[15px] font-semibold leading-snug" style={{ color: '#fafaf9', fontFamily: 'Fraunces, Georgia, serif' }}>{data.motivation}</span>
+              <span className="flex items-center gap-1.5 text-[9.5px] uppercase font-black tracking-[.16em]" style={portalStyle({ color: '#d8c38f' })}><Sparkles size={11} /> Günün Notu</span>
+              <span className="block mt-1 text-[15px] font-semibold leading-snug" style={portalStyle({ color: '#fafaf9', fontFamily: 'Fraunces, Georgia, serif' })}>{data.motivation}</span>
             </span>
           </div>
         )}
@@ -113,15 +115,15 @@ export function MukellefBrifing({ userName }: { userName?: string }) {
 
       <div className="px-5 pt-1.5 pb-2">
         {isLoading ? (
-          <div className="rounded-xl px-4 py-3 text-[14px] flex items-center gap-2" style={{ color: 'rgba(250,250,249,0.5)', background: 'rgba(255,255,255,0.018)', border: '1px solid rgba(255,255,255,0.06)' }}>
+          <div className="rounded-xl px-4 py-3 text-[14px] flex items-center gap-2" style={portalStyle({ color: 'rgba(250,250,249,0.5)', background: 'rgba(255,255,255,0.018)', border: '1px solid rgba(255,255,255,0.06)' })}>
             <Loader2 size={14} className="animate-spin" /> Brifing hazırlanıyor...
           </div>
         ) : data?.summary ? (
-          <div className="rounded-xl px-4 py-3" style={{ background: 'rgba(255,255,255,0.018)', border: '1px solid rgba(143,215,189,0.10)', boxShadow: 'inset 3px 0 0 rgba(143,215,189,0.55)' }}>
-            <p className="text-[14px]" style={{ color: 'rgba(250,250,249,0.88)', lineHeight: 1.58, fontFamily: 'Inter, sans-serif' }}>{data.summary}</p>
+          <div className="rounded-xl px-4 py-3" style={portalStyle({ background: 'rgba(255,255,255,0.018)', border: '1px solid rgba(143,215,189,0.10)', boxShadow: 'inset 3px 0 0 rgba(143,215,189,0.55)' })}>
+            <p className="text-[14px]" style={portalStyle({ color: 'rgba(250,250,249,0.88)', lineHeight: 1.58, fontFamily: 'Inter, sans-serif' })}>{data.summary}</p>
           </div>
         ) : (
-          <p className="rounded-xl px-4 py-3 text-[13.5px]" style={{ color: 'rgba(250,250,249,0.5)', background: 'rgba(255,255,255,0.018)', border: '1px solid rgba(255,255,255,0.06)' }}>Brifing alınamadı. Yenile butonuna basıp tekrar dene.</p>
+          <p className="rounded-xl px-4 py-3 text-[13.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.5)', background: 'rgba(255,255,255,0.018)', border: '1px solid rgba(255,255,255,0.06)' })}>Brifing alınamadı. Yenile butonuna basıp tekrar dene.</p>
         )}
       </div>
 
@@ -134,10 +136,10 @@ export function MukellefBrifing({ userName }: { userName?: string }) {
                 ? { color: '#8db6c6', bg: 'rgba(255,255,255,0.022)', border: 'rgba(141,182,198,0.14)' }
                 : { color: '#86c7a0', bg: 'rgba(255,255,255,0.020)', border: 'rgba(134,199,160,0.13)' };
             const Inner = (
-              <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg transition group" style={{ background: `linear-gradient(90deg, ${cfg.bg}, rgba(255,255,255,0.012))`, border: `1px solid ${cfg.border}`, boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.018)' }}>
-                <AlertTriangle size={13} style={{ color: cfg.color }} />
-                <span className="text-[13px] flex-1" style={{ color: '#fafaf9' }}>{a.text}</span>
-                {a.href && <ArrowRight size={13} className="opacity-50 group-hover:opacity-100 transition" style={{ color: cfg.color }} />}
+              <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg transition group" style={portalStyle({ background: `linear-gradient(90deg, ${cfg.bg}, rgba(255,255,255,0.012))`, border: `1px solid ${cfg.border}`, boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.018)' })}>
+                <AlertTriangle size={13} style={portalStyle({ color: cfg.color })} />
+                <span className="text-[13px] flex-1" style={portalStyle({ color: '#fafaf9' })}>{a.text}</span>
+                {a.href && <ArrowRight size={13} className="opacity-50 group-hover:opacity-100 transition" style={portalStyle({ color: cfg.color })} />}
               </div>
             );
             return a.href ? <Link key={i} href={a.href} className="block">{Inner}</Link> : <div key={i}>{Inner}</div>;
@@ -150,7 +152,7 @@ export function MukellefBrifing({ userName }: { userName?: string }) {
           {data.suggestions.slice(0, 3).map((s, i) => {
             const Icon = ICON_MAP[s.icon || 'Sparkles'] || Sparkles;
             return (
-              <Link key={i} href={s.href} className="inline-flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg text-[12.5px] font-semibold transition hover:bg-white/[0.035]" style={{ background: `linear-gradient(135deg, ${CHROME.actionBg}, rgba(216,189,134,0.035))`, color: 'rgba(228,248,241,0.80)', border: `1px solid ${CHROME.actionBorder}` }}>
+              <Link key={i} href={s.href} className="inline-flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg text-[12.5px] font-semibold transition hover:bg-white/[0.035]" style={portalStyle({ background: `linear-gradient(135deg, ${CHROME.actionBg}, rgba(216,189,134,0.035))`, color: 'rgba(228,248,241,0.80)', border: `1px solid ${CHROME.actionBorder}` })}>
                 <Icon size={12} />{s.text}<ArrowRight size={11} className="opacity-60" />
               </Link>
             );

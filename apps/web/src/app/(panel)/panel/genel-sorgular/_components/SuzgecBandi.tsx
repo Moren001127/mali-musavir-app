@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import { CalendarDays, X } from 'lucide-react';
 import TaxpayerSelect, { type TaxpayerLite } from '@/components/ui/TaxpayerSelect';
@@ -37,7 +39,7 @@ export function SuzgecBandi({
   };
 
   return (
-    <div className="mb-3 rounded-2xl px-4 py-3" style={kartZemini(GOLD)}>
+    <div className="mb-3 rounded-2xl px-4 py-3" style={portalStyle(kartZemini(GOLD))}>
       <div className="flex min-w-0 flex-wrap items-center gap-2">
         {/* Mükellef */}
         <div className="w-full sm:w-[280px]">
@@ -47,11 +49,11 @@ export function SuzgecBandi({
             onChange={(id) => onSuzgec({ ...suzgec, mukellefId: id === '__ALL__' ? '' : id })}
             allLabel="Tüm mükellefler"
             allValue="__ALL__"
-            style={{ padding: '6px 12px', borderRadius: 999, fontSize: 12 }}
+            style={portalStyle({ padding: '6px 12px', borderRadius: 999, fontSize: 12 })}
           />
         </div>
 
-        <span className="mx-0.5 hidden h-4 w-px flex-shrink-0 sm:block" style={{ background: 'rgba(255,255,255,0.12)' }} />
+        <span className="mx-0.5 hidden h-4 w-px flex-shrink-0 sm:block" style={portalStyle({ background: 'rgba(255,255,255,0.12)' })} />
 
         {/* Sorgu türü hapları — çoklu seçim; hiçbiri seçili değilse hepsi */}
         <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Sorgu türü">
@@ -66,22 +68,22 @@ export function SuzgecBandi({
                 onClick={() => turDegistir(t)}
                 title={secili ? `${SORGU_TURU_ADI[t]} — seçimi kaldır` : `${SORGU_TURU_ADI[t]} — yalnız bu türü göster`}
                 className="inline-flex flex-shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-[11.5px] font-semibold transition-[transform,filter] hover:-translate-y-px hover:brightness-125"
-                style={secili ? { background: `${renk}18`, border: `1px solid ${renk}66`, color: renk } : { background: 'transparent', border: '1px solid rgba(255,255,255,0.12)', color: IKINCIL }}
+                style={portalStyle(secili ? { background: `${renk}18`, border: `1px solid ${renk}66`, color: renk } : { background: 'transparent', border: '1px solid rgba(255,255,255,0.12)', color: IKINCIL })}
               >
-                <span className="h-1.5 w-1.5 rounded-full" style={{ background: renk, opacity: secili ? 1 : 0.55 }} />
+                <span className="h-1.5 w-1.5 rounded-full" style={portalStyle({ background: renk, opacity: secili ? 1 : 0.55 })} />
                 {SORGU_TURU_ADI[t]}
               </button>
             );
           })}
         </div>
 
-        <span className="mx-0.5 hidden h-4 w-px flex-shrink-0 sm:block" style={{ background: 'rgba(255,255,255,0.12)' }} />
+        <span className="mx-0.5 hidden h-4 w-px flex-shrink-0 sm:block" style={portalStyle({ background: 'rgba(255,255,255,0.12)' })} />
 
         {/* Dönem */}
         <div className="flex items-center gap-1.5">
           <label
             className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[11.5px] font-semibold"
-            style={{ border: `1px solid ${tumDonemler ? 'rgba(255,255,255,0.12)' : `${GOLD}66`}`, background: tumDonemler ? 'transparent' : `${GOLD}18`, color: tumDonemler ? IKINCIL : GOLD }}
+            style={portalStyle({ border: `1px solid ${tumDonemler ? 'rgba(255,255,255,0.12)' : `${GOLD}66`}`, background: tumDonemler ? 'transparent' : `${GOLD}18`, color: tumDonemler ? IKINCIL : GOLD })}
             title="Dönem (ay)"
           >
             <CalendarDays size={12} />
@@ -91,7 +93,7 @@ export function SuzgecBandi({
               onChange={(e) => onSuzgec({ ...suzgec, donem: e.target.value || buAy })}
               aria-label="Dönem"
               className="bg-transparent outline-none [color-scheme:dark]"
-              style={{ color: tumDonemler ? IKINCIL : METIN, fontSize: 12, width: 120 }}
+              style={portalStyle({ color: tumDonemler ? IKINCIL : METIN, fontSize: 12, width: 120 })}
             />
           </label>
           <button
@@ -100,7 +102,7 @@ export function SuzgecBandi({
             onClick={() => onSuzgec({ ...suzgec, donem: tumDonemler ? buAy : '' })}
             title={tumDonemler ? 'Bu aya dön' : 'Tüm dönemleri göster'}
             className="inline-flex h-8 flex-shrink-0 items-center whitespace-nowrap rounded-full px-3 text-[11.5px] font-semibold transition hover:brightness-125"
-            style={tumDonemler ? { background: `${GOLD}18`, border: `1px solid ${GOLD}66`, color: GOLD } : { background: 'transparent', border: '1px solid rgba(255,255,255,0.12)', color: IKINCIL }}
+            style={portalStyle(tumDonemler ? { background: `${GOLD}18`, border: `1px solid ${GOLD}66`, color: GOLD } : { background: 'transparent', border: '1px solid rgba(255,255,255,0.12)', color: IKINCIL })}
           >
             Tüm dönemler
           </button>
@@ -112,7 +114,7 @@ export function SuzgecBandi({
             onClick={() => onSuzgec({ mukellefId: '', turler: [], donem: buAy })}
             title="Süzgeçleri temizle"
             className="inline-flex h-8 flex-shrink-0 items-center gap-1 rounded-full px-2.5 text-[11.5px] font-semibold transition hover:brightness-125"
-            style={{ color: IKINCIL, border: '1px solid rgba(255,255,255,0.10)' }}
+            style={portalStyle({ color: IKINCIL, border: '1px solid rgba(255,255,255,0.10)' })}
           >
             <X size={12} /> Temizle
           </button>

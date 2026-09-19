@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import React, { useState } from 'react';
 import Link from 'next/link';
@@ -151,24 +153,24 @@ export default function OtomasyonlarPage() {
   const monthlyBudgetUsd = summary?.monthlyBudgetUsd ?? null;
 
   return (
-    <div className="mx-auto max-w-7xl space-y-5 pb-16" style={{ color: TEXT }}>
+    <div className="mx-auto max-w-7xl space-y-5 pb-16" style={portalStyle({ color: TEXT })}>
       {/* ── Başlık (radial + üst renk şeridi, yapışkan değil) ── */}
       <header
         className="relative overflow-hidden rounded-2xl border p-5"
-        style={{
+        style={portalStyle({
           borderColor: LINE,
           background:
             'radial-gradient(120% 140% at 0% 0%, rgba(168,85,247,0.18), transparent 46%), radial-gradient(120% 140% at 100% 0%, rgba(212,184,118,0.14), transparent 46%), #0f0d0b',
-        }}
+        })}
       >
         <div
           className="absolute inset-x-0 top-0 h-1"
-          style={{ background: 'linear-gradient(90deg, #a855f7, #c084fc, #60a5fa, #4ade80, #d4b876)' }}
+          style={portalStyle({ background: 'linear-gradient(90deg, #a855f7, #c084fc, #60a5fa, #4ade80, #d4b876)' })}
         />
         <Link
           href="/panel"
           className="inline-flex items-center gap-1.5 text-[12px] font-medium"
-          style={{ color: MUTED }}
+          style={portalStyle({ color: MUTED })}
         >
           <ArrowLeft size={14} /> Panel
         </Link>
@@ -176,24 +178,24 @@ export default function OtomasyonlarPage() {
           <h1 className="flex items-center gap-2.5 text-[28px] font-semibold leading-tight">
             <span
               className="grid h-10 w-10 place-items-center rounded-xl"
-              style={{
+              style={portalStyle({
                 background: 'linear-gradient(135deg, #a855f7, #c084fc)',
                 boxShadow: '0 6px 18px rgba(168,85,247,0.40)',
-              }}
+              })}
             >
-              <Wand2 size={20} style={{ color: '#1a1410' }} />
+              <Wand2 size={20} style={portalStyle({ color: '#1a1410' })} />
             </span>
             Otomasyonlarım
           </h1>
           <Link
             href="/panel/otomasyonlar/yeni"
             className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-[13px] font-semibold"
-            style={{ background: 'linear-gradient(135deg, #a855f7, #c084fc)', color: '#1a1410' }}
+            style={portalStyle({ background: 'linear-gradient(135deg, #a855f7, #c084fc)', color: '#1a1410' })}
           >
             <Plus size={16} /> Yeni Otomasyon
           </Link>
         </div>
-        <p className="mt-2 max-w-2xl text-[13px]" style={{ color: MUTED }}>
+        <p className="mt-2 max-w-2xl text-[13px]" style={portalStyle({ color: MUTED })}>
           Türkçe bir cümleyle kurduğun işler arka planda kendiliğinden çalışır. Durumlarını,
           bir sonraki çalışma zamanını ve geçmişlerini buradan takip edersin.
         </p>
@@ -230,30 +232,30 @@ export default function OtomasyonlarPage() {
       {/* ── Arama + filtre (kompakt tek satır) ── */}
       <section className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <div className="relative flex-1">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: MUTED }} />
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={portalStyle({ color: MUTED })} />
           <input
             type="text"
             placeholder="Otomasyonlarda ara…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full rounded-lg border bg-transparent py-2 pl-9 pr-3 text-[13px] outline-none"
-            style={{ borderColor: LINE, color: TEXT }}
+            style={portalStyle({ borderColor: LINE, color: TEXT })}
           />
         </div>
         <div className="flex gap-2">
           <FilterSelect value={statusFilter} onChange={(v) => setStatusFilter(v as any)}>
-            <option value="all" style={{ background: BG }}>Tüm durumlar</option>
-            <option value="ACTIVE" style={{ background: BG }}>Aktif</option>
-            <option value="PAUSED" style={{ background: BG }}>Duraklatıldı</option>
-            <option value="DRAFT" style={{ background: BG }}>Taslak</option>
-            <option value="ERROR" style={{ background: BG }}>Hata</option>
-            <option value="ARCHIVED" style={{ background: BG }}>Arşiv</option>
+            <option value="all" style={portalStyle({ background: BG })}>Tüm durumlar</option>
+            <option value="ACTIVE" style={portalStyle({ background: BG })}>Aktif</option>
+            <option value="PAUSED" style={portalStyle({ background: BG })}>Duraklatıldı</option>
+            <option value="DRAFT" style={portalStyle({ background: BG })}>Taslak</option>
+            <option value="ERROR" style={portalStyle({ background: BG })}>Hata</option>
+            <option value="ARCHIVED" style={portalStyle({ background: BG })}>Arşiv</option>
           </FilterSelect>
           <FilterSelect value={triggerFilter} onChange={(v) => setTriggerFilter(v as any)}>
-            <option value="all" style={{ background: BG }}>Tüm tetikleyiciler</option>
-            <option value="CRON" style={{ background: BG }}>Zamanlı</option>
-            <option value="EVENT" style={{ background: BG }}>Olay</option>
-            <option value="MANUAL" style={{ background: BG }}>Manuel</option>
+            <option value="all" style={portalStyle({ background: BG })}>Tüm tetikleyiciler</option>
+            <option value="CRON" style={portalStyle({ background: BG })}>Zamanlı</option>
+            <option value="EVENT" style={portalStyle({ background: BG })}>Olay</option>
+            <option value="MANUAL" style={portalStyle({ background: BG })}>Manuel</option>
           </FilterSelect>
         </div>
       </section>
@@ -264,13 +266,13 @@ export default function OtomasyonlarPage() {
           <button
             onClick={() => setShowRecent((v) => !v)}
             className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider transition-colors"
-            style={{ color: MUTED }}
+            style={portalStyle({ color: MUTED })}
           >
             <History size={13} />
             Son çalışmalar ({recentRuns.length})
             <ChevronDown
               size={14}
-              style={{ transform: showRecent ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }}
+              style={portalStyle({ transform: showRecent ? 'rotate(180deg)' : 'none', transition: 'transform .15s' })}
             />
           </button>
           {showRecent && (
@@ -282,17 +284,17 @@ export default function OtomasyonlarPage() {
                     key={run.id}
                     onClick={() => router.push(`/panel/otomasyonlar/${run.automation.id}`)}
                     className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] transition-colors"
-                    style={{ borderColor: LINE, background: CARD }}
+                    style={portalStyle({ borderColor: LINE, background: CARD })}
                   >
                     {run.status === 'success' ? (
-                      <CheckCircle2 size={13} style={{ color: c }} />
+                      <CheckCircle2 size={13} style={portalStyle({ color: c })} />
                     ) : run.status === 'failure' ? (
-                      <XCircle size={13} style={{ color: c }} />
+                      <XCircle size={13} style={portalStyle({ color: c })} />
                     ) : (
-                      <Activity size={13} style={{ color: c }} />
+                      <Activity size={13} style={portalStyle({ color: c })} />
                     )}
-                    <span className="font-medium" style={{ color: TEXT }}>{run.automation.title}</span>
-                    <span style={{ color: MUTED }}>{timeAgo(run.startedAt)}</span>
+                    <span className="font-medium" style={portalStyle({ color: TEXT })}>{run.automation.title}</span>
+                    <span style={portalStyle({ color: MUTED })}>{timeAgo(run.startedAt)}</span>
                   </button>
                 );
               })}
@@ -303,26 +305,26 @@ export default function OtomasyonlarPage() {
 
       {/* ── Durumlar ── */}
       {isLoading && (
-        <div className="rounded-2xl border p-12 text-center text-[13px]" style={{ borderColor: LINE, color: MUTED, background: CARD }}>
+        <div className="rounded-2xl border p-12 text-center text-[13px]" style={portalStyle({ borderColor: LINE, color: MUTED, background: CARD })}>
           Yükleniyor…
         </div>
       )}
       {error && (
-        <div className="rounded-2xl border p-4 text-[13px]" style={{ borderColor: `${RED}55`, background: `${RED}14`, color: RED }}>
+        <div className="rounded-2xl border p-4 text-[13px]" style={portalStyle({ borderColor: `${RED}55`, background: `${RED}14`, color: RED })}>
           Liste yüklenemedi: {(error as any)?.message}
         </div>
       )}
       {data && data.items.length === 0 && (
-        <div className="rounded-2xl border-2 border-dashed p-12 text-center" style={{ borderColor: LINE, background: CARD }}>
-          <Inbox size={40} className="mx-auto mb-3" style={{ color: MUTED }} />
+        <div className="rounded-2xl border-2 border-dashed p-12 text-center" style={portalStyle({ borderColor: LINE, background: CARD })}>
+          <Inbox size={40} className="mx-auto mb-3" style={portalStyle({ color: MUTED })} />
           <h3 className="text-[16px] font-medium">Henüz otomasyonun yok</h3>
-          <p className="mt-1 text-[13px]" style={{ color: MUTED }}>
+          <p className="mt-1 text-[13px]" style={portalStyle({ color: MUTED })}>
             "Yeni Otomasyon" diyerek bir cümleyle ilk otomasyonunu kurabilirsin.
           </p>
           <Link
             href="/panel/otomasyonlar/yeni"
             className="mt-4 inline-flex items-center gap-2 rounded-lg px-4 py-2 text-[13px] font-semibold"
-            style={{ background: 'linear-gradient(135deg, #a855f7, #c084fc)', color: '#1a1410' }}
+            style={portalStyle({ background: 'linear-gradient(135deg, #a855f7, #c084fc)', color: '#1a1410' })}
           >
             <Plus size={16} /> İlkini Oluştur
           </Link>
@@ -384,39 +386,39 @@ function AutomationRow({
     <div
       onClick={() => onOpen(auto.id)}
       className="group cursor-pointer rounded-xl border p-3.5 transition-colors"
-      style={{ borderColor: LINE, background: CARD }}
+      style={portalStyle({ borderColor: LINE, background: CARD })}
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         {/* Sol: başlık + cümle + meta */}
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="truncate text-[15px] font-semibold" style={{ color: TEXT }}>
+            <span className="truncate text-[15px] font-semibold" style={portalStyle({ color: TEXT })}>
               {auto.title}
             </span>
             <StatusBadge status={auto.status} />
           </div>
-          <p className="mt-0.5 line-clamp-1 text-[12px]" style={{ color: MUTED }}>
+          <p className="mt-0.5 line-clamp-1 text-[12px]" style={portalStyle({ color: MUTED })}>
             {auto.prompt}
           </p>
-          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11.5px]" style={{ color: MUTED }}>
+          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11.5px]" style={portalStyle({ color: MUTED })}>
             <span className="inline-flex items-center gap-1.5">
               <TriggerIcon t={auto.triggerType} />
               {triggerShort(auto.triggerType, auto.triggerConfig)}
             </span>
             {auto.status === 'ACTIVE' && auto.nextRunAt && (
-              <span className="inline-flex items-center gap-1.5" style={{ color: VIOLET_SOFT }}>
+              <span className="inline-flex items-center gap-1.5" style={portalStyle({ color: VIOLET_SOFT })}>
                 <CalendarClock size={13} /> Sıradaki: {new Date(auto.nextRunAt).toLocaleString('tr-TR')}
               </span>
             )}
             <span className="inline-flex items-center gap-1.5">
-              {lastOk && <CheckCircle2 size={13} style={{ color: GREEN }} />}
-              {lastFail && <AlertTriangle size={13} style={{ color: RED }} />}
+              {lastOk && <CheckCircle2 size={13} style={portalStyle({ color: GREEN })} />}
+              {lastFail && <AlertTriangle size={13} style={portalStyle({ color: RED })} />}
               {auto.lastRunAt
                 ? `Son: ${new Date(auto.lastRunAt).toLocaleString('tr-TR')}`
                 : 'Hiç çalışmadı'}
             </span>
             <span>
-              {auto.totalRuns} çalışma · <span style={{ color: GREEN }}>{auto.successRuns} başarı</span>
+              {auto.totalRuns} çalışma · <span style={portalStyle({ color: GREEN })}>{auto.successRuns} başarı</span>
             </span>
           </div>
         </div>
@@ -488,13 +490,13 @@ function Stat({
   sub?: string;
 }) {
   return (
-    <div className="rounded-xl border p-3" style={{ borderColor: LINE, background: CARD }}>
-      <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider" style={{ color: MUTED }}>
-        <span style={{ color }}>{icon}</span>
+    <div className="rounded-xl border p-3" style={portalStyle({ borderColor: LINE, background: CARD })}>
+      <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider" style={portalStyle({ color: MUTED })}>
+        <span style={portalStyle({ color })}>{icon}</span>
         {label}
       </div>
-      <div className="mt-1 text-[20px] font-semibold" style={{ color: TEXT }}>{value}</div>
-      {sub && <div className="text-[11px]" style={{ color: MUTED }}>{sub}</div>}
+      <div className="mt-1 text-[20px] font-semibold" style={portalStyle({ color: TEXT })}>{value}</div>
+      {sub && <div className="text-[11px]" style={portalStyle({ color: MUTED })}>{sub}</div>}
     </div>
   );
 }
@@ -504,23 +506,23 @@ function BudgetStat({ monthly, weekly, budget }: { monthly: number; weekly: numb
   const pct = budget && budget > 0 ? Math.min(100, Math.round((monthly / budget) * 100)) : null;
   const barColor = pct === null ? VIOLET : pct >= 90 ? RED : pct >= 70 ? AMBER : VIOLET;
   return (
-    <div className="rounded-xl border p-3" style={{ borderColor: LINE, background: CARD }}>
-      <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider" style={{ color: MUTED }}>
-        <span style={{ color: VIOLET_SOFT }}><Wallet size={15} /></span>
+    <div className="rounded-xl border p-3" style={portalStyle({ borderColor: LINE, background: CARD })}>
+      <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider" style={portalStyle({ color: MUTED })}>
+        <span style={portalStyle({ color: VIOLET_SOFT })}><Wallet size={15} /></span>
         Bu ay maliyet
       </div>
-      <div className="mt-1 text-[20px] font-semibold" style={{ color: VIOLET_SOFT }}>{usd(monthly)}</div>
+      <div className="mt-1 text-[20px] font-semibold" style={portalStyle({ color: VIOLET_SOFT })}>{usd(monthly)}</div>
       {budget && budget > 0 ? (
         <>
-          <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.08)' }}>
-            <div className="h-full rounded-full" style={{ width: `${pct}%`, background: barColor }} />
+          <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full" style={portalStyle({ background: 'rgba(255,255,255,0.08)' })}>
+            <div className="h-full rounded-full" style={portalStyle({ width: `${pct}%`, background: barColor })} />
           </div>
-          <div className="mt-1 text-[11px]" style={{ color: MUTED }}>
+          <div className="mt-1 text-[11px]" style={portalStyle({ color: MUTED })}>
             {usd(monthly)} / {usd(budget)} bütçe (%{pct})
           </div>
         </>
       ) : (
-        <div className="text-[11px]" style={{ color: MUTED }}>Bu hafta {usd(weekly)} · limitsiz</div>
+        <div className="text-[11px]" style={portalStyle({ color: MUTED })}>Bu hafta {usd(weekly)} · limitsiz</div>
       )}
     </div>
   );
@@ -545,7 +547,7 @@ function IconBtn({
       disabled={disabled}
       onClick={onClick}
       className="grid h-8 w-8 place-items-center rounded-lg border transition-colors hover:bg-white/5 disabled:opacity-40"
-      style={{ borderColor: LINE, color }}
+      style={portalStyle({ borderColor: LINE, color })}
     >
       {children}
     </button>
@@ -566,7 +568,7 @@ function FilterSelect({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       className="rounded-lg border bg-transparent px-3 py-2 text-[13px] outline-none"
-      style={{ borderColor: LINE, color: TEXT }}
+      style={portalStyle({ borderColor: LINE, color: TEXT })}
     >
       {children}
     </select>
@@ -598,7 +600,7 @@ function StatusBadge({ status }: { status: AutomationStatus }) {
   return (
     <span
       className="inline-flex shrink-0 rounded-full px-2 py-0.5 text-[10.5px] font-semibold"
-      style={{ background: `${s.c}1f`, color: s.c }}
+      style={portalStyle({ background: `${s.c}1f`, color: s.c })}
     >
       {s.label}
     </span>
@@ -606,9 +608,9 @@ function StatusBadge({ status }: { status: AutomationStatus }) {
 }
 
 function TriggerIcon({ t }: { t: AutomationTriggerType }) {
-  if (t === 'CRON') return <Clock size={13} style={{ color: VIOLET_SOFT }} />;
-  if (t === 'WEBHOOK') return <Webhook size={13} style={{ color: VIOLET_SOFT }} />;
-  return <Sparkles size={13} style={{ color: VIOLET_SOFT }} />;
+  if (t === 'CRON') return <Clock size={13} style={portalStyle({ color: VIOLET_SOFT })} />;
+  if (t === 'WEBHOOK') return <Webhook size={13} style={portalStyle({ color: VIOLET_SOFT })} />;
+  return <Sparkles size={13} style={portalStyle({ color: VIOLET_SOFT })} />;
 }
 
 function triggerShort(t: AutomationTriggerType, cfg: any): string {

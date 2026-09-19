@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Download, ExternalLink, Landmark, Loader2 } from 'lucide-react';
@@ -81,7 +83,7 @@ export function CariHesapTab({ taxpayerId }: { taxpayerId: string }) {
           onClick={downloadEkstre}
           disabled={ekstreBusy}
           className="inline-flex h-9 items-center gap-1.5 px-3.5 text-[13px] font-medium transition hover:brightness-125 disabled:opacity-50"
-          style={NOTR_DUGME}
+          style={portalStyle(NOTR_DUGME)}
         >
           {ekstreBusy ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
           Ekstre indir
@@ -92,15 +94,15 @@ export function CariHesapTab({ taxpayerId }: { taxpayerId: string }) {
       </SekmeBasligi>
 
       {/* Tek satır özet — sayaç kutusu yok */}
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-1 border-y py-2 text-[13px]" style={{ borderColor: HAIR }}>
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-1 border-y py-2 text-[13px]" style={portalStyle({ borderColor: HAIR })}>
         <Ozet ad="Toplam tahakkuk" deger={`${fmtTutar(bakiye?.tahakkuk || 0)} ₺`} />
         <Ozet ad="Toplam tahsilat" deger={`${fmtTutar(bakiye?.tahsilat || 0)} ₺`} renk={GREEN} />
         <Ozet ad="Açık bakiye" deger={`${fmtTutar(Math.abs(netBakiye))} ₺ ${borclu ? 'Borç' : 'Alacak/Yok'}`} renk={borclu ? RED : GREEN} vurgu />
-        <span className="ml-auto text-[11.5px]" style={{ color: FAINT }}>{loading ? 'Yükleniyor' : `${hareketler.length} son kayıt`}</span>
+        <span className="ml-auto text-[11.5px]" style={portalStyle({ color: FAINT })}>{loading ? 'Yükleniyor' : `${hareketler.length} son kayıt`}</span>
       </div>
 
       {loading ? (
-        <div className="flex items-center gap-2 py-8 text-[13px]" style={{ color: MUTED }}>
+        <div className="flex items-center gap-2 py-8 text-[13px]" style={portalStyle({ color: MUTED })}>
           <Loader2 size={15} className="animate-spin" /> Cari hareketler yükleniyor...
         </div>
       ) : hareketler.length === 0 ? (
@@ -108,12 +110,12 @@ export function CariHesapTab({ taxpayerId }: { taxpayerId: string }) {
       ) : (
         <TabloSarmal minWidth={820}>
           <colgroup>
-            <col style={{ width: 104 }} />
-            <col style={{ width: 110 }} />
+            <col style={portalStyle({ width: 104 })} />
+            <col style={portalStyle({ width: 110 })} />
             <col />
-            <col style={{ width: 128 }} />
-            <col style={{ width: 128 }} />
-            <col style={{ width: 132 }} />
+            <col style={portalStyle({ width: 128 })} />
+            <col style={portalStyle({ width: 128 })} />
+            <col style={portalStyle({ width: 132 })} />
           </colgroup>
           <thead>
             <tr>
@@ -144,17 +146,17 @@ export function CariHesapTab({ taxpayerId }: { taxpayerId: string }) {
                     <Td muted tabular>{fmtDateTR(h.tarih?.substring(0, 10))}</Td>
                     <Td><Cip>{tipLabel}</Cip></Td>
                     <Td><span className="block max-w-full truncate">{aciklama}</span></Td>
-                    <Td right tabular style={{ color: borc ? TEXT : FAINT, fontWeight: 500 }}>{borc ? `${fmtTutar(borc)} ₺` : '—'}</Td>
-                    <Td right tabular style={{ color: alacak ? GREEN : FAINT, fontWeight: 500 }}>{alacak ? `${fmtTutar(alacak)} ₺` : '—'}</Td>
-                    <Td right tabular style={{ fontWeight: 600 }}>{h.runningBakiye != null ? `${fmtTutar(h.runningBakiye)} ₺` : '—'}</Td>
+                    <Td right tabular style={portalStyle({ color: borc ? TEXT : FAINT, fontWeight: 500 })}>{borc ? `${fmtTutar(borc)} ₺` : '—'}</Td>
+                    <Td right tabular style={portalStyle({ color: alacak ? GREEN : FAINT, fontWeight: 500 })}>{alacak ? `${fmtTutar(alacak)} ₺` : '—'}</Td>
+                    <Td right tabular style={portalStyle({ fontWeight: 600 })}>{h.runningBakiye != null ? `${fmtTutar(h.runningBakiye)} ₺` : '—'}</Td>
                   </tr>
                   {acik && (
-                    <tr style={{ background: 'rgba(255,255,255,0.02)' }}>
-                      <Td colSpan={SUTUN} muted style={{ padding: '8px 14px', whiteSpace: 'pre-wrap' }}>
-                        <span className="text-[11.5px] font-medium" style={{ color: FAINT }}>Açıklama · </span>
+                    <tr style={portalStyle({ background: 'rgba(255,255,255,0.02)' })}>
+                      <Td colSpan={SUTUN} muted style={portalStyle({ padding: '8px 14px', whiteSpace: 'pre-wrap' })}>
+                        <span className="text-[11.5px] font-medium" style={portalStyle({ color: FAINT })}>Açıklama · </span>
                         {aciklama}
-                        {h.odemeYontemi ? <span style={{ color: FAINT }}> · Ödeme: {h.odemeYontemi}</span> : null}
-                        {h.donem ? <span style={{ color: FAINT }}> · Dönem: {h.donem}</span> : null}
+                        {h.odemeYontemi ? <span style={portalStyle({ color: FAINT })}> · Ödeme: {h.odemeYontemi}</span> : null}
+                        {h.donem ? <span style={portalStyle({ color: FAINT })}> · Dönem: {h.donem}</span> : null}
                       </Td>
                     </tr>
                   )}
@@ -171,8 +173,8 @@ export function CariHesapTab({ taxpayerId }: { taxpayerId: string }) {
 function Ozet({ ad, deger, renk = TEXT, vurgu }: { ad: string; deger: string; renk?: string; vurgu?: boolean }) {
   return (
     <span className="inline-flex items-baseline gap-1.5">
-      <span className="text-[11.5px]" style={{ color: MUTED }}>{ad}</span>
-      <span className="tabular-nums" style={{ color: renk, fontWeight: vurgu ? 700 : 500 }}>{deger}</span>
+      <span className="text-[11.5px]" style={portalStyle({ color: MUTED })}>{ad}</span>
+      <span className="tabular-nums" style={portalStyle({ color: renk, fontWeight: vurgu ? 700 : 500 })}>{deger}</span>
     </span>
   );
 }

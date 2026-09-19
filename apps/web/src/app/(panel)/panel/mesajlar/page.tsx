@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import { useState, useMemo, useRef, useEffect, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -30,15 +32,15 @@ function WhatsAppAvatar({
   const initial = (name || '?').trim().charAt(0).toUpperCase() || '?';
   const dotSize = Math.max(9, Math.round(size * 0.26));
   return (
-    <div className="relative flex-shrink-0" style={{ width: size, height: size }}>
+    <div className="relative flex-shrink-0" style={portalStyle({ width: size, height: size })}>
       <div
         className="rounded-full flex items-center justify-center overflow-hidden text-[12px] font-semibold h-full w-full"
-        style={{
+        style={portalStyle({
           fontSize: Math.max(12, Math.round(size * 0.34)),
           background: active ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.04)',
           color: active ? '#86efac' : 'rgba(250,250,249,0.55)',
           border: `1px solid ${active ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.08)'}`,
-        }}
+        })}
       >
         {url ? <img src={url} alt={name || 'WhatsApp profil'} className="h-full w-full object-cover" /> : initial}
       </div>
@@ -46,7 +48,7 @@ function WhatsAppAvatar({
       {active && (
         <span
           title="çevrimiçi"
-          style={{
+          style={portalStyle({
             position: 'absolute',
             right: Math.round(size * 0.02),
             bottom: Math.round(size * 0.02),
@@ -55,7 +57,7 @@ function WhatsAppAvatar({
             borderRadius: '50%',
             background: '#25d366',
             border: '2px solid #1c1c1a',
-          }}
+          })}
         />
       )}
     </div>
@@ -597,13 +599,13 @@ export default function MesajlarPage() {
       {/* SOL: KONUŞMA LİSTESİ */}
       <div
         className="w-[340px] xl:w-[400px] 2xl:w-[440px] flex-shrink-0 rounded-2xl flex flex-col overflow-hidden"
-        style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)' }}
+        style={portalStyle({ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)' })}
       >
         {/* Üst başlık + arama */}
-        <div className="px-4 py-3 flex items-center gap-2.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-          <MessageCircle size={20} style={{ color: GOLD }} />
-          <h1 className="text-[17px] font-semibold flex-1 truncate" style={{ color: '#fafaf9' }}>WhatsApp Mesajlar</h1>
-          <span className="text-[13px] tabular-nums" style={{ color: 'rgba(250,250,249,0.62)' }}>
+        <div className="px-4 py-3 flex items-center gap-2.5" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.06)' })}>
+          <MessageCircle size={20} style={portalStyle({ color: GOLD })} />
+          <h1 className="text-[17px] font-semibold flex-1 truncate" style={portalStyle({ color: '#fafaf9' })}>WhatsApp Mesajlar</h1>
+          <span className="text-[13px] tabular-nums" style={portalStyle({ color: 'rgba(250,250,249,0.62)' })}>
             {conversations.length} kişi
           </span>
           <button
@@ -611,20 +613,20 @@ export default function MesajlarPage() {
             onClick={openStartModal}
             title="Yeni konuşma"
             className="h-9 w-9 flex-shrink-0 rounded-[10px] flex items-center justify-center"
-            style={{ background: 'rgba(212,184,118,0.12)', border: '1px solid rgba(212,184,118,0.24)', color: GOLD }}
+            style={portalStyle({ background: 'rgba(212,184,118,0.12)', border: '1px solid rgba(212,184,118,0.24)', color: GOLD })}
           >
             <Plus size={18} />
           </button>
         </div>
-        <div className="px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+        <div className="px-4 py-3" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.05)' })}>
           <div className="relative">
-            <Search size={17} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: 'rgba(250,250,249,0.48)' }} />
+            <Search size={17} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={portalStyle({ color: 'rgba(250,250,249,0.48)' })} />
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Mükellef veya telefon ara..."
               className="w-full h-11 pl-11 pr-4 rounded-[11px] text-[14px] outline-none"
-              style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
+              style={portalStyle({ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' })}
             />
           </div>
         </div>
@@ -632,12 +634,12 @@ export default function MesajlarPage() {
         {/* Konuşma listesi */}
         <div className="flex-1 overflow-y-auto">
           {isLoading ? (
-            <div className="p-6 text-center text-[12.5px]" style={{ color: 'rgba(250,250,249,0.5)' }}>
+            <div className="p-6 text-center text-[12.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
               <Loader2 size={16} className="animate-spin mx-auto mb-2" /> Yükleniyor...
             </div>
           ) : filteredConversations.length === 0 ? (
-            <div className="p-6 text-center text-[12.5px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
-              <MessageCircle size={20} className="mx-auto mb-2" style={{ color: 'rgba(250,250,249,0.25)' }} />
+            <div className="p-6 text-center text-[12.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
+              <MessageCircle size={20} className="mx-auto mb-2" style={portalStyle({ color: 'rgba(250,250,249,0.25)' })} />
               {conversations.length === 0
                 ? 'Henüz bir mesajlaşma yok.'
                 : 'Aramaya uyan kayıt yok.'}
@@ -652,11 +654,11 @@ export default function MesajlarPage() {
                   type="button"
                   onClick={() => setSelectedId(id)}
                   className="w-full px-4 py-3 text-left flex items-start gap-3 transition-colors"
-                  style={{
+                  style={portalStyle({
                     background: isSelected ? 'rgba(212,184,118,0.08)' : 'transparent',
                     borderBottom: '1px solid rgba(255,255,255,0.04)',
                     borderLeft: isSelected ? `2px solid ${GOLD}` : '2px solid transparent',
-                  }}
+                  })}
                 >
                   {/* Avatar */}
                   {/* REHBER ADI önce: kullanıcı bu numaraya ad yazdıysa firma
@@ -665,23 +667,23 @@ export default function MesajlarPage() {
 
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-[16px] font-semibold truncate" style={{ color: '#fafaf9' }}>
+                      <span className="text-[16px] font-semibold truncate" style={portalStyle({ color: '#fafaf9' })}>
                         {c.kisiAdi || c.taxpayerName}
                       </span>
-                      <span className="text-[12.5px] tabular-nums flex-shrink-0" style={{ color: 'rgba(250,250,249,0.55)' }}>
+                      <span className="text-[12.5px] tabular-nums flex-shrink-0" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>
                         {fmtTime(c.lastMessageAt)}
                       </span>
                     </div>
                     <div className="flex items-center gap-1.5 mt-0.5">
                       {c.lastMessageDirection === 'outgoing' && (
-                        <Send size={11} style={{ color: 'rgba(250,250,249,0.45)' }} />
+                        <Send size={11} style={portalStyle({ color: 'rgba(250,250,249,0.45)' })} />
                       )}
                       {c.phone && (
-                        <span className="text-[12px] font-medium tabular-nums truncate max-w-[104px] flex-shrink-0" style={{ color: 'rgba(250,250,249,0.5)' }}>
+                        <span className="text-[12px] font-medium tabular-nums truncate max-w-[104px] flex-shrink-0" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
                           {c.phone}
                         </span>
                       )}
-                      <span className="text-[13.5px] truncate flex-1 min-w-0" style={{ color: 'rgba(250,250,249,0.68)' }}>
+                      <span className="text-[13.5px] truncate flex-1 min-w-0" style={portalStyle({ color: 'rgba(250,250,249,0.68)' })}>
                         {renderWhatsAppLogText(c.lastMessage) || '(boş mesaj)'}
                       </span>
                     </div>
@@ -696,13 +698,13 @@ export default function MesajlarPage() {
       {/* SAĞ: SOHBET */}
       <div
         className="flex-1 rounded-2xl flex flex-col overflow-hidden min-w-0"
-        style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)' }}
+        style={portalStyle({ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)' })}
       >
         {!selectedId ? (
           <div className="flex-1 flex items-center justify-center p-10">
             <div className="text-center">
-              <MessageCircle size={36} className="mx-auto mb-3" style={{ color: 'rgba(250,250,249,0.2)' }} />
-              <p className="text-[14px]" style={{ color: 'rgba(250,250,249,0.5)' }}>
+              <MessageCircle size={36} className="mx-auto mb-3" style={portalStyle({ color: 'rgba(250,250,249,0.2)' })} />
+              <p className="text-[14px]" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
                 Sol taraftan bir mükellef seç, konuşmaya başla
               </p>
             </div>
@@ -710,15 +712,15 @@ export default function MesajlarPage() {
         ) : (
           <>
             {/* Sohbet başlık */}
-            <div className="px-6 py-3 flex items-center gap-3.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.02)' }}>
+            <div className="px-6 py-3 flex items-center gap-3.5" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.02)' })}>
               <button type="button" onClick={() => setShowProfilePanel(true)} className="rounded-full" title="Kişi bilgisi">
                 <WhatsAppAvatar name={chatData?.taxpayer?.kisiAdi || chatData?.taxpayer?.name} url={chatData?.taxpayer?.avatarUrl} active={isLivePresence(chatData?.presence)} />
               </button>
               <button type="button" onClick={() => setShowProfilePanel(true)} className="flex-1 min-w-0 text-left">
-                <div className="text-[17px] font-semibold" style={{ color: '#fafaf9' }}>
+                <div className="text-[17px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>
                   {chatData?.taxpayer?.kisiAdi || chatData?.taxpayer?.name || 'Yükleniyor...'}
                 </div>
-                <div className="flex items-center gap-3 text-[13px]" style={{ color: 'rgba(250,250,249,0.62)' }}>
+                <div className="flex items-center gap-3 text-[13px]" style={portalStyle({ color: 'rgba(250,250,249,0.62)' })}>
                   {/* Rehber adı gösteriliyorsa firma adı kaybolmasın — hangi
                       mükellefle konuşulduğu görünür kalmalı. */}
                   {chatData?.taxpayer?.kisiAdi && chatData?.taxpayer?.name && (
@@ -733,7 +735,7 @@ export default function MesajlarPage() {
                     <span>VKN: {chatData.taxpayer.taxNumber}</span>
                   )}
                   {presenceText(chatData?.presence) && (
-                    <span style={{ color: '#86efac' }}>{presenceText(chatData?.presence)}</span>
+                    <span style={portalStyle({ color: '#86efac' })}>{presenceText(chatData?.presence)}</span>
                   )}
                 </div>
               </button>
@@ -743,7 +745,7 @@ export default function MesajlarPage() {
                 disabled={deleteConversationMut.isPending}
                 title="Konuşmayı sil"
                 className="h-10 w-10 rounded-md flex items-center justify-center disabled:opacity-50"
-                style={{ background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.18)', color: '#fca5a5' }}
+                style={portalStyle({ background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.18)', color: '#fca5a5' })}
               >
                 {deleteConversationMut.isPending ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={16} />}
               </button>
@@ -753,7 +755,7 @@ export default function MesajlarPage() {
                   onClick={openWhatsAppFromHeader}
                   title="WhatsApp'ta aç ve ara"
                   className="h-10 w-10 rounded-md flex items-center justify-center"
-                  style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.82)' }}
+                  style={portalStyle({ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.82)' })}
                 >
                   <Phone size={17} />
                 </button>
@@ -763,22 +765,22 @@ export default function MesajlarPage() {
                   type="button"
                   onClick={() => setShowLinkModal(true)}
                   className="h-10 px-3.5 rounded-md flex items-center gap-1.5 text-[13px] font-semibold"
-                  style={{ background: 'rgba(212,184,118,0.12)', border: '1px solid rgba(212,184,118,0.24)', color: GOLD }}
+                  style={portalStyle({ background: 'rgba(212,184,118,0.12)', border: '1px solid rgba(212,184,118,0.24)', color: GOLD })}
                 >
                   <Link2 size={14} /> Mükellefe Bağla
                 </button>
               )}
               {/* Konuşma durumu */}
               {!qrDurumBilindi ? (
-                <div className="text-[13px] flex items-center gap-1.5 px-3 py-1.5 rounded-md" style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.5)' }}>
+                <div className="text-[13px] flex items-center gap-1.5 px-3 py-1.5 rounded-md" style={portalStyle({ background: 'rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.5)' })}>
                   <Loader2 size={13} className="animate-spin" /> Durum kontrol ediliyor
                 </div>
               ) : qrConnected ? (
-                <div className="text-[13px] flex items-center gap-1.5 px-3 py-1.5 rounded-md" style={{ background: 'rgba(34,197,94,0.1)', color: '#86efac' }}>
+                <div className="text-[13px] flex items-center gap-1.5 px-3 py-1.5 rounded-md" style={portalStyle({ background: 'rgba(34,197,94,0.1)', color: '#86efac' })}>
                   <CheckCircle2 size={13} /> QR bağlı
                 </div>
               ) : (
-                <div className="text-[13px] flex items-center gap-1.5 px-3 py-1.5 rounded-md" style={{ background: 'rgba(248,113,113,0.1)', color: '#fca5a5' }}>
+                <div className="text-[13px] flex items-center gap-1.5 px-3 py-1.5 rounded-md" style={portalStyle({ background: 'rgba(248,113,113,0.1)', color: '#fca5a5' })}>
                   <AlertCircle size={13} /> Bağlantı kapalı
                 </div>
               )}
@@ -788,18 +790,18 @@ export default function MesajlarPage() {
             <div
               ref={scrollRef}
               className="flex-1 overflow-y-auto px-6 py-4 space-y-2"
-              style={{
+              style={portalStyle({
                 backgroundColor: '#0b141a',
                 backgroundImage: 'radial-gradient(rgba(255,255,255,0.022) 1px, transparent 1px)',
                 backgroundSize: '18px 18px',
-              }}
+              })}
             >
               {!chatData ? (
-                <div className="text-center py-10" style={{ color: 'rgba(250,250,249,0.4)' }}>
+                <div className="text-center py-10" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>
                   <Loader2 size={16} className="animate-spin mx-auto" />
                 </div>
               ) : chatData.messages.length === 0 ? (
-                <div className="text-center py-10 text-[12.5px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                <div className="text-center py-10 text-[12.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                   {qrConnected ? 'Henüz mesaj yok. Aşağıdan normal WhatsApp mesajı yazabilirsin.' : 'Henüz mesaj yok. Bağlantı gelince buradan yazabilirsin.'}
                 </div>
               ) : (
@@ -817,7 +819,7 @@ export default function MesajlarPage() {
                         <div className="flex justify-center py-1.5">
                           <span
                             className="px-3 py-1 rounded-[8px] text-[11px] font-medium"
-                            style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(250,250,249,0.6)' }}
+                            style={portalStyle({ background: 'rgba(255,255,255,0.06)', color: 'rgba(250,250,249,0.6)' })}
                           >
                             {fmtDateSeparator(m.occurredAt)}
                           </span>
@@ -826,13 +828,13 @@ export default function MesajlarPage() {
                       <div className={`flex ${incoming ? 'justify-start' : 'justify-end'}`}>
                       <div
                         className="max-w-[min(76%,780px)] px-3.5 py-2.5 rounded-[10px] text-[15px] leading-[1.55]"
-                        style={{
+                        style={portalStyle({
                           background: incoming ? '#1f2c33' : '#114a3a',
                           border: incoming ? '1px solid rgba(255,255,255,0.04)' : '1px solid rgba(37,211,102,0.16)',
                           color: '#e9edef',
                           borderTopLeftRadius: incoming ? 3 : 10,
                           borderTopRightRadius: incoming ? 10 : 3,
-                        }}
+                        })}
                       >
                         <div className="whitespace-pre-wrap break-words">{parsed.text || '(boş)'}</div>
                         {docs.length > 0 && (
@@ -841,10 +843,10 @@ export default function MesajlarPage() {
                               <div
                                 key={doc.id}
                                 className="overflow-hidden rounded-md border"
-                                style={{
+                                style={portalStyle({
                                   borderColor: incoming ? 'rgba(255,255,255,0.12)' : 'rgba(37,211,102,0.28)',
                                   background: incoming ? 'rgba(255,255,255,0.04)' : 'rgba(37,211,102,0.08)',
-                                }}
+                                })}
                               >
                                 {isImageDoc(doc) && doc.url ? (
                                   <button type="button" onClick={() => openDocument(doc.id)} className="block w-full">
@@ -855,7 +857,7 @@ export default function MesajlarPage() {
                                     type="button"
                                     onClick={() => openDocument(doc.id)}
                                     className="flex max-w-full items-center gap-2 px-2.5 py-2 text-left text-[11.5px]"
-                                    style={{ color: '#fafaf9' }}
+                                    style={portalStyle({ color: '#fafaf9' })}
                                   >
                                     {isPdfDoc(doc) ? <FileText size={16} className="shrink-0" /> : <ImageIcon size={16} className="shrink-0" />}
                                     <span className="min-w-0 flex-1 truncate">{doc.title}</span>
@@ -866,14 +868,14 @@ export default function MesajlarPage() {
                           </div>
                         )}
                         {m.failed && (
-                          <div className="mt-2 flex items-center gap-1.5 text-[10.5px]" style={{ color: '#fca5a5' }}>
+                          <div className="mt-2 flex items-center gap-1.5 text-[10.5px]" style={portalStyle({ color: '#fca5a5' })}>
                             <AlertTriangle size={11} /> WhatsApp'a gonderilemedi
                           </div>
                         )}
-                        <div className="mt-1 flex items-center justify-end gap-1.5 text-[11px] tabular-nums" style={{ color: 'rgba(233,237,239,0.5)' }}>
+                        <div className="mt-1 flex items-center justify-end gap-1.5 text-[11px] tabular-nums" style={portalStyle({ color: 'rgba(233,237,239,0.5)' })}>
                           <span title={fmtFullTime(m.occurredAt)}>{fmtClock(m.occurredAt)}</span>
                           {delivery && DeliveryIcon && (
-                            <span className="inline-flex items-center" style={{ color: delivery.color }} title={delivery.label}>
+                            <span className="inline-flex items-center" style={portalStyle({ color: delivery.color })} title={delivery.label}>
                               <DeliveryIcon size={14} />
                             </span>
                           )}
@@ -887,13 +889,13 @@ export default function MesajlarPage() {
             </div>
 
             {/* Alt input */}
-            <div className="px-5 py-3.5" style={{ borderTop: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.015)' }}>
+            <div className="px-5 py-3.5" style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.015)' })}>
               {freeFormAvailable ? (
                 <>
                 {qrDurumBilindi && !qrConnected && (
-                  <div className="mb-2 flex items-start gap-2 px-3 py-2 rounded-[10px]" style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.22)' }}>
-                    <AlertCircle size={14} className="flex-shrink-0 mt-0.5" style={{ color: '#fbbf24' }} />
-                    <div className="text-[12px]" style={{ color: 'rgba(250,250,249,0.8)' }}>
+                  <div className="mb-2 flex items-start gap-2 px-3 py-2 rounded-[10px]" style={portalStyle({ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.22)' })}>
+                    <AlertCircle size={14} className="flex-shrink-0 mt-0.5" style={portalStyle({ color: '#fbbf24' })} />
+                    <div className="text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.8)' })}>
                       Bağlantı şu an kopuk. Gönderirken otomatik yeniden bağlanmayı deneyecek; olmazsa
                       {' '}<strong>Ayarlar › Entegrasyonlar › WhatsApp</strong> ekranından QR&apos;ı yeniden okutun.
                     </div>
@@ -916,7 +918,7 @@ export default function MesajlarPage() {
                     disabled={mediaMut.isPending}
                     title="Dosya gönder"
                     className="h-12 w-12 rounded-[11px] flex items-center justify-center disabled:opacity-50"
-                    style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: GOLD }}
+                    style={portalStyle({ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: GOLD })}
                   >
                     {mediaMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Paperclip size={15} />}
                   </button>
@@ -924,9 +926,9 @@ export default function MesajlarPage() {
                     {showEmojiPicker && (
                       <div
                         className="absolute bottom-[52px] left-0 z-20 w-[320px] max-w-[calc(100vw-48px)] rounded-[12px] border p-3 shadow-2xl"
-                        style={{ background: '#1f1f1f', borderColor: 'rgba(255,255,255,0.12)' }}
+                        style={portalStyle({ background: '#1f1f1f', borderColor: 'rgba(255,255,255,0.12)' })}
                       >
-                        <div className="mb-2 text-[11px] font-semibold" style={{ color: 'rgba(250,250,249,0.55)' }}>Sık kullanılanlar</div>
+                        <div className="mb-2 text-[11px] font-semibold" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>Sık kullanılanlar</div>
                         <div className="grid grid-cols-8 gap-1">
                           {QUICK_EMOJIS.map((emoji) => (
                             <button
@@ -947,7 +949,7 @@ export default function MesajlarPage() {
                       onClick={() => setShowEmojiPicker((value) => !value)}
                       title="Emoji"
                       className="absolute left-2 top-2 h-7 w-7 rounded-md flex items-center justify-center"
-                      style={{ color: 'rgba(250,250,249,0.55)' }}
+                      style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}
                     >
                       <Smile size={17} />
                     </button>
@@ -964,7 +966,7 @@ export default function MesajlarPage() {
                     placeholder="Mesaj yaz... (Enter = gönder, Shift+Enter = yeni satır)"
                     rows={2}
                     className="w-full pl-12 pr-4 py-3 rounded-[11px] text-[15px] outline-none resize-none"
-                    style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
+                    style={portalStyle({ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' })}
                   />
                   </div>
                   <button
@@ -972,11 +974,11 @@ export default function MesajlarPage() {
                     onClick={handleSend}
                     disabled={!composeText.trim() || sendMut.isPending}
                     className="h-12 px-5 rounded-[11px] flex items-center gap-1.5 text-[14px] font-semibold"
-                    style={{
+                    style={portalStyle({
                       background: composeText.trim() ? '#25d366' : 'rgba(255,255,255,0.04)',
                       color: composeText.trim() ? '#06301c' : 'rgba(250,250,249,0.35)',
                       opacity: sendMut.isPending ? 0.6 : 1,
-                    }}
+                    })}
                   >
                     {sendMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
                     Gönder
@@ -987,9 +989,9 @@ export default function MesajlarPage() {
                 /* QR baglantisi kapali. Meta'nin 24 saat penceresi ve sablon kavrami
                    QR hattinda YOKTUR; tek engel baglantidir. Bu yuzden burada sablon
                    yolu degil, gercek sebep ve cozum gosterilir. */
-                <div className="flex items-start gap-2 px-3 py-3 rounded-[10px]" style={{ background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.22)' }}>
-                  <AlertCircle size={15} className="flex-shrink-0 mt-0.5" style={{ color: '#fca5a5' }} />
-                  <div className="text-[12.5px]" style={{ color: 'rgba(250,250,249,0.82)' }}>
+                <div className="flex items-start gap-2 px-3 py-3 rounded-[10px]" style={portalStyle({ background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.22)' })}>
+                  <AlertCircle size={15} className="flex-shrink-0 mt-0.5" style={portalStyle({ color: '#fca5a5' })} />
+                  <div className="text-[12.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.82)' })}>
                     <strong>WhatsApp bağlantısı kapalı.</strong> Telefon uzun süre çevrimdışı kalınca bağlantı düşebiliyor.
                     {' '}<strong>Ayarlar › Entegrasyonlar › WhatsApp</strong> ekranından QR&apos;ı telefonla yeniden okutun.
                     Bağlanır bağlanmaz mesaj kutusu bu konuşmada kendiliğinden açılır.
@@ -1005,23 +1007,23 @@ export default function MesajlarPage() {
       {showProfilePanel && chatData && (
         <aside
           className="fixed bottom-4 right-4 top-4 z-40 flex w-[min(380px,calc(100vw-32px))] shrink-0 flex-col overflow-hidden rounded-2xl xl:static xl:h-auto xl:w-[360px] xl:min-w-[340px]"
-          style={{
+          style={portalStyle({
             background: '#121212',
             border: '1px solid rgba(255,255,255,0.08)',
             boxShadow: '0 24px 80px rgba(0,0,0,0.45)',
-          }}
+          })}
         >
-          <div className="flex h-14 items-center gap-3 px-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+          <div className="flex h-14 items-center gap-3 px-4" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.08)' })}>
             <button
               type="button"
               onClick={() => setShowProfilePanel(false)}
               className="flex h-8 w-8 items-center justify-center rounded-md"
-              style={{ color: 'rgba(250,250,249,0.72)' }}
+              style={portalStyle({ color: 'rgba(250,250,249,0.72)' })}
               title="Kapat"
             >
               <X size={18} />
             </button>
-            <div className="text-[15px] font-semibold" style={{ color: '#fafaf9' }}>Kişi bilgisi</div>
+            <div className="text-[15px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>Kişi bilgisi</div>
           </div>
 
           <div className="flex-1 overflow-y-auto">
@@ -1030,7 +1032,7 @@ export default function MesajlarPage() {
                 type="button"
                 onClick={() => chatData.taxpayer.avatarUrl && setShowAvatarPreview(true)}
                 className="mx-auto rounded-full"
-                style={{ cursor: chatData.taxpayer.avatarUrl ? 'zoom-in' : 'default' }}
+                style={portalStyle({ cursor: chatData.taxpayer.avatarUrl ? 'zoom-in' : 'default' })}
                 title={chatData.taxpayer.avatarUrl ? 'Profil fotoğrafını büyüt' : undefined}
               >
                 <WhatsAppAvatar
@@ -1041,20 +1043,20 @@ export default function MesajlarPage() {
                 />
               </button>
 
-              <div className="mt-5 text-[20px] font-semibold leading-tight" style={{ color: '#fafaf9' }}>
+              <div className="mt-5 text-[20px] font-semibold leading-tight" style={portalStyle({ color: '#fafaf9' })}>
                 {chatData.taxpayer.name}
               </div>
               {chatData.taxpayer.phone && (
-                <div className="mt-1 text-[14px]" style={{ color: 'rgba(250,250,249,0.58)' }}>
+                <div className="mt-1 text-[14px]" style={portalStyle({ color: 'rgba(250,250,249,0.58)' })}>
                   {chatData.taxpayer.phone}
                 </div>
               )}
               <div
                 className="mt-3 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px]"
-                style={{
+                style={portalStyle({
                   background: qrConnected ? 'rgba(34,197,94,0.1)' : 'rgba(248,113,113,0.1)',
                   color: qrConnected ? '#86efac' : '#fca5a5',
-                }}
+                })}
               >
                 {qrConnected ? <CheckCircle2 size={12} /> : <AlertCircle size={12} />}
                 {qrConnected ? 'QR bağlı' : 'Bağlantı kapalı'}
@@ -1066,7 +1068,7 @@ export default function MesajlarPage() {
                   onClick={openWhatsAppFromHeader}
                   disabled={!chatData.taxpayer.phone}
                   className="flex h-12 items-center justify-center gap-2 rounded-[10px] text-[12px] font-semibold disabled:opacity-45"
-                  style={{ background: 'rgba(255,255,255,0.06)', color: '#fafaf9' }}
+                  style={portalStyle({ background: 'rgba(255,255,255,0.06)', color: '#fafaf9' })}
                 >
                   <Phone size={15} /> Ara
                 </button>
@@ -1074,7 +1076,7 @@ export default function MesajlarPage() {
                   type="button"
                   onClick={() => setShowProfilePanel(false)}
                   className="flex h-12 items-center justify-center gap-2 rounded-[10px] text-[12px] font-semibold"
-                  style={{ background: 'rgba(255,255,255,0.06)', color: '#fafaf9' }}
+                  style={portalStyle({ background: 'rgba(255,255,255,0.06)', color: '#fafaf9' })}
                 >
                   <MessageCircle size={15} /> Sohbet
                 </button>
@@ -1083,7 +1085,7 @@ export default function MesajlarPage() {
                   onClick={handleDeleteConversation}
                   disabled={deleteConversationMut.isPending}
                   className="flex h-12 items-center justify-center gap-2 rounded-[10px] text-[12px] font-semibold disabled:opacity-45"
-                  style={{ background: 'rgba(248,113,113,0.08)', color: '#fca5a5' }}
+                  style={portalStyle({ background: 'rgba(248,113,113,0.08)', color: '#fca5a5' })}
                 >
                   {deleteConversationMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={15} />}
                   Sil
@@ -1095,7 +1097,7 @@ export default function MesajlarPage() {
                   type="button"
                   onClick={() => setShowLinkModal(true)}
                   className="mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-[10px] text-[12px] font-semibold"
-                  style={{ background: 'rgba(212,184,118,0.14)', border: '1px solid rgba(212,184,118,0.25)', color: GOLD }}
+                  style={portalStyle({ background: 'rgba(212,184,118,0.14)', border: '1px solid rgba(212,184,118,0.25)', color: GOLD })}
                 >
                   <Link2 size={14} /> Mükellefe bağla
                 </button>
@@ -1104,15 +1106,15 @@ export default function MesajlarPage() {
 
             {/* Durum (WhatsApp about/hakkında) */}
             {chatData.taxpayer.about && (
-              <div className="px-5 py-4" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-                <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.42)' }}>
+              <div className="px-5 py-4" style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.08)' })}>
+                <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>
                   Durum
                 </div>
-                <div className="text-[13.5px] leading-relaxed" style={{ color: '#fafaf9' }}>
+                <div className="text-[13.5px] leading-relaxed" style={portalStyle({ color: '#fafaf9' })}>
                   {chatData.taxpayer.about}
                 </div>
                 {formatLastSeen(chatData.taxpayer.aboutSetAt) && (
-                  <div className="mt-1 text-[11px]" style={{ color: 'rgba(250,250,249,0.4)' }}>
+                  <div className="mt-1 text-[11px]" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>
                     {formatLastSeen(chatData.taxpayer.aboutSetAt)}
                   </div>
                 )}
@@ -1121,11 +1123,11 @@ export default function MesajlarPage() {
 
             {/* Çevrimiçi / son görülme */}
             {presenceText(chatData.presence) && (
-              <div className="px-5 py-3 flex items-center justify-between gap-3" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-                <span className="text-[13px]" style={{ color: 'rgba(250,250,249,0.56)' }}>Durum bilgisi</span>
+              <div className="px-5 py-3 flex items-center justify-between gap-3" style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.08)' })}>
+                <span className="text-[13px]" style={portalStyle({ color: 'rgba(250,250,249,0.56)' })}>Durum bilgisi</span>
                 <span
                   className="text-[13px] font-medium"
-                  style={{ color: isLivePresence(chatData.presence) ? '#86efac' : 'rgba(250,250,249,0.78)' }}
+                  style={portalStyle({ color: isLivePresence(chatData.presence) ? '#86efac' : 'rgba(250,250,249,0.78)' })}
                 >
                   {presenceText(chatData.presence)}
                 </span>
@@ -1141,12 +1143,12 @@ export default function MesajlarPage() {
               const images = docs.filter((d) => isImageDoc(d));
               const files = docs.filter((d) => !isImageDoc(d));
               return (
-                <div className="px-5 py-4" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                <div className="px-5 py-4" style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.08)' })}>
                   <div className="mb-3 flex items-center justify-between">
-                    <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.42)' }}>
+                    <span className="text-[11px] font-semibold uppercase tracking-wider" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>
                       Medya, bağlantılar ve belgeler
                     </span>
-                    <span className="text-[12px]" style={{ color: 'rgba(250,250,249,0.5)' }}>{docs.length}</span>
+                    <span className="text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>{docs.length}</span>
                   </div>
                   {images.length > 0 && (
                     <div className="grid grid-cols-3 gap-1.5">
@@ -1157,7 +1159,7 @@ export default function MesajlarPage() {
                           target="_blank"
                           rel="noreferrer"
                           className="aspect-square overflow-hidden rounded-[8px]"
-                          style={{ background: 'rgba(255,255,255,0.05)' }}
+                          style={portalStyle({ background: 'rgba(255,255,255,0.05)' })}
                           title={d.title}
                         >
                           <img src={d.url || ''} alt={d.title} className="h-full w-full object-cover" />
@@ -1174,10 +1176,10 @@ export default function MesajlarPage() {
                           target="_blank"
                           rel="noreferrer"
                           className="flex items-center gap-2.5 rounded-[8px] px-2.5 py-2 text-[12.5px]"
-                          style={{ background: 'rgba(255,255,255,0.04)', color: '#fafaf9' }}
+                          style={portalStyle({ background: 'rgba(255,255,255,0.04)', color: '#fafaf9' })}
                           title={d.title}
                         >
-                          <Paperclip size={14} style={{ color: GOLD, flexShrink: 0 }} />
+                          <Paperclip size={14} style={portalStyle({ color: GOLD, flexShrink: 0 })} />
                           <span className="truncate">{d.title}</span>
                         </a>
                       ))}
@@ -1187,49 +1189,49 @@ export default function MesajlarPage() {
               );
             })()}
 
-            <div className="px-5 py-4" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-              <div className="mb-3 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.42)' }}>
+            <div className="px-5 py-4" style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.08)' })}>
+              <div className="mb-3 text-[11px] font-semibold uppercase tracking-wider" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>
                 Kayıt bilgileri
               </div>
               <div className="space-y-3 text-[13px]">
                 <div className="flex items-center justify-between gap-3">
-                  <span style={{ color: 'rgba(250,250,249,0.56)' }}>Telefon</span>
-                  <span className="text-right" style={{ color: '#fafaf9' }}>{chatData.taxpayer.phone || '-'}</span>
+                  <span style={portalStyle({ color: 'rgba(250,250,249,0.56)' })}>Telefon</span>
+                  <span className="text-right" style={portalStyle({ color: '#fafaf9' })}>{chatData.taxpayer.phone || '-'}</span>
                 </div>
                 <div className="flex items-center justify-between gap-3">
-                  <span style={{ color: 'rgba(250,250,249,0.56)' }}>Portal kaydi</span>
-                  <span className="text-right" style={{ color: '#fafaf9' }}>
+                  <span style={portalStyle({ color: 'rgba(250,250,249,0.56)' })}>Portal kaydi</span>
+                  <span className="text-right" style={portalStyle({ color: '#fafaf9' })}>
                     {chatData.taxpayer.unknownContact ? 'Kayıtsız WhatsApp' : 'Mükellef kaydı'}
                   </span>
                 </div>
                 {chatData.taxpayer.taxNumber && (
                   <div className="flex items-center justify-between gap-3">
-                    <span style={{ color: 'rgba(250,250,249,0.56)' }}>VKN/TCKN</span>
-                    <span className="text-right" style={{ color: '#fafaf9' }}>{chatData.taxpayer.taxNumber}</span>
+                    <span style={portalStyle({ color: 'rgba(250,250,249,0.56)' })}>VKN/TCKN</span>
+                    <span className="text-right" style={portalStyle({ color: '#fafaf9' })}>{chatData.taxpayer.taxNumber}</span>
                   </div>
                 )}
               </div>
             </div>
 
-            <div className="px-5 py-4" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-              <div className="mb-3 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.42)' }}>
+            <div className="px-5 py-4" style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.08)' })}>
+              <div className="mb-3 text-[11px] font-semibold uppercase tracking-wider" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>
                 Konuşma
               </div>
               <div className="space-y-3 text-[13px]">
                 <div className="flex items-center justify-between gap-3">
-                  <span style={{ color: 'rgba(250,250,249,0.56)' }}>Toplam mesaj</span>
-                  <span style={{ color: '#fafaf9' }}>{selectedConversation?.totalMessages ?? chatData.messages.length}</span>
+                  <span style={portalStyle({ color: 'rgba(250,250,249,0.56)' })}>Toplam mesaj</span>
+                  <span style={portalStyle({ color: '#fafaf9' })}>{selectedConversation?.totalMessages ?? chatData.messages.length}</span>
                 </div>
                 <div className="flex items-center justify-between gap-3">
-                  <span style={{ color: 'rgba(250,250,249,0.56)' }}>Son mesaj</span>
-                  <span className="text-right" style={{ color: '#fafaf9' }}>
+                  <span style={portalStyle({ color: 'rgba(250,250,249,0.56)' })}>Son mesaj</span>
+                  <span className="text-right" style={portalStyle({ color: '#fafaf9' })}>
                     {selectedConversation?.lastMessageAt ? fmtFullTime(selectedConversation.lastMessageAt) : '-'}
                   </span>
                 </div>
                 {selectedConversation?.lastMessage && (
                   <div
                     className="rounded-[10px] px-3 py-2 text-left text-[12px]"
-                    style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(250,250,249,0.74)' }}
+                    style={portalStyle({ background: 'rgba(255,255,255,0.04)', color: 'rgba(250,250,249,0.74)' })}
                   >
                     {renderWhatsAppLogText(selectedConversation.lastMessage)}
                   </div>
@@ -1243,14 +1245,14 @@ export default function MesajlarPage() {
       {showAvatarPreview && chatData?.taxpayer?.avatarUrl && (
         <div
           className="fixed inset-0 z-[70] flex items-center justify-center p-6"
-          style={{ background: 'rgba(0,0,0,0.82)', backdropFilter: 'blur(6px)' }}
+          style={portalStyle({ background: 'rgba(0,0,0,0.82)', backdropFilter: 'blur(6px)' })}
           onClick={() => setShowAvatarPreview(false)}
         >
           <button
             type="button"
             onClick={() => setShowAvatarPreview(false)}
             className="absolute right-5 top-5 flex h-10 w-10 items-center justify-center rounded-full"
-            style={{ background: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}
+            style={portalStyle({ background: 'rgba(255,255,255,0.08)', color: '#fafaf9' })}
             title="Kapat"
           >
             <X size={22} />
@@ -1259,7 +1261,7 @@ export default function MesajlarPage() {
             src={chatData.taxpayer.avatarUrl}
             alt={chatData.taxpayer.name || 'WhatsApp profil'}
             className="max-h-[82vh] max-w-[82vw] rounded-full object-cover"
-            style={{ boxShadow: '0 28px 100px rgba(0,0,0,0.55)' }}
+            style={portalStyle({ boxShadow: '0 28px 100px rgba(0,0,0,0.55)' })}
             onClick={(e) => e.stopPropagation()}
           />
         </div>
@@ -1268,25 +1270,25 @@ export default function MesajlarPage() {
       {showStartModal && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
+          style={portalStyle({ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' })}
           onClick={() => setShowStartModal(false)}
         >
           <div
             className="rounded-2xl p-5 w-full max-w-5xl"
-            style={{ background: '#1c1813', border: '1px solid rgba(255,255,255,0.1)' }}
+            style={portalStyle({ background: '#1c1813', border: '1px solid rgba(255,255,255,0.1)' })}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
-                <Users size={17} style={{ color: GOLD }} />
-                <h3 className="text-[15px] font-semibold" style={{ color: '#fafaf9' }}>Rehberden Konuşma Başlat</h3>
+                <Users size={17} style={portalStyle({ color: GOLD })} />
+                <h3 className="text-[15px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>Rehberden Konuşma Başlat</h3>
               </div>
-              <button onClick={() => setShowStartModal(false)} style={{ color: 'rgba(250,250,249,0.5)' }}>
+              <button onClick={() => setShowStartModal(false)} style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
                 <X size={18} />
               </button>
             </div>
 
-            <div className="mb-4 grid grid-cols-2 gap-2 rounded-[12px] border p-1" style={{ borderColor: 'rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.16)' }}>
+            <div className="mb-4 grid grid-cols-2 gap-2 rounded-[12px] border p-1" style={portalStyle({ borderColor: 'rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.16)' })}>
               {[
                 { key: 'contacts', label: 'Rehber' },
                 { key: 'manual', label: 'Manuel Numara' },
@@ -1296,10 +1298,10 @@ export default function MesajlarPage() {
                   type="button"
                   onClick={() => setStartMode(mode.key as 'contacts' | 'manual')}
                   className="h-9 rounded-[10px] text-[12px] font-semibold"
-                  style={{
+                  style={portalStyle({
                     background: startMode === mode.key ? 'rgba(212,184,118,0.16)' : 'transparent',
                     color: startMode === mode.key ? GOLD : 'rgba(250,250,249,0.58)',
-                  }}
+                  })}
                 >
                   {mode.label}
                 </button>
@@ -1307,9 +1309,9 @@ export default function MesajlarPage() {
             </div>
 
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
-              <div className="min-h-[360px] rounded-[12px] border p-3" style={{ borderColor: 'rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.16)' }}>
+              <div className="min-h-[360px] rounded-[12px] border p-3" style={portalStyle({ borderColor: 'rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.16)' })}>
                 <div className="relative mb-3">
-                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(250,250,249,0.38)' }} />
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={portalStyle({ color: 'rgba(250,250,249,0.38)' })} />
                   <input
                     value={contactSearch}
                     onChange={(e) => {
@@ -1318,17 +1320,17 @@ export default function MesajlarPage() {
                     }}
                     placeholder="Rehberde ara..."
                     className="w-full h-10 pl-9 pr-3 rounded-[10px] text-[12.5px] outline-none"
-                    style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
+                    style={portalStyle({ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' })}
                   />
                 </div>
 
                 <div className="max-h-[310px] overflow-y-auto space-y-1">
                   {contactsLoading ? (
-                    <div className="py-10 text-center text-[12.5px]" style={{ color: 'rgba(250,250,249,0.5)' }}>
+                    <div className="py-10 text-center text-[12.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
                       <Loader2 size={16} className="animate-spin mx-auto mb-2" /> Yükleniyor...
                     </div>
                   ) : contacts.length === 0 ? (
-                    <div className="py-10 text-center text-[12.5px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                    <div className="py-10 text-center text-[12.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                       Kayıt bulunamadı.
                     </div>
                   ) : contacts.map((contact) => {
@@ -1341,20 +1343,20 @@ export default function MesajlarPage() {
                         onClick={() => setSelectedContactId(contact.taxpayerId)}
                         disabled={!canSend}
                         className="w-full rounded-[10px] px-3 py-2 text-left disabled:opacity-45"
-                        style={{
+                        style={portalStyle({
                           background: active ? 'rgba(212,184,118,0.1)' : 'rgba(255,255,255,0.03)',
                           border: `1px solid ${active ? 'rgba(212,184,118,0.28)' : 'rgba(255,255,255,0.06)'}`,
-                        }}
+                        })}
                       >
                         <div className="flex items-center justify-between gap-3">
                           <div className="min-w-0">
-                            <div className="truncate text-[13px] font-semibold" style={{ color: '#fafaf9' }}>{contact.taxpayerName}</div>
-                            <div className="mt-0.5 flex items-center gap-2 text-[11px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                            <div className="truncate text-[13px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>{contact.taxpayerName}</div>
+                            <div className="mt-0.5 flex items-center gap-2 text-[11px]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                               <span className="truncate">{contact.primaryPhone || 'Telefon yok'}</span>
                             </div>
                           </div>
                           {contact.hasConversation && (
-                            <span className="rounded-md px-2 py-1 text-[10px]" style={{ background: 'rgba(34,197,94,0.09)', color: '#86efac' }}>
+                            <span className="rounded-md px-2 py-1 text-[10px]" style={portalStyle({ background: 'rgba(34,197,94,0.09)', color: '#86efac' })}>
                               Sohbet
                             </span>
                           )}
@@ -1365,10 +1367,10 @@ export default function MesajlarPage() {
                 </div>
               </div>
 
-              <div className="rounded-[12px] border p-3" style={{ borderColor: 'rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.025)' }}>
+              <div className="rounded-[12px] border p-3" style={portalStyle({ borderColor: 'rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.025)' })}>
                 {startMode === 'manual' ? (
                   <>
-                    <label className="block text-[11px] font-medium uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                    <label className="block text-[11px] font-medium uppercase tracking-wider" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                       Telefon
                     </label>
                     <input
@@ -1376,9 +1378,9 @@ export default function MesajlarPage() {
                       onChange={(e) => setManualPhone(e.target.value)}
                       placeholder="905xxxxxxxxx"
                       className="mt-1.5 w-full rounded-[10px] border bg-transparent px-3 py-2 text-[13px] outline-none"
-                      style={{ borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}
+                      style={portalStyle({ borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' })}
                     />
-                    <label className="mt-3 block text-[11px] font-medium uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                    <label className="mt-3 block text-[11px] font-medium uppercase tracking-wider" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                       Kayıt adı
                     </label>
                     <input
@@ -1386,12 +1388,12 @@ export default function MesajlarPage() {
                       onChange={(e) => setManualName(e.target.value)}
                       placeholder="Opsiyonel"
                       className="mt-1.5 w-full rounded-[10px] border bg-transparent px-3 py-2 text-[13px] outline-none"
-                      style={{ borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}
+                      style={portalStyle({ borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' })}
                     />
                   </>
                 ) : (
                   <>
-                    <label className="block text-[11px] font-medium uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                    <label className="block text-[11px] font-medium uppercase tracking-wider" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                       Telefon
                     </label>
                     <div className="mt-1.5 space-y-2">
@@ -1401,17 +1403,17 @@ export default function MesajlarPage() {
                           type="button"
                           onClick={() => setSelectedPhone(item.phone)}
                           className="w-full rounded-[10px] border px-3 py-2 text-left"
-                          style={{
+                          style={portalStyle({
                             borderColor: selectedPhone === item.phone ? 'rgba(212,184,118,0.34)' : 'rgba(255,255,255,0.08)',
                             background: selectedPhone === item.phone ? 'rgba(212,184,118,0.1)' : 'rgba(0,0,0,0.12)',
                             color: '#fafaf9',
-                          }}
+                          })}
                         >
                           <div className="text-[12px] font-semibold">{item.phone}</div>
-                          <div className="mt-0.5 text-[10.5px]" style={{ color: 'rgba(250,250,249,0.48)' }}>{item.label}</div>
+                          <div className="mt-0.5 text-[10.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.48)' })}>{item.label}</div>
                         </button>
                       )) : (
-                        <div className="rounded-[10px] border px-3 py-3 text-[12px]" style={{ borderColor: 'rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.45)' }}>
+                        <div className="rounded-[10px] border px-3 py-3 text-[12px]" style={portalStyle({ borderColor: 'rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.45)' })}>
                           Telefon yok
                         </div>
                       )}
@@ -1419,7 +1421,7 @@ export default function MesajlarPage() {
                   </>
                 )}
 
-                <label className="mt-3 block text-[11px] font-medium uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                <label className="mt-3 block text-[11px] font-medium uppercase tracking-wider" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                   İlk mesaj
                 </label>
                 <textarea
@@ -1428,14 +1430,14 @@ export default function MesajlarPage() {
                   rows={5}
                   placeholder="Merhaba"
                   className="mt-1.5 w-full resize-none rounded-[10px] border bg-transparent px-3 py-2 text-[13px] outline-none"
-                  style={{ borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}
+                  style={portalStyle({ borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' })}
                 />
                 {qrStartAvailable ? (
-                  <div className="mt-2 text-[11px]" style={{ color: 'rgba(134,239,172,0.82)' }}>
+                  <div className="mt-2 text-[11px]" style={portalStyle({ color: 'rgba(134,239,172,0.82)' })}>
                     QR bağlı — normal WhatsApp mesajı olarak gönderilecek.
                   </div>
                 ) : (
-                  <div className="mt-2 text-[11px]" style={{ color: '#fca5a5' }}>
+                  <div className="mt-2 text-[11px]" style={portalStyle({ color: '#fca5a5' })}>
                     WhatsApp bağlantısı kapalı. Ayarlar › Entegrasyonlar › WhatsApp ekranından QR&apos;ı yeniden okutun; bağlanınca buradan konuşma başlatabilirsiniz.
                   </div>
                 )}
@@ -1445,7 +1447,7 @@ export default function MesajlarPage() {
                   onClick={() => startMut.mutate()}
                   disabled={(startMode === 'contacts' ? (!selectedContact || !selectedPhone) : !manualPhone.trim()) || !startMessage.trim() || !qrStartAvailable || startMut.isPending}
                   className="mt-4 h-11 w-full rounded-[10px] flex items-center justify-center gap-1.5 text-[13px] font-semibold disabled:opacity-50"
-                  style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}
+                  style={portalStyle({ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' })}
                 >
                   {startMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
                   {qrStartAvailable ? 'Mesajla Başlat' : 'Bağlantı bekleniyor'}
@@ -1459,31 +1461,31 @@ export default function MesajlarPage() {
       {showLinkModal && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
+          style={portalStyle({ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' })}
           onClick={() => setShowLinkModal(false)}
         >
           <div
             className="rounded-2xl p-5 w-full max-w-2xl"
-            style={{ background: '#1c1813', border: '1px solid rgba(255,255,255,0.1)' }}
+            style={portalStyle({ background: '#1c1813', border: '1px solid rgba(255,255,255,0.1)' })}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-4 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Link2 size={17} style={{ color: GOLD }} />
-                <h3 className="text-[15px] font-semibold" style={{ color: '#fafaf9' }}>Kayıtsız Konuşmayı Bağla</h3>
+                <Link2 size={17} style={portalStyle({ color: GOLD })} />
+                <h3 className="text-[15px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>Kayıtsız Konuşmayı Bağla</h3>
               </div>
-              <button onClick={() => setShowLinkModal(false)} style={{ color: 'rgba(250,250,249,0.5)' }}>
+              <button onClick={() => setShowLinkModal(false)} style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
                 <X size={18} />
               </button>
             </div>
             <div className="relative mb-3">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(250,250,249,0.38)' }} />
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={portalStyle({ color: 'rgba(250,250,249,0.38)' })} />
               <input
                 value={contactSearch}
                 onChange={(e) => setContactSearch(e.target.value)}
                 placeholder="Mükellef ara..."
                 className="w-full h-10 pl-9 pr-3 rounded-[10px] text-[12.5px] outline-none"
-                style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
+                style={portalStyle({ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' })}
               />
             </div>
             <div className="max-h-[320px] overflow-y-auto space-y-1">
@@ -1495,13 +1497,13 @@ export default function MesajlarPage() {
                     type="button"
                     onClick={() => setSelectedLinkContactId(contact.taxpayerId)}
                     className="w-full rounded-[10px] px-3 py-2 text-left"
-                    style={{
+                    style={portalStyle({
                       background: active ? 'rgba(212,184,118,0.1)' : 'rgba(255,255,255,0.03)',
                       border: `1px solid ${active ? 'rgba(212,184,118,0.28)' : 'rgba(255,255,255,0.06)'}`,
-                    }}
+                    })}
                   >
-                    <div className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>{contact.taxpayerName}</div>
-                    <div className="mt-0.5 text-[11px]" style={{ color: 'rgba(250,250,249,0.45)' }}>{contact.primaryPhone || 'Telefon yok'}</div>
+                    <div className="text-[13px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>{contact.taxpayerName}</div>
+                    <div className="mt-0.5 text-[11px]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>{contact.primaryPhone || 'Telefon yok'}</div>
                   </button>
                 );
               })}
@@ -1511,7 +1513,7 @@ export default function MesajlarPage() {
               onClick={() => linkMut.mutate()}
               disabled={!selectedLinkContact || linkMut.isPending}
               className="mt-4 h-11 w-full rounded-[10px] flex items-center justify-center gap-1.5 text-[13px] font-semibold disabled:opacity-50"
-              style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}
+              style={portalStyle({ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' })}
             >
               {linkMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Link2 size={14} />}
               Mükellefe Bağla

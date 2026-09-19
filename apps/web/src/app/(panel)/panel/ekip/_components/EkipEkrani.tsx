@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -332,7 +334,7 @@ export function EkipEkrani() {
 
       {omurgaYok && <OmurgaYokBilgi />}
       {!!kadroS.error && !omurgaYok && (
-        <div className="rounded-2xl px-4 py-3 text-[12.5px]" style={{ background: `${KIRMIZI}12`, border: `1px solid ${KIRMIZI}59`, color: TEXT }}>
+        <div className="rounded-2xl px-4 py-3 text-[12.5px]" style={portalStyle({ background: `${KIRMIZI}12`, border: `1px solid ${KIRMIZI}59`, color: TEXT })}>
           Kadro alınamadı: {(kadroS.error as any)?.message || 'hata'}
         </div>
       )}
@@ -378,7 +380,7 @@ export function EkipEkrani() {
             }}
           />
           </div>
-          <div ref={panelRef} className="min-w-0" style={{ scrollMarginTop: 16 }}>
+          <div ref={panelRef} className="min-w-0" style={portalStyle({ scrollMarginTop: 16 })}>
             {panelGoster ? (
               <IsPaneli
                 kosu={panelKosu}

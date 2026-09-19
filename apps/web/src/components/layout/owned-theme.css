@@ -1,0 +1,137 @@
+/* Bu değişkenler yalnız bu görevin bileşenlerinde ve D temasında etkindir. */
+html[data-theme='D'] [data-moren-owned] {
+  --moren-owned-surface: #ffffff;
+  --moren-owned-soft: #f3f6f8;
+  --moren-owned-ink: var(--text, #24313b);
+  --moren-owned-muted: #526176;
+  --moren-owned-line: #dce4e9;
+  --moren-owned-shadow: rgba(23, 43, 69, 0.12);
+  --moren-owned-shine: rgba(255, 255, 255, 0.65);
+  --moren-owned-on-primary: #ffffff;
+  --moren-owned-primary: var(--accent, #087f78);
+  --moren-owned-primary-deep: #115e59;
+  --moren-owned-primary-soft: #e7f3f0;
+  --moren-owned-primary-line: #bad9d3;
+  --moren-owned-plum: #765272;
+  --moren-owned-plum-soft: #f2edf4;
+  --moren-owned-plum-line: #dbcbdf;
+  --moren-owned-rose: #b13e60;
+  --moren-owned-rose-soft: #fbeef2;
+  --moren-owned-rose-line: #edc4cf;
+  --moren-owned-green: #237650;
+  --moren-owned-green-soft: #edf7f0;
+  --moren-owned-green-line: #c4dfce;
+  --moren-owned-amber: #95610f;
+  --moren-owned-amber-soft: #fff5e5;
+  --moren-owned-amber-line: #ead4a9;
+  --moren-owned-muted-soft: #f1f4f7;
+  --moren-owned-muted-line: #dce4e9;
+  color: var(--moren-owned-ink);
+  color-scheme: light;
+}
+
+html[data-theme='D'] [data-moren-owned='navigation'] {
+  --moren-owned-surface: #142d42;
+  --moren-owned-soft: rgba(255, 255, 255, 0.055);
+  --moren-owned-ink: #ffffff;
+  --moren-owned-muted: #c0cdd8;
+  --moren-owned-line: rgba(222, 238, 244, 0.17);
+  --moren-owned-primary: #8fd8cc;
+  --moren-owned-primary-deep: #397b79;
+  --moren-owned-primary-soft: rgba(143, 216, 204, 0.1);
+  --moren-owned-primary-line: rgba(143, 216, 204, 0.25);
+  --moren-owned-rose: #f0b2c4;
+  --moren-owned-rose-soft: rgba(240, 178, 196, 0.1);
+  --moren-owned-rose-line: rgba(240, 178, 196, 0.25);
+  --moren-owned-plum: #d4bfdf;
+  --moren-owned-plum-soft: rgba(212, 191, 223, 0.1);
+  --moren-owned-plum-line: rgba(212, 191, 223, 0.25);
+  --moren-owned-green: #aedbc3;
+  --moren-owned-green-soft: rgba(174, 219, 195, 0.1);
+  --moren-owned-green-line: rgba(174, 219, 195, 0.25);
+  --moren-owned-amber: #e8c58c;
+  --moren-owned-amber-soft: rgba(232, 197, 140, 0.1);
+  --moren-owned-amber-line: rgba(232, 197, 140, 0.25);
+  --moren-owned-on-primary: #122b40;
+  --moren-owned-nav-background: linear-gradient(180deg, #15263e 0%, #14364a 52%, #15515b 100%);
+  color-scheme: dark;
+}
+
+html[data-theme='D'] [data-moren-owned='navigation'] img[src^='/brand/moren-logo'] {
+  filter: brightness(0) invert(1) !important;
+}
+
+html[data-theme='D'] [data-moren-owned='auth'] img[src^='/brand/moren-logo'] {
+  filter: brightness(0) saturate(100%) invert(16%) sepia(22%) saturate(1256%) hue-rotate(173deg) brightness(94%) contrast(94%) !important;
+}
+
+html[data-theme='D'] [data-moren-owned] input::placeholder {
+  color: #728094;
+}
+
+html[data-theme='D'] [data-moren-owned] input[class~='bg-black/30'] {
+  background-color: #ffffff;
+}
+
+html[data-theme='D'] [data-moren-owned] [class*='hover:bg-white']:hover {
+  background-color: var(--moren-owned-soft);
+}
+
+html[data-theme='D'] [data-moren-owned='auth'] [class~='bg-blue-600'] {
+  background-color: var(--moren-owned-primary);
+}
+html[data-theme='D'] [data-moren-owned='auth'] [class~='hover:bg-blue-700']:hover {
+  background-color: var(--moren-owned-primary-deep);
+}
+html[data-theme='D'] [data-moren-owned='auth'] [class~='text-blue-600'] {
+  color: var(--moren-owned-primary);
+}
+html[data-theme='D'] [data-moren-owned='auth'].from-blue-50 {
+  background-image: linear-gradient(135deg, #ffffff, #f4f0f5);
+}
+html[data-theme='D'] [data-moren-owned='auth'] [class~='focus:ring-blue-500']:focus {
+  --tw-ring-color: var(--accent, #087f78);
+}
+
+/* Dolu kayıt düğmesi ve marka harfleri açık yazıyı korur. */
+html[data-theme='D'] [data-moren-owned='auth'] [class~='text-white'] {
+  color: #ffffff;
+}
+
+/* Dönüş yönü, yükleme halkasının üst kenarında ayırt edilir. */
+html[data-theme='D'] [data-moren-owned='auth'] button[type='submit'] .animate-spin {
+  border-color: rgba(255, 255, 255, 0.3) !important;
+  border-top-color: #ffffff !important;
+}
+
+html[data-theme='D'] [data-moren-owned='auth'] input {
+  caret-color: var(--moren-owned-primary);
+}
+
+/* Eski otomatik doldurma kuralları da önemli olarak tanımlanmış. */
+html[data-theme='D'] [data-moren-owned='auth'] input:-webkit-autofill,
+html[data-theme='D'] [data-moren-owned='auth'] input:-webkit-autofill:hover,
+html[data-theme='D'] [data-moren-owned='auth'] input:-webkit-autofill:focus,
+html[data-theme='D'] [data-moren-owned='auth'] input:-webkit-autofill:active {
+  -webkit-text-fill-color: var(--moren-owned-ink) !important;
+  -webkit-box-shadow: 0 0 0 1000px #f2faf7 inset !important;
+  caret-color: var(--moren-owned-primary) !important;
+}
+
+html[data-theme='D'] [data-moren-auth-brand] {
+  background: radial-gradient(ellipse at 15% 5%, #f4edf1, transparent 55%),
+    radial-gradient(ellipse at 85% 95%, #edf5f3, transparent 50%), #fafbfc !important;
+}
+
+html[data-theme='D'] [data-moren-auth-features] > :nth-child(2),
+html[data-theme='D'] [data-moren-auth-options] > :nth-child(2) {
+  --moren-owned-primary: var(--moren-owned-plum);
+  --moren-owned-primary-soft: var(--moren-owned-plum-soft);
+  --moren-owned-primary-line: var(--moren-owned-plum-line);
+}
+
+html[data-theme='D'] [data-moren-auth-features] > :nth-child(3) {
+  --moren-owned-primary: var(--moren-owned-amber);
+  --moren-owned-primary-soft: var(--moren-owned-amber-soft);
+  --moren-owned-primary-line: var(--moren-owned-amber-line);
+}

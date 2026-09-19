@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -108,17 +110,17 @@ export function MukellefSecici({
       <div className="flex min-w-0 flex-wrap items-center gap-1">
         <span
           className={`inline-flex max-w-full items-center gap-1 rounded-md text-xs font-semibold ${sade ? 'py-0.5 text-[12.5px]' : 'px-2 py-1'}`}
-          style={sade ? { color: SAKIN.metin } : { background: `${renk}1a`, border: `1px solid ${renk}66`, color: SAKIN.metin }}
+          style={portalStyle(sade ? { color: SAKIN.metin } : { background: `${renk}1a`, border: `1px solid ${renk}66`, color: SAKIN.metin })}
           title={secili.taxNumber ? `VKN ${secili.taxNumber}` : undefined}
         >
-          {!sade && <Building2 size={12} style={{ color: SAKIN.vurguAcik }} />}
+          {!sade && <Building2 size={12} style={portalStyle({ color: SAKIN.vurguAcik })} />}
           <span className="truncate">{mukellefAdi(secili)}</span>
           <button type="button" onClick={() => onChange('')} className="ml-0.5 rounded p-0.5 hover:bg-white/10" title="Mükellefi kaldır (ofis geneli)">
             <X size={12} />
           </button>
         </span>
         {kilitli && (
-          <span className="rounded-md px-1.5 py-0.5 text-[10px]" style={{ border: `1px solid ${SAKIN.cizgi}`, color: SAKIN.ikincil }}>
+          <span className="rounded-md px-1.5 py-0.5 text-[10px]" style={portalStyle({ border: `1px solid ${SAKIN.cizgi}`, color: SAKIN.ikincil })}>
             panodan
           </span>
         )}
@@ -129,7 +131,7 @@ export function MukellefSecici({
   return (
     <div ref={kutuRef} className={`min-w-0 ${sade ? 'relative' : 'flex flex-col gap-1'}`}>
       <div className="relative flex items-center">
-        {!sade && <Building2 size={12} className="pointer-events-none absolute left-2" style={{ color: SAKIN.ikincil }} />}
+        {!sade && <Building2 size={12} className="pointer-events-none absolute left-2" style={portalStyle({ color: SAKIN.ikincil })} />}
         <input
           ref={inputRef}
           value={metin}
@@ -158,7 +160,7 @@ export function MukellefSecici({
           }}
           placeholder={sade ? yerTutucu || 'Seçin (boş = ofis geneli)' : 'Mükellef ara… (boş = ofis geneli)'}
           className={sade ? 'w-full bg-transparent py-0.5 pr-6 text-[12.5px] outline-none' : 'w-full rounded-md py-1.5 pl-7 pr-7 text-xs outline-none transition-[border-color] duration-150 focus:[border-color:#4f86c9]'}
-          style={sade ? { color: SAKIN.metin } : { background: SAKIN.alan, border: `1px solid ${SAKIN.cizgi}`, color: SAKIN.metin }}
+          style={portalStyle(sade ? { color: SAKIN.metin } : { background: SAKIN.alan, border: `1px solid ${SAKIN.cizgi}`, color: SAKIN.metin })}
         />
         {metin && (
           <button
@@ -168,7 +170,7 @@ export function MukellefSecici({
               setAcik(false);
             }}
             className="absolute right-1.5 rounded p-0.5 hover:bg-white/10"
-            style={{ color: SAKIN.ikincil }}
+            style={portalStyle({ color: SAKIN.ikincil })}
             title="Temizle"
           >
             <X size={12} />
@@ -181,9 +183,9 @@ export function MukellefSecici({
 
   function liste() {
     const ul = (
-        <ul ref={listeRef} className={`max-h-56 overflow-y-auto rounded-[10px] p-1 ${sade ? 'fixed z-[1000] w-[308px] shadow-2xl' : ''}`} style={sade ? { top: yer?.top ?? -9999, left: yer?.left ?? -9999, background: '#121317', border: `1px solid ${SAKIN.cizgiKoyu}` } : { background: '#121317', border: `1px solid ${SAKIN.cizgiKoyu}` }}>
+        <ul ref={listeRef} className={`max-h-56 overflow-y-auto rounded-[10px] p-1 ${sade ? 'fixed z-[1000] w-[308px] shadow-2xl' : ''}`} style={portalStyle(sade ? { top: yer?.top ?? -9999, left: yer?.left ?? -9999, background: '#121317', border: `1px solid ${SAKIN.cizgiKoyu}` } : { background: '#121317', border: `1px solid ${SAKIN.cizgiKoyu}` })}>
           {!sonuclar.length ? (
-            <li className="px-2 py-1.5 text-[11px]" style={{ color: SAKIN.ikincil }}>
+            <li className="px-2 py-1.5 text-[11px]" style={portalStyle({ color: SAKIN.ikincil })}>
               {mukellefler.length ? 'Eşleşen mükellef yok' : 'Mükellef listesi yükleniyor…'}
             </li>
           ) : (
@@ -195,10 +197,10 @@ export function MukellefSecici({
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => sec(m)}
                   className="flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-xs"
-                  style={{ background: i === imlec ? `${renk}22` : 'transparent', color: SAKIN.metin }}
+                  style={portalStyle({ background: i === imlec ? `${renk}22` : 'transparent', color: SAKIN.metin })}
                 >
                   <span className="truncate">{mukellefAdi(m)}</span>
-                  {m.taxNumber && <span className="flex-shrink-0 text-[10px] tabular-nums" style={{ color: SAKIN.ikincil }}>{m.taxNumber}</span>}
+                  {m.taxNumber && <span className="flex-shrink-0 text-[10px] tabular-nums" style={portalStyle({ color: SAKIN.ikincil })}>{m.taxNumber}</span>}
                 </button>
               </li>
             ))

@@ -1,3 +1,5 @@
+
+import { portalStyle } from '@/lib/portal-theme';
 import { ReactNode } from 'react';
 
 type BadgeVariant = 'default' | 'success' | 'warning' | 'danger' | 'info' | 'navy' | 'gold' | 'teal' | 'purple' | 'orange';
@@ -28,7 +30,7 @@ export function Badge({ children, variant = 'default', dot, className = '' }: Ba
       {dot && (
         <span
           className="w-1.5 h-1.5 rounded-full inline-block"
-          style={{ background: 'currentColor' }}
+          style={portalStyle({ background: 'currentColor' })}
         />
       )}
       {children}

@@ -1,0 +1,26 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),ts=require('typescript');
+const root=path.resolve(__dirname,'..'),source=fs.readFileSync(path.join(root,'apps/web/src/lib/portal-theme.ts'),'utf8');
+const compiled=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText;
+const mod={exports:{}};new Function('exports','require','module',compiled)(mod.exports,require,mod);
+const {portalStyle,portalCss,portalPaint}=mod.exports;
+const original={color:'#fafaf9',background:'rgba(255,255,255,0.02)',width:200,height:100,position:'fixed',zIndex:99,opacity:.5,transform:'translateX(12px)'};
+const mapped=portalStyle(original);
+for(const prop of ['width','height','position','zIndex','opacity','transform'])assert.equal(mapped[prop],original[prop]);
+assert.equal(original.color,'#fafaf9');assert.match(mapped.color,/var\(--portal-ink, #fafaf9\)/);
+assert.equal(portalStyle(undefined),undefined);
+assert.deepEqual(portalStyle(mapped),mapped);
+assert.match(portalStyle({background:'#d4b8761a'}).background,/wash, #d4b8761a/);
+assert.match(portalStyle({background:'rgba(0,0,0,0.6)'}).background,/--portal-overlay/);
+assert.match(portalStyle({background:'#FBF0D6',color:'#8B6510'}).background,/wash/);
+assert.match(portalStyle({background:'#2563eb',color:'#fff'}).color,/on-color/);
+assert.match(portalStyle({background:'#dbeafe',color:'#fff'}).color,/--portal-ink/);
+assert.equal(portalStyle({background:'url(data:image/svg+xml,#fafafa)'}).background,'url(data:image/svg+xml,#fafafa)');
+assert.equal(portalStyle({background:'var(--surface)'}).background,'var(--surface)');
+assert.match(portalPaint('#0f0d0b','background'),/--portal-surface/);
+assert.match(portalCss('.x{width:4px;background:#050505;color:#fafaf9;}'),/width:4px;background:var/);
+const styles=fs.readFileSync(path.join(root,'apps/web/src/app/portal-white.css'),'utf8');
+for(const value of Object.values(mapped)){if(typeof value!=='string')continue;for(const match of value.matchAll(/var\((--portal-[\w-]+)/g))assert.ok(styles.includes(match[1]+':'),match[1]);}
+const layout=fs.readFileSync(path.join(root,'apps/web/src/app/layout.tsx'),'utf8');
+assert.ok(layout.includes("process.env.MOREN_PORTAL_THEME === 'A'"));
+assert.ok(layout.includes("location.pathname === '/fatura-merkezi'"));
+console.log('Tema renkleri, saydamlık, değişmez ölçüler, koyu tema yedek değerleri ve kapsam kontrolleri geçti.');

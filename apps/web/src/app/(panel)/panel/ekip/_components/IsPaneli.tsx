@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -19,13 +21,13 @@ type AdimSecenek = { mukellefId?: string | null; mukellefAd?: string | null };
 function IsKarti({ baslik, mukellef, aciklama, sag, children }: { baslik: ReactNode; mukellef?: string; aciklama: ReactNode; sag: ReactNode; children: ReactNode }) {
   return (
     <section aria-label="İş ayrıntıları" className="relative min-w-0 rounded-[18px] px-4 pb-5 pt-[18px] sm:px-6"
-      style={{ background: 'rgba(255,255,255,0.018)', border: '1px solid rgba(255,255,255,0.065)', boxShadow: '0 18px 44px rgba(0,0,0,0.24)' }}>
-      <span aria-hidden="true" className="pointer-events-none absolute inset-x-6 top-0 h-px" style={{ background: `linear-gradient(90deg, transparent, ${GOLD}73, transparent)` }} />
+      style={portalStyle({ background: 'rgba(255,255,255,0.018)', border: '1px solid rgba(255,255,255,0.065)', boxShadow: '0 18px 44px rgba(0,0,0,0.24)' })}>
+      <span aria-hidden="true" className="pointer-events-none absolute inset-x-6 top-0 h-px" style={portalStyle({ background: `linear-gradient(90deg, transparent, ${GOLD}73, transparent)` })} />
       <header className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1 basis-[240px]">
-          {mukellef && <div className="mb-1.5 truncate text-[12px]" title={mukellef} style={{ color: MUTED }}>{mukellef}</div>}
-          <h3 className="break-words text-[22px] font-semibold leading-snug sm:text-[26px]" style={{ color: TEXT }}>{baslik}</h3>
-          <div className="mt-1 text-[11.5px] leading-relaxed" style={{ color: MUTED }}>{aciklama}</div>
+          {mukellef && <div className="mb-1.5 truncate text-[12px]" title={mukellef} style={portalStyle({ color: MUTED })}>{mukellef}</div>}
+          <h3 className="break-words text-[22px] font-semibold leading-snug sm:text-[26px]" style={portalStyle({ color: TEXT })}>{baslik}</h3>
+          <div className="mt-1 text-[11.5px] leading-relaxed" style={portalStyle({ color: MUTED })}>{aciklama}</div>
         </div>
         {sag}
       </header>
@@ -37,8 +39,8 @@ function IsKarti({ baslik, mukellef, aciklama, sag, children }: { baslik: ReactN
 /** Rapor bölümleri kutu yerine ince bir ayırıcıyla okunur. */
 function RaporBolum({ baslik, renk = MUTED, className = '', children }: { baslik?: ReactNode; renk?: string; className?: string; children: ReactNode }) {
   return (
-    <section className={`min-w-0 py-3 ${className}`} style={{ borderTop: `1px solid ${ROW_SEP}` }}>
-      {baslik && <h5 className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-[0.16em]" style={{ color: renk }}>{baslik}</h5>}
+    <section className={`min-w-0 py-3 ${className}`} style={portalStyle({ borderTop: `1px solid ${ROW_SEP}` })}>
+      {baslik && <h5 className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-[0.16em]" style={portalStyle({ color: renk })}>{baslik}</h5>}
       {children}
     </section>
   );
@@ -67,26 +69,26 @@ type BekleyenCevap = { metin: string; vakaId: string; taxpayerId?: string; dryRu
 function ZamanSatiri({ saat, kisaltma, ton, baslik, alt, sonuc, devir, nabiz, children }: { saat?: string; kisaltma: string; ton: 'gold' | 'mavi' | 'gri' | 'kirmizi'; baslik: ReactNode; alt?: ReactNode; sonuc?: ReactNode; devir?: boolean; nabiz?: boolean; children?: ReactNode }) {
   return (
     <li className="grid min-w-0 grid-cols-[42px_32px_minmax(0,1fr)] items-start gap-x-2 py-1.5 md:grid-cols-[42px_32px_minmax(0,1fr)_minmax(0,180px)]">
-      <span className="pt-1.5 text-[11px] tabular-nums" style={{ color: MUTED }}>
+      <span className="pt-1.5 text-[11px] tabular-nums" style={portalStyle({ color: MUTED })}>
         {saat || ''}
       </span>
       <span className="pt-0.5">
         <Avatar kisaltma={kisaltma} ton={ton} boyut={26} nabiz={nabiz} />
       </span>
       <span className="min-w-0 pt-0.5">
-        <b className="block text-[12.5px] font-semibold" style={{ color: TEXT }}>
-          {devir && <span style={{ color: MAVI }}>→ </span>}
+        <b className="block text-[12.5px] font-semibold" style={portalStyle({ color: TEXT })}>
+          {devir && <span style={portalStyle({ color: MAVI })}>→ </span>}
           {baslik}
         </b>
         {alt && (
-          <span className="block text-[11.5px]" style={{ color: MUTED }}>
+          <span className="block text-[11.5px]" style={portalStyle({ color: MUTED })}>
             {alt}
           </span>
         )}
         {children}
       </span>
       {sonuc !== undefined && (
-        <span className="col-start-3 min-w-0 pt-1 text-[11.5px] md:col-start-auto md:text-right" style={{ color: MUTED }}>
+        <span className="col-start-3 min-w-0 pt-1 text-[11.5px] md:col-start-auto md:text-right" style={portalStyle({ color: MUTED })}>
           {sonuc}
         </span>
       )}
@@ -105,7 +107,7 @@ function YerelAdim({ adim, mukellefAd, ajanAd, ajanId, secenek, simdi }: { adim:
     const { baslik, ayrinti } = adimAciklamasi(adim.ad, adim.args, mukellefAd, ajanAd, secenek);
     const devir = adim.ad === 'ekip_ajan_baslat';
     const gecen = calisiyor && simdi ? sayacMetni(simdi - adim.zaman) : '';
-    return <ZamanSatiri saat={saat} kisaltma={kisaltma} ton={calisiyor ? 'mavi' : ton} baslik={baslik} alt={ajanAdi} sonuc={calisiyor ? <span style={{ color: MAVI }}>sürüyor…{gecen ? ` ${gecen}` : ''}</span> : ayrinti} devir={devir} nabiz={calisiyor} />;
+    return <ZamanSatiri saat={saat} kisaltma={kisaltma} ton={calisiyor ? 'mavi' : ton} baslik={baslik} alt={ajanAdi} sonuc={calisiyor ? <span style={portalStyle({ color: MAVI })}>sürüyor…{gecen ? ` ${gecen}` : ''}</span> : ayrinti} devir={devir} nabiz={calisiyor} />;
   }
   if (adim.tip === 'kuruTest') {
     const { baslik, ayrinti } = adimAciklamasi(adim.ad, adim.args, mukellefAd, ajanAd, secenek);
@@ -114,17 +116,17 @@ function YerelAdim({ adim, mukellefAd, ajanAd, ajanId, secenek, simdi }: { adim:
   if (adim.tip === 'red') {
     return <ZamanSatiri saat={saat} kisaltma={kisaltma} ton="kirmizi" baslik={`Reddedildi: ${aracAdi(adim.ad)}`} alt={adim.neden} />;
   }
-  return <ZamanSatiri saat={saat} kisaltma={kisaltma} ton={ton} baslik={`Onayınıza sunuldu${adim.previewId ? ` · #${adim.previewId}` : ''}`} alt={aracAdi(adim.ad)} sonuc={adim.sonuc ? <span style={{ color: adim.sonuc.startsWith('Hata') ? KIRMIZI : OK }}>{adim.sonuc}</span> : undefined} />;
+  return <ZamanSatiri saat={saat} kisaltma={kisaltma} ton={ton} baslik={`Onayınıza sunuldu${adim.previewId ? ` · #${adim.previewId}` : ''}`} alt={aracAdi(adim.ad)} sonuc={adim.sonuc ? <span style={portalStyle({ color: adim.sonuc.startsWith('Hata') ? KIRMIZI : OK })}>{adim.sonuc}</span> : undefined} />;
 }
 
 /** Canlı adımın simgesi: sürüyor (dönen) · bitti ✓ · hata ✕ · kuru test (şişe) · onay bekliyor (saat) · reddedildi (yasak). */
 function CanliAdimSimgesi({ durum }: { durum: CanliAdim['durum'] }) {
-  if (durum === 'suruyor') return <Loader2 size={11} className="flex-shrink-0 animate-spin" style={{ color: MAVI }} />;
-  if (durum === 'hata') return <X size={11} className="flex-shrink-0" style={{ color: KIRMIZI }} />;
-  if (durum === 'kuru') return <FlaskConical size={11} className="flex-shrink-0" style={{ color: TURUNCU }} />;
-  if (durum === 'onay') return <Clock size={11} className="flex-shrink-0" style={{ color: GOLD }} />;
-  if (durum === 'red') return <Ban size={11} className="flex-shrink-0" style={{ color: KIRMIZI }} />;
-  return <Check size={11} className="flex-shrink-0" style={{ color: OK }} />;
+  if (durum === 'suruyor') return <Loader2 size={11} className="flex-shrink-0 animate-spin" style={portalStyle({ color: MAVI })} />;
+  if (durum === 'hata') return <X size={11} className="flex-shrink-0" style={portalStyle({ color: KIRMIZI })} />;
+  if (durum === 'kuru') return <FlaskConical size={11} className="flex-shrink-0" style={portalStyle({ color: TURUNCU })} />;
+  if (durum === 'onay') return <Clock size={11} className="flex-shrink-0" style={portalStyle({ color: GOLD })} />;
+  if (durum === 'red') return <Ban size={11} className="flex-shrink-0" style={portalStyle({ color: KIRMIZI })} />;
+  return <Check size={11} className="flex-shrink-0" style={portalStyle({ color: OK })} />;
 }
 
 /**
@@ -144,16 +146,16 @@ function CanliAdimlar({ adimlar, simdi, mukellefAd, ajanAd, secenek }: { adimlar
         return (
           <div key={`${a.basladi}-${i}`} className="flex min-w-0 items-center gap-2 text-[12px]">
             <CanliAdimSimgesi durum={a.durum} />
-            <span className="flex-shrink-0" style={{ color: suruyor ? MAVI : a.durum === 'hata' || a.durum === 'red' ? KIRMIZI : TEXT, fontWeight: suruyor ? 600 : 500 }}>
+            <span className="flex-shrink-0" style={portalStyle({ color: suruyor ? MAVI : a.durum === 'hata' || a.durum === 'red' ? KIRMIZI : TEXT, fontWeight: suruyor ? 600 : 500 })}>
               {baslik}
             </span>
             {ayrinti && (
-              <span className="min-w-0 truncate" style={{ color: MUTED }}>
+              <span className="min-w-0 truncate" style={portalStyle({ color: MUTED })}>
                 {ayrinti}
               </span>
             )}
             {sagYazi && (
-              <span className="ml-auto flex-shrink-0 tabular-nums text-[11px]" style={{ color: suruyor ? MAVI : MUTED }}>
+              <span className="ml-auto flex-shrink-0 tabular-nums text-[11px]" style={portalStyle({ color: suruyor ? MAVI : MUTED })}>
                 {sagYazi}
               </span>
             )}
@@ -191,7 +193,7 @@ function PersonelAdimi({ adim, ajanAd, mukellefAd, acikVarsayilan, onRapor, sece
       alt={
         kosuyor && suAn ? (
           <>
-            <span style={{ color: MAVI }}>{suAn.durum === 'suruyor' ? 'şu an' : 'son adım'}: {adimAciklamasi(suAn.ad, suAn.args, mukellefAd, ajanAd, secenek).baslik}</span>
+            <span style={portalStyle({ color: MAVI })}>{suAn.durum === 'suruyor' ? 'şu an' : 'son adım'}: {adimAciklamasi(suAn.ad, suAn.args, mukellefAd, ajanAd, secenek).baslik}</span>
             {gorevOzeti ? ` · ${gorevOzeti}` : ''}
           </>
         ) : (
@@ -200,23 +202,23 @@ function PersonelAdimi({ adim, ajanAd, mukellefAd, acikVarsayilan, onRapor, sece
       }
       sonuc={
         <span className="inline-flex flex-wrap items-center justify-end gap-1.5">
-          {sure && <span className="tabular-nums" style={{ color: kosuyor ? MAVI : MUTED }}>{sure}</span>}
+          {sure && <span className="tabular-nums" style={portalStyle({ color: kosuyor ? MAVI : MUTED })}>{sure}</span>}
           {!adim.kuru && <Rozet metin="canlı" renk={KIRMIZI} />}
-          <button type="button" onClick={() => setAcik((a) => !a)} className="inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[11px] hover:bg-white/5" style={{ color: MUTED }}>
-            {acik ? 'gizle' : 'adımları'} <ChevronDown size={11} className="transition-transform" style={{ transform: acik ? 'rotate(180deg)' : 'none' }} />
+          <button type="button" onClick={() => setAcik((a) => !a)} className="inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[11px] hover:bg-white/5" style={portalStyle({ color: MUTED })}>
+            {acik ? 'gizle' : 'adımları'} <ChevronDown size={11} className="transition-transform" style={portalStyle({ transform: acik ? 'rotate(180deg)' : 'none' })} />
           </button>
         </span>
       }
     >
       {adim.durum === 'failed' && adim.hata && (
-        <div className="mt-1 text-[11.5px]" style={{ color: KIRMIZI }}>
+        <div className="mt-1 text-[11.5px]" style={portalStyle({ color: KIRMIZI })}>
           {adim.hata}
         </div>
       )}
       {acik && (
-        <div className="mt-2 flex flex-col gap-2 py-2 pl-3" style={{ borderLeft: `1px solid ${ROW_SEP}` }}>
+        <div className="mt-2 flex flex-col gap-2 py-2 pl-3" style={portalStyle({ borderLeft: `1px solid ${ROW_SEP}` })}>
           {!data && (
-            <span className="inline-flex items-center gap-1.5 text-[11.5px]" style={{ color: MUTED }}>
+            <span className="inline-flex items-center gap-1.5 text-[11.5px]" style={portalStyle({ color: MUTED })}>
               <Loader2 size={11} className="animate-spin" /> adımlar yükleniyor
             </span>
           )}
@@ -226,10 +228,10 @@ function PersonelAdimi({ adim, ajanAd, mukellefAd, acikVarsayilan, onRapor, sece
               const { baslik, ayrinti } = adimAciklamasi(t.name, t.args, mukellefAd, ajanAd, secenek);
               return (
                 <div key={i} className="flex min-w-0 items-baseline gap-2 text-[12px]">
-                  <Check size={11} className="flex-shrink-0 self-center" style={{ color: OK }} />
-                  <span style={{ color: TEXT }}>{baslik}</span>
+                  <Check size={11} className="flex-shrink-0 self-center" style={portalStyle({ color: OK })} />
+                  <span style={portalStyle({ color: TEXT })}>{baslik}</span>
                   {ayrinti && (
-                    <span className="min-w-0 truncate" style={{ color: MUTED }}>
+                    <span className="min-w-0 truncate" style={portalStyle({ color: MUTED })}>
                       {ayrinti}
                     </span>
                   )}
@@ -237,8 +239,8 @@ function PersonelAdimi({ adim, ajanAd, mukellefAd, acikVarsayilan, onRapor, sece
               );
             })}
           {data && !araclar.length && !canliAdimlar.length && kosuyor && (
-            <span className="inline-flex items-center gap-1.5 text-[11.5px]" style={{ color: MUTED }}>
-              <Loader2 size={11} className="animate-spin" style={{ color: MAVI }} /> {ad} ilk adımı atıyor; adımlar burada yazılacak.
+            <span className="inline-flex items-center gap-1.5 text-[11.5px]" style={portalStyle({ color: MUTED })}>
+              <Loader2 size={11} className="animate-spin" style={portalStyle({ color: MAVI })} /> {ad} ilk adımı atıyor; adımlar burada yazılacak.
             </span>
           )}
         </div>
@@ -281,13 +283,13 @@ function BulguTablosu({ satirlar }: { satirlar: string[] }) {
   const th = 'px-3 py-2 text-left text-[10.5px] font-semibold uppercase tracking-[0.08em]';
   return (
     <div className="overflow-x-auto [scrollbar-width:thin]">
-      <table className="w-full min-w-[420px]" style={{ borderCollapse: 'collapse' }}>
+      <table className="w-full min-w-[420px]" style={portalStyle({ borderCollapse: 'collapse' })}>
         <thead>
           <tr>
-            <th className={th} style={{ color: MUTED, borderBottom: `1px solid ${CARD_BORDER}`, width: 34 }}>#</th>
-            <th className={th} style={{ color: MUTED, borderBottom: `1px solid ${CARD_BORDER}` }}>Bulgu</th>
-            <th className={th} style={{ color: MUTED, borderBottom: `1px solid ${CARD_BORDER}`, width: 96 }}>Durum</th>
-            <th className={`${th} text-right`} style={{ color: MUTED, borderBottom: `1px solid ${CARD_BORDER}`, width: 120 }}>Tutar</th>
+            <th className={th} style={portalStyle({ color: MUTED, borderBottom: `1px solid ${CARD_BORDER}`, width: 34 })}>#</th>
+            <th className={th} style={portalStyle({ color: MUTED, borderBottom: `1px solid ${CARD_BORDER}` })}>Bulgu</th>
+            <th className={th} style={portalStyle({ color: MUTED, borderBottom: `1px solid ${CARD_BORDER}`, width: 96 })}>Durum</th>
+            <th className={`${th} text-right`} style={portalStyle({ color: MUTED, borderBottom: `1px solid ${CARD_BORDER}`, width: 120 })}>Tutar</th>
           </tr>
         </thead>
         <tbody>
@@ -295,7 +297,7 @@ function BulguTablosu({ satirlar }: { satirlar: string[] }) {
             if (b.grup)
               return (
                 <tr key={i}>
-                  <td colSpan={4} className="px-3 py-1.5 text-[10.5px] font-semibold uppercase tracking-[0.08em]" style={{ color: GOLD, borderBottom: `1px solid ${ROW_SEP}`, background: `${GOLD}08` }}>
+                  <td colSpan={4} className="px-3 py-1.5 text-[10.5px] font-semibold uppercase tracking-[0.08em]" style={portalStyle({ color: GOLD, borderBottom: `1px solid ${ROW_SEP}`, background: `${GOLD}08` })}>
                     {b.metin}
                   </td>
                 </tr>
@@ -304,16 +306,16 @@ function BulguTablosu({ satirlar }: { satirlar: string[] }) {
             const s = SIDDET[b.siddet];
             return (
               <tr key={i}>
-                <td className="px-3 py-2 align-top text-[11px] tabular-nums" style={{ color: MUTED, borderBottom: `1px solid ${ROW_SEP}` }}>
+                <td className="px-3 py-2 align-top text-[11px] tabular-nums" style={portalStyle({ color: MUTED, borderBottom: `1px solid ${ROW_SEP}` })}>
                   {no}
                 </td>
-                <td className="whitespace-pre-wrap px-3 py-2 align-top text-[12.5px] leading-relaxed" style={{ color: TEXT, borderBottom: `1px solid ${ROW_SEP}` }}>
+                <td className="whitespace-pre-wrap px-3 py-2 align-top text-[12.5px] leading-relaxed" style={portalStyle({ color: TEXT, borderBottom: `1px solid ${ROW_SEP}` })}>
                   {b.metin}
                 </td>
-                <td className="px-3 py-2 align-top" style={{ borderBottom: `1px solid ${ROW_SEP}` }}>
+                <td className="px-3 py-2 align-top" style={portalStyle({ borderBottom: `1px solid ${ROW_SEP}` })}>
                   <Rozet metin={s.ad} renk={s.renk} />
                 </td>
-                <td className="whitespace-nowrap px-3 py-2 text-right align-top text-[12.5px] font-medium tabular-nums" style={{ color: GOLD, borderBottom: `1px solid ${ROW_SEP}` }}>
+                <td className="whitespace-nowrap px-3 py-2 text-right align-top text-[12.5px] font-medium tabular-nums" style={portalStyle({ color: GOLD, borderBottom: `1px solid ${ROW_SEP}` })}>
                   {b.tutar || ''}
                 </td>
               </tr>
@@ -342,7 +344,7 @@ export function RaporGorunumu({ rapor, kompakt = false }: { rapor: string; kompa
   const ayrinti = (['yaptigim', 'kaynaklar', 'kimde', 'devir'] as const).map(bul).filter(dolu) as RaporBolumu[];
   if (kompakt) {
     return (
-      <div className="text-[12px] leading-relaxed" style={{ color: MUTED }}>
+      <div className="text-[12px] leading-relaxed" style={portalStyle({ color: MUTED })}>
         {[...ayrinti, ...(dolu(bulgular) ? [bulgular!] : []), ...(diger ? [diger] : [])].map((b) => `${b.baslik}: ${b.satirlar.join(' ')}`).join(' — ')}
       </div>
     );
@@ -353,7 +355,7 @@ export function RaporGorunumu({ rapor, kompakt = false }: { rapor: string; kompa
         <div className="grid gap-x-5 md:grid-cols-2">
           {ayrinti.map((b) => (
             <RaporBolum key={b.anahtar} baslik={BOLUM_BASLIK[b.anahtar] || b.baslik} className={b.anahtar === 'yaptigim' ? 'md:col-span-2' : ''}>
-              <ul className="flex flex-col gap-1 text-[12.5px] leading-relaxed" style={{ color: TEXT }}>
+              <ul className="flex flex-col gap-1 text-[12.5px] leading-relaxed" style={portalStyle({ color: TEXT })}>
                 {b.satirlar.map((s, i) => (
                   <li key={i} className="whitespace-pre-wrap">
                     {s}
@@ -371,21 +373,21 @@ export function RaporGorunumu({ rapor, kompakt = false }: { rapor: string; kompa
       )}
       {bulgular && !dolu(bulgular) && (
         <RaporBolum baslik="Bulgular">
-          <span className="text-[12.5px]" style={{ color: MUTED }}>
+          <span className="text-[12.5px]" style={portalStyle({ color: MUTED })}>
             Bulgu yok.
           </span>
         </RaporBolum>
       )}
       {diger && (
         <RaporBolum>
-          <div className="whitespace-pre-wrap text-[12.8px] leading-relaxed" style={{ color: TEXT }}>
+          <div className="whitespace-pre-wrap text-[12.8px] leading-relaxed" style={portalStyle({ color: TEXT })}>
             {diger.satirlar.join('\n')}
           </div>
         </RaporBolum>
       )}
       {vurgulu.map((b) => (
         <RaporBolum key={b.anahtar} baslik={b.baslik} renk={GOLD}>
-          <p className="whitespace-pre-wrap text-[12.5px] leading-relaxed" style={{ color: TEXT }}>{b.satirlar.join(' · ')}</p>
+          <p className="whitespace-pre-wrap text-[12.5px] leading-relaxed" style={portalStyle({ color: TEXT })}>{b.satirlar.join(' · ')}</p>
         </RaporBolum>
       ))}
     </div>
@@ -404,8 +406,8 @@ function CevapKutusu({ calisiyor, bekleyen, onGonder, onIptal }: { calisiyor: bo
   return (
     <div className="flex flex-col gap-2">
       {bekleyen && (
-        <div className="flex items-center gap-2 rounded-[10px] px-3 py-2 text-[12px]" style={{ background: `${MAVI}12`, border: `1px solid ${MAVI}40`, color: TEXT }}>
-          <Loader2 size={12} className="flex-shrink-0 animate-spin" style={{ color: MAVI }} />
+        <div className="flex items-center gap-2 rounded-[10px] px-3 py-2 text-[12px]" style={portalStyle({ background: `${MAVI}12`, border: `1px solid ${MAVI}40`, color: TEXT })}>
+          <Loader2 size={12} className="flex-shrink-0 animate-spin" style={portalStyle({ color: MAVI })} />
           <span className="min-w-0 flex-1 truncate">
             Bitince gidecek: <i>{bekleyen}</i>
           </span>
@@ -427,7 +429,7 @@ function CevapKutusu({ calisiyor, bekleyen, onGonder, onIptal }: { calisiyor: bo
           }}
           placeholder={calisiyor ? 'Bu işe not / talimat — koşu bitince Koordinatör’e gider' : 'Bu işe not / talimat — Koordinatör aynı işte devam eder'}
           className="h-9 min-w-0 flex-1 rounded-[10px] px-3 text-[12.5px] outline-none"
-          style={{ background: 'rgba(255,255,255,0.03)', border: `1px solid ${CARD_BORDER}`, color: TEXT }}
+          style={portalStyle({ background: 'rgba(255,255,255,0.03)', border: `1px solid ${CARD_BORDER}`, color: TEXT })}
         />
         <Dugme disabled={!metin.trim()} onClick={gonder}>
           <Send size={12} /> {calisiyor ? 'Bitince gönder' : 'Gönder'}
@@ -628,7 +630,7 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
 
   const durumSatiri = (
     <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-      <b className="font-semibold" style={{ color: durumRenk }}>
+      <b className="font-semibold" style={portalStyle({ color: durumRenk })}>
         {hata ? durumAd : kararBekliyor ? 'Cevabınız / onayınız bekleniyor' : durumAd}
       </b>
       {sureMetni && <span className="tabular-nums">· {sureMetni}</span>}
@@ -663,23 +665,23 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
     >
       <div className="flex flex-col gap-4">
         {calisiyor && (
-          <div role="status" className="flex items-center gap-3 rounded-xl px-4 py-3 text-[14px]" style={{ background: `${GOLD}09`, border: `1px solid ${GOLD}25`, color: TEXT }}>
-            <Loader2 size={16} className="flex-shrink-0 animate-spin" style={{ color: GOLD }} />
+          <div role="status" className="flex items-center gap-3 rounded-xl px-4 py-3 text-[14px]" style={portalStyle({ background: `${GOLD}09`, border: `1px solid ${GOLD}25`, color: TEXT })}>
+            <Loader2 size={16} className="flex-shrink-0 animate-spin" style={portalStyle({ color: GOLD })} />
             <span>{saglayiciOzeti(suAnMetni) || suAnMetni}</span>
           </div>
         )}
 
         {hata && (
-          <div className="flex items-start gap-2 rounded-xl px-3.5 py-2.5 text-[12.5px]" style={{ background: `${KIRMIZI}12`, border: `1px solid ${KIRMIZI}59`, color: TEXT }}>
-            <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" style={{ color: KIRMIZI }} />
+          <div className="flex items-start gap-2 rounded-xl px-3.5 py-2.5 text-[12.5px]" style={portalStyle({ background: `${KIRMIZI}12`, border: `1px solid ${KIRMIZI}59`, color: TEXT })}>
+            <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" style={portalStyle({ color: KIRMIZI })} />
             <span>{durduruldu ? 'İş durduruldu.' : hataOzeti(hata)}</span>
           </div>
         )}
 
         {/* Kararınız */}
         {(acikKalemler.length > 0 || yerelOnaylar.length > 0 || sorular.length > 0) && (
-          <section className="pt-3" style={{ borderTop: `1px solid ${ROW_SEP}` }}>
-            <h4 className="mb-1 text-[10.5px] font-semibold uppercase tracking-[0.08em]" style={{ color: GOLD }}>
+          <section className="pt-3" style={portalStyle({ borderTop: `1px solid ${ROW_SEP}` })}>
+            <h4 className="mb-1 text-[10.5px] font-semibold uppercase tracking-[0.08em]" style={portalStyle({ color: GOLD })}>
               Sizden beklenen · {acikKalemler.length + yerelOnaylar.length + (sorular.length ? 1 : 0)}
             </h4>
             {acikKalemler.map((k) => (
@@ -687,12 +689,12 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
             ))}
             {kosu && yerelOnaylar.map((a) => <YerelOnay key={a.previewId} adim={a} kosu={kosu} kosular={kosular} onBitti={tazele} />)}
             {sorular.length > 0 && (
-              <div className="py-3" style={{ borderTop: `1px solid ${ROW_SEP}` }}>
-                <div className="flex items-center gap-2 text-[12.8px] font-semibold" style={{ color: TEXT }}>
-                  <HelpCircle size={14} style={{ color: GOLD }} /> {ajanKisaAd(kimde)} soruyor
+              <div className="py-3" style={portalStyle({ borderTop: `1px solid ${ROW_SEP}` })}>
+                <div className="flex items-center gap-2 text-[12.8px] font-semibold" style={portalStyle({ color: TEXT })}>
+                  <HelpCircle size={14} style={portalStyle({ color: GOLD })} /> {ajanKisaAd(kimde)} soruyor
                 </div>
                 {sorular.map((s, i) => (
-                  <div key={i} className="mt-1 whitespace-pre-wrap text-[12.5px] leading-relaxed" style={{ color: MUTED }}>
+                  <div key={i} className="mt-1 whitespace-pre-wrap text-[12.5px] leading-relaxed" style={portalStyle({ color: MUTED })}>
                     {s}
                   </div>
                 ))}
@@ -709,7 +711,7 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
                     }}
                     placeholder="Cevabınızı yazın…"
                     className="h-9 min-w-0 flex-1 rounded-[10px] px-3 text-[12.5px] outline-none"
-                    style={{ background: 'rgba(255,255,255,0.03)', border: `1px solid ${CARD_BORDER}`, color: TEXT }}
+                    style={portalStyle({ background: 'rgba(255,255,255,0.03)', border: `1px solid ${CARD_BORDER}`, color: TEXT })}
                   />
                   <Dugme tur="birincil" disabled={!cevapMetni.trim()} onClick={() => { if (cevapla(cevapMetni.trim())) setCevapMetni(''); }}>
                     <MessageSquareReply size={13} /> Cevapla
@@ -724,16 +726,16 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
         {(sonucVar || (calisiyor && !!kosu?.cevap)) && (
           <section>
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-              <h4 className="text-[10.5px] font-semibold uppercase tracking-[0.08em]" style={{ color: MUTED }}>
+              <h4 className="text-[10.5px] font-semibold uppercase tracking-[0.08em]" style={portalStyle({ color: MUTED })}>
                 {sonBitenPersonel ? `Sonuç · ${ajanTamAd(sonBitenPersonel.ajanId, ajanAd(sonBitenPersonel.ajanId))}` : sabahOzetiMi ? 'Sabah özeti' : 'Sonuç · Koordinatör'}
               </h4>
-              <span className="text-[11px] tabular-nums" style={{ color: MUTED }}>
+              <span className="text-[11px] tabular-nums" style={portalStyle({ color: MUTED })}>
                 {kokS.isLoading && !kokIs ? 'yükleniyor…' : `${sonBitis ? saatKisa(sonBitis).slice(0, 5) : saatKisa(basladi).slice(0, 5)} · ${kuru ? 'kuru test' : 'canlı'}`}
               </span>
             </div>
             {calisiyor && !raporMetni && kosu?.cevap && (
               <RaporBolum>
-                <div className="max-h-[260px] overflow-y-auto whitespace-pre-wrap text-[12.8px] leading-relaxed" style={{ color: MUTED }}>
+                <div className="max-h-[260px] overflow-y-auto whitespace-pre-wrap text-[12.8px] leading-relaxed" style={portalStyle({ color: MUTED })}>
                   {saglayiciOzeti(kosu.cevap) || kosu.cevap}
                 </div>
               </RaporBolum>
@@ -742,8 +744,8 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
               <>
                 <RaporGorunumu rapor={ayrisik?.rapor || raporMetni} />
                 {sonBitenPersonel && koordinatorRaporu && (
-                  <details className="mt-2 py-3" style={{ borderTop: `1px solid ${ROW_SEP}` }}>
-                    <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: MUTED }}>
+                  <details className="mt-2 py-3" style={portalStyle({ borderTop: `1px solid ${ROW_SEP}` })}>
+                    <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-[0.08em]" style={portalStyle({ color: MUTED })}>
                       Koordinatör’ün notu
                     </summary>
                     <div className="pt-2">
@@ -756,17 +758,17 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
             {!raporMetni && !calisiyor && !hata && <Bos metin="Rapor yok." />}
             {kuruListesi.length > 0 && (
               <details className="mt-3">
-                <summary className="cursor-pointer text-[12px]" style={{ color: MUTED }}>Deneme ayrıntıları · {kuruListesi.length} işlem</summary>
+                <summary className="cursor-pointer text-[12px]" style={portalStyle({ color: MUTED })}>Deneme ayrıntıları · {kuruListesi.length} işlem</summary>
               <RaporBolum baslik={<span className="inline-flex items-center gap-1.5"><FlaskConical size={11} /> Kuru test — yapılacaktı ({kuruListesi.length})</span>} renk={TURUNCU} className="mt-3">
-                <ul className="flex flex-col gap-1 text-[12.5px]" style={{ color: TEXT }}>
+                <ul className="flex flex-col gap-1 text-[12.5px]" style={portalStyle({ color: TEXT })}>
                   {kuruListesi.map((t, i) => {
                     const { baslik, ayrinti } = adimAciklamasi(t.name, t.args, mukellefAd, ajanAd, secenek);
                     return (
                       <li key={i} className="flex gap-2">
-                        <span className="mt-[7px] h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ background: TURUNCU }} />
+                        <span className="mt-[7px] h-1.5 w-1.5 flex-shrink-0 rounded-full" style={portalStyle({ background: TURUNCU })} />
                         <span>
                           {baslik}
-                          {ayrinti && <span style={{ color: MUTED }}> · {ayrinti}</span>}
+                          {ayrinti && <span style={portalStyle({ color: MUTED })}> · {ayrinti}</span>}
                         </span>
                       </li>
                     );
@@ -777,7 +779,7 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
             )}
             {ogrenilen.length > 0 && (
               <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                <GraduationCap size={13} style={{ color: MOR }} />
+                <GraduationCap size={13} style={portalStyle({ color: MOR })} />
                 {ogrenilen.map((o, i) => (
                   <Rozet key={i} metin={o} renk={MOR} />
                 ))}
@@ -794,32 +796,32 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
               </div>
             )}
             {!acikKalemler.length && !yerelOnaylar.length && !sorular.length && bitti && !calisiyor && !hata && !sabahOzetiMi && (
-              <div className="mt-3 flex items-center gap-2 text-[12px]" style={{ color: MUTED }}>
-                <Check size={12} style={{ color: OK }} /> İş tamamlandı. Sizden beklenen başka bir işlem yok.
+              <div className="mt-3 flex items-center gap-2 text-[12px]" style={portalStyle({ color: MUTED })}>
+                <Check size={12} style={portalStyle({ color: OK })} /> İş tamamlandı. Sizden beklenen başka bir işlem yok.
               </div>
             )}
           </section>
         )}
 
         {/* Adımlar */}
-        <section className="pt-3" style={{ borderTop: `1px solid ${ROW_SEP}` }}>
+        <section className="pt-3" style={portalStyle({ borderTop: `1px solid ${ROW_SEP}` })}>
           <button type="button" aria-expanded={adimlarGoster} onClick={() => setAcikAyrintiId(adimlarGoster ? null : ayrintiId)} className="mb-1 flex w-full items-center justify-between text-left">
-            <h4 className="text-[10.5px] font-semibold uppercase tracking-[0.08em]" style={{ color: MUTED }}>
+            <h4 className="text-[10.5px] font-semibold uppercase tracking-[0.08em]" style={portalStyle({ color: MUTED })}>
               Ayrıntılar · {adimToplam} kayıt
             </h4>
-            <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTED }}>
-              {adimlarGoster ? 'gizle' : 'göster'} <ChevronDown size={11} className="transition-transform" style={{ transform: adimlarGoster ? 'rotate(180deg)' : 'none' }} />
+            <span className="inline-flex items-center gap-1 text-[11px]" style={portalStyle({ color: MUTED })}>
+              {adimlarGoster ? 'gizle' : 'göster'} <ChevronDown size={11} className="transition-transform" style={portalStyle({ transform: adimlarGoster ? 'rotate(180deg)' : 'none' })} />
             </span>
           </button>
           <div hidden={!adimlarGoster}>
-            <div className="py-3 text-[12px]" style={{ color: MUTED }}>
+            <div className="py-3 text-[12px]" style={portalStyle({ color: MUTED })}>
               Başlangıç: {saatKisa(basladi)} · Kaynak: {kaynak.ad}
               {(kosu?.model || kokIs?.model) && <span> · Model: {kosu?.model || kokIs?.model}</span>}
             </div>
-            {hata && <pre className="mb-3 whitespace-pre-wrap break-words text-[12px]" style={{ color: KIRMIZI }}>{hata}</pre>}
-            <ol className="flex max-h-[520px] min-w-0 flex-col overflow-y-auto [scrollbar-width:thin]" style={{ borderTop: `1px solid ${ROW_SEP}` }}>
+            {hata && <pre className="mb-3 whitespace-pre-wrap break-words text-[12px]" style={portalStyle({ color: KIRMIZI })}>{hata}</pre>}
+            <ol className="flex max-h-[520px] min-w-0 flex-col overflow-y-auto [scrollbar-width:thin]" style={portalStyle({ borderTop: `1px solid ${ROW_SEP}` })}>
               {!yerelAdimlar.length && !personelAdimlari.length && !bildirimAdimlari.length && (
-                <li className="py-3 text-[12px]" style={{ color: MUTED }}>
+                <li className="py-3 text-[12px]" style={portalStyle({ color: MUTED })}>
                   {calisiyor ? 'İlk adım bekleniyor…' : 'Adım kaydı yok.'}
                 </li>
               )}
@@ -835,7 +837,7 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
                 ) : (
                   <ZamanSatiri key={`not-${a.id || i}`} saat={saatKisa(a.baslangic).slice(0, 5)} kisaltma="MB" ton="gold" baslik={a.tur === 'istek' ? 'Sizden istendi' : a.tur === 'onay' ? 'Onayınıza sunuldu' : 'Koordinatör notu'} alt={`${a.baslik}${a.durum === 'kapandi' ? ' · kapandı' : ''}`}>
                     {a.govde && (
-                      <div className="mt-0.5 whitespace-pre-wrap text-[11.5px]" style={{ color: MUTED }}>
+                      <div className="mt-0.5 whitespace-pre-wrap text-[11.5px]" style={portalStyle({ color: MUTED })}>
                         {a.govde}
                       </div>
                     )}
@@ -848,7 +850,7 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
 
         {/* Not / talimat */}
         {!sabahOzetiMi && (
-          <section style={{ borderTop: `1px solid ${ROW_SEP}`, paddingTop: 12 }}>
+          <section style={portalStyle({ borderTop: `1px solid ${ROW_SEP}`, paddingTop: 12 })}>
             <CevapKutusu key={kokIsId || kosu?.basladi} calisiyor={calisiyor || aktifKosuVar} bekleyen={bekleyenCevap ? `${bekleyenCevap.vakaId === kokIsId ? "Bu iş" : "Önceki seçili iş"}: ${bekleyenCevap.metin}` : null} onGonder={cevapla} onIptal={() => setBekleyenCevap(null)} />
           </section>
         )}

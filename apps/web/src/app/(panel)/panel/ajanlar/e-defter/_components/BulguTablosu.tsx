@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import { Fragment, useMemo, useState, type CSSProperties, type Dispatch, type SetStateAction } from 'react';
 import { CheckCircle2, ChevronDown, ChevronRight, EyeOff, ExternalLink, HelpCircle, RotateCcw } from 'lucide-react';
@@ -129,34 +131,34 @@ export function BulguTablosu(p: BulguTablosuProps) {
         const acik = !kapaliAlanlar[a.alan];
         const hesapli = Boolean(hesapliMi.get(a.alan));
         return (
-          <div key={a.alan} className="rounded-xl overflow-hidden" style={{ border: `1px solid ${KENAR}`, background: 'rgba(255,255,255,.02)' }}>
+          <div key={a.alan} className="rounded-xl overflow-hidden" style={portalStyle({ border: `1px solid ${KENAR}`, background: 'rgba(255,255,255,.02)' })}>
             {/* Alan başlığı — lacivert aile, şiddete göre boyanmaz */}
-            <button onClick={() => setKapaliAlanlar((st) => ({ ...st, [a.alan]: acik }))} className="w-full flex items-center gap-2.5 px-3.5 py-3 text-left" style={{ background: ALAN_ZEMIN, borderLeft: '3px solid rgba(91,141,239,.75)', borderBottom: `1px solid ${KENAR}` }}>
+            <button onClick={() => setKapaliAlanlar((st) => ({ ...st, [a.alan]: acik }))} className="w-full flex items-center gap-2.5 px-3.5 py-3 text-left" style={portalStyle({ background: ALAN_ZEMIN, borderLeft: '3px solid rgba(91,141,239,.75)', borderBottom: `1px solid ${KENAR}` })}>
               <span className="text-[16px] w-5 text-center">{ALAN_IKON[a.alan] || '•'}</span>
-              <span className="text-[14px] font-bold" style={{ color: TEXT }}>{a.alan}</span>
-              <span className="text-[11px] tabular-nums px-2 py-0.5 rounded-md" style={{ background: 'rgba(255,255,255,.07)', color: 'rgba(250,250,249,.78)' }}>{a.kurallar.length} kural · {a.toplam} bulgu</span>
+              <span className="text-[14px] font-bold" style={portalStyle({ color: TEXT })}>{a.alan}</span>
+              <span className="text-[11px] tabular-nums px-2 py-0.5 rounded-md" style={portalStyle({ background: 'rgba(255,255,255,.07)', color: 'rgba(250,250,249,.78)' })}>{a.kurallar.length} kural · {a.toplam} bulgu</span>
               <span className="ml-auto flex items-center gap-3">
                 {a.sayim.error > 0 && <Sayac n={a.sayim.error} renk={sevColor('ERROR')} ad="hata" />}
                 {a.sayim.warn > 0 && <Sayac n={a.sayim.warn} renk={sevColor('WARN')} ad="uyarı" />}
                 {a.sayim.info > 0 && <Sayac n={a.sayim.info} renk={sevColor('INFO')} ad="bilgi" />}
-                {acik ? <ChevronDown size={15} style={{ color: YAZI_SOLUK }} /> : <ChevronRight size={15} style={{ color: YAZI_SOLUK }} />}
+                {acik ? <ChevronDown size={15} style={portalStyle({ color: YAZI_SOLUK })} /> : <ChevronRight size={15} style={portalStyle({ color: YAZI_SOLUK })} />}
               </span>
             </button>
 
             {acik && (
-              <table className="w-full" style={{ borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+              <table className="w-full" style={portalStyle({ borderCollapse: 'collapse', tableLayout: 'fixed' })}>
                 <colgroup>
-                  {hesapli && <col style={{ width: 250 }} />}
+                  {hesapli && <col style={portalStyle({ width: 250 })} />}
                   <col />
-                  <col style={{ width: 150 }} />
-                  <col style={{ width: 118 }} />
+                  <col style={portalStyle({ width: 150 })} />
+                  <col style={portalStyle({ width: 118 })} />
                 </colgroup>
                 <thead>
-                  <tr style={{ background: BASLIK_ZEMIN }}>
-                    {hesapli && <th style={HUCRE_BASLIK}>Hesap</th>}
-                    <th style={HUCRE_BASLIK}>Bulgu</th>
-                    <th style={{ ...HUCRE_BASLIK, textAlign: 'right' }}>Tutar</th>
-                    <th style={{ ...HUCRE_BASLIK, textAlign: 'center' }}>İşlem</th>
+                  <tr style={portalStyle({ background: BASLIK_ZEMIN })}>
+                    {hesapli && <th style={portalStyle(HUCRE_BASLIK)}>Hesap</th>}
+                    <th style={portalStyle(HUCRE_BASLIK)}>Bulgu</th>
+                    <th style={portalStyle({ ...HUCRE_BASLIK, textAlign: 'right' })}>Tutar</th>
+                    <th style={portalStyle({ ...HUCRE_BASLIK, textAlign: 'center' })}>İşlem</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -170,20 +172,20 @@ export function BulguTablosu(p: BulguTablosuProps) {
                     return (
                       <Fragment key={k.kod}>
                         {/* Kural başlığı satırı — nötr zemin; şiddet yalnız rozette */}
-                        <tr style={{ background: KURAL_ZEMIN }}>
-                          <td colSpan={sutun} style={{ ...HUCRE, padding: '9px 12px' }}>
+                        <tr style={portalStyle({ background: KURAL_ZEMIN })}>
+                          <td colSpan={sutun} style={portalStyle({ ...HUCRE, padding: '9px 12px' })}>
                             <div className="flex items-center gap-2">
                               <button onClick={() => setKapaliKurallar((st) => ({ ...st, [k.kod]: !daraltildi }))} className="flex items-center gap-2 min-w-0 flex-1 text-left" title={daraltildi ? 'Satırları göster' : 'Satırları gizle'}>
-                                <span className="text-[13px] font-bold truncate" style={{ color: TEXT }}>{kuralAdi(k.kod, katalog)}</span>
-                                <span className="text-[10.5px] font-extrabold tabular-nums px-2 py-0.5 rounded-md shrink-0" style={{ background: `${renk}1f`, color: renk, border: `1px solid ${renk}40` }}>{sevLabel(k.enYuksek)} · {satirlar.length}</span>
+                                <span className="text-[13px] font-bold truncate" style={portalStyle({ color: TEXT })}>{kuralAdi(k.kod, katalog)}</span>
+                                <span className="text-[10.5px] font-extrabold tabular-nums px-2 py-0.5 rounded-md shrink-0" style={portalStyle({ background: `${renk}1f`, color: renk, border: `1px solid ${renk}40` })}>{sevLabel(k.enYuksek)} · {satirlar.length}</span>
                               </button>
-                              {k.tanim?.mevzuat && <span className="text-[10.5px] whitespace-nowrap hidden md:inline" style={{ color: YAZI_SOLUK }}>{k.tanim.mevzuat}</span>}
+                              {k.tanim?.mevzuat && <span className="text-[10.5px] whitespace-nowrap hidden md:inline" style={portalStyle({ color: YAZI_SOLUK })}>{k.tanim.mevzuat}</span>}
                               {k.tanim && (
-                                <button onClick={() => setAcikKurallar((st) => ({ ...st, [k.kod]: !bilgiAcik }))} className="h-6 w-6 rounded-md inline-flex items-center justify-center shrink-0" style={{ color: bilgiAcik ? NAVY : 'rgba(250,250,249,.75)', background: bilgiAcik ? NAVY_SOFT : 'rgba(255,255,255,.08)' }} title="Bu kural ne demek, ne yapılmalı?">
+                                <button onClick={() => setAcikKurallar((st) => ({ ...st, [k.kod]: !bilgiAcik }))} className="h-6 w-6 rounded-md inline-flex items-center justify-center shrink-0" style={portalStyle({ color: bilgiAcik ? NAVY : 'rgba(250,250,249,.75)', background: bilgiAcik ? NAVY_SOFT : 'rgba(255,255,255,.08)' })} title="Bu kural ne demek, ne yapılmalı?">
                                   <HelpCircle size={13} />
                                 </button>
                               )}
-                              <button onClick={() => setKapaliKurallar((st) => ({ ...st, [k.kod]: !daraltildi }))} className="h-6 w-6 rounded-md inline-flex items-center justify-center shrink-0" style={{ color: 'rgba(250,250,249,.75)', background: 'rgba(255,255,255,.08)' }} title={daraltildi ? 'Satırları göster' : 'Satırları gizle'}>
+                              <button onClick={() => setKapaliKurallar((st) => ({ ...st, [k.kod]: !daraltildi }))} className="h-6 w-6 rounded-md inline-flex items-center justify-center shrink-0" style={portalStyle({ color: 'rgba(250,250,249,.75)', background: 'rgba(255,255,255,.08)' })} title={daraltildi ? 'Satırları göster' : 'Satırları gizle'}>
                                 {daraltildi ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
                               </button>
                             </div>
@@ -191,9 +193,9 @@ export function BulguTablosu(p: BulguTablosuProps) {
                         </tr>
                         {bilgiAcik && k.tanim && (
                           <tr>
-                            <td colSpan={sutun} style={{ ...HUCRE, background: 'rgba(91,141,239,.08)', color: 'rgba(250,250,249,.82)', fontSize: 12, lineHeight: 1.55 }}>
-                              <div><span className="font-semibold" style={{ color: '#bfd4ff' }}>Ne demek: </span>{k.tanim.aciklama}</div>
-                              {k.tanim.oneri && <div className="mt-1"><span className="font-semibold" style={{ color: '#bfd4ff' }}>Ne yapmalı: </span>{k.tanim.oneri}</div>}
+                            <td colSpan={sutun} style={portalStyle({ ...HUCRE, background: 'rgba(91,141,239,.08)', color: 'rgba(250,250,249,.82)', fontSize: 12, lineHeight: 1.55 })}>
+                              <div><span className="font-semibold" style={portalStyle({ color: '#bfd4ff' })}>Ne demek: </span>{k.tanim.aciklama}</div>
+                              {k.tanim.oneri && <div className="mt-1"><span className="font-semibold" style={portalStyle({ color: '#bfd4ff' })}>Ne yapmalı: </span>{k.tanim.oneri}</div>}
                             </td>
                           </tr>
                         )}
@@ -209,40 +211,40 @@ export function BulguTablosu(p: BulguTablosuProps) {
                           const saltGorunum = Boolean(f.saltGorunum);
                           return (
                             <Fragment key={f.id}>
-                              <tr style={{ background: zemin, opacity: kapali ? 0.5 : 1 }} className="hover:bg-white/[.06]">
+                              <tr style={portalStyle({ background: zemin, opacity: kapali ? 0.5 : 1 })} className="hover:bg-white/[.06]">
                                 {hesapli && (
-                                  <td style={HUCRE}>
+                                  <td style={portalStyle(HUCRE)}>
                                     <div className="flex items-start gap-2 min-w-0">
-                                      <span style={{ ...NOKTA, background: c, marginTop: 5 }} title={sevLabel(f.severity)} />
+                                      <span style={portalStyle({ ...NOKTA, background: c, marginTop: 5 })} title={sevLabel(f.severity)} />
                                       {f.hesapKodu ? (
                                         <div className="min-w-0">
-                                          <div className="text-[12.5px] font-bold tabular-nums" style={{ color: TEXT }}>{f.hesapKodu}</div>
-                                          {parca.ad && <div className="text-[11px] truncate" style={{ color: YAZI_SOLUK }} title={parca.ad}>{parca.ad}</div>}
+                                          <div className="text-[12.5px] font-bold tabular-nums" style={portalStyle({ color: TEXT })}>{f.hesapKodu}</div>
+                                          {parca.ad && <div className="text-[11px] truncate" style={portalStyle({ color: YAZI_SOLUK })} title={parca.ad}>{parca.ad}</div>}
                                         </div>
                                       ) : (
-                                        <span className="text-[11.5px]" style={{ color: 'rgba(250,250,249,.55)' }}>{f.rowIndex ? `Satır ${f.rowIndex}` : '—'}</span>
+                                        <span className="text-[11.5px]" style={portalStyle({ color: 'rgba(250,250,249,.55)' })}>{f.rowIndex ? `Satır ${f.rowIndex}` : '—'}</span>
                                       )}
                                     </div>
                                   </td>
                                 )}
-                                <td style={HUCRE}>
+                                <td style={portalStyle(HUCRE)}>
                                   <div className="flex items-baseline gap-2 min-w-0">
-                                    {!hesapli && <span style={{ ...NOKTA, background: c, alignSelf: 'center' }} title={sevLabel(f.severity)} />}
-                                    {!hesapli && f.rowIndex && <span className="text-[10.5px] tabular-nums px-1.5 py-px rounded shrink-0" style={{ background: 'rgba(255,255,255,.08)', color: 'rgba(250,250,249,.75)' }}>Satır {f.rowIndex}</span>}
-                                    <span className={`text-[12.5px] leading-snug ${ayrintiVar ? 'cursor-pointer' : ''}`} style={{ color: 'rgba(250,250,249,.9)', textDecoration: fStatus === 'RESOLVED' ? 'line-through' : 'none', display: '-webkit-box', WebkitLineClamp: acikSatir ? 'unset' as any : 2, WebkitBoxOrient: 'vertical' as any, overflow: 'hidden' }} onClick={() => ayrintiVar && setAcikMesajlar((st) => ({ ...st, [f.id]: !acikSatir }))} title={ayrintiVar ? (acikSatir ? 'Ayrıntıyı gizle' : 'Ayrıntı için tıklayın') : undefined}>
+                                    {!hesapli && <span style={portalStyle({ ...NOKTA, background: c, alignSelf: 'center' })} title={sevLabel(f.severity)} />}
+                                    {!hesapli && f.rowIndex && <span className="text-[10.5px] tabular-nums px-1.5 py-px rounded shrink-0" style={portalStyle({ background: 'rgba(255,255,255,.08)', color: 'rgba(250,250,249,.75)' })}>Satır {f.rowIndex}</span>}
+                                    <span className={`text-[12.5px] leading-snug ${ayrintiVar ? 'cursor-pointer' : ''}`} style={portalStyle({ color: 'rgba(250,250,249,.9)', textDecoration: fStatus === 'RESOLVED' ? 'line-through' : 'none', display: '-webkit-box', WebkitLineClamp: acikSatir ? 'unset' as any : 2, WebkitBoxOrient: 'vertical' as any, overflow: 'hidden' })} onClick={() => ayrintiVar && setAcikMesajlar((st) => ({ ...st, [f.id]: !acikSatir }))} title={ayrintiVar ? (acikSatir ? 'Ayrıntıyı gizle' : 'Ayrıntı için tıklayın') : undefined}>
                                       {parca.olgu}
                                     </span>
                                   </div>
                                   {kapali && (
-                                    <div className="mt-1 text-[10.5px] font-semibold inline-flex items-center gap-1" style={{ color: statusColor(fStatus) }}>
-                                      <span className="w-1.5 h-1.5 rounded-full" style={{ background: statusColor(fStatus) }} />{fStatus === 'RESOLVED' ? 'Çözüldü' : 'Görmezden gelindi'}{f.detail?.note ? ` · ${f.detail.note}` : ''}
+                                    <div className="mt-1 text-[10.5px] font-semibold inline-flex items-center gap-1" style={portalStyle({ color: statusColor(fStatus) })}>
+                                      <span className="w-1.5 h-1.5 rounded-full" style={portalStyle({ background: statusColor(fStatus) })} />{fStatus === 'RESOLVED' ? 'Çözüldü' : 'Görmezden gelindi'}{f.detail?.note ? ` · ${f.detail.note}` : ''}
                                     </div>
                                   )}
                                 </td>
-                                <td style={{ ...HUCRE, textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', color: tutar ? TEXT : 'rgba(250,250,249,.35)', fontSize: 12.5, fontWeight: 600 }}>{tutar || '—'}</td>
-                                <td style={{ ...HUCRE, padding: '4px 8px' }}>
+                                <td style={portalStyle({ ...HUCRE, textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', color: tutar ? TEXT : 'rgba(250,250,249,.35)', fontSize: 12.5, fontWeight: 600 })}>{tutar || '—'}</td>
+                                <td style={portalStyle({ ...HUCRE, padding: '4px 8px' })}>
                                   {saltGorunum ? (
-                                    <div className="text-center text-[10.5px]" style={{ color: 'rgba(250,250,249,.45)' }} title="Mizan modülünün kendi kontrolü; işaretleme yapılmaz">Mizan</div>
+                                    <div className="text-center text-[10.5px]" style={portalStyle({ color: 'rgba(250,250,249,.45)' })} title="Mizan modülünün kendi kontrolü; işaretleme yapılmaz">Mizan</div>
                                   ) : (
                                     <div className="flex items-center justify-center gap-1">
                                       {(f.rowIndex || f.voucherKey) && (
@@ -256,8 +258,8 @@ export function BulguTablosu(p: BulguTablosuProps) {
                                 </td>
                               </tr>
                               {acikSatir && ayrintiVar && (
-                                <tr style={{ background: zemin }}>
-                                  <td colSpan={sutun} style={{ ...HUCRE, color: 'rgba(250,250,249,.72)', fontSize: 12, lineHeight: 1.55, paddingTop: 4 }}>{parca.ayrinti}</td>
+                                <tr style={portalStyle({ background: zemin })}>
+                                  <td colSpan={sutun} style={portalStyle({ ...HUCRE, color: 'rgba(250,250,249,.72)', fontSize: 12, lineHeight: 1.55, paddingTop: 4 })}>{parca.ayrinti}</td>
                                 </tr>
                               )}
                             </Fragment>
@@ -265,7 +267,7 @@ export function BulguTablosu(p: BulguTablosuProps) {
                         })}
                         {!daraltildi && ozet && (
                           <tr>
-                            <td colSpan={sutun} style={{ ...HUCRE, background: 'rgba(0,0,0,.25)', color: 'rgba(250,250,249,.6)', fontSize: 11.5 }}>
+                            <td colSpan={sutun} style={portalStyle({ ...HUCRE, background: 'rgba(0,0,0,.25)', color: 'rgba(250,250,249,.6)', fontSize: 11.5 })}>
                               {ozet.detail?.toplam != null && ozet.detail?.kalan != null
                                 ? `Toplam ${ozet.detail.toplam} · en büyük ${Number(ozet.detail.toplam) - Number(ozet.detail.kalan)} tanesi gösterildi, ${ozet.detail.kalan} tanesi daha var`
                                 : ozet.message}
@@ -288,8 +290,8 @@ export function BulguTablosu(p: BulguTablosuProps) {
 // Alan başlığı sayacı: renkli nokta + soluk yazı (renkli hap yok)
 function Sayac({ n, renk, ad }: { n: number; renk: string; ad: string }) {
   return (
-    <span className="inline-flex items-center gap-1.5 text-[10.5px] font-semibold tabular-nums" style={{ color: 'rgba(250,250,249,.78)' }}>
-      <span style={{ ...NOKTA, background: renk }} />{n} {ad}
+    <span className="inline-flex items-center gap-1.5 text-[10.5px] font-semibold tabular-nums" style={portalStyle({ color: 'rgba(250,250,249,.78)' })}>
+      <span style={portalStyle({ ...NOKTA, background: renk })} />{n} {ad}
     </span>
   );
 }
@@ -297,7 +299,7 @@ function Sayac({ n, renk, ad }: { n: number; renk: string; ad: string }) {
 // İşlem düğmesi: tek nötr biçim; anlam ikonda
 function IkonDugme({ title, onClick, children }: { title: string; onClick: () => void; children: any }) {
   return (
-    <button onClick={onClick} title={title} className="h-7 w-7 rounded-md inline-flex items-center justify-center transition-colors bg-white/[.07] hover:bg-white/[.14] border border-white/[.12]" style={{ color: 'rgba(250,250,249,.82)' }}>
+    <button onClick={onClick} title={title} className="h-7 w-7 rounded-md inline-flex items-center justify-center transition-colors bg-white/[.07] hover:bg-white/[.14] border border-white/[.12]" style={portalStyle({ color: 'rgba(250,250,249,.82)' })}>
       {children}
     </button>
   );

@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import React, { useEffect, useState, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -151,8 +153,8 @@ export default function CariKasaPage() {
   ];
 
   return (
-    <div className="min-h-screen px-4 sm:px-6 py-6" style={{ fontFamily: SANS, background: BG }}>
-      <div className="mx-auto max-w-[1180px] rounded-[20px] p-5 sm:p-7" style={{ background: PANEL, border: '1px solid rgba(255,255,255,0.07)' }}>
+    <div className="min-h-screen px-4 sm:px-6 py-6" style={portalStyle({ fontFamily: SANS, background: BG })}>
+      <div className="mx-auto max-w-[1180px] rounded-[20px] p-5 sm:p-7" style={portalStyle({ background: PANEL, border: '1px solid rgba(255,255,255,0.07)' })}>
 
         {/* ===== HEADER ===== */}
         <div className="flex items-start justify-between gap-4">
@@ -161,20 +163,20 @@ export default function CariKasaPage() {
               onClick={() => setTaxpayerId('')}
               title="Listeye dön"
               className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl transition"
-              style={{ border: '1px solid rgba(255,255,255,0.10)', background: 'rgba(255,255,255,0.02)', color: '#a1a1aa' }}
+              style={portalStyle({ border: '1px solid rgba(255,255,255,0.10)', background: 'rgba(255,255,255,0.02)', color: '#a1a1aa' })}
             >
               <ArrowLeft className="h-5 w-5" />
             </button>
             <div className="min-w-0">
               <span
                 className="inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold tracking-wide"
-                style={{ background: 'rgba(230,200,120,0.12)', color: GOLD, border: '1px solid rgba(230,200,120,0.20)' }}
+                style={portalStyle({ background: 'rgba(230,200,120,0.12)', color: GOLD, border: '1px solid rgba(230,200,120,0.20)' })}
               >
                 Cari · Detay
               </span>
-              <h1 className="mt-1.5 text-[26px] font-bold tracking-tight leading-none" style={{ color: '#fff' }}>{selectedAd}</h1>
+              <h1 className="mt-1.5 text-[26px] font-bold tracking-tight leading-none" style={portalStyle({ color: '#fff' })}>{selectedAd}</h1>
               {selectedTaxpayer?.taxNumber && (
-                <p className="mt-1.5 text-[13.5px] tabular-nums" style={{ color: MUTED }}>VKN {selectedTaxpayer.taxNumber}</p>
+                <p className="mt-1.5 text-[13.5px] tabular-nums" style={portalStyle({ color: MUTED })}>VKN {selectedTaxpayer.taxNumber}</p>
               )}
             </div>
           </div>
@@ -182,14 +184,14 @@ export default function CariKasaPage() {
             <button
               onClick={() => setTahsilatModal(true)}
               className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13.5px] font-semibold"
-              style={{ background: 'linear-gradient(135deg,#ecd589,#d4b876)', color: '#000' }}
+              style={portalStyle({ background: 'linear-gradient(135deg,#ecd589,#d4b876)', color: '#000' })}
             >
               <Plus className="h-4 w-4" /> Tahsilat al
             </button>
             <button
               onClick={() => setTab('defter')}
               className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13.5px] font-medium transition"
-              style={{ border: '1px solid rgba(255,255,255,0.10)', background: 'rgba(255,255,255,0.02)', color: '#d4d4d8' }}
+              style={portalStyle({ border: '1px solid rgba(255,255,255,0.10)', background: 'rgba(255,255,255,0.02)', color: '#d4d4d8' })}
             >
               <Download className="h-4 w-4" /> Ekstre indir
             </button>
@@ -205,7 +207,7 @@ export default function CariKasaPage() {
         </div>
 
         {/* ===== SEKMELER ===== */}
-        <nav className="mt-7 flex items-center gap-7 text-[14.5px]" style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+        <nav className="mt-7 flex items-center gap-7 text-[14.5px]" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.07)' })}>
           {tabs.map(([t, label]) => {
             const active = tab === t;
             return (
@@ -213,11 +215,11 @@ export default function CariKasaPage() {
                 key={t}
                 onClick={() => setTab(t)}
                 className="relative -mb-px pb-3 transition"
-                style={{
+                style={portalStyle({
                   borderBottom: `2px solid ${active ? GOLD : 'transparent'}`,
                   color: active ? '#fff' : MUTED,
                   fontWeight: active ? 600 : 500,
-                }}
+                })}
               >
                 {label}
               </button>
@@ -299,25 +301,25 @@ function MetricCard({ label, value, text, valueColor, debt }: {
   return (
     <div
       className="relative overflow-hidden rounded-xl px-3.5 py-2.5"
-      style={{
+      style={portalStyle({
         background: debt
           ? `linear-gradient(140deg, ${DEBT}12, rgba(255,255,255,0.012) 60%)`
           : CARD_BG,
         border: `1px solid ${debt ? `${DEBT}2e` : CARD_BORDER}`,
-      }}
+      })}
     >
       {debt && (
         <span
           className="pointer-events-none absolute -right-6 -top-8 h-20 w-20 rounded-full opacity-20"
-          style={{ background: `radial-gradient(circle, ${DEBT}, transparent 68%)` }}
+          style={portalStyle({ background: `radial-gradient(circle, ${DEBT}, transparent 68%)` })}
         />
       )}
-      <div className="text-[10.5px] uppercase tracking-wider" style={{ color: MUTED }}>
+      <div className="text-[10.5px] uppercase tracking-wider" style={portalStyle({ color: MUTED })}>
         {label}
       </div>
       <div
         className="mt-0.5 text-[17px] font-semibold leading-tight tabular-nums"
-        style={{ color: valueColor || TEXT }}
+        style={portalStyle({ color: valueColor || TEXT })}
       >
         {text ?? `${fmt(value)} ₺`}
       </div>
@@ -332,38 +334,38 @@ function HizmetlerView({ hizmetler, onYeni, onEdit, onDelete }: {
   onDelete: (id: string) => void;
 }) {
   return (
-    <div className="overflow-hidden rounded-2xl" style={{ border: `1px solid ${CARD_BORDER}` }}>
-      <div className="px-5 py-3.5 flex items-center justify-between" style={{ borderBottom: `1px solid ${ROW_SEP}` }}>
-        <h3 className="text-[14.5px] font-semibold" style={{ color: '#fff' }}>Tanımlı Hizmetler ({hizmetler.length})</h3>
+    <div className="overflow-hidden rounded-2xl" style={portalStyle({ border: `1px solid ${CARD_BORDER}` })}>
+      <div className="px-5 py-3.5 flex items-center justify-between" style={portalStyle({ borderBottom: `1px solid ${ROW_SEP}` })}>
+        <h3 className="text-[14.5px] font-semibold" style={portalStyle({ color: '#fff' })}>Tanımlı Hizmetler ({hizmetler.length})</h3>
         <button
           onClick={onYeni}
           className="inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-[13px] font-semibold"
-          style={{ background: 'linear-gradient(135deg,#ecd589,#d4b876)', color: '#000' }}
+          style={portalStyle({ background: 'linear-gradient(135deg,#ecd589,#d4b876)', color: '#000' })}
         >
           <Plus className="h-4 w-4" /> Yeni hizmet
         </button>
       </div>
       {hizmetler.length === 0 ? (
-        <div className="py-10 text-center text-[14px]" style={{ color: MUTED }}>
+        <div className="py-10 text-center text-[14px]" style={portalStyle({ color: MUTED })}>
           Henüz hizmet tanımı yok. "Yeni hizmet" ile başlayın.
         </div>
       ) : (
         hizmetler.map((h) => (
-          <div key={h.id} className="group flex items-center gap-3 px-5 py-3.5" style={{ borderTop: `1px solid ${ROW_SEP}` }}>
-            <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: h.aktif ? OK : '#3f3f46' }} />
+          <div key={h.id} className="group flex items-center gap-3 px-5 py-3.5" style={portalStyle({ borderTop: `1px solid ${ROW_SEP}` })}>
+            <span className="h-2 w-2 shrink-0 rounded-full" style={portalStyle({ background: h.aktif ? OK : '#3f3f46' })} />
             <div className="flex-1 min-w-0">
-              <div className="text-[14px] font-semibold" style={{ color: TEXT }}>{h.hizmetAdi}</div>
-              <div className="mt-0.5 text-[12.5px]" style={{ color: MUTED }}>
+              <div className="text-[14px] font-semibold" style={portalStyle({ color: TEXT })}>{h.hizmetAdi}</div>
+              <div className="mt-0.5 text-[12.5px]" style={portalStyle({ color: MUTED })}>
                 {h.periyot} · Başlangıç {h.baslangicAy}{h.bitisAy && ` · Bitiş ${h.bitisAy}`}
                 {h.sonTahakkukAy && ` · Son tahakkuk ${h.sonTahakkukAy}`}
               </div>
             </div>
-            <div className="text-[16px] font-bold tabular-nums" style={{ color: GOLD }}>{fmt(h.tutar)} ₺</div>
+            <div className="text-[16px] font-bold tabular-nums" style={portalStyle({ color: GOLD })}>{fmt(h.tutar)} ₺</div>
             <button
               onClick={() => onEdit(h)}
               title="Düzenle"
               className="opacity-55 transition group-hover:opacity-100 p-2 rounded-lg"
-              style={{ background: 'rgba(255,255,255,0.02)', color: '#a1a1aa' }}
+              style={portalStyle({ background: 'rgba(255,255,255,0.02)', color: '#a1a1aa' })}
             >
               <Edit3 className="h-3.5 w-3.5" />
             </button>
@@ -371,7 +373,7 @@ function HizmetlerView({ hizmetler, onYeni, onEdit, onDelete }: {
               onClick={() => onDelete(h.id)}
               title="Sil"
               className="opacity-55 transition group-hover:opacity-100 p-2 rounded-lg"
-              style={{ color: DEBT }}
+              style={portalStyle({ color: DEBT })}
             >
               <Trash2 className="h-3.5 w-3.5" />
             </button>
@@ -511,47 +513,47 @@ function EkstreView({ taxpayerId, taxpayers, onTahsilat, onHizmet }: {
     tip === 'TAHAKKUK' ? 'Hizmet' : tip === 'TAHSILAT' ? 'Tahsilat' : tip === 'IADE' ? 'İade' : 'Düzeltme';
 
   return (
-    <div className="overflow-hidden rounded-2xl" style={{ background: PANEL, border: `1px solid ${CARD_BORDER}` }}>
+    <div className="overflow-hidden rounded-2xl" style={portalStyle({ background: PANEL, border: `1px solid ${CARD_BORDER}` })}>
       {/* ARAÇ ÇUBUĞU */}
       <div
         className="flex flex-wrap items-end gap-2.5 px-4 py-3"
-        style={{ borderBottom: `1px solid ${CARD_BORDER}`, background: 'rgba(255,255,255,0.015)' }}
+        style={portalStyle({ borderBottom: `1px solid ${CARD_BORDER}`, background: 'rgba(255,255,255,0.015)' })}
       >
         <label className="flex flex-col gap-1">
-          <span className="text-[10.5px] uppercase tracking-wider" style={{ color: MUTED }}>Başlangıç</span>
-          <input type="date" value={baslangic} onChange={(e) => setBaslangic(e.target.value)} style={dateInput} />
+          <span className="text-[10.5px] uppercase tracking-wider" style={portalStyle({ color: MUTED })}>Başlangıç</span>
+          <input type="date" value={baslangic} onChange={(e) => setBaslangic(e.target.value)} style={portalStyle(dateInput)} />
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-[10.5px] uppercase tracking-wider" style={{ color: MUTED }}>Bitiş</span>
-          <input type="date" value={bitis} onChange={(e) => setBitis(e.target.value)} style={dateInput} />
+          <span className="text-[10.5px] uppercase tracking-wider" style={portalStyle({ color: MUTED })}>Bitiş</span>
+          <input type="date" value={bitis} onChange={(e) => setBitis(e.target.value)} style={portalStyle(dateInput)} />
         </label>
 
         <button
           onClick={() => setSifirSonrasi((v) => !v)}
           className="rounded-lg px-3 py-2 text-[12.5px] font-medium transition"
-          style={sifirSonrasi
+          style={portalStyle(sifirSonrasi
             ? { background: `${GOLD}1f`, color: GOLD, border: `1px solid ${GOLD}4d` }
-            : dugme}
+            : dugme)}
           title="Bakiyenin sıfırlandığı son andan bugüne kadarki hareketleri göster"
         >
           Bakiye sıfırlandıktan sonrası
         </button>
 
         <span className="ml-auto flex flex-wrap items-center gap-2">
-          <button onClick={acPdf} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12.5px] font-medium transition hover:brightness-125" style={dugme}>
+          <button onClick={acPdf} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12.5px] font-medium transition hover:brightness-125" style={portalStyle(dugme)}>
             <FileText className="h-3.5 w-3.5" /> PDF
           </button>
-          <button onClick={indirXlsx} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12.5px] font-medium transition hover:brightness-125" style={dugme}>
+          <button onClick={indirXlsx} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12.5px] font-medium transition hover:brightness-125" style={portalStyle(dugme)}>
             <Download className="h-3.5 w-3.5" /> Excel
           </button>
-          <button onClick={whatsappGonder} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12.5px] font-medium transition hover:brightness-125" style={{ ...dugme, color: '#6ee29c', borderColor: 'rgba(90,209,138,0.28)' }}>
+          <button onClick={whatsappGonder} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12.5px] font-medium transition hover:brightness-125" style={portalStyle({ ...dugme, color: '#6ee29c', borderColor: 'rgba(90,209,138,0.28)' })}>
             <MessageCircle className="h-3.5 w-3.5" /> WhatsApp
           </button>
-          <span className="mx-1 h-5 w-px" style={{ background: CARD_BORDER }} />
-          <button onClick={onHizmet} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12.5px] font-medium transition hover:brightness-125" style={dugme}>
+          <span className="mx-1 h-5 w-px" style={portalStyle({ background: CARD_BORDER })} />
+          <button onClick={onHizmet} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12.5px] font-medium transition hover:brightness-125" style={portalStyle(dugme)}>
             <Plus className="h-3.5 w-3.5" /> Hizmet
           </button>
-          <button onClick={onTahsilat} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12.5px] font-semibold" style={{ background: 'linear-gradient(135deg,#ecd589,#d4b876)', color: '#000' }}>
+          <button onClick={onTahsilat} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12.5px] font-semibold" style={portalStyle({ background: 'linear-gradient(135deg,#ecd589,#d4b876)', color: '#000' })}>
             <Plus className="h-3.5 w-3.5" /> Tahsilat
           </button>
         </span>
@@ -561,16 +563,16 @@ function EkstreView({ taxpayerId, taxpayers, onTahsilat, onHizmet }: {
       {secili.size > 0 && (
         <div
           className="flex items-center justify-between gap-3 px-4 py-2"
-          style={{ borderBottom: `1px solid ${CARD_BORDER}`, background: `${DEBT}0f` }}
+          style={portalStyle({ borderBottom: `1px solid ${CARD_BORDER}`, background: `${DEBT}0f` })}
         >
-          <span className="text-[12.5px]" style={{ color: TEXT }}>{secili.size} hareket seçildi</span>
+          <span className="text-[12.5px]" style={portalStyle({ color: TEXT })}>{secili.size} hareket seçildi</span>
           <span className="flex items-center gap-2">
-            <button onClick={() => setSecili(new Set())} className="rounded-lg px-3 py-1.5 text-[12px]" style={dugme}>Vazgeç</button>
+            <button onClick={() => setSecili(new Set())} className="rounded-lg px-3 py-1.5 text-[12px]" style={portalStyle(dugme)}>Vazgeç</button>
             <button
               onClick={() => sil([...secili])}
               disabled={siliniyor}
               className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-semibold disabled:opacity-50"
-              style={{ background: `${DEBT}22`, color: DEBT, border: `1px solid ${DEBT}55` }}
+              style={portalStyle({ background: `${DEBT}22`, color: DEBT, border: `1px solid ${DEBT}55` })}
             >
               <Trash2 className="h-3.5 w-3.5" /> Seçilenleri sil
             </button>
@@ -579,17 +581,17 @@ function EkstreView({ taxpayerId, taxpayers, onTahsilat, onHizmet }: {
       )}
 
       {isLoading ? (
-        <div className="py-12 text-center text-[13px]" style={{ color: MUTED }}>
+        <div className="py-12 text-center text-[13px]" style={portalStyle({ color: MUTED })}>
           <Loader2 className="animate-spin inline mr-2 h-4 w-4" />Hesaplanıyor…
         </div>
       ) : !ekstre ? (
-        <div className="py-12 text-center text-[13px]" style={{ color: MUTED }}>Hareketler alınamadı.</div>
+        <div className="py-12 text-center text-[13px]" style={portalStyle({ color: MUTED })}>Hareketler alınamadı.</div>
       ) : (
         <>
-          <div className="overflow-auto" style={{ maxHeight: 'calc(100vh - 400px)', minHeight: 260 }}>
+          <div className="overflow-auto" style={portalStyle({ maxHeight: 'calc(100vh - 400px)', minHeight: 260 })}>
             <table className="w-full min-w-[860px] text-[13px]">
               <thead className="sticky top-0 z-10">
-                <tr className="text-[10.5px] uppercase tracking-wider" style={{ color: MUTED, background: '#101013' }}>
+                <tr className="text-[10.5px] uppercase tracking-wider" style={portalStyle({ color: MUTED, background: '#101013' })}>
                   <th className="w-9 px-3 py-2.5">
                     <input
                       type="checkbox"
@@ -610,10 +612,10 @@ function EkstreView({ taxpayerId, taxpayers, onTahsilat, onHizmet }: {
               </thead>
               <tbody>
                 {!sifirSonrasi && (
-                  <tr style={{ background: 'rgba(255,255,255,0.022)' }}>
+                  <tr style={portalStyle({ background: 'rgba(255,255,255,0.022)' })}>
                     <td className="px-3 py-2.5" />
-                    <td className="px-3 py-2.5 font-semibold" colSpan={6} style={{ color: TEXT }}>Açılış bakiyesi</td>
-                    <td className="px-3 py-2.5 text-right font-semibold tabular-nums" style={{ color: TEXT }}>
+                    <td className="px-3 py-2.5 font-semibold" colSpan={6} style={portalStyle({ color: TEXT })}>Açılış bakiyesi</td>
+                    <td className="px-3 py-2.5 text-right font-semibold tabular-nums" style={portalStyle({ color: TEXT })}>
                       {fmt(ekstre.acilisBakiye)} ₺
                     </td>
                     <td />
@@ -621,8 +623,8 @@ function EkstreView({ taxpayerId, taxpayers, onTahsilat, onHizmet }: {
                 )}
 
                 {satirlar.length === 0 ? (
-                  <tr style={{ borderTop: `1px solid ${ROW_SEP}` }}>
-                    <td className="px-4 py-8 text-center text-[12.5px]" colSpan={9} style={{ color: MUTED }}>
+                  <tr style={portalStyle({ borderTop: `1px solid ${ROW_SEP}` })}>
+                    <td className="px-4 py-8 text-center text-[12.5px]" colSpan={9} style={portalStyle({ color: MUTED })}>
                       Bu tarih aralığında hareket yok.
                     </td>
                   </tr>
@@ -637,7 +639,7 @@ function EkstreView({ taxpayerId, taxpayers, onTahsilat, onHizmet }: {
                       <tr
                         key={s.id}
                         className="group"
-                        style={{ borderTop: `1px solid ${ROW_SEP}`, background: secilidir ? 'rgba(255,255,255,0.03)' : undefined }}
+                        style={portalStyle({ borderTop: `1px solid ${ROW_SEP}`, background: secilidir ? 'rgba(255,255,255,0.03)' : undefined })}
                       >
                         <td className="px-3 py-2.5">
                           <input
@@ -647,33 +649,33 @@ function EkstreView({ taxpayerId, taxpayers, onTahsilat, onHizmet }: {
                             className="h-3.5 w-3.5 cursor-pointer accent-amber-300"
                           />
                         </td>
-                        <td className="whitespace-nowrap px-3 py-2.5 tabular-nums" style={{ color: '#a1a1aa' }}>
+                        <td className="whitespace-nowrap px-3 py-2.5 tabular-nums" style={portalStyle({ color: '#a1a1aa' })}>
                           {new Date(s.tarih).toLocaleDateString('tr-TR')}
                         </td>
-                        <td className="whitespace-nowrap px-3 py-2.5" style={{ color: s.hizmet?.hizmetAdi ? GOLD : '#3f3f46' }}>
+                        <td className="whitespace-nowrap px-3 py-2.5" style={portalStyle({ color: s.hizmet?.hizmetAdi ? GOLD : '#3f3f46' })}>
                           {s.hizmet?.hizmetAdi || '—'}
                         </td>
                         <td className="whitespace-nowrap px-3 py-2.5">
                           <span
                             className="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10.5px]"
-                            style={alacak
+                            style={portalStyle(alacak
                               ? { background: `${OK}18`, color: OK, border: `1px solid ${OK}33` }
-                              : { background: `${DEBT}15`, color: DEBT, border: `1px solid ${DEBT}30` }}
+                              : { background: `${DEBT}15`, color: DEBT, border: `1px solid ${DEBT}30` })}
                           >
                             {turEtiket(s.tip)}
                           </span>
                         </td>
-                        <td className="px-3 py-2.5" style={{ color: '#d4d4d8' }}>{s.aciklama || '—'}</td>
-                        <td className="px-3 py-2.5 text-right font-semibold tabular-nums" style={{ color: borc ? DEBT : '#3f3f46' }}>
+                        <td className="px-3 py-2.5" style={portalStyle({ color: '#d4d4d8' })}>{s.aciklama || '—'}</td>
+                        <td className="px-3 py-2.5 text-right font-semibold tabular-nums" style={portalStyle({ color: borc ? DEBT : '#3f3f46' })}>
                           {borc ? `${fmt(borc)} ₺` : '—'}
                         </td>
-                        <td className="px-3 py-2.5 text-right font-semibold tabular-nums" style={{ color: alacak ? OK : '#3f3f46' }}>
+                        <td className="px-3 py-2.5 text-right font-semibold tabular-nums" style={portalStyle({ color: alacak ? OK : '#3f3f46' })}>
                           {alacak ? `${fmt(alacak)} ₺` : '—'}
                         </td>
-                        <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums" style={{ color: TEXT }}>
+                        <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums" style={portalStyle({ color: TEXT })}>
                           {fmt(Math.abs(bakiye))} ₺
                           {/* (B) borç / (A) alacak — yönü rakamdan okunmuyordu */}
-                          <span className="ml-1 text-[10.5px]" style={{ color: bakiye < 0 ? OK : MUTED }}>
+                          <span className="ml-1 text-[10.5px]" style={portalStyle({ color: bakiye < 0 ? OK : MUTED })}>
                             {bakiye < 0 ? '(A)' : '(B)'}
                           </span>
                         </td>
@@ -683,7 +685,7 @@ function EkstreView({ taxpayerId, taxpayers, onTahsilat, onHizmet }: {
                             disabled={siliniyor}
                             title="Bu hareketi sil"
                             className="rounded-md p-1 opacity-60 transition hover:opacity-100 disabled:opacity-30"
-                            style={{ color: DEBT }}
+                            style={portalStyle({ color: DEBT })}
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
@@ -698,9 +700,9 @@ function EkstreView({ taxpayerId, taxpayers, onTahsilat, onHizmet }: {
 
           <div
             className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
-            style={{ borderTop: `1px solid ${CARD_BORDER}`, background: 'rgba(255,255,255,0.015)' }}
+            style={portalStyle({ borderTop: `1px solid ${CARD_BORDER}`, background: 'rgba(255,255,255,0.015)' })}
           >
-            <span className="text-[11.5px]" style={{ color: MUTED }}>
+            <span className="text-[11.5px]" style={portalStyle({ color: MUTED })}>
               {satirlar.length} hareket
               {sifirSonrasi && tumSatirlar.length !== satirlar.length
                 ? ` · ${tumSatirlar.length - satirlar.length} kapanmış hareket gizli`
@@ -728,13 +730,13 @@ function ToplamRozet({ etiket, tutar, renk, vurgu }: {
   return (
     <span
       className="inline-flex items-baseline gap-2 rounded-lg px-3 py-1.5"
-      style={{
+      style={portalStyle({
         background: vurgu ? `${renk}1a` : 'rgba(255,255,255,0.025)',
         border: `1px solid ${vurgu ? `${renk}44` : CARD_BORDER}`,
-      }}
+      })}
     >
-      <span className="text-[10.5px] uppercase tracking-wider" style={{ color: MUTED }}>{etiket}</span>
-      <span className="text-[13.5px] font-semibold tabular-nums" style={{ color: renk }}>
+      <span className="text-[10.5px] uppercase tracking-wider" style={portalStyle({ color: MUTED })}>{etiket}</span>
+      <span className="text-[13.5px] font-semibold tabular-nums" style={portalStyle({ color: renk })}>
         {fmt(tutar)} ₺
       </span>
     </span>
@@ -761,21 +763,21 @@ function ModalShell({ etiket, baslik, etiketRengi, onClose, children, footer }: 
   footer: React.ReactNode;
 }) {
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center px-4 py-8" style={{ background: 'rgba(0,0,0,0.6)' }} onClick={onClose}>
+    <div className="fixed inset-0 z-50 grid place-items-center px-4 py-8" style={portalStyle({ background: 'rgba(0,0,0,0.6)' })} onClick={onClose}>
       <div
         className="w-full max-w-[520px] rounded-[20px]"
-        style={{ background: PANEL, border: '1px solid rgba(230,200,120,0.18)', boxShadow: '0 24px 60px -12px rgba(0,0,0,0.7)' }}
+        style={portalStyle({ background: PANEL, border: '1px solid rgba(230,200,120,0.18)', boxShadow: '0 24px 60px -12px rgba(0,0,0,0.7)' })}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-4 px-7 pt-6 pb-5">
           <div className="min-w-0">
-            <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: etiketRengi }}>{etiket}</div>
-            <h1 className="mt-1 text-[24px] font-bold tracking-tight leading-none" style={{ color: '#fff' }}>{baslik}</h1>
+            <div className="text-[11px] font-semibold uppercase tracking-wider" style={portalStyle({ color: etiketRengi })}>{etiket}</div>
+            <h1 className="mt-1 text-[24px] font-bold tracking-tight leading-none" style={portalStyle({ color: '#fff' })}>{baslik}</h1>
           </div>
           <button
             onClick={onClose}
             className="grid h-9 w-9 shrink-0 place-items-center rounded-xl transition"
-            style={{ border: '1px solid rgba(255,255,255,0.10)', background: 'rgba(255,255,255,0.02)', color: '#a1a1aa' }}
+            style={portalStyle({ border: '1px solid rgba(255,255,255,0.10)', background: 'rgba(255,255,255,0.02)', color: '#a1a1aa' })}
           >
             <X className="h-[18px] w-[18px]" />
           </button>
@@ -790,7 +792,7 @@ function ModalShell({ etiket, baslik, etiketRengi, onClose, children, footer }: 
 function Field({ label, children, full }: { label: string; children: React.ReactNode; full?: boolean }) {
   return (
     <div className={full ? 'col-span-2' : ''}>
-      <label style={lblStyle}>{label}</label>
+      <label style={portalStyle(lblStyle)}>{label}</label>
       <div className="mt-1.5">{children}</div>
     </div>
   );
@@ -841,8 +843,8 @@ function HizmetModal({ taxpayerId, hizmet, onClose, onSaved }: { taxpayerId: str
       onClose={onClose}
       footer={
         <>
-          <button onClick={onClose} className="rounded-xl px-5 py-2.5 text-[13.5px] font-medium transition" style={{ border: '1px solid rgba(255,255,255,0.10)', background: 'rgba(255,255,255,0.02)', color: '#d4d4d8' }}>Vazgeç</button>
-          <button onClick={save} disabled={saving} className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-[13.5px] font-semibold disabled:opacity-50" style={{ background: 'linear-gradient(135deg,#ecd589,#d4b876)', color: '#000' }}>
+          <button onClick={onClose} className="rounded-xl px-5 py-2.5 text-[13.5px] font-medium transition" style={portalStyle({ border: '1px solid rgba(255,255,255,0.10)', background: 'rgba(255,255,255,0.02)', color: '#d4d4d8' })}>Vazgeç</button>
+          <button onClick={save} disabled={saving} className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-[13.5px] font-semibold disabled:opacity-50" style={portalStyle({ background: 'linear-gradient(135deg,#ecd589,#d4b876)', color: '#000' })}>
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <HandCoins className="h-4 w-4" />} {hizmet ? 'Güncelle' : 'Kaydet'}
           </button>
         </>
@@ -850,22 +852,22 @@ function HizmetModal({ taxpayerId, hizmet, onClose, onSaved }: { taxpayerId: str
     >
       <div className="px-7 pb-2">
         <div className="grid grid-cols-2 gap-x-4 gap-y-4">
-          <Field label="Hizmet Adı" full><input value={form.hizmetAdi} onChange={(e) => setForm({ ...form, hizmetAdi: e.target.value })} style={inpStyle} /></Field>
-          <Field label="Tutar (₺)"><input type="number" step="0.01" value={form.tutar} onChange={(e) => setForm({ ...form, tutar: Number(e.target.value) })} style={inpStyle} /></Field>
+          <Field label="Hizmet Adı" full><input value={form.hizmetAdi} onChange={(e) => setForm({ ...form, hizmetAdi: e.target.value })} style={portalStyle(inpStyle)} /></Field>
+          <Field label="Tutar (₺)"><input type="number" step="0.01" value={form.tutar} onChange={(e) => setForm({ ...form, tutar: Number(e.target.value) })} style={portalStyle(inpStyle)} /></Field>
           <Field label="Periyot">
-            <select value={form.periyot} onChange={(e) => setForm({ ...form, periyot: e.target.value })} style={inpStyle}>
+            <select value={form.periyot} onChange={(e) => setForm({ ...form, periyot: e.target.value })} style={portalStyle(inpStyle)}>
               <option value="AYLIK">Aylık</option>
               <option value="UCAYLIK">3 Aylık</option>
               <option value="ALTIAYLIK">6 Aylık</option>
               <option value="YILLIK">Yıllık</option>
             </select>
           </Field>
-          <Field label="Başlangıç Ay (YYYY-MM)"><input value={form.baslangicAy} onChange={(e) => setForm({ ...form, baslangicAy: e.target.value })} placeholder="2026-01" style={inpStyle} /></Field>
-          <Field label="Bitiş Ay (opsiyonel)"><input value={form.bitisAy} onChange={(e) => setForm({ ...form, bitisAy: e.target.value })} placeholder="2026-12" style={inpStyle} /></Field>
-          <Field label="Notlar" full><textarea value={form.notlar} onChange={(e) => setForm({ ...form, notlar: e.target.value })} rows={2} style={inpStyle} /></Field>
+          <Field label="Başlangıç Ay (YYYY-MM)"><input value={form.baslangicAy} onChange={(e) => setForm({ ...form, baslangicAy: e.target.value })} placeholder="2026-01" style={portalStyle(inpStyle)} /></Field>
+          <Field label="Bitiş Ay (opsiyonel)"><input value={form.bitisAy} onChange={(e) => setForm({ ...form, bitisAy: e.target.value })} placeholder="2026-12" style={portalStyle(inpStyle)} /></Field>
+          <Field label="Notlar" full><textarea value={form.notlar} onChange={(e) => setForm({ ...form, notlar: e.target.value })} rows={2} style={portalStyle(inpStyle)} /></Field>
           <label className="col-span-2 flex items-center gap-2 cursor-pointer">
             <input type="checkbox" checked={form.aktif} onChange={(e) => setForm({ ...form, aktif: e.target.checked })} />
-            <span className="text-[13px]" style={{ color: '#d4d4d8' }}>Aktif (tahakkuk geçer)</span>
+            <span className="text-[13px]" style={portalStyle({ color: '#d4d4d8' })}>Aktif (tahakkuk geçer)</span>
           </label>
         </div>
       </div>
@@ -927,28 +929,28 @@ function TahsilatModal({ taxpayerId, mukellefAd, taxNumber, acikBakiye, onClose,
       onClose={onClose}
       footer={
         <>
-          <button onClick={onClose} className="rounded-xl px-5 py-2.5 text-[13.5px] font-medium transition" style={{ border: '1px solid rgba(255,255,255,0.10)', background: 'rgba(255,255,255,0.02)', color: '#d4d4d8' }}>Vazgeç</button>
-          <button onClick={save} disabled={saving} className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-[13.5px] font-semibold disabled:opacity-50" style={{ background: 'linear-gradient(135deg,#ecd589,#d4b876)', color: '#000' }}>
+          <button onClick={onClose} className="rounded-xl px-5 py-2.5 text-[13.5px] font-medium transition" style={portalStyle({ border: '1px solid rgba(255,255,255,0.10)', background: 'rgba(255,255,255,0.02)', color: '#d4d4d8' })}>Vazgeç</button>
+          <button onClick={save} disabled={saving} className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-[13.5px] font-semibold disabled:opacity-50" style={portalStyle({ background: 'linear-gradient(135deg,#ecd589,#d4b876)', color: '#000' })}>
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <HandCoins className="h-4 w-4" />} Kaydet
           </button>
         </>
       }
     >
       {/* Mükellef satırı */}
-      <div className="mx-7 rounded-xl px-4 py-3" style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}` }}>
+      <div className="mx-7 rounded-xl px-4 py-3" style={portalStyle({ background: CARD_BG, border: `1px solid ${CARD_BORDER}` })}>
         <div className="flex items-center gap-2 flex-wrap text-[13px]">
-          <span className="font-semibold" style={{ color: '#fff' }}>{mukellefAd || 'Mükellef'}</span>
-          {taxNumber && (<><span style={{ color: '#52525b' }}>·</span><span className="tabular-nums" style={{ color: MUTED }}>VKN {taxNumber}</span></>)}
-          <span style={{ color: '#52525b' }}>·</span>
-          <span style={{ color: MUTED }}>açık bakiye</span>
-          <span className="font-semibold tabular-nums" style={{ color: DEBT }}>{fmt(acikBakiye)} ₺</span>
+          <span className="font-semibold" style={portalStyle({ color: '#fff' })}>{mukellefAd || 'Mükellef'}</span>
+          {taxNumber && (<><span style={portalStyle({ color: '#52525b' })}>·</span><span className="tabular-nums" style={portalStyle({ color: MUTED })}>VKN {taxNumber}</span></>)}
+          <span style={portalStyle({ color: '#52525b' })}>·</span>
+          <span style={portalStyle({ color: MUTED })}>açık bakiye</span>
+          <span className="font-semibold tabular-nums" style={portalStyle({ color: DEBT })}>{fmt(acikBakiye)} ₺</span>
         </div>
       </div>
 
       <div className="px-7 pt-5 pb-2">
         <div className="grid grid-cols-2 gap-x-4 gap-y-4">
-          <Field label="Tarih"><input type="date" value={form.tarih} onChange={(e) => setForm({ ...form, tarih: e.target.value })} style={inpStyle} /></Field>
-          <Field label="Tutar (₺)"><input type="number" step="0.01" value={form.tutar} onChange={(e) => setForm({ ...form, tutar: Number(e.target.value) })} autoFocus style={{ ...inpStyle, fontSize: 18, fontWeight: 700, color: GOLD }} /></Field>
+          <Field label="Tarih"><input type="date" value={form.tarih} onChange={(e) => setForm({ ...form, tarih: e.target.value })} style={portalStyle(inpStyle)} /></Field>
+          <Field label="Tutar (₺)"><input type="number" step="0.01" value={form.tutar} onChange={(e) => setForm({ ...form, tutar: Number(e.target.value) })} autoFocus style={portalStyle({ ...inpStyle, fontSize: 18, fontWeight: 700, color: GOLD })} /></Field>
           <Field label="Ödeme Yöntemi">
             <select value={form.odemeYontemi} onChange={(e) => {
                   // Nakit seçilince para kasaya girmiştir; hesabı da ona göre
@@ -960,7 +962,7 @@ function TahsilatModal({ taxpayerId, mukellefAd, taxNumber, acikBakiye, onClose,
                     odemeYontemi: yontem,
                     accountId: yontem === 'NAKIT' ? 'NAKIT_KASA' : f.accountId,
                   }));
-                }} style={inpStyle}>
+                }} style={portalStyle(inpStyle)}>
               <option value="NAKIT">Nakit</option>
               <option value="HAVALE">Havale/EFT</option>
               <option value="POS">POS/Kart</option>
@@ -969,28 +971,28 @@ function TahsilatModal({ taxpayerId, mukellefAd, taxNumber, acikBakiye, onClose,
             </select>
           </Field>
           <Field label="Hesap">
-            <select value={form.accountId} onChange={(e) => setForm({ ...form, accountId: e.target.value })} style={inpStyle}>
+            <select value={form.accountId} onChange={(e) => setForm({ ...form, accountId: e.target.value })} style={portalStyle(inpStyle)}>
               <option value="">{accounts.length ? 'Hesap seçin' : 'Tahsilata açık hesap yok'}</option>
               {accounts.map((account) => (
                 <option key={account.id} value={account.id}>{account.name}</option>
               ))}
             </select>
             {accounts.length === 0 && (
-              <p className="mt-1.5 text-[12px]" style={{ color: '#e6c878' }}>
+              <p className="mt-1.5 text-[12px]" style={portalStyle({ color: '#e6c878' })}>
                 Tahsilata açık hesap yok. Kişisel Bütçe &gt; Hesaplar ekranından hesabın
                 &quot;cari tahsilatta görünsün&quot; anahtarını açın.
               </p>
             )}
           </Field>
-          <Field label="Belge No (opsiyonel)"><input value={form.belgeNo} onChange={(e) => setForm({ ...form, belgeNo: e.target.value })} placeholder="Dekont/makbuz no" style={inpStyle} /></Field>
-          <Field label="Hangi Ay İçin (opsiyonel)"><input value={form.donem} onChange={(e) => setForm({ ...form, donem: e.target.value })} placeholder="2026-04" style={inpStyle} /></Field>
-          <Field label="Açıklama" full><input value={form.aciklama} onChange={(e) => setForm({ ...form, aciklama: e.target.value })} style={inpStyle} /></Field>
+          <Field label="Belge No (opsiyonel)"><input value={form.belgeNo} onChange={(e) => setForm({ ...form, belgeNo: e.target.value })} placeholder="Dekont/makbuz no" style={portalStyle(inpStyle)} /></Field>
+          <Field label="Hangi Ay İçin (opsiyonel)"><input value={form.donem} onChange={(e) => setForm({ ...form, donem: e.target.value })} placeholder="2026-04" style={portalStyle(inpStyle)} /></Field>
+          <Field label="Açıklama" full><input value={form.aciklama} onChange={(e) => setForm({ ...form, aciklama: e.target.value })} style={portalStyle(inpStyle)} /></Field>
         </div>
 
         {/* Bilgi şeridi: kalan bakiye */}
-        <div className="mt-5 flex items-center justify-between rounded-xl px-4 py-3" style={{ background: 'rgba(230,200,120,0.06)', border: '1px solid rgba(230,200,120,0.15)' }}>
-          <span className="text-[13px]" style={{ color: '#a1a1aa' }}>Bu tahsilat sonrası kalan bakiye</span>
-          <span className="text-[16px] font-bold tabular-nums" style={{ color: GOLD }}>{fmt(kalanBakiye)} ₺</span>
+        <div className="mt-5 flex items-center justify-between rounded-xl px-4 py-3" style={portalStyle({ background: 'rgba(230,200,120,0.06)', border: '1px solid rgba(230,200,120,0.15)' })}>
+          <span className="text-[13px]" style={portalStyle({ color: '#a1a1aa' })}>Bu tahsilat sonrası kalan bakiye</span>
+          <span className="text-[16px] font-bold tabular-nums" style={portalStyle({ color: GOLD })}>{fmt(kalanBakiye)} ₺</span>
         </div>
       </div>
     </ModalShell>

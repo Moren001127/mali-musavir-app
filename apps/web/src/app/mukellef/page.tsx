@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { taxpayerApi } from '@/lib/taxpayer-api';
@@ -48,19 +50,19 @@ export default function MukellefOverview() {
       <MukellefBrifing userName={ad} />
 
       {(ozet.okunmamisTebligat ?? 0) > 0 && (
-        <Link href="/mukellef/tebligatlar" className="flex items-center gap-2.5 rounded-2xl px-4 py-3 transition hover:brightness-110" style={{ background: 'rgba(251,191,36,0.12)', border: '1px solid rgba(251,191,36,0.36)' }}>
-          <BellDot size={16} style={{ color: '#fbbf24' }} />
-          <span className="text-[13px]" style={{ color: '#fafaf9' }}><strong>{ozet.okunmamisTebligat}</strong> okunmamış e-Tebligatınız var.</span>
-          <ArrowRight size={14} className="ml-auto" style={{ color: '#fbbf24' }} />
+        <Link href="/mukellef/tebligatlar" className="flex items-center gap-2.5 rounded-2xl px-4 py-3 transition hover:brightness-110" style={portalStyle({ background: 'rgba(251,191,36,0.12)', border: '1px solid rgba(251,191,36,0.36)' })}>
+          <BellDot size={16} style={portalStyle({ color: '#fbbf24' })} />
+          <span className="text-[13px]" style={portalStyle({ color: '#fafaf9' })}><strong>{ozet.okunmamisTebligat}</strong> okunmamış e-Tebligatınız var.</span>
+          <ArrowRight size={14} className="ml-auto" style={portalStyle({ color: '#fbbf24' })} />
         </Link>
       )}
 
       {/* Hızlı erişim */}
       <div className="grid grid-cols-3 sm:grid-cols-6 gap-2.5">
         {HIZLI.map(({ href, label, icon: Icon, c }) => (
-          <Link key={href} href={href} className="flex flex-col items-center gap-2 rounded-2xl py-4 px-2 transition hover:brightness-125" style={{ background: `linear-gradient(160deg, ${c}14, ${c}06), #100d0a`, border: `1px solid ${c}26` }}>
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: `${c}1c`, border: `1px solid ${c}3a`, color: c }}><Icon size={18} /></span>
-            <span className="text-[11.5px] font-medium text-center leading-tight" style={{ color: 'rgba(250,250,249,0.8)' }}>{label}</span>
+          <Link key={href} href={href} className="flex flex-col items-center gap-2 rounded-2xl py-4 px-2 transition hover:brightness-125" style={portalStyle({ background: `linear-gradient(160deg, ${c}14, ${c}06), #100d0a`, border: `1px solid ${c}26` })}>
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl" style={portalStyle({ background: `${c}1c`, border: `1px solid ${c}3a`, color: c })}><Icon size={18} /></span>
+            <span className="text-[11.5px] font-medium text-center leading-tight" style={portalStyle({ color: 'rgba(250,250,249,0.8)' })}>{label}</span>
           </Link>
         ))}
       </div>
@@ -76,23 +78,23 @@ export default function MukellefOverview() {
         <Card accent="#8fd7bd">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
-              <BarChart3 size={15} style={{ color: '#8fd7bd' }} />
-              <h2 className="text-[14px] font-semibold" style={{ color: '#fafaf9' }}>Aylık Alış / Satış</h2>
+              <BarChart3 size={15} style={portalStyle({ color: '#8fd7bd' })} />
+              <h2 className="text-[14px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>Aylık Alış / Satış</h2>
               <div className="ml-3 flex items-center gap-3 text-[11px]">
-                <span className="inline-flex items-center gap-1.5" style={{ color: 'rgba(250,250,249,0.55)' }}><i className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: ALIS }} /> Alış {fmtTRY(fa.alisToplam ?? 0)}</span>
-                <span className="inline-flex items-center gap-1.5" style={{ color: 'rgba(250,250,249,0.55)' }}><i className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: SATIS }} /> Satış {fmtTRY(fa.satisToplam ?? 0)}</span>
+                <span className="inline-flex items-center gap-1.5" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}><i className="inline-block h-2.5 w-2.5 rounded-sm" style={portalStyle({ background: ALIS })} /> Alış {fmtTRY(fa.alisToplam ?? 0)}</span>
+                <span className="inline-flex items-center gap-1.5" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}><i className="inline-block h-2.5 w-2.5 rounded-sm" style={portalStyle({ background: SATIS })} /> Satış {fmtTRY(fa.satisToplam ?? 0)}</span>
               </div>
             </div>
-            <Link href="/mukellef/faturalar" className="text-[12px] inline-flex items-center gap-1" style={{ color: '#8fd7bd' }}>Detay <ArrowRight size={13} /></Link>
+            <Link href="/mukellef/faturalar" className="text-[12px] inline-flex items-center gap-1" style={portalStyle({ color: '#8fd7bd' })}>Detay <ArrowRight size={13} /></Link>
           </div>
-          <div className="flex items-end gap-3 overflow-x-auto pb-1" style={{ height: 150 }}>
+          <div className="flex items-end gap-3 overflow-x-auto pb-1" style={portalStyle({ height: 150 })}>
             {aylik.map((a) => (
-              <div key={a.donem} className="flex flex-col items-center gap-1.5 shrink-0" style={{ minWidth: 40 }}>
-                <div className="flex items-end gap-1" style={{ height: 108 }}>
-                  <div title={`Alış: ${fmtTRY(a.alis)}`} className="w-3 rounded-t" style={{ height: `${Math.max(2, (a.alis / maxAy) * 108)}px`, background: `linear-gradient(180deg, ${ALIS}, ${ALIS}66)` }} />
-                  <div title={`Satış: ${fmtTRY(a.satis)}`} className="w-3 rounded-t" style={{ height: `${Math.max(2, (a.satis / maxAy) * 108)}px`, background: `linear-gradient(180deg, ${SATIS}, ${SATIS}66)` }} />
+              <div key={a.donem} className="flex flex-col items-center gap-1.5 shrink-0" style={portalStyle({ minWidth: 40 })}>
+                <div className="flex items-end gap-1" style={portalStyle({ height: 108 })}>
+                  <div title={`Alış: ${fmtTRY(a.alis)}`} className="w-3 rounded-t" style={portalStyle({ height: `${Math.max(2, (a.alis / maxAy) * 108)}px`, background: `linear-gradient(180deg, ${ALIS}, ${ALIS}66)` })} />
+                  <div title={`Satış: ${fmtTRY(a.satis)}`} className="w-3 rounded-t" style={portalStyle({ height: `${Math.max(2, (a.satis / maxAy) * 108)}px`, background: `linear-gradient(180deg, ${SATIS}, ${SATIS}66)` })} />
                 </div>
-                <span className="text-[10px]" style={{ color: 'rgba(250,250,249,0.45)' }}>{AY_KISA(a.donem)}</span>
+                <span className="text-[10px]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>{AY_KISA(a.donem)}</span>
               </div>
             ))}
           </div>

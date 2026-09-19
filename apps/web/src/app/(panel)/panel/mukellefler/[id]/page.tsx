@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 /**
  * Mükellef kartı — ana bileşen: veri (sorgular/mutasyonlar), form durumu ve sekme geçişi.
@@ -211,7 +213,7 @@ export default function MukellefDetayPage() {
   if (!isNew && isLoading) {
     return (
       <div className="flex min-h-[420px] items-center justify-center">
-        <div className="flex items-center gap-2 text-sm" style={{ color: MUTED }}>
+        <div className="flex items-center gap-2 text-sm" style={portalStyle({ color: MUTED })}>
           <Loader2 size={16} className="animate-spin" />
           Yükleniyor...
         </div>
@@ -220,7 +222,7 @@ export default function MukellefDetayPage() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="mx-auto max-w-[1500px] space-y-3 px-1" style={{ fontFamily: CARD_FONT }}>
+    <form onSubmit={handleSubmit} className="mx-auto max-w-[1500px] space-y-3 px-1" style={portalStyle({ fontFamily: CARD_FONT })}>
       <KartBasligi
         isNew={isNew}
         currentName={currentName}
@@ -246,7 +248,7 @@ export default function MukellefDetayPage() {
 
       {!isNew && <KisayolIcerik vkn={form.taxNumber} onKisayol={handleKisayolClick} />}
 
-      <section className="overflow-hidden" style={kartZemin()}>
+      <section className="overflow-hidden" style={portalStyle(kartZemin())}>
         <SekmeCubugu tabs={visibleTabs} activeTab={activeTab} onChange={setActiveTab} />
 
         <div className="p-4 sm:p-5">

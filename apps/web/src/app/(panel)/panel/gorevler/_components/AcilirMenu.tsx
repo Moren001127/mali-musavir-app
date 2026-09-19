@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
@@ -83,7 +85,7 @@ export function AcilirMenu({
       {acik &&
         typeof document !== 'undefined' &&
         createPortal(
-          <div ref={panelRef} role="menu" className="fixed z-[1000] overflow-hidden" style={{ ...MENU_ZEMIN, top: konum.top, left: konum.left, width: genislik }}>
+          <div ref={panelRef} role="menu" className="fixed z-[1000] overflow-hidden" style={portalStyle({ ...MENU_ZEMIN, top: konum.top, left: konum.left, width: genislik })}>
             {children(kapat)}
           </div>,
           document.body,
@@ -126,22 +128,22 @@ export function MenuSatiri({
       title={title}
       disabled={disabled}
       className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[12.5px] font-medium transition hover:bg-white/[0.05] disabled:opacity-40"
-      style={{ color: yazi, background: aktif ? 'rgba(212,184,118,0.10)' : undefined }}
+      style={portalStyle({ color: yazi, background: aktif ? 'rgba(212,184,118,0.10)' : undefined })}
     >
-      {ikon && <span className="flex w-4 justify-center" style={{ color: ikonRenk }}>{ikon}</span>}
+      {ikon && <span className="flex w-4 justify-center" style={portalStyle({ color: ikonRenk })}>{ikon}</span>}
       <span className="min-w-0 flex-1 truncate">{children}</span>
-      {aktif && <span className="h-1.5 w-1.5 rounded-full" style={{ background: GOLD }} />}
+      {aktif && <span className="h-1.5 w-1.5 rounded-full" style={portalStyle({ background: GOLD })} />}
     </button>
   );
 }
 
 export function MenuAyrac() {
-  return <div style={{ borderTop: '1px solid rgba(255,255,255,0.07)' }} />;
+  return <div style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.07)' })} />;
 }
 
 export function MenuBaslik({ children }: { children: ReactNode }) {
   return (
-    <div className="px-3 pb-1 pt-2 text-[10px] font-bold uppercase tracking-[.14em]" style={{ color: IKINCIL }}>
+    <div className="px-3 pb-1 pt-2 text-[10px] font-bold uppercase tracking-[.14em]" style={portalStyle({ color: IKINCIL })}>
       {children}
     </div>
   );
@@ -160,7 +162,7 @@ export function ErtelemeSecenekleri({ onSec, baslik = 'Ne zamana ertelensin?' }:
       <MenuBaslik>{baslik}</MenuBaslik>
       {secenekler.map((s) => (
         <MenuSatiri key={s.ad} ikon={<CalendarDays size={13} />} onClick={() => onSec(s.gun)}>
-          {s.ad} <span style={{ color: IKINCIL }}>· {new Date(s.gun).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' })}</span>
+          {s.ad} <span style={portalStyle({ color: IKINCIL })}>· {new Date(s.gun).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' })}</span>
         </MenuSatiri>
       ))}
       <MenuAyrac />
@@ -174,7 +176,7 @@ export function ErtelemeSecenekleri({ onSec, baslik = 'Ne zamana ertelensin?' }:
             if (e.key === 'Enter' && tarih) onSec(tarih);
           }}
           className="h-8 min-w-0 flex-1 px-2 text-[12px]"
-          style={GIRDI}
+          style={portalStyle(GIRDI)}
           title="Tarih seç"
         />
         <button
@@ -182,7 +184,7 @@ export function ErtelemeSecenekleri({ onSec, baslik = 'Ne zamana ertelensin?' }:
           disabled={!tarih}
           onClick={() => tarih && onSec(tarih)}
           className="h-8 rounded-lg px-3 text-[12px] font-semibold disabled:opacity-40"
-          style={{ background: 'rgba(212,184,118,0.10)', color: GOLD, border: `1px solid ${GOLD}66` }}
+          style={portalStyle({ background: 'rgba(212,184,118,0.10)', color: GOLD, border: `1px solid ${GOLD}66` })}
         >
           Ertele
         </button>
@@ -238,7 +240,7 @@ export function IkonDugme({
       onBlur={() => setUstunde(false)}
       disabled={disabled}
       className={`inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md transition-[transform,background-color,color,border-color] duration-150 hover:-translate-y-px disabled:opacity-35 disabled:hover:translate-y-0 ${className}`}
-      style={{ ...gorunum, ...style }}
+      style={portalStyle({ ...gorunum, ...style })}
     >
       {ikon}
     </button>

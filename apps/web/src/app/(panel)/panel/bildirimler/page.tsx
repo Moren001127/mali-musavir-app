@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle, portalPaint } from '@/lib/portal-theme';
+
 
 // Bildirimler — sade, göz yormayan liste (2026-09-14 yeniden tasarım).
 //   Başlık şeridi + tek satır süzgeç (Tümü / Okunmamış / Kritik, arama, tür) + güne göre gruplu liste.
@@ -122,18 +124,18 @@ export default function BildirimlerPage() {
   return (
     <div className="max-w-none space-y-4">
       {/* Başlık şeridi */}
-      <section className="overflow-hidden rounded-2xl" style={{ background: BASLIK_ZEMIN, border: `1px solid ${KENAR}`, boxShadow: KART_GOLGE }}>
-        <div className="h-px w-full" style={{ background: `linear-gradient(90deg, ${ALTIN}99, ${ALTIN}22 45%, transparent)` }} />
+      <section className="overflow-hidden rounded-2xl" style={portalStyle({ background: BASLIK_ZEMIN, border: `1px solid ${KENAR}`, boxShadow: KART_GOLGE })}>
+        <div className="h-px w-full" style={portalStyle({ background: `linear-gradient(90deg, ${ALTIN}99, ${ALTIN}22 45%, transparent)` })} />
         <div className="flex flex-wrap items-end justify-between gap-4 px-5 py-4">
           <div className="min-w-0">
             <div className="mb-2 flex items-center gap-2.5">
-              <span className="h-px w-8" style={{ background: ALTIN }} />
-              <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[.18em]" style={{ color: '#c8ad73' }}>
+              <span className="h-px w-8" style={portalStyle({ background: ALTIN })} />
+              <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[.18em]" style={portalStyle({ color: '#c8ad73' })}>
                 <Bell size={11} /> Bildirimler
               </span>
             </div>
-            <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 28, fontWeight: 650, color: METIN, lineHeight: 1.05 }}>Bildirimler</h1>
-            <p className="mt-1.5 text-[13px]" style={{ color: IKINCIL }}>{ozet}</p>
+            <h1 style={portalStyle({ fontFamily: 'Fraunces, serif', fontSize: 28, fontWeight: 650, color: METIN, lineHeight: 1.05 })}>Bildirimler</h1>
+            <p className="mt-1.5 text-[13px]" style={portalStyle({ color: IKINCIL })}>{ozet}</p>
           </div>
           <div className="flex items-center gap-2">
             <Dugme aktif={tercihAcik} onClick={() => setTercihAcik((v) => !v)} ikon={<SlidersHorizontal size={14} />}>Tercihler</Dugme>
@@ -151,10 +153,10 @@ export default function BildirimlerPage() {
       </section>
 
       {/* Liste kartı */}
-      <section className="overflow-hidden rounded-2xl" style={{ background: KART_ZEMIN, border: `1px solid ${KENAR}`, boxShadow: KART_GOLGE }}>
+      <section className="overflow-hidden rounded-2xl" style={portalStyle({ background: KART_ZEMIN, border: `1px solid ${KENAR}`, boxShadow: KART_GOLGE })}>
         {/* Süzgeç satırı */}
-        <div className="flex flex-wrap items-center gap-2 border-b px-4 py-3" style={{ borderColor: KENAR }}>
-          <div className="inline-flex items-center gap-1 rounded-full p-0.5" style={{ background: ZEMIN, border: `1px solid ${KENAR}` }}>
+        <div className="flex flex-wrap items-center gap-2 border-b px-4 py-3" style={portalStyle({ borderColor: KENAR })}>
+          <div className="inline-flex items-center gap-1 rounded-full p-0.5" style={portalStyle({ background: ZEMIN, border: `1px solid ${KENAR}` })}>
             {([
               ['tumu', 'Tümü', liste.length],
               ['okunmamis', 'Okunmamış', okunmamis.length],
@@ -165,22 +167,22 @@ export default function BildirimlerPage() {
               return (
                 <button key={deger} type="button" onClick={() => setSekme(deger)}
                   className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[12px] font-semibold transition"
-                  style={{ background: secili ? `${renk}1f` : 'transparent', color: secili ? renk : IKINCIL, border: `1px solid ${secili ? `${renk}55` : 'transparent'}` }}>
+                  style={portalStyle({ background: secili ? `${renk}1f` : 'transparent', color: secili ? renk : IKINCIL, border: `1px solid ${secili ? `${renk}55` : 'transparent'}` })}>
                   {etiket}
-                  <span className="tabular-nums text-[11px]" style={{ color: secili ? renk : SONUK }}>{adet}</span>
+                  <span className="tabular-nums text-[11px]" style={portalStyle({ color: secili ? renk : SONUK })}>{adet}</span>
                 </button>
               );
             })}
           </div>
 
           <div className="relative min-w-[200px] flex-1">
-            <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" style={{ color: SONUK }} />
+            <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" style={portalStyle({ color: SONUK })} />
             <input value={arama} onChange={(e) => setArama(e.target.value)} placeholder="Bildirimlerde ara"
               className="h-9 w-full rounded-full border pl-9 pr-8 text-[13px] outline-none"
-              style={{ background: ZEMIN, borderColor: KENAR, color: METIN, padding: '0 32px 0 36px', borderRadius: 9999, fontSize: 13 }} />
+              style={portalStyle({ background: ZEMIN, borderColor: KENAR, color: METIN, padding: '0 32px 0 36px', borderRadius: 9999, fontSize: 13 })} />
             {arama && (
               <button type="button" onClick={() => setArama('')} aria-label="Aramayı temizle"
-                className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full" style={{ color: SONUK }}>
+                className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full" style={portalStyle({ color: SONUK })}>
                 <X size={13} />
               </button>
             )}
@@ -188,25 +190,25 @@ export default function BildirimlerPage() {
 
           <select value={turSuzgec} onChange={(e) => setTurSuzgec(e.target.value)} aria-label="Tür süzgeci"
             className="h-9 appearance-none rounded-full border pl-3 pr-8 text-[12px] font-semibold outline-none"
-            style={{
+            style={portalStyle({
               // globals.css select'e width:100% + padding veriyor → burada dar ve satır içinde kalsın
               width: 'auto', minWidth: 150, maxWidth: 260, padding: '0 32px 0 12px', fontSize: 12, borderRadius: 9999,
               background: `${OK_SVG(turSuzgec ? 'd4b876' : '8a8a86')} no-repeat right 10px center, ${ZEMIN}`,
               borderColor: turSuzgec ? `${ALTIN}55` : KENAR, color: turSuzgec ? ALTIN : IKINCIL,
-            }}>
+            })}>
             <option value="">Tüm türler</option>
             {turSecenekleri.map((t) => <option key={t.kod} value={t.kod}>{t.ad} ({t.adet})</option>)}
           </select>
         </div>
 
         {isLoading ? (
-          <div className="flex items-center justify-center gap-2 p-12 text-[13px]" style={{ color: IKINCIL }}>
+          <div className="flex items-center justify-center gap-2 p-12 text-[13px]" style={portalStyle({ color: IKINCIL })}>
             <Loader2 size={15} className="animate-spin" /> Yükleniyor…
           </div>
         ) : gruplar.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-2 py-14 text-center">
-            <span className="flex h-11 w-11 items-center justify-center rounded-full" style={{ background: `${ALTIN}14`, color: ALTIN }}><Bell size={18} /></span>
-            <span className="text-[13px]" style={{ color: IKINCIL }}>
+            <span className="flex h-11 w-11 items-center justify-center rounded-full" style={portalStyle({ background: `${ALTIN}14`, color: ALTIN })}><Bell size={18} /></span>
+            <span className="text-[13px]" style={portalStyle({ color: IKINCIL })}>
               {sekme === 'okunmamis' ? 'Okunmamış bildirim yok.' : sekme === 'kritik' ? 'Kritik bildirim yok.' : arama || turSuzgec ? 'Bu süzgeçle bildirim bulunamadı.' : 'Henüz bildirim yok.'}
             </span>
           </div>
@@ -214,11 +216,11 @@ export default function BildirimlerPage() {
           gruplar.map((g) => (
             <div key={g.ad}>
               <div className="flex items-center gap-3 px-4 pb-1 pt-3">
-                <span className="text-[10.5px] font-bold uppercase tracking-[.14em]" style={{ color: SONUK }}>{g.ad}</span>
-                <span className="h-px flex-1" style={{ background: KENAR }} />
-                <span className="text-[10.5px] tabular-nums" style={{ color: SONUK }}>{g.satirlar.reduce((a, s) => a + s.uyeler.length, 0)}</span>
+                <span className="text-[10.5px] font-bold uppercase tracking-[.14em]" style={portalStyle({ color: SONUK })}>{g.ad}</span>
+                <span className="h-px flex-1" style={portalStyle({ background: KENAR })} />
+                <span className="text-[10.5px] tabular-nums" style={portalStyle({ color: SONUK })}>{g.satirlar.reduce((a, s) => a + s.uyeler.length, 0)}</span>
               </div>
-              <div className="divide-y" style={{ borderColor: KENAR }}>
+              <div className="divide-y" style={portalStyle({ borderColor: KENAR })}>
                 {g.satirlar.map((s) => (
                   <BildirimSatiri key={s.temsilci.id} satir={s} onAc={() => satirAc(s)}
                     onOkundu={() => okunduYap.mutate(s.uyeler.filter((n) => !n.isRead).map((n) => n.id))} />
@@ -241,11 +243,11 @@ function Dugme({ children, ikon, onClick, birincil = false, aktif = false, disab
   return (
     <button type="button" onClick={onClick} disabled={disabled}
       className="inline-flex h-9 items-center gap-2 rounded-full px-4 text-[12.5px] font-semibold transition hover:brightness-125 disabled:opacity-50"
-      style={{
+      style={portalStyle({
         background: vurgulu ? `${ALTIN}1a` : ZEMIN,
         border: `1px solid ${vurgulu ? `${ALTIN}55` : KENAR_KOYU}`,
         color: vurgulu ? '#e7cf91' : IKINCIL,
-      }}>
+      })}>
       {ikon}{children}
     </button>
   );
@@ -268,46 +270,46 @@ function BildirimSatiri({ satir, onAc, onOkundu }: { satir: Satir; onAc: () => v
     <article
       role="button" tabIndex={0} onClick={onAc} onKeyDown={(e) => { if (e.key === 'Enter') onAc(); }}
       className="group relative grid cursor-pointer grid-cols-[auto,minmax(0,1fr),auto] items-start gap-3 px-4 py-3 transition-colors"
-      style={{ background: okunmamis ? `${seritRenk}0d` : 'transparent' }}
-      onMouseEnter={(e) => { e.currentTarget.style.background = ZEMIN_HOVER; }}
-      onMouseLeave={(e) => { e.currentTarget.style.background = okunmamis ? `${seritRenk}0d` : 'transparent'; }}
+      style={portalStyle({ background: okunmamis ? `${seritRenk}0d` : 'transparent' })}
+      onMouseEnter={(e) => { e.currentTarget.style.background = portalPaint(ZEMIN_HOVER, 'background'); }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = portalPaint(okunmamis ? `${seritRenk}0d` : 'transparent', 'background'); }}
     >
-      {okunmamis && <span className="absolute inset-y-2 left-0 w-[3px] rounded-r-full" style={{ background: seritRenk }} />}
+      {okunmamis && <span className="absolute inset-y-2 left-0 w-[3px] rounded-r-full" style={portalStyle({ background: seritRenk })} />}
 
       <span className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-full"
-        style={{ background: `${t.renk}${okunmamis ? '22' : '12'}`, color: okunmamis ? t.renk : `${t.renk}99` }}>
+        style={portalStyle({ background: `${t.renk}${okunmamis ? '22' : '12'}`, color: okunmamis ? t.renk : `${t.renk}99` })}>
         <Ikon size={15} />
       </span>
 
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span className="truncate text-[13.5px] leading-5" style={{ color: okunmamis ? METIN : IKINCIL, fontWeight: okunmamis ? 600 : 500 }} title={baslik}>
+          <span className="truncate text-[13.5px] leading-5" style={portalStyle({ color: okunmamis ? METIN : IKINCIL, fontWeight: okunmamis ? 600 : 500 })} title={baslik}>
             {baslik}
           </span>
           {satir.uyeler.length > 1 && (
             <button type="button" title={`${satir.uyeler.length} tekrar — ayrıntı için tıkla`}
               onClick={(e) => { e.stopPropagation(); setTekrarAcik((v) => !v); }}
               className="inline-flex h-5 items-center gap-1 rounded-full px-2 text-[10.5px] font-bold tabular-nums"
-              style={{ background: `${t.renk}18`, border: `1px solid ${t.renk}44`, color: t.renk }}>
-              ×{satir.uyeler.length} <ChevronDown size={11} style={{ transform: tekrarAcik ? 'rotate(180deg)' : 'none' }} />
+              style={portalStyle({ background: `${t.renk}18`, border: `1px solid ${t.renk}44`, color: t.renk })}>
+              ×{satir.uyeler.length} <ChevronDown size={11} style={portalStyle({ transform: tekrarAcik ? 'rotate(180deg)' : 'none' })} />
             </button>
           )}
           {kritik && okunmamis && (
-            <span className="rounded-full px-2 py-[1px] text-[10px] font-bold uppercase tracking-wide" style={{ background: `${KIRMIZI}1c`, color: KIRMIZI }}>Kritik</span>
+            <span className="rounded-full px-2 py-[1px] text-[10px] font-bold uppercase tracking-wide" style={portalStyle({ background: `${KIRMIZI}1c`, color: KIRMIZI })}>Kritik</span>
           )}
         </div>
         {govde && (
-          <p className={`mt-0.5 text-[12.5px] leading-5 ${acik ? '' : 'line-clamp-2'}`} style={{ color: okunmamis ? 'rgba(250,250,249,.62)' : SONUK }}
+          <p className={`mt-0.5 text-[12.5px] leading-5 ${acik ? '' : 'line-clamp-2'}`} style={portalStyle({ color: okunmamis ? 'rgba(250,250,249,.62)' : SONUK })}
             onClick={uzun ? (e) => { e.stopPropagation(); setAcik((v) => !v); } : undefined}
             title={uzun && !acik ? 'Tamamı için tıkla' : undefined}>
             {govde}
           </p>
         )}
         {tekrarAcik && (
-          <ul className="mt-2 space-y-1 rounded-lg px-3 py-2 text-[11.5px]" style={{ background: ZEMIN, border: `1px solid ${KENAR}` }} onClick={(e) => e.stopPropagation()}>
+          <ul className="mt-2 space-y-1 rounded-lg px-3 py-2 text-[11.5px]" style={portalStyle({ background: ZEMIN, border: `1px solid ${KENAR}` })} onClick={(e) => e.stopPropagation()}>
             {satir.uyeler.map((u) => (
-              <li key={u.id} className="flex items-center gap-2" style={{ color: u.isRead ? SONUK : IKINCIL }}>
-                <span className="h-1.5 w-1.5 rounded-full" style={{ background: u.isRead ? 'rgba(255,255,255,.18)' : t.renk }} />
+              <li key={u.id} className="flex items-center gap-2" style={portalStyle({ color: u.isRead ? SONUK : IKINCIL })}>
+                <span className="h-1.5 w-1.5 rounded-full" style={portalStyle({ background: u.isRead ? 'rgba(255,255,255,.18)' : t.renk })} />
                 <span className="tabular-nums">{tamZaman(u.createdAt)}</span>
                 <span className="truncate">{temizBaslik(u.title)}</span>
               </li>
@@ -317,15 +319,15 @@ function BildirimSatiri({ satir, onAc, onOkundu }: { satir: Satir; onAc: () => v
       </div>
 
       <div className="flex flex-col items-end gap-1 pl-2">
-        <span className="whitespace-nowrap text-[11.5px] tabular-nums" style={{ color: okunmamis ? IKINCIL : SONUK }} title={tamZaman(n.createdAt)}>
+        <span className="whitespace-nowrap text-[11.5px] tabular-nums" style={portalStyle({ color: okunmamis ? IKINCIL : SONUK })} title={tamZaman(n.createdAt)}>
           {kisaZaman(n.createdAt)}
         </span>
-        <span className="text-[10.5px]" style={{ color: `${t.renk}b0` }}>{t.ad}</span>
+        <span className="text-[10.5px]" style={portalStyle({ color: `${t.renk}b0` })}>{t.ad}</span>
         {okunmamis && (
           <button type="button" title="Okundu işaretle" aria-label="Okundu işaretle"
             onClick={(e) => { e.stopPropagation(); onOkundu(); }}
             className="mt-0.5 flex h-6 w-6 items-center justify-center rounded-full opacity-0 transition group-hover:opacity-100"
-            style={{ background: `${t.renk}1a`, color: t.renk, border: `1px solid ${t.renk}44` }}>
+            style={portalStyle({ background: `${t.renk}1a`, color: t.renk, border: `1px solid ${t.renk}44` })}>
             <Check size={12} />
           </button>
         )}
@@ -337,10 +339,10 @@ function BildirimSatiri({ satir, onAc, onOkundu }: { satir: Satir; onAc: () => v
 function TercihPaneli({ susturulan, bekliyor, onDegistir }: { susturulan: string[]; bekliyor: boolean; onDegistir: (kod: string) => void }) {
   const kodlar = Object.keys(TUR);
   return (
-    <div className="border-t px-5 py-4" style={{ borderColor: KENAR }}>
+    <div className="border-t px-5 py-4" style={portalStyle({ borderColor: KENAR })}>
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-        <span className="text-[11px] font-bold uppercase tracking-[.14em]" style={{ color: '#c8ad73' }}>Hangi bildirimler gelsin?</span>
-        <span className="text-[11.5px]" style={{ color: SONUK }}>
+        <span className="text-[11px] font-bold uppercase tracking-[.14em]" style={portalStyle({ color: '#c8ad73' })}>Hangi bildirimler gelsin?</span>
+        <span className="text-[11.5px]" style={portalStyle({ color: SONUK })}>
           {susturulan.length ? `${susturulan.length} tür kapalı` : 'Hepsi açık'} · Kapattığın tür yalnız sana gelmez; kritik olanlar kapatılamaz.
         </span>
       </div>
@@ -353,13 +355,13 @@ function TercihPaneli({ susturulan, bekliyor, onDegistir }: { susturulan: string
             <button key={kod} type="button" disabled={bekliyor || t.kapatilamaz} onClick={() => onDegistir(kod)}
               title={t.kapatilamaz ? 'Bu tür kapatılamaz' : kapali ? 'Açmak için tıkla' : 'Kapatmak için tıkla'}
               className="flex items-center gap-3 rounded-xl px-3 py-2 text-left transition hover:brightness-125 disabled:cursor-not-allowed"
-              style={{ background: ZEMIN, border: `1px solid ${kapali ? `${GRI}33` : KENAR}`, opacity: kapali ? 0.6 : 1 }}>
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full" style={{ background: `${t.renk}18`, color: kapali ? GRI : t.renk }}>
+              style={portalStyle({ background: ZEMIN, border: `1px solid ${kapali ? `${GRI}33` : KENAR}`, opacity: kapali ? 0.6 : 1 })}>
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full" style={portalStyle({ background: `${t.renk}18`, color: kapali ? GRI : t.renk })}>
                 {kapali ? <BellOff size={13} /> : <Ikon size={13} />}
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-[12.5px] font-semibold" style={{ color: kapali ? SONUK : METIN, textDecoration: kapali ? 'line-through' : 'none' }}>{t.ad}</span>
-                <span className="block truncate text-[11px]" style={{ color: SONUK }}>{t.aciklama}</span>
+                <span className="block truncate text-[12.5px] font-semibold" style={portalStyle({ color: kapali ? SONUK : METIN, textDecoration: kapali ? 'line-through' : 'none' })}>{t.ad}</span>
+                <span className="block truncate text-[11px]" style={portalStyle({ color: SONUK })}>{t.aciklama}</span>
               </span>
               <Anahtar acik={!kapali} kilitli={!!t.kapatilamaz} renk={t.renk} />
             </button>
@@ -378,8 +380,8 @@ function Anahtar({ acik, kilitli, renk }: { acik: boolean; kilitli: boolean; ren
     opacity: kilitli ? 0.5 : 1,
   };
   return (
-    <span className="relative inline-block h-[18px] w-[32px] shrink-0 rounded-full transition" style={stil}>
-      <span className="absolute top-[2px] h-[12px] w-[12px] rounded-full transition-all" style={{ left: acik ? 16 : 2, background: acik ? renk : 'rgba(255,255,255,.45)' }} />
+    <span className="relative inline-block h-[18px] w-[32px] shrink-0 rounded-full transition" style={portalStyle(stil)}>
+      <span className="absolute top-[2px] h-[12px] w-[12px] rounded-full transition-all" style={portalStyle({ left: acik ? 16 : 2, background: acik ? renk : 'rgba(255,255,255,.45)' })} />
     </span>
   );
 }

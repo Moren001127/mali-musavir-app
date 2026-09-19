@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -83,14 +85,14 @@ export default function Ayarlar() {
               />
             </Alan>
             {paraCoz(form.nakitYastigi) > 0 && (
-              <p className="mt-1.5 text-[10.5px]" style={{ color: MUTED }}>
+              <p className="mt-1.5 text-[10.5px]" style={portalStyle({ color: MUTED })}>
                 Aylık kapasiteden {para(paraCoz(form.nakitYastigi))} ₺ ayrılacak.
               </p>
             )}
           </div>
 
           <div>
-            <span className="mb-1.5 block text-[11px] font-medium" style={{ color: MUTED }}>
+            <span className="mb-1.5 block text-[11px] font-medium" style={portalStyle({ color: MUTED })}>
               Varsayılan strateji
             </span>
             <div className="grid gap-2 sm:grid-cols-2">
@@ -120,21 +122,21 @@ export default function Ayarlar() {
                     type="button"
                     onClick={() => setForm({ ...form, strateji: s.deger })}
                     className="relative rounded-xl px-3.5 py-3 text-left transition"
-                    style={{
+                    style={portalStyle({
                       background: secili ? `${s.renk}12` : 'rgba(255,255,255,0.02)',
                       border: `1px solid ${secili ? `${s.renk}4d` : ROW_SEP}`,
-                    }}
+                    })}
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <span className="flex items-center gap-1.5 text-[12.5px] font-medium" style={{ color: secili ? s.renk : TEXT }}>
+                      <span className="flex items-center gap-1.5 text-[12.5px] font-medium" style={portalStyle({ color: secili ? s.renk : TEXT })}>
                         <Ikon size={13} /> {s.ad}
                       </span>
-                      {secili && <Check size={13} style={{ color: s.renk }} />}
+                      {secili && <Check size={13} style={portalStyle({ color: s.renk })} />}
                     </div>
-                    <div className="mt-1 text-[11px] leading-snug" style={{ color: MUTED }}>
+                    <div className="mt-1 text-[11px] leading-snug" style={portalStyle({ color: MUTED })}>
                       {s.ozet}
                     </div>
-                    <div className="mt-1 text-[10.5px]" style={{ color: secili ? s.renk : 'rgba(113,113,122,0.8)' }}>
+                    <div className="mt-1 text-[10.5px]" style={portalStyle({ color: secili ? s.renk : 'rgba(113,113,122,0.8)' })}>
                       {s.fayda}
                     </div>
                   </button>
@@ -150,7 +152,7 @@ export default function Ayarlar() {
         baslik="Hatırlatmalar"
         aciklama="Ekstre kesildiğinde, tutar girilmediğinde ve son ödeme yaklaştığında haber verilir."
         renk={MAVI}
-        sag={<Bell size={14} style={{ color: MAVI }} />}
+        sag={<Bell size={14} style={portalStyle({ color: MAVI })} />}
       >
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_260px]">
           {/* Kanallar */}
@@ -184,27 +186,27 @@ export default function Ayarlar() {
                 <div
                   key={k.alan}
                   className="flex items-center justify-between gap-3 rounded-xl px-3.5 py-2.5"
-                  style={{
+                  style={portalStyle({
                     background: acik ? 'rgba(255,255,255,0.028)' : 'rgba(255,255,255,0.012)',
                     border: `1px solid ${ROW_SEP}`,
-                  }}
+                  })}
                 >
                   <span className="flex min-w-0 items-center gap-2.5">
                     <span
                       className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
-                      style={{
+                      style={portalStyle({
                         background: acik ? `${k.renk}16` : 'rgba(255,255,255,0.04)',
                         color: acik ? k.renk : MUTED,
                         border: `1px solid ${acik ? `${k.renk}33` : 'transparent'}`,
-                      }}
+                      })}
                     >
                       <Ikon size={13} />
                     </span>
                     <span className="min-w-0">
-                      <span className="block truncate text-[12.5px]" style={{ color: acik ? TEXT : MUTED }}>
+                      <span className="block truncate text-[12.5px]" style={portalStyle({ color: acik ? TEXT : MUTED })}>
                         {k.ad}
                       </span>
-                      <span className="block truncate text-[10.5px]" style={{ color: 'rgba(113,113,122,0.85)' }}>
+                      <span className="block truncate text-[10.5px]" style={portalStyle({ color: 'rgba(113,113,122,0.85)' })}>
                         {k.aciklama}
                       </span>
                     </span>
@@ -224,12 +226,12 @@ export default function Ayarlar() {
                 placeholder="905xxxxxxxxx"
                 inputMode="numeric"
                 disabled={!form.hatirlatmaWhatsapp}
-                style={{ opacity: form.hatirlatmaWhatsapp ? 1 : 0.45 }}
+                style={portalStyle({ opacity: form.hatirlatmaWhatsapp ? 1 : 0.45 })}
               />
             </Alan>
             <Alan etiket="Hatırlatma saati" ipucu="Günlük tarama her sabah bu saatte çalışır">
               <div className="flex items-center gap-2">
-                <Clock size={14} style={{ color: MUTED }} />
+                <Clock size={14} style={portalStyle({ color: MUTED })} />
                 <Secim
                   value={form.sabahSaati}
                   onChange={(e) => setForm({ ...form, sabahSaati: e.target.value })}
@@ -249,12 +251,12 @@ export default function Ayarlar() {
       {/* ===== Tek kaydet çubuğu ===== */}
       <div
         className="flex items-center justify-between gap-3 rounded-2xl px-4 py-3"
-        style={{
+        style={portalStyle({
           background: degisti ? `${GOLD}0f` : 'rgba(255,255,255,0.018)',
           border: `1px solid ${degisti ? `${GOLD}38` : CARD_BORDER}`,
-        }}
+        })}
       >
-        <span className="text-[11.5px]" style={{ color: degisti ? GOLD : MUTED }}>
+        <span className="text-[11.5px]" style={portalStyle({ color: degisti ? GOLD : MUTED })}>
           {degisti ? 'Kaydedilmemiş değişiklik var.' : 'Tüm ayarlar kayıtlı.'}
         </span>
         <Dugme tur="birincil" onClick={() => kaydet.mutate()} disabled={!degisti} yukleniyor={kaydet.isPending}>
@@ -266,8 +268,8 @@ export default function Ayarlar() {
 
       <BildirimTesti />
 
-      <Kutu baslik="Gizlilik" renk={OK} sag={<ShieldCheck size={14} style={{ color: OK }} />}>
-        <p className="text-[12px] leading-relaxed" style={{ color: MUTED }}>
+      <Kutu baslik="Gizlilik" renk={OK} sag={<ShieldCheck size={14} style={portalStyle({ color: OK })} />}>
+        <p className="text-[12px] leading-relaxed" style={portalStyle({ color: MUTED })}>
           Bu modül yalnız sizin kullanıcınıza açıktır. Başka bir kullanıcı — yönetici yetkisi olsa bile — bu
           sayfayı menüde göremez, adres çubuğuna yazsa dahi verilere erişemez; sunucu bu istekleri
           “sayfa bulunamadı” diye yanıtlar. Ayrıca modül her açılışta 6 haneli şifre sorar ve bildirimler
@@ -341,13 +343,13 @@ function KategoriYonetimi({ kategoriler }: { kategoriler: Kategori[] }) {
 
   const liste = (baslik: string, renk: string, ikon: React.ReactNode, kayitlar: Kategori[], gider: boolean) => (
     <div>
-      <div className="mb-2 flex items-center gap-1.5 text-[11px] uppercase tracking-wider" style={{ color: renk }}>
-        {ikon} {baslik} <span style={{ color: MUTED }}>({kayitlar.length})</span>
+      <div className="mb-2 flex items-center gap-1.5 text-[11px] uppercase tracking-wider" style={portalStyle({ color: renk })}>
+        {ikon} {baslik} <span style={portalStyle({ color: MUTED })}>({kayitlar.length})</span>
       </div>
       {kayitlar.length === 0 ? (
         <div
           className="rounded-xl px-3 py-4 text-center text-[11.5px]"
-          style={{ border: `1px dashed ${ROW_SEP}`, color: MUTED }}
+          style={portalStyle({ border: `1px dashed ${ROW_SEP}`, color: MUTED })}
         >
           Kategori yok
         </div>
@@ -357,11 +359,11 @@ function KategoriYonetimi({ kategoriler }: { kategoriler: Kategori[] }) {
             <div
               key={c.id}
               className="group flex items-center justify-between gap-2 rounded-lg px-3 py-2"
-              style={{ background: 'rgba(255,255,255,0.02)', border: `1px solid ${ROW_SEP}` }}
+              style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: `1px solid ${ROW_SEP}` })}
             >
               <span className="flex min-w-0 items-center gap-2.5">
-                <i className="h-2.5 w-2.5 flex-shrink-0 rounded-full" style={{ background: c.renk || MUTED }} />
-                <span className="truncate text-[12.5px]" style={{ color: TEXT }}>
+                <i className="h-2.5 w-2.5 flex-shrink-0 rounded-full" style={portalStyle({ background: c.renk || MUTED })} />
+                <span className="truncate text-[12.5px]" style={portalStyle({ color: TEXT })}>
                   {c.ad}
                 </span>
               </span>
@@ -373,11 +375,11 @@ function KategoriYonetimi({ kategoriler }: { kategoriler: Kategori[] }) {
                       defterDegistir.mutate({ ...c, defter: c.defter === 'OFIS' ? 'SAHSI' : 'OFIS' })
                     }
                     className="rounded-md px-2 py-0.5 text-[10px] transition hover:brightness-125"
-                    style={{
+                    style={portalStyle({
                       color: c.defter === 'OFIS' ? MAVI : GOLD,
                       background: c.defter === 'OFIS' ? `${MAVI}14` : `${GOLD}14`,
                       border: `1px solid ${c.defter === 'OFIS' ? `${MAVI}3d` : `${GOLD}3d`}`,
-                    }}
+                    })}
                     title={
                       c.defter === 'OFIS'
                         ? 'Ofis gideri — kazançtan indirilir. Tıklayınca kişisele geçer.'
@@ -390,7 +392,7 @@ function KategoriYonetimi({ kategoriler }: { kategoriler: Kategori[] }) {
                 <button
                   onClick={() => sil.mutate(c.id)}
                   className="rounded-md p-1 opacity-0 transition group-hover:opacity-100 hover:bg-white/[0.06]"
-                  style={{ color: KIRMIZI }}
+                  style={portalStyle({ color: KIRMIZI })}
                   title="Sil"
                 >
                   <Trash2 size={11} />
@@ -417,7 +419,7 @@ function KategoriYonetimi({ kategoriler }: { kategoriler: Kategori[] }) {
       {/* Ekleme satırı */}
       <div
         className="mb-4 rounded-xl px-3.5 py-3"
-        style={{ background: 'rgba(255,255,255,0.022)', border: `1px solid ${ROW_SEP}` }}
+        style={portalStyle({ background: 'rgba(255,255,255,0.022)', border: `1px solid ${ROW_SEP}` })}
       >
         <form
           className="flex flex-wrap items-end gap-3"
@@ -458,7 +460,7 @@ function KategoriYonetimi({ kategoriler }: { kategoriler: Kategori[] }) {
             </div>
           )}
           <div>
-            <span className="mb-1 block text-[11px] font-medium" style={{ color: MUTED }}>
+            <span className="mb-1 block text-[11px] font-medium" style={portalStyle({ color: MUTED })}>
               Renk
             </span>
             <div className="flex h-[33px] items-center">
@@ -537,7 +539,7 @@ function BildirimTesti() {
       }
     >
       {!sonuc ? (
-        <p className="text-[11.5px]" style={{ color: MUTED }}>
+        <p className="text-[11.5px]" style={portalStyle({ color: MUTED })}>
           “Önizle” bildirimleri üretir; hiçbir mesaj gönderilmez.
         </p>
       ) : sonuc.length === 0 ? (
@@ -548,17 +550,17 @@ function BildirimTesti() {
             <div
               key={m.anahtar}
               className="rounded-xl px-3.5 py-3"
-              style={{ background: 'rgba(0,0,0,0.25)', border: `1px solid ${ROW_SEP}` }}
+              style={portalStyle({ background: 'rgba(0,0,0,0.25)', border: `1px solid ${ROW_SEP}` })}
             >
               <div className="mb-1.5 flex items-center justify-between gap-2">
-                <span className="text-[12px] font-medium" style={{ color: TEXT }}>
+                <span className="text-[12px] font-medium" style={portalStyle({ color: TEXT })}>
                   {m.baslik}
                 </span>
                 {m.gonderildi && <Rozet metin="gönderildi" renk={OK} />}
               </div>
               <pre
                 className="whitespace-pre-wrap text-[11.5px] leading-relaxed"
-                style={{ color: MUTED, fontFamily: 'inherit' }}
+                style={portalStyle({ color: MUTED, fontFamily: 'inherit' })}
               >
                 {m.metin}
               </pre>

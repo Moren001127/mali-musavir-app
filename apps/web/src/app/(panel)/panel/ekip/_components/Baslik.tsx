@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import type { ReactNode } from 'react';
 import type { EkipDurum, Pano, PanoDonemOzeti } from '@/lib/ekip';
@@ -19,13 +21,13 @@ const KART_ZEMIN =
 
 /** 6px durum noktası; `parilti` açıkken hafif ışıma. */
 function Nokta({ renk, parilti }: { renk: string; parilti?: boolean }) {
-  return <span aria-hidden className="inline-block h-[6px] w-[6px] flex-shrink-0 rounded-full" style={{ background: renk, boxShadow: parilti ? `0 0 6px ${renk}99` : 'none' }} />;
+  return <span aria-hidden className="inline-block h-[6px] w-[6px] flex-shrink-0 rounded-full" style={portalStyle({ background: renk, boxShadow: parilti ? `0 0 6px ${renk}99` : 'none' })} />;
 }
 
 /** Üst satırdaki düz metin durum: nokta + metin (kutu yok). */
 function Durum({ nokta, parilti, title, children }: { nokta: string; parilti?: boolean; title?: string; children: ReactNode }) {
   return (
-    <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-[11px]" style={{ color: MUTED }} title={title}>
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-[11px]" style={portalStyle({ color: MUTED })} title={title}>
       <Nokta renk={nokta} parilti={parilti} />
       {children}
     </span>
@@ -92,23 +94,23 @@ function AsamaSeridi({ dilimler, toplam }: { dilimler: Dilim[]; toplam: number }
   const aciklama = dilimler.map((d) => `${d.sayi} ${d.ad}`).join(', ');
   return (
     <>
-      <div role="img" aria-label={aciklama} className="mt-2 flex h-[9px] overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.05)' }}>
+      <div role="img" aria-label={aciklama} className="mt-2 flex h-[9px] overflow-hidden rounded-full" style={portalStyle({ background: 'rgba(255,255,255,0.05)' })}>
         {dilimler
           .filter((d) => d.sayi > 0)
           .map((d) => (
             <span
               key={d.ad}
               className="block h-full"
-              style={{ width: `${(d.sayi / payda) * 100}%`, background: d.renk, boxShadow: d.parilti ? '0 0 10px rgba(90,209,138,0.45)' : undefined }}
+              style={portalStyle({ width: `${(d.sayi / payda) * 100}%`, background: d.renk, boxShadow: d.parilti ? '0 0 10px rgba(90,209,138,0.45)' : undefined })}
               title={`${d.sayi} ${d.ad}`}
             />
           ))}
       </div>
-      <div className="mt-2 flex flex-wrap gap-x-3.5 gap-y-1 text-[11px]" style={{ color: MUTED }}>
+      <div className="mt-2 flex flex-wrap gap-x-3.5 gap-y-1 text-[11px]" style={portalStyle({ color: MUTED })}>
         {dilimler.map((d) => (
           <span key={d.ad} className="inline-flex items-center gap-1.5 whitespace-nowrap">
-            <span aria-hidden className="inline-block h-2 w-2 flex-shrink-0 rounded-[2px]" style={{ background: d.renk }} />
-            <b className="font-semibold" style={{ color: TEXT }}>
+            <span aria-hidden className="inline-block h-2 w-2 flex-shrink-0 rounded-[2px]" style={portalStyle({ background: d.renk })} />
+            <b className="font-semibold" style={portalStyle({ color: TEXT })}>
               {d.sayi}
             </b>
             {d.ad}
@@ -122,13 +124,13 @@ function AsamaSeridi({ dilimler, toplam }: { dilimler: Dilim[]; toplam: number }
 /** Başlığı büyütmeyen, tek satırlık küçük özet. */
 function Sayi({ deger, etiket, renk = TEXT, not }: { deger: number; etiket: string; renk?: string; not?: string }) {
   return (
-    <span className="inline-flex flex-wrap items-center gap-1.5 text-[11px]" style={{ color: MUTED }}>
-      <b className="font-medium tabular-nums" style={{ color: renk }}>
+    <span className="inline-flex flex-wrap items-center gap-1.5 text-[11px]" style={portalStyle({ color: MUTED })}>
+      <b className="font-medium tabular-nums" style={portalStyle({ color: renk })}>
         {deger}
       </b>
       {etiket}
       {not && (
-        <span style={{ color: KIRMIZI }}>· {not}</span>
+        <span style={portalStyle({ color: KIRMIZI })}>· {not}</span>
       )}
     </span>
   );
@@ -140,7 +142,7 @@ function Sayi({ deger, etiket, renk = TEXT, not }: { deger: number; etiket: stri
  */
 function SadeSekmeler<T extends string>({ sekmeler, secili, onSec }: { sekmeler: Array<{ id: T; etiket: string; rozet?: number | null }>; secili: T; onSec: (id: T) => void }) {
   return (
-    <nav role="tablist" aria-label="Ekip bölümleri" className="flex flex-wrap gap-1 p-2 sm:px-4" style={{ borderTop: `1px solid ${AYRAC}`, background: 'rgba(0,0,0,0.12)' }}>
+    <nav role="tablist" aria-label="Ekip bölümleri" className="flex flex-wrap gap-1 p-2 sm:px-4" style={portalStyle({ borderTop: `1px solid ${AYRAC}`, background: 'rgba(0,0,0,0.12)' })}>
       {sekmeler.map((s) => {
         const aktif = s.id === secili;
         return (
@@ -151,11 +153,11 @@ function SadeSekmeler<T extends string>({ sekmeler, secili, onSec }: { sekmeler:
             aria-selected={aktif}
             onClick={() => onSec(s.id)}
             className={`relative flex min-h-10 items-center gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-[12px] transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e6c878] ${aktif ? 'font-semibold' : 'hover:bg-white/[0.04] hover:text-white'}`}
-            style={{ color: aktif ? GOLD : MUTED, background: aktif ? 'rgba(230,200,120,0.09)' : undefined, boxShadow: aktif ? 'inset 0 0 0 1px rgba(230,200,120,0.16)' : undefined }}
+            style={portalStyle({ color: aktif ? GOLD : MUTED, background: aktif ? 'rgba(230,200,120,0.09)' : undefined, boxShadow: aktif ? 'inset 0 0 0 1px rgba(230,200,120,0.16)' : undefined })}
           >
             {s.etiket}
             {!!s.rozet && (
-              <span className="rounded-full px-[7px] py-px text-[10px]" style={{ background: 'rgba(255,255,255,0.05)', border: `1px solid ${CARD_BORDER}`, color: MUTED }}>
+              <span className="rounded-full px-[7px] py-px text-[10px]" style={portalStyle({ background: 'rgba(255,255,255,0.05)', border: `1px solid ${CARD_BORDER}`, color: MUTED })}>
                 {s.rozet}
               </span>
             )}
@@ -208,15 +210,15 @@ export function Baslik({
   return (
     <header
       className="relative overflow-hidden rounded-2xl"
-      style={{ background: KART_ZEMIN, border: '1px solid rgba(230,200,120,0.14)', boxShadow: '0 8px 24px rgba(0,0,0,0.16)' }}
+      style={portalStyle({ background: KART_ZEMIN, border: '1px solid rgba(230,200,120,0.14)', boxShadow: '0 8px 24px rgba(0,0,0,0.16)' })}
     >
-      <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-px" style={{ background: 'linear-gradient(90deg, transparent, rgba(230,200,120,0.4), transparent)' }} />
+      <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-px" style={portalStyle({ background: 'linear-gradient(90deg, transparent, rgba(230,200,120,0.4), transparent)' })} />
 
       <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-5">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2.5">
-            <h1 className="text-[19px] font-semibold leading-tight tracking-tight" style={{ color: TEXT }}>Ekip</h1>
-            <span className="text-[11px]" style={{ color: MUTED }}>{ajanSayisi} personel</span>
+            <h1 className="text-[19px] font-semibold leading-tight tracking-tight" style={portalStyle({ color: TEXT })}>Ekip</h1>
+            <span className="text-[11px]" style={portalStyle({ color: MUTED })}>{ajanSayisi} personel</span>
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
             <Sayi deger={kararSayisi} etiket="karar bekliyor" renk={kararSayisi > 0 ? GOLD : TEXT} />
@@ -231,16 +233,16 @@ export function Baslik({
           aria-busy={sabahOzetiMesgul}
           title="Sabah özetini şimdi üret (yalnız üretir, göndermez)"
           className="inline-flex min-h-10 flex-wrap items-center gap-x-2 gap-y-1 rounded-lg px-3 py-2 text-[12px] transition hover:brightness-125 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e6c878] disabled:cursor-wait disabled:opacity-60"
-          style={{ color: GOLD, background: 'rgba(230,200,120,0.07)', border: '1px solid rgba(230,200,120,0.2)' }}
+          style={portalStyle({ color: GOLD, background: 'rgba(230,200,120,0.07)', border: '1px solid rgba(230,200,120,0.2)' })}
         >
           <span className="font-medium">Sabah özeti</span>
-          <span className="text-[11px]" style={{ color: MUTED }}>{sabahDurum}</span>
+          <span className="text-[11px]" style={portalStyle({ color: MUTED })}>{sabahDurum}</span>
         </button>
       </div>
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 pb-3 sm:px-5">
         {donemAd && (
-          <span className="text-[11px]" style={{ color: MUTED }} title={donemNotu}>
+          <span className="text-[11px]" style={portalStyle({ color: MUTED })} title={donemNotu}>
             {donemAd} beyannameleri
           </span>
         )}
@@ -264,17 +266,17 @@ export function Baslik({
       />
 
       {sekme === 'pano' && (
-        <div className="px-4 py-3 sm:px-5" style={{ borderTop: `1px solid ${AYRAC}` }}>
+        <div className="px-4 py-3 sm:px-5" style={portalStyle({ borderTop: `1px solid ${AYRAC}` })}>
           {nabiz ? (
             <>
               <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-[11px]">
-                <span style={{ color: SOLUK }}>Dönem ilerlemesi · {nabiz.toplam} mükellef</span>
-                <span className="tabular-nums" style={{ color: MUTED }}>{nabiz.verildi} / {nabiz.toplam} verildi</span>
+                <span style={portalStyle({ color: SOLUK })}>Dönem ilerlemesi · {nabiz.toplam} mükellef</span>
+                <span className="tabular-nums" style={portalStyle({ color: MUTED })}>{nabiz.verildi} / {nabiz.toplam} verildi</span>
               </div>
               <AsamaSeridi dilimler={nabiz.dilimler} toplam={nabiz.toplam} />
             </>
           ) : (
-            <p role="status" className="text-[11px]" style={{ color: MUTED }}>Dönem panosu yükleniyor…</p>
+            <p role="status" className="text-[11px]" style={portalStyle({ color: MUTED })}>Dönem panosu yükleniyor…</p>
           )}
         </div>
       )}

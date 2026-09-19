@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
@@ -178,19 +180,19 @@ export default function MobilTanitimPage() {
 
   return (
     <div className="space-y-6">
-      <section className="rounded-lg p-5 sm:p-6" style={{ background: '#0f0d0b', border: '1px solid rgba(212,184,118,0.18)' }}>
+      <section className="rounded-lg p-5 sm:p-6" style={portalStyle({ background: '#0f0d0b', border: '1px solid rgba(212,184,118,0.18)' })}>
         <div className="grid gap-5 lg:grid-cols-[1.15fr_.85fr] lg:items-end">
           <div>
-            <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-lg" style={{ background: 'rgba(212,184,118,0.14)', color: GOLD, border: '1px solid rgba(212,184,118,0.28)' }}>
+            <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-lg" style={portalStyle({ background: 'rgba(212,184,118,0.14)', color: GOLD, border: '1px solid rgba(212,184,118,0.28)' })}>
               <Smartphone size={22} />
             </div>
-            <p className="mb-2 text-[12px] font-bold uppercase" style={{ color: GOLD, letterSpacing: 0 }}>
+            <p className="mb-2 text-[12px] font-bold uppercase" style={portalStyle({ color: GOLD, letterSpacing: 0 })}>
               Mobil PWA Önizlemesi
             </p>
-            <h1 className="max-w-3xl text-[28px] font-semibold leading-tight sm:text-[36px]" style={{ color: '#fafaf9', fontFamily: 'Fraunces, serif', letterSpacing: 0 }}>
+            <h1 className="max-w-3xl text-[28px] font-semibold leading-tight sm:text-[36px]" style={portalStyle({ color: '#fafaf9', fontFamily: 'Fraunces, serif', letterSpacing: 0 })}>
               Portalın gerçek modülleriyle telefonda kurulabilir kullanım
             </h1>
-            <p className="mt-3 max-w-3xl text-[14px] leading-relaxed" style={{ color: 'rgba(250,250,249,0.64)' }}>
+            <p className="mt-3 max-w-3xl text-[14px] leading-relaxed" style={portalStyle({ color: 'rgba(250,250,249,0.64)' })}>
               Bu ekran artık hayali mobil uygulama modüllerini değil, şu an portalda bulunan gerçek menüleri ve PWA ilk sürüm sırasını gösterir.
               Aktif olmayan alanlar ayrı işaretlenir.
             </p>
@@ -221,17 +223,17 @@ export default function MobilTanitimPage() {
         </PhoneMockup>
       </section>
 
-      <section className="rounded-lg p-4 sm:p-5" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)' }}>
+      <section className="rounded-lg p-4 sm:p-5" style={portalStyle({ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)' })}>
         <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <h2 className="text-[22px] font-semibold" style={{ color: '#fafaf9', fontFamily: 'Fraunces, serif', letterSpacing: 0 }}>
+            <h2 className="text-[22px] font-semibold" style={portalStyle({ color: '#fafaf9', fontFamily: 'Fraunces, serif', letterSpacing: 0 })}>
               Mevcut Portal Modül Haritası
             </h2>
-            <p className="mt-1 text-[13px]" style={{ color: 'rgba(250,250,249,0.56)' }}>
+            <p className="mt-1 text-[13px]" style={portalStyle({ color: 'rgba(250,250,249,0.56)' })}>
               Tasarım ve mobil menü bu listeye göre üretildi.
             </p>
           </div>
-          <div className="flex max-w-full gap-1 overflow-x-auto rounded-lg p-1" style={{ background: 'rgba(0,0,0,0.22)', border: '1px solid rgba(255,255,255,0.06)' }}>
+          <div className="flex max-w-full gap-1 overflow-x-auto rounded-lg p-1" style={portalStyle({ background: 'rgba(0,0,0,0.22)', border: '1px solid rgba(255,255,255,0.06)' })}>
             {portalGroups.map((group) => {
               const selected = group.label === selectedGroup;
               const Icon = group.icon;
@@ -241,11 +243,11 @@ export default function MobilTanitimPage() {
                   type="button"
                   onClick={() => setSelectedGroup(group.label)}
                   className="flex flex-shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-[12px] font-semibold"
-                  style={{
+                  style={portalStyle({
                     background: selected ? `${group.color}20` : 'transparent',
                     border: selected ? `1px solid ${group.color}45` : '1px solid transparent',
                     color: selected ? group.color : 'rgba(250,250,249,0.52)',
-                  }}
+                  })}
                 >
                   <Icon size={14} />
                   {group.label}
@@ -281,17 +283,17 @@ function MobileLivePreview() {
   ];
 
   return (
-    <div className="space-y-4" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-      <div className="rounded-lg p-4" style={{ background: 'rgba(255,255,255,0.028)', border: '1px solid rgba(255,255,255,0.07)' }}>
+    <div className="space-y-4" style={portalStyle({ fontFamily: 'Inter, system-ui, sans-serif' })}>
+      <div className="rounded-lg p-4" style={portalStyle({ background: 'rgba(255,255,255,0.028)', border: '1px solid rgba(255,255,255,0.07)' })}>
         <div className="mb-3 flex items-center gap-2">
-          <span className="flex h-9 w-9 items-center justify-center rounded-lg text-[14px] font-bold" style={{ background: 'linear-gradient(135deg, #d4b876, #8b7649)', color: '#0f0d0b', fontFamily: 'Fraunces, serif' }}>
+          <span className="flex h-9 w-9 items-center justify-center rounded-lg text-[14px] font-bold" style={portalStyle({ background: 'linear-gradient(135deg, #d4b876, #8b7649)', color: '#0f0d0b', fontFamily: 'Fraunces, serif' })}>
             M
           </span>
           <div className="min-w-0 flex-1">
-            <p className="text-[15px] font-semibold leading-tight" style={{ color: '#fafaf9' }}>Moren Portal PWA</p>
-            <p className="text-[12px] leading-tight" style={{ color: 'rgba(250,250,249,0.52)' }}>Telefonda gerçek kullanım düzeni</p>
+            <p className="text-[15px] font-semibold leading-tight" style={portalStyle({ color: '#fafaf9' })}>Moren Portal PWA</p>
+            <p className="text-[12px] leading-tight" style={portalStyle({ color: 'rgba(250,250,249,0.52)' })}>Telefonda gerçek kullanım düzeni</p>
           </div>
-          <BellRing size={18} style={{ color: GOLD }} />
+          <BellRing size={18} style={portalStyle({ color: GOLD })} />
         </div>
 
         <div className="grid grid-cols-2 gap-2">
@@ -302,31 +304,31 @@ function MobileLivePreview() {
                 key={item.href}
                 href={item.href}
                 className="min-h-[82px] rounded-lg p-3"
-                style={{ background: `${item.color}10`, border: `1px solid ${item.color}28` }}
+                style={portalStyle({ background: `${item.color}10`, border: `1px solid ${item.color}28` })}
               >
                 <div className="mb-2 flex items-center justify-between">
-                  <Icon size={18} style={{ color: item.color }} />
-                  <ChevronRight size={15} style={{ color: 'rgba(250,250,249,0.42)' }} />
+                  <Icon size={18} style={portalStyle({ color: item.color })} />
+                  <ChevronRight size={15} style={portalStyle({ color: 'rgba(250,250,249,0.42)' })} />
                 </div>
-                <p className="text-[13px] font-semibold leading-tight" style={{ color: '#fafaf9' }}>{item.label}</p>
-                <p className="mt-1 text-[11px] leading-tight" style={{ color: 'rgba(250,250,249,0.48)' }}>{item.desc}</p>
+                <p className="text-[13px] font-semibold leading-tight" style={portalStyle({ color: '#fafaf9' })}>{item.label}</p>
+                <p className="mt-1 text-[11px] leading-tight" style={portalStyle({ color: 'rgba(250,250,249,0.48)' })}>{item.desc}</p>
               </Link>
             );
           })}
         </div>
       </div>
 
-      <div className="rounded-lg p-4" style={{ background: 'rgba(255,255,255,0.028)', border: '1px solid rgba(255,255,255,0.07)' }}>
+      <div className="rounded-lg p-4" style={portalStyle({ background: 'rgba(255,255,255,0.028)', border: '1px solid rgba(255,255,255,0.07)' })}>
         <div className="mb-3 flex items-center justify-between">
           <div>
-            <h2 className="text-[18px] font-semibold leading-tight" style={{ color: '#fafaf9', fontFamily: 'Fraunces, serif', letterSpacing: 0 }}>
+            <h2 className="text-[18px] font-semibold leading-tight" style={portalStyle({ color: '#fafaf9', fontFamily: 'Fraunces, serif', letterSpacing: 0 })}>
               İlk PWA modülleri
             </h2>
-            <p className="mt-1 text-[12px] leading-relaxed" style={{ color: 'rgba(250,250,249,0.52)' }}>
+            <p className="mt-1 text-[12px] leading-relaxed" style={portalStyle({ color: 'rgba(250,250,249,0.52)' })}>
               Telefonda ilk açılacak aktif ekranlar
             </p>
           </div>
-          <span className="rounded-md px-2 py-1 text-[12px] font-bold" style={{ background: 'rgba(212,184,118,0.14)', color: GOLD }}>
+          <span className="rounded-md px-2 py-1 text-[12px] font-bold" style={portalStyle({ background: 'rgba(212,184,118,0.14)', color: GOLD })}>
             {firstWave.length}
           </span>
         </div>
@@ -338,8 +340,8 @@ function MobileLivePreview() {
         </div>
       </div>
 
-      <div className="rounded-lg p-4" style={{ background: 'rgba(255,255,255,0.028)', border: '1px solid rgba(255,255,255,0.07)' }}>
-        <h2 className="text-[18px] font-semibold leading-tight" style={{ color: '#fafaf9', fontFamily: 'Fraunces, serif', letterSpacing: 0 }}>
+      <div className="rounded-lg p-4" style={portalStyle({ background: 'rgba(255,255,255,0.028)', border: '1px solid rgba(255,255,255,0.07)' })}>
+        <h2 className="text-[18px] font-semibold leading-tight" style={portalStyle({ color: '#fafaf9', fontFamily: 'Fraunces, serif', letterSpacing: 0 })}>
           Tüm portal grupları
         </h2>
         <div className="mt-3 space-y-2">
@@ -361,16 +363,16 @@ function MobileModuleRow({ module }: { module: PortalModule }) {
     <Link
       href={module.href}
       className="flex min-h-[58px] items-center gap-3 rounded-lg px-3 py-2"
-      style={{ background: `${color}0d`, border: `1px solid ${color}22` }}
+      style={portalStyle({ background: `${color}0d`, border: `1px solid ${color}22` })}
     >
-      <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg" style={{ background: `${color}16`, color }}>
+      <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg" style={portalStyle({ background: `${color}16`, color })}>
         <Icon size={17} />
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[13px] font-semibold leading-tight" style={{ color: '#fafaf9' }}>{module.label}</span>
-        <span className="mt-1 block truncate text-[11px] leading-tight" style={{ color: 'rgba(250,250,249,0.48)' }}>{group?.label}</span>
+        <span className="block truncate text-[13px] font-semibold leading-tight" style={portalStyle({ color: '#fafaf9' })}>{module.label}</span>
+        <span className="mt-1 block truncate text-[11px] leading-tight" style={portalStyle({ color: 'rgba(250,250,249,0.48)' })}>{group?.label}</span>
       </span>
-      <ChevronRight size={16} style={{ color }} />
+      <ChevronRight size={16} style={portalStyle({ color })} />
     </Link>
   );
 }
@@ -381,14 +383,14 @@ function MobileGroupCard({ group }: { group: PortalGroup }) {
   const plannedCount = group.modules.length - activeCount;
 
   return (
-    <div className="rounded-lg p-3" style={{ background: `${group.color}0c`, border: `1px solid ${group.color}22` }}>
+    <div className="rounded-lg p-3" style={portalStyle({ background: `${group.color}0c`, border: `1px solid ${group.color}22` })}>
       <div className="flex items-center gap-3">
-        <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg" style={{ background: `${group.color}16`, color: group.color }}>
+        <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg" style={portalStyle({ background: `${group.color}16`, color: group.color })}>
           <Icon size={17} />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[13px] font-semibold leading-tight" style={{ color: '#fafaf9' }}>{group.label}</p>
-          <p className="mt-1 text-[11px] leading-tight" style={{ color: 'rgba(250,250,249,0.48)' }}>
+          <p className="truncate text-[13px] font-semibold leading-tight" style={portalStyle({ color: '#fafaf9' })}>{group.label}</p>
+          <p className="mt-1 text-[11px] leading-tight" style={portalStyle({ color: 'rgba(250,250,249,0.48)' })}>
             {activeCount} aktif modül{plannedCount > 0 ? `, ${plannedCount} planlı` : ''}
           </p>
         </div>
@@ -399,11 +401,11 @@ function MobileGroupCard({ group }: { group: PortalGroup }) {
 
 function StatBox({ label, value, color }: { label: string; value: number; color: string }) {
   return (
-    <div className="rounded-lg p-3" style={{ background: `${color}0f`, border: `1px solid ${color}28` }}>
-      <p className="text-[11px] font-semibold uppercase" style={{ color: 'rgba(250,250,249,0.52)', letterSpacing: 0 }}>
+    <div className="rounded-lg p-3" style={portalStyle({ background: `${color}0f`, border: `1px solid ${color}28` })}>
+      <p className="text-[11px] font-semibold uppercase" style={portalStyle({ color: 'rgba(250,250,249,0.52)', letterSpacing: 0 })}>
         {label}
       </p>
-      <p className="mt-1 text-[26px] font-bold leading-none" style={{ color, fontFamily: 'Fraunces, serif', letterSpacing: 0 }}>
+      <p className="mt-1 text-[26px] font-bold leading-none" style={portalStyle({ color, fontFamily: 'Fraunces, serif', letterSpacing: 0 })}>
         {value}
       </p>
     </div>
@@ -412,10 +414,10 @@ function StatBox({ label, value, color }: { label: string; value: number; color:
 
 function PhoneMockup({ label, accent, children }: { label: string; accent: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-lg p-4" style={{ background: 'rgba(255,255,255,0.022)', border: '1px solid rgba(255,255,255,0.07)' }}>
+    <div className="rounded-lg p-4" style={portalStyle({ background: 'rgba(255,255,255,0.022)', border: '1px solid rgba(255,255,255,0.07)' })}>
       <div
         className="mx-auto"
-        style={{
+        style={portalStyle({
           width: 286,
           maxWidth: '100%',
           height: 586,
@@ -424,18 +426,18 @@ function PhoneMockup({ label, accent, children }: { label: string; accent: strin
           background: '#0a0907',
           border: '1px solid rgba(255,255,255,0.08)',
           boxShadow: `0 18px 44px rgba(0,0,0,0.34), 0 0 36px ${accent}12`,
-        }}
+        })}
       >
-        <div className="relative flex h-full flex-col overflow-hidden" style={{ borderRadius: 26, background: '#0f0d0b' }}>
-          <div className="absolute left-1/2 top-2 h-5 w-24 -translate-x-1/2 rounded-lg" style={{ background: '#050403' }} />
-          <div className="flex items-center justify-between px-5 pb-2 pt-3 text-[10px] font-bold" style={{ color: '#fafaf9' }}>
+        <div className="relative flex h-full flex-col overflow-hidden" style={portalStyle({ borderRadius: 26, background: '#0f0d0b' })}>
+          <div className="absolute left-1/2 top-2 h-5 w-24 -translate-x-1/2 rounded-lg" style={portalStyle({ background: '#050403' })} />
+          <div className="flex items-center justify-between px-5 pb-2 pt-3 text-[10px] font-bold" style={portalStyle({ color: '#fafaf9' })}>
             <span>09:41</span>
             <span>5G</span>
           </div>
           <div className="flex-1 overflow-hidden px-3 pb-3 pt-2">{children}</div>
         </div>
       </div>
-      <p className="mt-3 text-center text-[11px] font-bold uppercase" style={{ color: accent, letterSpacing: 0 }}>
+      <p className="mt-3 text-center text-[11px] font-bold uppercase" style={portalStyle({ color: accent, letterSpacing: 0 })}>
         {label}
       </p>
     </div>
@@ -445,13 +447,13 @@ function PhoneMockup({ label, accent, children }: { label: string; accent: strin
 function PhoneHeader({ title, color = GOLD }: { title: string; color?: string }) {
   return (
     <div className="mb-3 flex items-center gap-2">
-      <span className="flex h-8 w-8 items-center justify-center rounded-lg text-[13px] font-bold" style={{ background: `linear-gradient(135deg, ${color}, #8b7649)`, color: '#0f0d0b', fontFamily: 'Fraunces, serif' }}>
+      <span className="flex h-8 w-8 items-center justify-center rounded-lg text-[13px] font-bold" style={portalStyle({ background: `linear-gradient(135deg, ${color}, #8b7649)`, color: '#0f0d0b', fontFamily: 'Fraunces, serif' })}>
         M
       </span>
-      <span className="text-[13px] font-semibold" style={{ color: '#fafaf9', fontFamily: 'Fraunces, serif', letterSpacing: 0 }}>
+      <span className="text-[13px] font-semibold" style={portalStyle({ color: '#fafaf9', fontFamily: 'Fraunces, serif', letterSpacing: 0 })}>
         {title}
       </span>
-      <span className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: 'rgba(255,255,255,0.045)', color }}>
+      <span className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg" style={portalStyle({ background: 'rgba(255,255,255,0.045)', color })}>
         <BellRing size={14} />
       </span>
     </div>
@@ -469,10 +471,10 @@ function HomePhone() {
   return (
     <div className="flex h-full flex-col">
       <PhoneHeader title="Gösterge Paneli" />
-      <h3 className="text-[18px] font-semibold leading-tight" style={{ color: '#fafaf9', fontFamily: 'Fraunces, serif', letterSpacing: 0 }}>
+      <h3 className="text-[18px] font-semibold leading-tight" style={portalStyle({ color: '#fafaf9', fontFamily: 'Fraunces, serif', letterSpacing: 0 })}>
         Bugünkü portal özeti
       </h3>
-      <p className="mb-3 mt-1 text-[10.5px]" style={{ color: 'rgba(250,250,249,0.5)' }}>
+      <p className="mb-3 mt-1 text-[10.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
         Kritik işler, mükellefler ve bekleyen kontroller
       </p>
 
@@ -480,23 +482,23 @@ function HomePhone() {
         {quickModules.map((item) => {
           const Icon = item.icon;
           return (
-            <Link key={item.href} href={item.href} className="rounded-lg p-2" style={{ background: `${item.color}10`, border: `1px solid ${item.color}28` }}>
+            <Link key={item.href} href={item.href} className="rounded-lg p-2" style={portalStyle({ background: `${item.color}10`, border: `1px solid ${item.color}28` })}>
               <div className="mb-2 flex items-center justify-between">
-                <Icon size={15} style={{ color: item.color }} />
-                <ChevronRight size={13} style={{ color: 'rgba(250,250,249,0.42)' }} />
+                <Icon size={15} style={portalStyle({ color: item.color })} />
+                <ChevronRight size={13} style={portalStyle({ color: 'rgba(250,250,249,0.42)' })} />
               </div>
-              <p className="text-[10px] font-semibold" style={{ color: 'rgba(250,250,249,0.58)' }}>{item.label}</p>
-              <p className="mt-1 text-[18px] font-bold leading-none" style={{ color: item.color, fontFamily: 'Fraunces, serif', letterSpacing: 0 }}>{item.value}</p>
+              <p className="text-[10px] font-semibold" style={portalStyle({ color: 'rgba(250,250,249,0.58)' })}>{item.label}</p>
+              <p className="mt-1 text-[18px] font-bold leading-none" style={portalStyle({ color: item.color, fontFamily: 'Fraunces, serif', letterSpacing: 0 })}>{item.value}</p>
             </Link>
           );
         })}
       </div>
 
-      <div className="mt-3 rounded-lg p-3" style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.06)' }}>
+      <div className="mt-3 rounded-lg p-3" style={portalStyle({ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.06)' })}>
         <div className="mb-2 flex items-center gap-2">
-          <Workflow size={14} style={{ color: GOLD }} />
-          <p className="text-[11px] font-bold" style={{ color: '#fafaf9' }}>İş Akışı</p>
-          <span className="ml-auto text-[10px]" style={{ color: 'rgba(250,250,249,0.42)' }}>Bu ay</span>
+          <Workflow size={14} style={portalStyle({ color: GOLD })} />
+          <p className="text-[11px] font-bold" style={portalStyle({ color: '#fafaf9' })}>İş Akışı</p>
+          <span className="ml-auto text-[10px]" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>Bu ay</span>
         </div>
         {[
           ['Evrak bekliyor', 8, STEEL],
@@ -506,11 +508,11 @@ function HomePhone() {
         ].map(([label, value, color]) => (
           <div key={String(label)} className="mb-2 last:mb-0">
             <div className="mb-1 flex justify-between text-[10px]">
-              <span style={{ color: 'rgba(250,250,249,0.58)' }}>{label}</span>
-              <span style={{ color: String(color), fontWeight: 700 }}>{value}</span>
+              <span style={portalStyle({ color: 'rgba(250,250,249,0.58)' })}>{label}</span>
+              <span style={portalStyle({ color: String(color), fontWeight: 700 })}>{value}</span>
             </div>
-            <div className="h-1.5 overflow-hidden rounded-lg" style={{ background: 'rgba(255,255,255,0.06)' }}>
-              <div className="h-full rounded-lg" style={{ width: `${Number(value) * 6}%`, background: String(color) }} />
+            <div className="h-1.5 overflow-hidden rounded-lg" style={portalStyle({ background: 'rgba(255,255,255,0.06)' })}>
+              <div className="h-full rounded-lg" style={portalStyle({ width: `${Number(value) * 6}%`, background: String(color) })} />
             </div>
           </div>
         ))}
@@ -527,30 +529,30 @@ function ModulesPhone() {
   return (
     <div className="flex h-full flex-col">
       <PhoneHeader title="Modüller" color={SAGE} />
-      <div className="mb-3 flex items-center justify-between rounded-lg p-2" style={{ background: 'rgba(143,215,189,0.08)', border: '1px solid rgba(143,215,189,0.24)' }}>
+      <div className="mb-3 flex items-center justify-between rounded-lg p-2" style={portalStyle({ background: 'rgba(143,215,189,0.08)', border: '1px solid rgba(143,215,189,0.24)' })}>
         <div>
-          <p className="text-[11px] font-bold" style={{ color: '#fafaf9' }}>Aktif modüller</p>
-          <p className="text-[9.5px]" style={{ color: 'rgba(250,250,249,0.48)' }}>Gruplu mobil menü</p>
+          <p className="text-[11px] font-bold" style={portalStyle({ color: '#fafaf9' })}>Aktif modüller</p>
+          <p className="text-[9.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.48)' })}>Gruplu mobil menü</p>
         </div>
-        <span className="text-[18px] font-bold" style={{ color: SAGE, fontFamily: 'Fraunces, serif' }}>34</span>
+        <span className="text-[18px] font-bold" style={portalStyle({ color: SAGE, fontFamily: 'Fraunces, serif' })}>34</span>
       </div>
 
       <div className="space-y-2 overflow-hidden">
         {menuGroups.map((group) => {
           const GroupIcon = group.icon;
           return (
-            <div key={group.label} className="rounded-lg p-2" style={{ background: `${group.color}0c`, border: `1px solid ${group.color}22` }}>
+            <div key={group.label} className="rounded-lg p-2" style={portalStyle({ background: `${group.color}0c`, border: `1px solid ${group.color}22` })}>
               <div className="mb-2 flex items-center gap-2">
-                <GroupIcon size={13} style={{ color: group.color }} />
-                <p className="text-[10px] font-bold uppercase" style={{ color: group.color, letterSpacing: 0 }}>{group.label}</p>
-                <span className="ml-auto text-[9px]" style={{ color: 'rgba(250,250,249,0.42)' }}>{group.modules.length}</span>
+                <GroupIcon size={13} style={portalStyle({ color: group.color })} />
+                <p className="text-[10px] font-bold uppercase" style={portalStyle({ color: group.color, letterSpacing: 0 })}>{group.label}</p>
+                <span className="ml-auto text-[9px]" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>{group.modules.length}</span>
               </div>
               <div className="grid grid-cols-2 gap-1">
                 {group.modules.slice(0, 4).map((module) => {
                   const Icon = module.icon;
                   return (
-                    <Link key={module.href} href={module.href} className="flex min-h-8 items-center gap-1.5 rounded-lg px-2 text-[9.5px] font-semibold" style={{ background: 'rgba(255,255,255,0.03)', color: 'rgba(250,250,249,0.68)' }}>
-                      <Icon size={11} style={{ color: group.color }} />
+                    <Link key={module.href} href={module.href} className="flex min-h-8 items-center gap-1.5 rounded-lg px-2 text-[9.5px] font-semibold" style={portalStyle({ background: 'rgba(255,255,255,0.03)', color: 'rgba(250,250,249,0.68)' })}>
+                      <Icon size={11} style={portalStyle({ color: group.color })} />
                       <span className="truncate">{module.label}</span>
                     </Link>
                   );
@@ -570,10 +572,10 @@ function WorkflowPhone() {
   return (
     <div className="flex h-full flex-col">
       <PhoneHeader title="İş Akışı" color={AMBER} />
-      <h3 className="text-[17px] font-semibold" style={{ color: '#fafaf9', fontFamily: 'Fraunces, serif', letterSpacing: 0 }}>
+      <h3 className="text-[17px] font-semibold" style={portalStyle({ color: '#fafaf9', fontFamily: 'Fraunces, serif', letterSpacing: 0 })}>
         Mükellef bazlı takip
       </h3>
-      <p className="mb-3 text-[10.5px]" style={{ color: 'rgba(250,250,249,0.48)' }}>
+      <p className="mb-3 text-[10.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.48)' })}>
         Evrak, fatura, KDV ve beyanname hattı
       </p>
 
@@ -585,25 +587,25 @@ function WorkflowPhone() {
       ].map((row) => {
         const Icon = row.icon;
         return (
-          <Link key={row.title} href={row.href} className="mb-2 flex items-center gap-2 rounded-lg p-2" style={{ background: 'rgba(255,255,255,0.032)', border: `1px solid ${row.color}22` }}>
-            <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg" style={{ background: `${row.color}12`, color: row.color }}>
+          <Link key={row.title} href={row.href} className="mb-2 flex items-center gap-2 rounded-lg p-2" style={portalStyle({ background: 'rgba(255,255,255,0.032)', border: `1px solid ${row.color}22` })}>
+            <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg" style={portalStyle({ background: `${row.color}12`, color: row.color })}>
               <Icon size={15} />
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-[11px] font-bold" style={{ color: '#fafaf9' }}>{row.title}</span>
-              <span className="block truncate text-[9.5px]" style={{ color: 'rgba(250,250,249,0.46)' }}>{row.sub}</span>
+              <span className="block truncate text-[11px] font-bold" style={portalStyle({ color: '#fafaf9' })}>{row.title}</span>
+              <span className="block truncate text-[9.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.46)' })}>{row.sub}</span>
             </span>
-            <ChevronRight size={13} style={{ color: row.color }} />
+            <ChevronRight size={13} style={portalStyle({ color: row.color })} />
           </Link>
         );
       })}
 
-      <div className="mt-auto rounded-lg p-3" style={{ background: 'rgba(216,173,112,0.09)', border: '1px solid rgba(216,173,112,0.26)' }}>
+      <div className="mt-auto rounded-lg p-3" style={portalStyle({ background: 'rgba(216,173,112,0.09)', border: '1px solid rgba(216,173,112,0.26)' })}>
         <div className="mb-2 flex items-center gap-2">
-          <CheckCircle2 size={14} style={{ color: AMBER }} />
-          <p className="text-[11px] font-bold" style={{ color: '#fafaf9' }}>Mobil öncelik</p>
+          <CheckCircle2 size={14} style={portalStyle({ color: AMBER })} />
+          <p className="text-[11px] font-bold" style={portalStyle({ color: '#fafaf9' })}>Mobil öncelik</p>
         </div>
-        <p className="text-[10px] leading-relaxed" style={{ color: 'rgba(250,250,249,0.58)' }}>
+        <p className="text-[10px] leading-relaxed" style={portalStyle({ color: 'rgba(250,250,249,0.58)' })}>
           İlk ekranda işlem yapan modüller, planlı ekranlar menü dışında kalır.
         </p>
       </div>
@@ -623,12 +625,12 @@ function PhoneBottom({ active }: { active: string }) {
   ];
 
   return (
-    <div className="mt-auto grid grid-cols-5 gap-1 rounded-lg p-1" style={{ background: 'rgba(0,0,0,0.28)', border: '1px solid rgba(255,255,255,0.06)' }}>
+    <div className="mt-auto grid grid-cols-5 gap-1 rounded-lg p-1" style={portalStyle({ background: 'rgba(0,0,0,0.28)', border: '1px solid rgba(255,255,255,0.06)' })}>
       {items.map((item) => {
         const selected = active === item.label || (active === 'Modül' && item.label === 'Panel') || (active === 'Akış' && item.label === 'KDV');
         const Icon = item.icon;
         return (
-          <div key={item.label} className="flex h-10 flex-col items-center justify-center gap-0.5 rounded-lg" style={{ background: selected ? 'rgba(212,184,118,0.14)' : 'transparent', color: selected ? GOLD : 'rgba(250,250,249,0.42)' }}>
+          <div key={item.label} className="flex h-10 flex-col items-center justify-center gap-0.5 rounded-lg" style={portalStyle({ background: selected ? 'rgba(212,184,118,0.14)' : 'transparent', color: selected ? GOLD : 'rgba(250,250,249,0.42)' })}>
             <Icon size={14} />
             <span className="text-[8px] font-semibold leading-none">{item.label}</span>
           </div>
@@ -652,47 +654,47 @@ function ModuleCard({ module, color }: { module: PortalModule; color: string }) 
     <Link
       href={module.href}
       className="group flex min-h-[116px] items-start gap-3 rounded-lg p-3 transition"
-      style={{
+      style={portalStyle({
         background: planned ? 'rgba(255,255,255,0.018)' : `${color}0d`,
         border: `1px solid ${planned ? 'rgba(255,255,255,0.06)' : `${color}24`}`,
-      }}
+      })}
     >
-      <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg" style={{ background: `${color}14`, color }}>
+      <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg" style={portalStyle({ background: `${color}14`, color })}>
         <Icon size={18} />
       </span>
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-2">
-          <span className="truncate text-[14px] font-semibold" style={{ color: '#fafaf9' }}>{module.label}</span>
-          <span className="rounded-md px-1.5 py-0.5 text-[9px] font-bold uppercase" style={{ background: planned ? 'rgba(255,255,255,0.06)' : `${color}16`, color: planned ? 'rgba(250,250,249,0.42)' : color }}>
+          <span className="truncate text-[14px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>{module.label}</span>
+          <span className="rounded-md px-1.5 py-0.5 text-[9px] font-bold uppercase" style={portalStyle({ background: planned ? 'rgba(255,255,255,0.06)' : `${color}16`, color: planned ? 'rgba(250,250,249,0.42)' : color })}>
             {priorityLabel[module.priority]}
           </span>
         </span>
-        <span className="mt-1 block text-[12px] leading-relaxed" style={{ color: 'rgba(250,250,249,0.56)' }}>{module.desc}</span>
+        <span className="mt-1 block text-[12px] leading-relaxed" style={portalStyle({ color: 'rgba(250,250,249,0.56)' })}>{module.desc}</span>
       </span>
-      <ChevronRight size={16} className="mt-1 flex-shrink-0 opacity-70 transition group-hover:translate-x-0.5" style={{ color }} />
+      <ChevronRight size={16} className="mt-1 flex-shrink-0 opacity-70 transition group-hover:translate-x-0.5" style={portalStyle({ color })} />
     </Link>
   );
 }
 
 function RoadmapColumn({ title, color, items }: { title: string; color: string; items: PortalModule[] }) {
   return (
-    <section className="rounded-lg p-4" style={{ background: `${color}0a`, border: `1px solid ${color}22` }}>
+    <section className="rounded-lg p-4" style={portalStyle({ background: `${color}0a`, border: `1px solid ${color}22` })}>
       <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-[15px] font-semibold" style={{ color: '#fafaf9', fontFamily: 'Fraunces, serif', letterSpacing: 0 }}>{title}</h3>
-        <span className="rounded-md px-2 py-1 text-[11px] font-bold" style={{ background: `${color}16`, color }}>{items.length}</span>
+        <h3 className="text-[15px] font-semibold" style={portalStyle({ color: '#fafaf9', fontFamily: 'Fraunces, serif', letterSpacing: 0 })}>{title}</h3>
+        <span className="rounded-md px-2 py-1 text-[11px] font-bold" style={portalStyle({ background: `${color}16`, color })}>{items.length}</span>
       </div>
       <div className="space-y-2">
         {items.slice(0, 8).map((item) => {
           const Icon = item.icon;
           return (
-            <Link key={item.href} href={item.href} className="flex items-center gap-2 rounded-lg px-2 py-2" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.045)' }}>
-              <Icon size={14} style={{ color }} />
-              <span className="min-w-0 flex-1 truncate text-[12px] font-semibold" style={{ color: 'rgba(250,250,249,0.72)' }}>{item.label}</span>
+            <Link key={item.href} href={item.href} className="flex items-center gap-2 rounded-lg px-2 py-2" style={portalStyle({ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.045)' })}>
+              <Icon size={14} style={portalStyle({ color })} />
+              <span className="min-w-0 flex-1 truncate text-[12px] font-semibold" style={portalStyle({ color: 'rgba(250,250,249,0.72)' })}>{item.label}</span>
             </Link>
           );
         })}
         {items.length > 8 && (
-          <p className="px-2 text-[11px]" style={{ color: 'rgba(250,250,249,0.42)' }}>
+          <p className="px-2 text-[11px]" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>
             +{items.length - 8} modül daha
           </p>
         )}

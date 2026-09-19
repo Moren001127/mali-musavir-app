@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import React, { useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -77,13 +79,13 @@ export default function NakitAkis() {
 
         <div
           className="relative overflow-hidden rounded-2xl px-4 py-3.5"
-          style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}`, boxShadow: '0 14px 32px rgba(0,0,0,0.20)' }}
+          style={portalStyle({ background: CARD_BG, border: `1px solid ${CARD_BORDER}`, boxShadow: '0 14px 32px rgba(0,0,0,0.20)' })}
         >
           <div className="flex items-center gap-2">
-            <span style={{ color: MAVI }}>
+            <span style={portalStyle({ color: MAVI })}>
               <CalendarDays size={14} />
             </span>
-            <span className="text-[11px] uppercase tracking-wider" style={{ color: MUTED }}>
+            <span className="text-[11px] uppercase tracking-wider" style={portalStyle({ color: MUTED })}>
               Ne kadar ileriyi görelim
             </span>
           </div>
@@ -96,9 +98,9 @@ export default function NakitAkis() {
                   onClick={() => setGunSayisi(s)}
                   className="flex-1 rounded-xl py-1.5 text-[12px] font-medium transition-all hover:brightness-110"
                   style={
-                    secili
+                    portalStyle(secili
                       ? { background: `linear-gradient(140deg, ${GOLD}dd, ${GOLD}99)`, color: '#0b0b0d', border: `1px solid ${GOLD}` }
-                      : { background: 'rgba(255,255,255,0.03)', color: MUTED, border: `1px solid ${CARD_BORDER}` }
+                      : { background: 'rgba(255,255,255,0.03)', color: MUTED, border: `1px solid ${CARD_BORDER}` })
                   }
                 >
                   {s} gün
@@ -139,7 +141,7 @@ export default function NakitAkis() {
         renk={acikVar ? KIRMIZI : OK}
       >
         {!acikVar ? (
-          <div className="flex items-center gap-2 text-[12px]" style={{ color: OK }}>
+          <div className="flex items-center gap-2 text-[12px]" style={portalStyle({ color: OK })}>
             <LineChart size={14} /> Önümüzdeki {gunSayisi} günde bakiyeniz hiç eksiye düşmüyor.
           </div>
         ) : (
@@ -149,13 +151,13 @@ export default function NakitAkis() {
                 <div
                   key={g.tarih}
                   className="rounded-xl px-3.5 py-2.5"
-                  style={{ background: `${KIRMIZI}0d`, border: `1px solid ${KIRMIZI}33` }}
+                  style={portalStyle({ background: `${KIRMIZI}0d`, border: `1px solid ${KIRMIZI}33` })}
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-[12.5px] font-medium" style={{ color: TEXT }}>
+                    <span className="text-[12.5px] font-medium" style={portalStyle({ color: TEXT })}>
                       {tarihTR(g.tarih)} · {gunAdi(g.tarih)}
                     </span>
-                    <span className="text-[12.5px] font-semibold tabular-nums" style={{ color: KIRMIZI }}>
+                    <span className="text-[12.5px] font-semibold tabular-nums" style={portalStyle({ color: KIRMIZI })}>
                       {para(Math.abs(g.acik))} ₺ eksik
                     </span>
                   </div>
@@ -164,13 +166,13 @@ export default function NakitAkis() {
                       <HareketEtiketi key={`${g.tarih}-${i}`} hareket={h} />
                     ))}
                   </div>
-                  <div className="mt-1.5 text-[10.5px]" style={{ color: MUTED }}>
+                  <div className="mt-1.5 text-[10.5px]" style={portalStyle({ color: MUTED })}>
                     Gün sonu bakiye {para(g.bakiye)} ₺
                   </div>
                 </div>
               ))}
             </div>
-            <p className="mt-3 text-[11px] leading-relaxed" style={{ color: MUTED }}>
+            <p className="mt-3 text-[11px] leading-relaxed" style={portalStyle({ color: MUTED })}>
               {veri.kmhIleKarsilanir
                 ? `Bu açıklar ${para(veri.kmhLimitToplam)} ₺ ek hesap limitinizin içinde kalıyor; yine de faiz ödersiniz.`
                 : `Ek hesap limitiniz (${para(veri.kmhLimitToplam)} ₺) bu açıkları karşılamıyor; aşağıdaki seçeneklerden birini kullanmanız gerekir.`}
@@ -191,14 +193,14 @@ export default function NakitAkis() {
               <div
                 key={`${o.tarih}-${i}`}
                 className="rounded-xl px-4 py-3"
-                style={{ background: 'rgba(255,255,255,0.02)', border: `1px solid ${ROW_SEP}` }}
+                style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: `1px solid ${ROW_SEP}` })}
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="flex items-center gap-2 text-[13px] font-medium" style={{ color: TEXT }}>
-                    <Lightbulb size={13} style={{ color: MOR }} />
+                  <span className="flex items-center gap-2 text-[13px] font-medium" style={portalStyle({ color: TEXT })}>
+                    <Lightbulb size={13} style={portalStyle({ color: MOR })} />
                     {o.baslik}
                   </span>
-                  <span className="text-right text-[12px] tabular-nums" style={{ color: KIRMIZI }}>
+                  <span className="text-right text-[12px] tabular-nums" style={portalStyle({ color: KIRMIZI })}>
                     {para(Math.abs(o.acik))} ₺ ek para
                   </span>
                 </div>
@@ -206,13 +208,13 @@ export default function NakitAkis() {
                 {/* Devreden açık: bir önceki açık gününde kapatıldığı varsayılan tutar.
                     Bu ayrım olmadan aynı açık iki gün üst üste tam tutarıyla isteniyordu. */}
                 {!!o.devredenAcik && o.devredenAcik > 0 && (
-                  <div className="mt-1 text-[11px] leading-relaxed" style={{ color: MUTED }}>
+                  <div className="mt-1 text-[11px] leading-relaxed" style={portalStyle({ color: MUTED })}>
                     O günkü toplam açık{' '}
-                    <span className="tabular-nums" style={{ color: TEXT }}>
+                    <span className="tabular-nums" style={portalStyle({ color: TEXT })}>
                       {para(o.toplamAcik ?? o.acik)} ₺
                     </span>
                     ; bunun{' '}
-                    <span className="tabular-nums" style={{ color: TEXT }}>
+                    <span className="tabular-nums" style={portalStyle({ color: TEXT })}>
                       {para(o.devredenAcik)} ₺
                     </span>{' '}
                     kısmı önceki öneriyle kapatılmış sayılır, bu yüzden burada yalnız aradaki fark isteniyor.
@@ -225,19 +227,19 @@ export default function NakitAkis() {
                     <div
                       key={`${o.tarih}-${i}-${j}`}
                       className="rounded-xl px-3 py-2.5"
-                      style={{
+                      style={portalStyle({
                         background: s.onerilen ? `${OK}0f` : 'rgba(255,255,255,0.02)',
                         border: `1px solid ${s.onerilen ? `${OK}66` : CARD_BORDER}`,
                         boxShadow: s.onerilen ? `0 0 0 1px ${OK}22` : 'none',
-                      }}
+                      })}
                     >
                       <div className="flex items-start justify-between gap-2">
-                        <span className="text-[12.5px] font-medium" style={{ color: TEXT }}>
+                        <span className="text-[12.5px] font-medium" style={portalStyle({ color: TEXT })}>
                           {s.ad}
                         </span>
                         {s.onerilen && <Rozet metin="önerilen" renk={OK} />}
                       </div>
-                      <p className="mt-1 text-[11px] leading-relaxed" style={{ color: MUTED }}>
+                      <p className="mt-1 text-[11px] leading-relaxed" style={portalStyle({ color: MUTED })}>
                         {s.aciklama}
                       </p>
                       <div className="mt-1.5">
@@ -248,14 +250,14 @@ export default function NakitAkis() {
                         ) : s.maliyetTahmini ? (
                           <span className="flex items-center gap-1.5">
                             <Rozet metin="tahmini" renk={TURUNCU} />
-                            <span className="text-[11.5px] tabular-nums" style={{ color: MUTED }}>
+                            <span className="text-[11.5px] tabular-nums" style={portalStyle({ color: MUTED })}>
                               ~{para(s.maliyet)} ₺
                             </span>
                           </span>
                         ) : s.maliyet === 0 ? (
                           <Rozet metin="maliyetsiz" renk={OK} />
                         ) : (
-                          <span className="text-[11.5px] tabular-nums" style={{ color: TURUNCU }}>
+                          <span className="text-[11.5px] tabular-nums" style={portalStyle({ color: TURUNCU })}>
                             Size {para(s.maliyet)} ₺ tutar
                           </span>
                         )}
@@ -283,16 +285,16 @@ export default function NakitAkis() {
               <div
                 key={g.tarih}
                 className="flex flex-wrap items-start gap-3 rounded-xl px-3 py-2"
-                style={{
+                style={portalStyle({
                   background: g.bakiye < 0 ? `${KIRMIZI}0d` : 'rgba(255,255,255,0.02)',
                   border: `1px solid ${g.bakiye < 0 ? `${KIRMIZI}2e` : ROW_SEP}`,
-                }}
+                })}
               >
                 <div className="w-[74px] flex-shrink-0">
-                  <div className="text-[12.5px] font-medium tabular-nums" style={{ color: TEXT }}>
+                  <div className="text-[12.5px] font-medium tabular-nums" style={portalStyle({ color: TEXT })}>
                     {gunKisa(g.tarih)}
                   </div>
-                  <div className="text-[10.5px]" style={{ color: MUTED }}>
+                  <div className="text-[10.5px]" style={portalStyle({ color: MUTED })}>
                     {gunAdi(g.tarih)}
                   </div>
                 </div>
@@ -302,12 +304,12 @@ export default function NakitAkis() {
                   ))}
                 </div>
                 <div className="w-[110px] flex-shrink-0 text-right">
-                  <div className="text-[10.5px]" style={{ color: MUTED }}>
+                  <div className="text-[10.5px]" style={portalStyle({ color: MUTED })}>
                     gün sonu
                   </div>
                   <div
                     className="text-[12.5px] font-semibold tabular-nums"
-                    style={{ color: g.bakiye < 0 ? KIRMIZI : TEXT }}
+                    style={portalStyle({ color: g.bakiye < 0 ? KIRMIZI : TEXT })}
                   >
                     {para(g.bakiye)} ₺
                   </div>
@@ -379,7 +381,7 @@ function BakiyeGrafigi({ gunler }: { gunler: AkisGunu[] }) {
       <div
         ref={kapRef}
         className="relative"
-        style={{ height: YUKSEKLIK }}
+        style={portalStyle({ height: YUKSEKLIK })}
         onMouseMove={imlecTasi}
         onMouseLeave={() => setImlec(null)}
       >
@@ -387,7 +389,7 @@ function BakiyeGrafigi({ gunler }: { gunler: AkisGunu[] }) {
         <svg
           viewBox={`0 0 ${GENISLIK} ${YUKSEKLIK}`}
           preserveAspectRatio="none"
-          style={{ width: '100%', height: YUKSEKLIK, display: 'block' }}
+          style={portalStyle({ width: '100%', height: YUKSEKLIK, display: 'block' })}
         >
           <defs>
             <linearGradient id="nakitArtiDolgu" x1="0" y1="0" x2="0" y2="1">
@@ -438,17 +440,17 @@ function BakiyeGrafigi({ gunler }: { gunler: AkisGunu[] }) {
           />
         </svg>
 
-        <span className="pointer-events-none absolute left-1 text-[10px]" style={{ top: 0, color: MUTED }}>
+        <span className="pointer-events-none absolute left-1 text-[10px]" style={portalStyle({ top: 0, color: MUTED })}>
           {paraKisa(olcek.ust)} ₺
         </span>
         <span
           className="pointer-events-none absolute right-1 text-[10px]"
-          style={{ top: Math.max(0, sifirY - 14), color: 'rgba(255,255,255,0.5)' }}
+          style={portalStyle({ top: Math.max(0, sifirY - 14), color: 'rgba(255,255,255,0.5)' })}
         >
           0 ₺
         </span>
         {eksiyeDusuyor && (
-          <span className="pointer-events-none absolute bottom-0 left-1 text-[10px]" style={{ color: KIRMIZI }}>
+          <span className="pointer-events-none absolute bottom-0 left-1 text-[10px]" style={portalStyle({ color: KIRMIZI })}>
             {paraKisa(olcek.alt)} ₺
           </span>
         )}
@@ -458,21 +460,21 @@ function BakiyeGrafigi({ gunler }: { gunler: AkisGunu[] }) {
           <>
             <div
               className="pointer-events-none absolute top-0 w-px"
-              style={{ left: `${seciliYuzde}%`, height: YUKSEKLIK, background: 'rgba(255,255,255,0.22)' }}
+              style={portalStyle({ left: `${seciliYuzde}%`, height: YUKSEKLIK, background: 'rgba(255,255,255,0.22)' })}
             />
             <div
               className="pointer-events-none absolute h-[7px] w-[7px] rounded-full"
-              style={{
+              style={portalStyle({
                 left: `${seciliYuzde}%`,
                 top: olcek.yer(secili.bakiye) - 3.5,
                 marginLeft: -3.5,
                 background: secili.bakiye < 0 ? KIRMIZI : GOLD,
                 boxShadow: `0 0 8px ${secili.bakiye < 0 ? KIRMIZI : GOLD}`,
-              }}
+              })}
             />
             <div
               className="pointer-events-none absolute z-10 rounded-xl px-3 py-2"
-              style={{
+              style={portalStyle({
                 left: `${Math.min(88, Math.max(12, seciliYuzde))}%`,
                 top: Math.max(2, Math.min(YUKSEKLIK - 76, olcek.yer(secili.bakiye) - 78)),
                 transform: 'translateX(-50%)',
@@ -480,22 +482,22 @@ function BakiyeGrafigi({ gunler }: { gunler: AkisGunu[] }) {
                 border: `1px solid ${CARD_BORDER}`,
                 boxShadow: '0 12px 30px rgba(0,0,0,0.45)',
                 minWidth: 132,
-              }}
+              })}
             >
-              <div className="text-[10.5px]" style={{ color: MUTED }}>
+              <div className="text-[10.5px]" style={portalStyle({ color: MUTED })}>
                 {tarihTR(secili.tarih)} · {gunAdi(secili.tarih)}
               </div>
               <div
                 className="text-[14px] font-semibold tabular-nums"
-                style={{ color: secili.bakiye < 0 ? KIRMIZI : GOLD }}
+                style={portalStyle({ color: secili.bakiye < 0 ? KIRMIZI : GOLD })}
               >
                 {para(secili.bakiye)} ₺
               </div>
               {(secili.giris > 0 || secili.cikis > 0) && (
-                <div className="mt-0.5 text-[10.5px] tabular-nums" style={{ color: MUTED }}>
-                  <span style={{ color: OK }}>+{para(secili.giris)}</span>
+                <div className="mt-0.5 text-[10.5px] tabular-nums" style={portalStyle({ color: MUTED })}>
+                  <span style={portalStyle({ color: OK })}>+{para(secili.giris)}</span>
                   {' · '}
-                  <span style={{ color: KIRMIZI }}>−{para(secili.cikis)}</span>
+                  <span style={portalStyle({ color: KIRMIZI })}>−{para(secili.cikis)}</span>
                 </div>
               )}
             </div>
@@ -510,12 +512,12 @@ function BakiyeGrafigi({ gunler }: { gunler: AkisGunu[] }) {
             <span
               key={g.tarih}
               className="absolute text-[9.5px] tabular-nums"
-              style={{
+              style={portalStyle({
                 left: `${Math.min(97, Math.max(3, yuzde))}%`,
                 transform: 'translateX(-50%)',
                 color: MUTED,
                 whiteSpace: 'nowrap',
-              }}
+              })}
             >
               {gunKisa(g.tarih)}
             </span>
@@ -534,16 +536,16 @@ function HareketEtiketi({ hareket }: { hareket: AkisHareketOzet }) {
   return (
     <span
       className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px]"
-      style={{
+      style={portalStyle({
         background: `${renk}0f`,
         border: `1px ${hareket.kesin ? 'solid' : 'dashed'} ${renk}40`,
         color: TEXT,
-      }}
+      })}
     >
-      <span className="truncate" style={{ maxWidth: 220 }}>
+      <span className="truncate" style={portalStyle({ maxWidth: 220 })}>
         {hareket.ad}
       </span>
-      <span className="tabular-nums" style={{ color: renk }}>
+      <span className="tabular-nums" style={portalStyle({ color: renk })}>
         {giris ? '+' : '−'}
         {para(Math.abs(hareket.tutar))} ₺
       </span>
@@ -554,7 +556,7 @@ function HareketEtiketi({ hareket }: { hareket: AkisHareketOzet }) {
 
 function NotSatiri() {
   return (
-    <p className="px-1 text-[11px] leading-relaxed" style={{ color: MUTED }}>
+    <p className="px-1 text-[11px] leading-relaxed" style={portalStyle({ color: MUTED })}>
       Beklenen tahsilatlarınızı Gelir &amp; Gider ekranından “planlanan” olarak girerseniz bu tablo daha isabetli olur.
     </p>
   );

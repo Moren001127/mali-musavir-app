@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle, portalPaint } from '@/lib/portal-theme';
+
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { agentsApi } from '@/lib/agents';
@@ -39,7 +41,7 @@ function AgentPauseResumeButton() {
 
   if (isLoading) {
     return (
-      <button disabled className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium" style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(250,250,249,0.45)', height: 42 }}>
+      <button disabled className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium" style={portalStyle({ background: 'rgba(255,255,255,0.04)', color: 'rgba(250,250,249,0.45)', height: 42 })}>
         <Loader2 size={14} className="animate-spin" /> ...
       </button>
     );
@@ -51,12 +53,12 @@ function AgentPauseResumeButton() {
         onClick={() => setMut.mutate('RUNNING')}
         disabled={setMut.isPending}
         className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium"
-        style={{
+        style={portalStyle({
           background: 'rgba(245,158,11,0.15)',
           border: '1px solid rgba(245,158,11,0.4)',
           color: '#f59e0b',
           height: 42,
-        }}
+        })}
         title="Agent şu an duraklatılmış — devam ettir"
       >
         {setMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <PlayCircle size={14} />}
@@ -70,12 +72,12 @@ function AgentPauseResumeButton() {
       onClick={() => setMut.mutate('PAUSED')}
       disabled={setMut.isPending || offline}
       className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium disabled:opacity-50"
-      style={{
+      style={portalStyle({
         background: 'rgba(239,68,68,0.12)',
         border: '1px solid rgba(239,68,68,0.35)',
         color: '#ef4444',
         height: 42,
-      }}
+      })}
       title={offline ? 'Agent çalışmıyor — Mihsap sekmesini aç' : 'Çalışan agent\'ı duraklat (kaldığı yerden devam edebilir)'}
     >
       {setMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Pause size={14} />}
@@ -327,33 +329,33 @@ export default function MihsapAgentPage() {
       {/* HEADER — Fiş Yazdırma imzası: kart + üst renk şeridi + degrade ikon kutusu (KPI sağda korunur) */}
       <div
         className="relative overflow-hidden rounded-2xl border p-5"
-        style={{
+        style={portalStyle({
           borderColor: 'rgba(255,255,255,0.06)',
           background:
             'radial-gradient(120% 140% at 0% 0%, rgba(212,184,118,0.16), transparent 46%), radial-gradient(120% 140% at 100% 0%, rgba(139,118,73,0.12), transparent 48%), #0f0d0b',
-        }}
+        })}
       >
         <div
           className="absolute inset-x-0 top-0 h-1"
-          style={{ background: 'linear-gradient(90deg, #8b7649, #b8a06f, #d4b876, #e7cf95, #d4b876, #b8a06f)' }}
+          style={portalStyle({ background: 'linear-gradient(90deg, #8b7649, #b8a06f, #d4b876, #e7cf95, #d4b876, #b8a06f)' })}
         />
         <div className="flex items-center gap-2.5 mb-3">
-          <span className="w-[26px] h-px" style={{ background: '#d4b876' }} />
-          <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>Otomasyon</span>
+          <span className="w-[26px] h-px" style={portalStyle({ background: '#d4b876' })} />
+          <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={portalStyle({ color: '#b8a06f' })}>Otomasyon</span>
         </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
           <div className="flex items-center gap-3.5">
             <span
               className="grid place-items-center rounded-xl flex-shrink-0"
-              style={{ width: 46, height: 46, background: 'linear-gradient(135deg, #d4b876, #b8a06f)', boxShadow: '0 8px 22px rgba(212,184,118,0.32)' }}
+              style={portalStyle({ width: 46, height: 46, background: 'linear-gradient(135deg, #d4b876, #b8a06f)', boxShadow: '0 8px 22px rgba(212,184,118,0.32)' })}
             >
-              <Bot size={24} style={{ color: '#1a1410' }} />
+              <Bot size={24} style={portalStyle({ color: '#1a1410' })} />
             </span>
             <div>
-              <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 30, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em', lineHeight: 1.05, whiteSpace: 'nowrap' }}>
+              <h1 style={portalStyle({ fontFamily: 'Fraunces, serif', fontSize: 30, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em', lineHeight: 1.05, whiteSpace: 'nowrap' })}>
                 Mihsap Fatura İşleme
               </h1>
-              <p className="text-[13px] mt-1.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
+              <p className="text-[13px] mt-1.5" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                 Bekleyen alış/satış faturalarını OCR ile okur, kodlarla karşılaştırır, karar verir
               </p>
             </div>
@@ -362,14 +364,14 @@ export default function MihsapAgentPage() {
           {calisiyor ? (
             <span
               className="inline-flex items-center gap-2 px-3 py-1.5 rounded-[10px] text-[11.5px] font-bold"
-              style={{ background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.3)', color: '#22c55e' }}
+              style={portalStyle({ background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.3)', color: '#22c55e' })}
             >
               <Loader2 size={12} className="animate-spin" /> Runner Çalışıyor
             </span>
           ) : (
             <span
               className="inline-flex items-center gap-2 px-3 py-1.5 rounded-[10px] text-[11.5px] font-bold"
-              style={{ background: 'rgba(184,160,111,0.08)', border: '1px solid rgba(184,160,111,0.25)', color: '#d4b876' }}
+              style={portalStyle({ background: 'rgba(184,160,111,0.08)', border: '1px solid rgba(184,160,111,0.25)', color: '#d4b876' })}
             >
               <CheckCircle2 size={12} /> Hazır
             </span>
@@ -386,11 +388,11 @@ export default function MihsapAgentPage() {
       {/* KOMUT BARI */}
       <div
         className="rounded-xl border p-5"
-        style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(184,160,111,0.15)' }}
+        style={portalStyle({ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(184,160,111,0.15)' })}
       >
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex-shrink-0">
-            <label className="block text-[11px] uppercase font-semibold tracking-wider mb-1.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
+            <label className="block text-[11px] uppercase font-semibold tracking-wider mb-1.5" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
               <Calendar size={11} className="inline mr-1" /> Dönem
             </label>
             <input
@@ -398,56 +400,56 @@ export default function MihsapAgentPage() {
               value={ay}
               onChange={(e) => setAy(e.target.value)}
               className="px-3 py-2.5 rounded-lg text-base font-semibold border outline-none"
-              style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)', color: '#fafaf9', minWidth: 170 }}
+              style={portalStyle({ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)', color: '#fafaf9', minWidth: 170 })}
             />
           </div>
 
           <div className="flex-shrink-0">
-            <label className="block text-[11px] uppercase font-semibold tracking-wider mb-1.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
-              Defter / İşlem <span style={{ color: 'rgba(250,250,249,0.35)', fontWeight: 400, textTransform: 'none' }}>(çoklu seçim — aynı defter ailesinde)</span>
+            <label className="block text-[11px] uppercase font-semibold tracking-wider mb-1.5" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
+              Defter / İşlem <span style={portalStyle({ color: 'rgba(250,250,249,0.35)', fontWeight: 400, textTransform: 'none' })}>(çoklu seçim — aynı defter ailesinde)</span>
             </label>
             <div className="grid grid-cols-2 gap-1.5">
               <button
                 onClick={() => toggleAction('isle_alis')}
                 className="px-3 py-2 rounded-lg text-xs font-bold border whitespace-nowrap"
-                style={{
+                style={portalStyle({
                   background: actions.includes('isle_alis') ? 'rgba(5,150,105,.15)' : 'rgba(255,255,255,0.03)',
                   borderColor: actions.includes('isle_alis') ? '#059669' : 'rgba(255,255,255,0.05)',
                   color: actions.includes('isle_alis') ? '#059669' : '#fafaf9',
-                }}
+                })}
               >
                 BİLANÇO · ALIŞ
               </button>
               <button
                 onClick={() => toggleAction('isle_satis')}
                 className="px-3 py-2 rounded-lg text-xs font-bold border whitespace-nowrap"
-                style={{
+                style={portalStyle({
                   background: actions.includes('isle_satis') ? 'rgba(37,99,235,.15)' : 'rgba(255,255,255,0.03)',
                   borderColor: actions.includes('isle_satis') ? '#2563eb' : 'rgba(255,255,255,0.05)',
                   color: actions.includes('isle_satis') ? '#2563eb' : '#fafaf9',
-                }}
+                })}
               >
                 BİLANÇO · SATIŞ
               </button>
               <button
                 onClick={() => toggleAction('isle_alis_isletme')}
                 className="px-3 py-2 rounded-lg text-xs font-bold border whitespace-nowrap"
-                style={{
+                style={portalStyle({
                   background: actions.includes('isle_alis_isletme') ? 'rgba(168,85,247,.15)' : 'rgba(255,255,255,0.03)',
                   borderColor: actions.includes('isle_alis_isletme') ? '#a855f7' : 'rgba(255,255,255,0.05)',
                   color: actions.includes('isle_alis_isletme') ? '#a855f7' : '#fafaf9',
-                }}
+                })}
               >
                 İŞLETME · ALIŞ
               </button>
               <button
                 onClick={() => toggleAction('isle_satis_isletme')}
                 className="px-3 py-2 rounded-lg text-xs font-bold border whitespace-nowrap"
-                style={{
+                style={portalStyle({
                   background: actions.includes('isle_satis_isletme') ? 'rgba(234,88,12,.15)' : 'rgba(255,255,255,0.03)',
                   borderColor: actions.includes('isle_satis_isletme') ? '#ea580c' : 'rgba(255,255,255,0.05)',
                   color: actions.includes('isle_satis_isletme') ? '#ea580c' : '#fafaf9',
-                }}
+                })}
               >
                 İŞLETME · SATIŞ
               </button>
@@ -455,13 +457,13 @@ export default function MihsapAgentPage() {
           </div>
 
           <div className="flex-1 min-w-[240px]">
-            <label className="block text-[11px] uppercase font-semibold tracking-wider mb-1.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
+            <label className="block text-[11px] uppercase font-semibold tracking-wider mb-1.5" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
               <Users size={11} className="inline mr-1" /> Mükellef ({selectedIds.length})
             </label>
             <button
               onClick={() => setPickerOpen(true)}
               className="w-full px-3 py-2.5 rounded-lg text-sm border flex items-center gap-2 text-left hover:brightness-110 transition"
-              style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)', color: '#fafaf9' }}
+              style={portalStyle({ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)', color: '#fafaf9' })}
             >
               <span className="flex-1 truncate font-medium">
                 {selectedIds.length === 0
@@ -470,7 +472,7 @@ export default function MihsapAgentPage() {
                   ? taxpayerName(selectedNames[0])
                   : `${selectedIds.length} mükellef seçili`}
               </span>
-              <ChevronDown size={14} style={{ color: 'rgba(250,250,249,0.45)' }} />
+              <ChevronDown size={14} style={portalStyle({ color: 'rgba(250,250,249,0.45)' })} />
             </button>
           </div>
 
@@ -479,12 +481,12 @@ export default function MihsapAgentPage() {
               onClick={() => runMut.mutate()}
               disabled={selectedIds.length === 0 || runMut.isPending}
               className="inline-flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-bold disabled:opacity-50"
-              style={{
+              style={portalStyle({
                 background: selectedIds.length > 0 ? 'linear-gradient(135deg, #b8a06f, #8b7649)' : 'rgba(255,255,255,0.05)',
                 color: selectedIds.length > 0 ? '#0f0d0b' : 'rgba(250,250,249,0.45)',
                 boxShadow: selectedIds.length > 0 ? '0 4px 12px rgba(184,160,111,.3)' : 'none',
                 height: 42,
-              }}
+              })}
             >
               {runMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
               Çalıştır
@@ -496,12 +498,12 @@ export default function MihsapAgentPage() {
                 onClick={() => cancelMut.mutate(aktifKomut.id)}
                 disabled={cancelMut.isPending}
                 className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium disabled:opacity-50"
-                style={{
+                style={portalStyle({
                   background: 'rgba(239,68,68,0.08)',
                   border: '1px solid rgba(239,68,68,0.28)',
                   color: '#f87171',
                   height: 42,
-                }}
+                })}
                 title="Aktif komutu tamamen iptal et ve bu turu kapat"
               >
                 {cancelMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <X size={14} />}
@@ -513,12 +515,12 @@ export default function MihsapAgentPage() {
 
         {/* Seçili mükellef chip'leri (1'den fazlaysa) */}
         {selectedIds.length > 1 && (
-          <div className="flex flex-wrap gap-1.5 mt-3 pt-3 border-t" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+          <div className="flex flex-wrap gap-1.5 mt-3 pt-3 border-t" style={portalStyle({ borderColor: 'rgba(255,255,255,0.05)' })}>
             {selectedNames.map((t) => (
               <span
                 key={t.id}
                 className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full"
-                style={{ background: 'rgba(184,160,111,.1)', color: '#b8a06f' }}
+                style={portalStyle({ background: 'rgba(184,160,111,.1)', color: '#b8a06f' })}
               >
                 {taxpayerName(t)}
                 <button
@@ -536,12 +538,12 @@ export default function MihsapAgentPage() {
         {commands[0] && (
           <div
             className="mt-4 pt-4 border-t flex items-start gap-3 flex-wrap"
-            style={{ borderColor: 'rgba(255,255,255,0.05)' }}
+            style={portalStyle({ borderColor: 'rgba(255,255,255,0.05)' })}
           >
             <div className="flex items-center gap-2">
               <div
                 className="w-8 h-8 rounded-lg flex items-center justify-center"
-                style={{
+                style={portalStyle({
                   background:
                     commands[0].status === 'done'
                       ? 'rgba(34,197,94,.15)'
@@ -558,15 +560,15 @@ export default function MihsapAgentPage() {
                       : commands[0].status === 'cancelled'
                       ? '#94a3b8'
                       : '#f59e0b',
-                }}
+                })}
               >
                 <Clock size={14} />
               </div>
               <div>
-                <div className="text-[10px] uppercase font-semibold tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                <div className="text-[10px] uppercase font-semibold tracking-wider" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                   Son Komut
                 </div>
-                <div className="text-sm font-semibold" style={{ color: '#fafaf9' }}>
+                <div className="text-sm font-semibold" style={portalStyle({ color: '#fafaf9' })}>
                   {commands[0].status === 'done'
                     ? 'Tamamlandı'
                     : commands[0].status === 'failed'
@@ -576,14 +578,14 @@ export default function MihsapAgentPage() {
                     : commands[0].status === 'running'
                     ? 'Çalışıyor'
                     : 'Beklemede'}
-                  <span className="text-xs ml-2 font-normal" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                  <span className="text-xs ml-2 font-normal" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                     {new Date(commands[0].createdAt).toLocaleString('tr-TR')}
                   </span>
                 </div>
               </div>
             </div>
             {commands[0].result?.message && (
-              <div className="flex-1 min-w-[200px] text-sm px-3 py-2 rounded-lg" style={{ background: 'rgba(255,255,255,0.03)', color: '#fafaf9' }}>
+              <div className="flex-1 min-w-[200px] text-sm px-3 py-2 rounded-lg" style={portalStyle({ background: 'rgba(255,255,255,0.03)', color: '#fafaf9' })}>
                 {commands[0].result.message}
               </div>
             )}
@@ -595,18 +597,18 @@ export default function MihsapAgentPage() {
       {pendingDecisions.length > 0 && (
         <div
           className="rounded-xl border overflow-hidden"
-          style={{ background: 'rgba(245,158,11,0.06)', borderColor: 'rgba(245,158,11,0.30)' }}
+          style={portalStyle({ background: 'rgba(245,158,11,0.06)', borderColor: 'rgba(245,158,11,0.30)' })}
         >
-          <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: '1px solid rgba(245,158,11,0.20)' }}>
+          <div className="flex items-center justify-between px-4 py-3" style={portalStyle({ borderBottom: '1px solid rgba(245,158,11,0.20)' })}>
             <div className="flex items-center gap-2.5">
-              <AlertTriangle size={16} style={{ color: '#f59e0b' }} />
-              <h2 className="font-semibold" style={{ color: '#fbbf24' }}>
+              <AlertTriangle size={16} style={portalStyle({ color: '#f59e0b' })} />
+              <h2 className="font-semibold" style={portalStyle({ color: '#fbbf24' })}>
                 Bekleyen Onaylar
-                <span className="ml-2 text-[11px] font-bold px-1.5 py-0.5 rounded" style={{ background: 'rgba(245,158,11,0.25)', color: '#fbbf24' }}>
+                <span className="ml-2 text-[11px] font-bold px-1.5 py-0.5 rounded" style={portalStyle({ background: 'rgba(245,158,11,0.25)', color: '#fbbf24' })}>
                   {pendingDecisions.length}
                 </span>
               </h2>
-              <span className="text-[11.5px]" style={{ color: 'rgba(250,250,249,0.55)' }}>
+              <span className="text-[11.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>
                 AI kararı geçmişle çelişen — onayını bekliyor
               </span>
             </div>
@@ -628,14 +630,14 @@ export default function MihsapAgentPage() {
       {/* CANLI LOG FEED — Bekleyen Onaylar'ın altında, Mükellef Listesi'nin üstünde */}
       <div
         className="rounded-xl border overflow-hidden"
-        style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
+        style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' })}
       >
-        <div className="flex items-center justify-between p-4 border-b" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+        <div className="flex items-center justify-between p-4 border-b" style={portalStyle({ borderColor: 'rgba(255,255,255,0.05)' })}>
           <div>
-            <h2 className="font-semibold flex items-center gap-2" style={{ color: '#fafaf9' }}>
-              <Zap size={14} style={{ color: '#b8a06f' }} /> Canlı İşlem Akışı
+            <h2 className="font-semibold flex items-center gap-2" style={portalStyle({ color: '#fafaf9' })}>
+              <Zap size={14} style={portalStyle({ color: '#b8a06f' })} /> Canlı İşlem Akışı
             </h2>
-            <p className="text-xs mt-0.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
+            <p className="text-xs mt-0.5" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
               Son {events.length} işlem — 3 saniyede bir yenilenir · Excel: {reportScopeLabel}
             </p>
           </div>
@@ -645,11 +647,11 @@ export default function MihsapAgentPage() {
               onClick={downloadProcessingReport}
               disabled={exportingReport}
               className="text-xs inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border disabled:opacity-50"
-              style={{
+              style={portalStyle({
                 background: 'rgba(184,160,111,0.10)',
                 borderColor: 'rgba(184,160,111,0.28)',
                 color: '#d4b876',
-              }}
+              })}
               title={`${reportScopeLabel} · fatura tarihine göre süzülür`}
             >
               {exportingReport ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
@@ -659,7 +661,7 @@ export default function MihsapAgentPage() {
         </div>
         <div className="p-2 space-y-2 max-h-[680px] overflow-y-auto">
           {events.length === 0 ? (
-            <div className="text-center py-12 text-sm" style={{ color: 'rgba(250,250,249,0.45)' }}>
+            <div className="text-center py-12 text-sm" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
               Henüz işlem yok. Bir komut çalıştırdığında buraya akar.
             </div>
           ) : (
@@ -672,12 +674,12 @@ export default function MihsapAgentPage() {
       {pickerOpen && (
         <div
           className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-[8vh]"
-          style={{ background: 'rgba(0,0,0,.6)', backdropFilter: 'blur(6px)' }}
+          style={portalStyle({ background: 'rgba(0,0,0,.6)', backdropFilter: 'blur(6px)' })}
           onClick={() => setPickerOpen(false)}
         >
           <div
             className="w-full max-w-xl rounded-2xl border shadow-2xl flex flex-col overflow-hidden"
-            style={{
+            style={portalStyle({
               // --card alias'ı globals.css'te tanımlı olsa da, herhangi bir
               // build sırasında CSS'in gelmesinden önce modal render edilirse
               // transparan görünüyordu. İki katmanlı fallback: önce --card-bg
@@ -685,50 +687,50 @@ export default function MihsapAgentPage() {
               background: 'rgba(17,14,12,0.98)',
               borderColor: 'rgba(255,255,255,0.05)',
               maxHeight: '84vh',
-            }}
+            })}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
             <div
               className="flex items-center justify-between px-5 py-4 border-b"
-              style={{ borderColor: 'rgba(255,255,255,0.05)', background: 'linear-gradient(135deg, rgba(184,160,111,.08), transparent)' }}
+              style={portalStyle({ borderColor: 'rgba(255,255,255,0.05)', background: 'linear-gradient(135deg, rgba(184,160,111,.08), transparent)' })}
             >
               <div>
-                <h3 className="text-lg font-bold" style={{ color: '#fafaf9' }}>
+                <h3 className="text-lg font-bold" style={portalStyle({ color: '#fafaf9' })}>
                   Mükellef Seç
                 </h3>
-                <p className="text-xs mt-0.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                <p className="text-xs mt-0.5" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                   Mihsap ID tanımlı {mihsapTaxpayers.length} mükellef · {selectedIds.length} seçili
                 </p>
               </div>
               <button
                 onClick={() => setPickerOpen(false)}
                 className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-black/10"
-                style={{ color: 'rgba(250,250,249,0.45)' }}
+                style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}
               >
                 <X size={16} />
               </button>
             </div>
 
             {/* Search + bulk actions */}
-            <div className="px-5 py-3 border-b space-y-2.5" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+            <div className="px-5 py-3 border-b space-y-2.5" style={portalStyle({ borderColor: 'rgba(255,255,255,0.05)' })}>
               <div
                 className="flex items-center gap-2 px-3 py-2.5 rounded-lg border"
-                style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)' }}
+                style={portalStyle({ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)' })}
               >
-                <Search size={14} style={{ color: 'rgba(250,250,249,0.45)' }} />
+                <Search size={14} style={portalStyle({ color: 'rgba(250,250,249,0.45)' })} />
                 <input
                   value={pickerSearch}
                   onChange={(e) => setPickerSearch(e.target.value)}
                   placeholder="Mükellef adı ara…"
                   autoFocus
                   className="flex-1 bg-transparent outline-none text-sm"
-                  style={{ color: '#fafaf9' }}
+                  style={portalStyle({ color: '#fafaf9' })}
                 />
                 {pickerSearch && (
                   <button
                     onClick={() => setPickerSearch('')}
-                    style={{ color: 'rgba(250,250,249,0.45)' }}
+                    style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}
                   >
                     <X size={13} />
                   </button>
@@ -738,18 +740,18 @@ export default function MihsapAgentPage() {
                 <button
                   onClick={() => setSelectedIds(filtered.map((t) => t.id))}
                   className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md font-medium"
-                  style={{ background: 'rgba(184,160,111,.15)', color: '#b8a06f' }}
+                  style={portalStyle({ background: 'rgba(184,160,111,.15)', color: '#b8a06f' })}
                 >
                   ✓ Filtreli hepsini seç ({filtered.length})
                 </button>
                 <button
                   onClick={() => setSelectedIds([])}
                   className="px-2.5 py-1 rounded-md"
-                  style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.45)' }}
+                  style={portalStyle({ background: 'rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.45)' })}
                 >
                   Temizle
                 </button>
-                <span className="ml-auto" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                <span className="ml-auto" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                   {filtered.length} sonuç
                 </span>
               </div>
@@ -758,7 +760,7 @@ export default function MihsapAgentPage() {
             {/* List */}
             <div className="flex-1 overflow-y-auto p-2">
               {filtered.length === 0 ? (
-                <div className="text-sm p-8 text-center" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                <div className="text-sm p-8 text-center" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                   Sonuç yok
                 </div>
               ) : (
@@ -770,15 +772,15 @@ export default function MihsapAgentPage() {
                     <label
                       key={t.id}
                       className="flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg cursor-pointer transition-colors"
-                      style={{
+                      style={portalStyle({
                         background: checked ? 'rgba(184,160,111,.08)' : 'transparent',
                         color: '#fafaf9',
-                      }}
+                      })}
                       onMouseEnter={(e) => {
-                        if (!checked) (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,.03)';
+                        if (!checked) (e.currentTarget as HTMLElement).style.background = portalPaint('rgba(255,255,255,.03)', 'background');
                       }}
                       onMouseLeave={(e) => {
-                        if (!checked) (e.currentTarget as HTMLElement).style.background = 'transparent';
+                        if (!checked) (e.currentTarget as HTMLElement).style.background = portalPaint('transparent', 'background');
                       }}
                     >
                       <input
@@ -792,12 +794,12 @@ export default function MihsapAgentPage() {
                       />
                       <div
                         className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0"
-                        style={{
+                        style={portalStyle({
                           background: checked
                             ? 'linear-gradient(135deg, #b8a06f, #8b7649)'
                             : 'rgba(255,255,255,0.05)',
                           color: checked ? '#0f0d0b' : 'rgba(250,250,249,0.45)',
-                        }}
+                        })}
                       >
                         {initial}
                       </div>
@@ -805,7 +807,7 @@ export default function MihsapAgentPage() {
                       {t.mihsapId && (
                         <span
                           className="text-[10px] px-2 py-0.5 rounded tabular-nums"
-                          style={{ background: 'rgba(255,255,255,0.03)', color: 'rgba(250,250,249,0.45)' }}
+                          style={portalStyle({ background: 'rgba(255,255,255,0.03)', color: 'rgba(250,250,249,0.45)' })}
                         >
                           #{t.mihsapId}
                         </span>
@@ -819,7 +821,7 @@ export default function MihsapAgentPage() {
             {/* Footer */}
             <div
               className="px-5 py-3 border-t flex items-center gap-3"
-              style={{ borderColor: 'rgba(255,255,255,0.05)', background: 'rgba(255,255,255,0.03)' }}
+              style={portalStyle({ borderColor: 'rgba(255,255,255,0.05)', background: 'rgba(255,255,255,0.03)' })}
             >
               <button
                 onClick={() => {
@@ -827,7 +829,7 @@ export default function MihsapAgentPage() {
                   setPickerOpen(false);
                 }}
                 className="px-4 py-2 rounded-lg text-sm font-medium"
-                style={{ color: 'rgba(250,250,249,0.45)' }}
+                style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}
               >
                 İptal
               </button>
@@ -835,12 +837,12 @@ export default function MihsapAgentPage() {
                 onClick={() => setPickerOpen(false)}
                 disabled={selectedIds.length === 0}
                 className="flex-1 py-2.5 rounded-lg text-sm font-bold disabled:opacity-50"
-                style={{
+                style={portalStyle({
                   background: selectedIds.length > 0
                     ? 'linear-gradient(135deg, #b8a06f, #8b7649)'
                     : 'rgba(255,255,255,0.05)',
                   color: selectedIds.length > 0 ? '#0f0d0b' : 'rgba(250,250,249,0.45)',
-                }}
+                })}
               >
                 {selectedIds.length} Mükellef ile Devam
               </button>
@@ -881,44 +883,44 @@ function PendingDecisionRow({ row, onaylaPendingMut, reddetPendingMut }: {
   return (
     <div
       className="grid grid-cols-[1fr_auto] gap-3 items-start px-4 py-3"
-      style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}
+      style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.04)' })}
     >
       <div className="min-w-0">
         <div className="flex items-center gap-2 flex-wrap mb-1">
-          <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded" style={{ background: 'rgba(245,158,11,0.15)', color: '#fbbf24' }}>
+          <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded" style={portalStyle({ background: 'rgba(245,158,11,0.15)', color: '#fbbf24' })}>
             {row.kararTipi}
           </span>
-          <span className="font-semibold text-[13px] truncate" style={{ color: '#fafaf9' }}>
+          <span className="font-semibold text-[13px] truncate" style={portalStyle({ color: '#fafaf9' })}>
             {row.firmaUnvan || row.firmaKimlikNo || '(firma yok)'}
           </span>
           {row.belgeNo && (
-            <span className="text-[11px] px-1.5 py-0.5 rounded font-mono" style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(250,250,249,0.55)' }}>
+            <span className="text-[11px] px-1.5 py-0.5 rounded font-mono" style={portalStyle({ background: 'rgba(255,255,255,0.04)', color: 'rgba(250,250,249,0.55)' })}>
               #{row.belgeNo}
             </span>
           )}
           {row.tutar && (
-            <span className="text-[11px] px-1.5 py-0.5 rounded font-mono" style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(250,250,249,0.55)' }}>
+            <span className="text-[11px] px-1.5 py-0.5 rounded font-mono" style={portalStyle({ background: 'rgba(255,255,255,0.04)', color: 'rgba(250,250,249,0.55)' })}>
               {row.tutar}
             </span>
           )}
         </div>
-        <div className="text-[11.5px] mb-1.5" style={{ color: 'rgba(250,250,249,0.55)' }}>
-          Mükellef: <span style={{ color: '#fafaf9' }}>{row.mukellef || '—'}</span>
+        <div className="text-[11.5px] mb-1.5" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>
+          Mükellef: <span style={portalStyle({ color: '#fafaf9' })}>{row.mukellef || '—'}</span>
         </div>
         <div className="grid grid-cols-2 gap-2 text-[11.5px] mb-1.5">
-          <div className="px-2 py-1 rounded" style={{ background: 'rgba(245,158,11,0.10)', border: '1px solid rgba(245,158,11,0.20)' }}>
-            <div className="text-[10px] uppercase font-semibold" style={{ color: '#fbbf24' }}>AI Önerisi</div>
-            <div className="font-mono mt-0.5" style={{ color: '#fafaf9' }}>{aiKodu || '(boş)'}</div>
+          <div className="px-2 py-1 rounded" style={portalStyle({ background: 'rgba(245,158,11,0.10)', border: '1px solid rgba(245,158,11,0.20)' })}>
+            <div className="text-[10px] uppercase font-semibold" style={portalStyle({ color: '#fbbf24' })}>AI Önerisi</div>
+            <div className="font-mono mt-0.5" style={portalStyle({ color: '#fafaf9' })}>{aiKodu || '(boş)'}</div>
           </div>
-          <div className="px-2 py-1 rounded" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
-            <div className="text-[10px] uppercase font-semibold" style={{ color: 'rgba(250,250,249,0.55)' }}>Geçmiş Beklenen</div>
-            <div className="font-mono mt-0.5" style={{ color: '#fafaf9' }}>{gecmis}</div>
+          <div className="px-2 py-1 rounded" style={portalStyle({ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' })}>
+            <div className="text-[10px] uppercase font-semibold" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>Geçmiş Beklenen</div>
+            <div className="font-mono mt-0.5" style={portalStyle({ color: '#fafaf9' })}>{gecmis}</div>
           </div>
         </div>
         {isFatura && (
-          <div className="px-2 py-1.5 rounded mb-1.5" style={{ background: editilmis ? 'rgba(212,184,118,0.10)' : 'rgba(255,255,255,0.025)', border: editilmis ? '1px solid rgba(212,184,118,0.30)' : '1px solid rgba(255,255,255,0.05)' }}>
+          <div className="px-2 py-1.5 rounded mb-1.5" style={portalStyle({ background: editilmis ? 'rgba(212,184,118,0.10)' : 'rgba(255,255,255,0.025)', border: editilmis ? '1px solid rgba(212,184,118,0.30)' : '1px solid rgba(255,255,255,0.05)' })}>
             <div className="flex items-center justify-between mb-1">
-              <div className="text-[10px] uppercase font-semibold tracking-wider" style={{ color: editilmis ? '#d4b876' : 'rgba(250,250,249,0.55)' }}>
+              <div className="text-[10px] uppercase font-semibold tracking-wider" style={portalStyle({ color: editilmis ? '#d4b876' : 'rgba(250,250,249,0.55)' })}>
                 {editilmis ? 'Override Edilecek Kod' : 'Onaylanacak Kod (gerekirse düzelt)'}
               </div>
               {editilmis && (
@@ -926,7 +928,7 @@ function PendingDecisionRow({ row, onaylaPendingMut, reddetPendingMut }: {
                   type="button"
                   onClick={() => setOverride(aiKodu)}
                   className="text-[10px] underline"
-                  style={{ color: 'rgba(250,250,249,0.45)' }}
+                  style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}
                   title="AI önerisine geri dön"
                 >
                   sıfırla
@@ -940,22 +942,22 @@ function PendingDecisionRow({ row, onaylaPendingMut, reddetPendingMut }: {
               placeholder="Hesap kodu (ör. 153.01.001-%01 TICARI MAL ALISLAR)"
               spellCheck={false}
               className="w-full text-[12px] font-mono outline-none"
-              style={{
+              style={portalStyle({
                 background: 'transparent',
                 color: '#fafaf9',
                 borderBottom: '1px dashed rgba(255,255,255,0.15)',
                 padding: '2px 0',
-              }}
+              })}
             />
             {editilmis && (
-              <div className="text-[10.5px] mt-1" style={{ color: '#d4b876' }}>
+              <div className="text-[10.5px] mt-1" style={portalStyle({ color: '#d4b876' })}>
                 Onaylayınca VendorMemory bu kodu öğrenir — aynı firma + KDV oranı bir daha onaya düşmez.
               </div>
             )}
           </div>
         )}
         {row.sapmaSebep && (
-          <div className="text-[11px] italic" style={{ color: 'rgba(250,250,249,0.45)' }}>
+          <div className="text-[11px] italic" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
             {row.sapmaSebep}
           </div>
         )}
@@ -965,11 +967,11 @@ function PendingDecisionRow({ row, onaylaPendingMut, reddetPendingMut }: {
           onClick={() => onaylaPendingMut.mutate({ id: row.id, override: editilmis ? override : undefined })}
           disabled={isPending}
           className="inline-flex items-center gap-1 text-[11px] font-bold px-3 py-1.5 rounded disabled:opacity-50"
-          style={{
+          style={portalStyle({
             background: editilmis ? 'rgba(212,184,118,0.20)' : 'rgba(34,197,94,0.18)',
             color: editilmis ? '#d4b876' : '#22c55e',
             border: editilmis ? '1px solid rgba(212,184,118,0.45)' : '1px solid rgba(34,197,94,0.4)',
-          }}
+          })}
           title={editilmis ? 'Düzeltilmiş kodu onayla' : "AI önerisini onayla"}
         >
           <ThumbsUp size={12} /> {editilmis ? 'Onayla (override)' : 'Onayla'}
@@ -982,7 +984,7 @@ function PendingDecisionRow({ row, onaylaPendingMut, reddetPendingMut }: {
           }}
           disabled={isPending}
           className="inline-flex items-center gap-1 text-[11px] font-bold px-3 py-1.5 rounded disabled:opacity-50"
-          style={{ background: 'rgba(244,63,94,0.12)', color: '#f43f5e', border: '1px solid rgba(244,63,94,0.35)' }}
+          style={portalStyle({ background: 'rgba(244,63,94,0.12)', color: '#f43f5e', border: '1px solid rgba(244,63,94,0.35)' })}
           title="Reddet"
         >
           <ThumbsDown size={12} /> Reddet
@@ -996,19 +998,19 @@ function KpiMini({ label, value, color, icon }: { label: string; value: number; 
   return (
     <div
       className="rounded-lg px-3 py-2.5 border flex items-center gap-3"
-      style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
+      style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' })}
     >
       <div
         className="w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold flex-shrink-0"
-        style={{ background: color + '18', color }}
+        style={portalStyle({ background: color + '18', color })}
       >
         {icon}
       </div>
       <div className="min-w-0 flex items-baseline gap-2">
-        <div className="text-[10px] uppercase font-semibold tracking-wider whitespace-nowrap" style={{ color: 'rgba(250,250,249,0.45)' }}>
+        <div className="text-[10px] uppercase font-semibold tracking-wider whitespace-nowrap" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
           {label}
         </div>
-        <div className="text-lg font-bold tabular-nums leading-none" style={{ color }}>
+        <div className="text-lg font-bold tabular-nums leading-none" style={portalStyle({ color })}>
           {value.toLocaleString('tr-TR')}
         </div>
       </div>
@@ -1091,16 +1093,16 @@ function AtlamaIncelemesi({
     : { t: 'Normal', c: '#34d399', bg: 'rgba(52,211,153,0.12)' };
 
   return (
-    <div className="rounded-xl border overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}>
-      <div className="p-4 border-b" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
-        <h2 className="font-semibold flex items-center gap-2" style={{ color: '#fafaf9' }}>
-          <AlertTriangle size={14} style={{ color: '#f59e0b' }} /> Atlama İncelemesi — {ayEtiket}
+    <div className="rounded-xl border overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' })}>
+      <div className="p-4 border-b" style={portalStyle({ borderColor: 'rgba(255,255,255,0.05)' })}>
+        <h2 className="font-semibold flex items-center gap-2" style={portalStyle({ color: '#fafaf9' })}>
+          <AlertTriangle size={14} style={portalStyle({ color: '#f59e0b' })} /> Atlama İncelemesi — {ayEtiket}
         </h2>
-        <p className="text-xs mt-0.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
+        <p className="text-xs mt-0.5" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
           İşlenemeyen faturalar — &quot;bizim sistemden mi, gerçek belge sorunundan mı&quot; diye sınıflandırılır
         </p>
       </div>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-px" style={{ background: 'rgba(255,255,255,0.04)' }}>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-px" style={portalStyle({ background: 'rgba(255,255,255,0.04)' })}>
         <OzetHucre label="Toplam Atlanan" value={toplam} alt="fatura" color="#d4b876" />
         <OzetHucre label="Bizim Hata (muhtemel)" value={data?.bizimHataAdet ?? 0} alt="düzeltilebilir" color="#fb923c" />
         <OzetHucre label="İncelenecek" value={data?.inceleAdet ?? 0} alt="belirsiz" color="#facc15" />
@@ -1108,18 +1110,18 @@ function AtlamaIncelemesi({
       </div>
       {/* GELİŞTİRME KUYRUĞU (Faz 2 "Düzelt" talepleri) */}
       {bekleyenTalepler.length > 0 && (
-        <div className="px-4 py-2.5 border-b" style={{ borderColor: 'rgba(255,255,255,0.05)', background: 'rgba(248,113,113,0.04)' }}>
-          <div className="text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: '#d4b876' }}>
+        <div className="px-4 py-2.5 border-b" style={portalStyle({ borderColor: 'rgba(255,255,255,0.05)', background: 'rgba(248,113,113,0.04)' })}>
+          <div className="text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={portalStyle({ color: '#d4b876' })}>
             Claude'a Gönderilen Düzeltmeler — {bekleyenTalepler.length} bekliyor
           </div>
           <div className="space-y-1">
             {bekleyenTalepler.slice(0, 6).map((tl: any) => (
               <div key={tl.id} className="text-[12px] flex items-start gap-2">
-                <span className="px-1.5 py-0.5 rounded text-[9.5px] font-bold uppercase shrink-0" style={{ background: 'rgba(251,191,36,0.15)', color: '#fbbf24' }}>Bekliyor</span>
-                <span className="min-w-0" style={{ color: 'rgba(250,250,249,0.8)' }}>
-                  <b style={{ color: '#fafaf9' }}>{tl.kategori || 'Atlama'}</b>
+                <span className="px-1.5 py-0.5 rounded text-[9.5px] font-bold uppercase shrink-0" style={portalStyle({ background: 'rgba(251,191,36,0.15)', color: '#fbbf24' })}>Bekliyor</span>
+                <span className="min-w-0" style={portalStyle({ color: 'rgba(250,250,249,0.8)' })}>
+                  <b style={portalStyle({ color: '#fafaf9' })}>{tl.kategori || 'Atlama'}</b>
                   {tl.kokNeden ? ` — ${tl.kokNeden}` : ''}
-                  {tl.adet ? <span style={{ color: 'rgba(250,250,249,0.4)' }}> · {tl.adet} fatura</span> : null}
+                  {tl.adet ? <span style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}> · {tl.adet} fatura</span> : null}
                 </span>
               </div>
             ))}
@@ -1127,7 +1129,7 @@ function AtlamaIncelemesi({
         </div>
       )}
       {gruplar.length === 0 ? (
-        <div className="p-8 text-center text-sm" style={{ color: 'rgba(250,250,249,0.45)' }}>
+        <div className="p-8 text-center text-sm" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
           Bu dönem için atlanan fatura yok 🎉
         </div>
       ) : (
@@ -1136,22 +1138,22 @@ function AtlamaIncelemesi({
             const r = rozet(g.bizimHata);
             const open = acik === g.key;
             return (
-              <div key={g.key} style={{ borderTop: i > 0 ? '1px solid rgba(255,255,255,0.03)' : 'none' }}>
+              <div key={g.key} style={portalStyle({ borderTop: i > 0 ? '1px solid rgba(255,255,255,0.03)' : 'none' })}>
                 <button
                   onClick={() => setAcik(open ? null : g.key)}
                   className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-white/[0.02] transition-all"
                 >
                   <div className="flex items-center gap-3 min-w-0">
-                    <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase shrink-0" style={{ background: r.bg, color: r.c }}>{r.t}</span>
+                    <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase shrink-0" style={portalStyle({ background: r.bg, color: r.c })}>{r.t}</span>
                     <div className="min-w-0">
-                      <div className="font-medium truncate" style={{ color: '#fafaf9' }}>{g.kategori}</div>
-                      <div className="text-[11px] truncate" style={{ color: 'rgba(250,250,249,0.4)' }}>{g.aciklama}</div>
+                      <div className="font-medium truncate" style={portalStyle({ color: '#fafaf9' })}>{g.kategori}</div>
+                      <div className="text-[11px] truncate" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>{g.aciklama}</div>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <span className="tabular-nums font-semibold" style={{ color: '#d4b876' }}>{g.adet}</span>
-                    <span className="text-[11px]" style={{ color: 'rgba(250,250,249,0.4)' }}>fatura</span>
-                    <ChevronDown size={14} style={{ color: 'rgba(250,250,249,0.4)', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }} />
+                    <span className="tabular-nums font-semibold" style={portalStyle({ color: '#d4b876' })}>{g.adet}</span>
+                    <span className="text-[11px]" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>fatura</span>
+                    <ChevronDown size={14} style={portalStyle({ color: 'rgba(250,250,249,0.4)', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .15s' })} />
                   </div>
                 </button>
                 {open && (
@@ -1166,7 +1168,7 @@ function AtlamaIncelemesi({
                             onClick={() => teshisEt(g.key)}
                             disabled={yukleniyor}
                             className="mb-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium transition-all hover:opacity-90"
-                            style={{ background: 'rgba(184,160,111,0.12)', color: '#d4b876', border: '1px solid rgba(184,160,111,0.25)' }}
+                            style={portalStyle({ background: 'rgba(184,160,111,0.12)', color: '#d4b876', border: '1px solid rgba(184,160,111,0.25)' })}
                           >
                             {yukleniyor ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />}
                             {yukleniyor ? 'AI inceliyor…' : 'AI ile Teşhis Et'}
@@ -1175,27 +1177,27 @@ function AtlamaIncelemesi({
                       }
                       if (!t.ok) {
                         return (
-                          <div className="mb-2 text-[12px] px-3 py-2 rounded-lg flex items-center justify-between gap-2" style={{ background: 'rgba(248,113,113,0.08)', color: '#f87171' }}>
+                          <div className="mb-2 text-[12px] px-3 py-2 rounded-lg flex items-center justify-between gap-2" style={portalStyle({ background: 'rgba(248,113,113,0.08)', color: '#f87171' })}>
                             <span>Teşhis alınamadı: {t.sebep}</span>
-                            <button onClick={() => teshisEt(g.key)} className="underline shrink-0" style={{ color: '#f87171' }}>tekrar</button>
+                            <button onClick={() => teshisEt(g.key)} className="underline shrink-0" style={portalStyle({ color: '#f87171' })}>tekrar</button>
                           </div>
                         );
                       }
                       const renk = t.bizimHata === 'evet' ? '#f87171' : t.bizimHata === 'kismi' ? '#fb923c' : '#34d399';
                       const etiket = t.bizimHata === 'evet' ? 'Bizim hata' : t.bizimHata === 'kismi' ? 'Kısmen bizim' : 'Bizim hata değil';
                       return (
-                        <div className="mb-2 px-3 py-2.5 rounded-lg text-[12px]" style={{ background: 'rgba(184,160,111,0.06)', border: '1px solid rgba(184,160,111,0.18)' }}>
+                        <div className="mb-2 px-3 py-2.5 rounded-lg text-[12px]" style={portalStyle({ background: 'rgba(184,160,111,0.06)', border: '1px solid rgba(184,160,111,0.18)' })}>
                           <div className="flex items-center gap-2 mb-1 flex-wrap">
-                            <span className="inline-flex items-center gap-1" style={{ color: '#d4b876', fontWeight: 600 }}><Zap size={12} /> AI Teşhis</span>
-                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase" style={{ background: `${renk}22`, color: renk }}>{etiket}</span>
-                            {t.guven != null && <span className="text-[10px]" style={{ color: 'rgba(250,250,249,0.4)' }}>%{t.guven} güven</span>}
+                            <span className="inline-flex items-center gap-1" style={portalStyle({ color: '#d4b876', fontWeight: 600 })}><Zap size={12} /> AI Teşhis</span>
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase" style={portalStyle({ background: `${renk}22`, color: renk })}>{etiket}</span>
+                            {t.guven != null && <span className="text-[10px]" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>%{t.guven} güven</span>}
                           </div>
-                          {t.kokNeden && <div style={{ color: 'rgba(250,250,249,0.8)' }}><b style={{ color: 'rgba(250,250,249,0.5)' }}>Kök neden:</b> {t.kokNeden}</div>}
-                          {t.onerilenDuzeltme && <div className="mt-0.5" style={{ color: 'rgba(250,250,249,0.8)' }}><b style={{ color: 'rgba(250,250,249,0.5)' }}>Öneri:</b> {t.onerilenDuzeltme}</div>}
+                          {t.kokNeden && <div style={portalStyle({ color: 'rgba(250,250,249,0.8)' })}><b style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>Kök neden:</b> {t.kokNeden}</div>}
+                          {t.onerilenDuzeltme && <div className="mt-0.5" style={portalStyle({ color: 'rgba(250,250,249,0.8)' })}><b style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>Öneri:</b> {t.onerilenDuzeltme}</div>}
                           {t.bizimHata !== 'hayir' && t.onerilenDuzeltme && (
                             <div className="mt-1.5">
                               {talepDurum[g.key] === 'eklendi' ? (
-                                <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: '#34d399' }}><CheckCircle2 size={12} /> Claude'a gönderildi — düzeltilecek</span>
+                                <span className="inline-flex items-center gap-1 text-[11px]" style={portalStyle({ color: '#34d399' })}><CheckCircle2 size={12} /> Claude'a gönderildi — düzeltilecek</span>
                               ) : (
                                 <button
                                   onClick={() => {
@@ -1205,7 +1207,7 @@ function AtlamaIncelemesi({
                                   }}
                                   disabled={talepDurum[g.key] === 'gonderiliyor'}
                                   className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11.5px] font-medium hover:opacity-90"
-                                  style={{ background: 'rgba(184,160,111,0.14)', color: '#d4b876', border: '1px solid rgba(184,160,111,0.3)' }}
+                                  style={portalStyle({ background: 'rgba(184,160,111,0.14)', color: '#d4b876', border: '1px solid rgba(184,160,111,0.3)' })}
                                 >
                                   <Edit3 size={12} /> Claude'a gönder (düzeltsin)
                                 </button>
@@ -1222,17 +1224,17 @@ function AtlamaIncelemesi({
                         onSec(adlar);
                       }}
                       className="mb-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium transition-all hover:opacity-90"
-                      style={{ background: 'rgba(52,211,153,0.10)', color: '#34d399', border: '1px solid rgba(52,211,153,0.25)' }}
+                      style={portalStyle({ background: 'rgba(52,211,153,0.10)', color: '#34d399', border: '1px solid rgba(52,211,153,0.25)' })}
                     >
                       <PlayCircle size={13} /> Bu mükellefleri seç (yeniden işle)
                     </button>
-                    <div className="rounded-lg overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.05)' }}>
+                    <div className="rounded-lg overflow-hidden" style={portalStyle({ border: '1px solid rgba(255,255,255,0.05)' })}>
                       {g.ornekler.map((o, j) => (
-                        <div key={o.id} className="px-3 py-2 text-[12px]" style={{ borderTop: j > 0 ? '1px solid rgba(255,255,255,0.03)' : 'none', background: 'rgba(255,255,255,0.01)' }}>
+                        <div key={o.id} className="px-3 py-2 text-[12px]" style={portalStyle({ borderTop: j > 0 ? '1px solid rgba(255,255,255,0.03)' : 'none', background: 'rgba(255,255,255,0.01)' })}>
                           <div className="min-w-0">
-                            <span style={{ color: '#fafaf9' }}>{o.mukellef || '—'}</span>
-                            <span style={{ color: 'rgba(250,250,249,0.4)' }}> · #{o.belgeNo || '—'}{o.tutar ? ` · ${o.tutar} TL` : ''}</span>
-                            <div className="text-[11px]" style={{ color: 'rgba(250,250,249,0.45)' }}>{o.sebep}</div>
+                            <span style={portalStyle({ color: '#fafaf9' })}>{o.mukellef || '—'}</span>
+                            <span style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}> · #{o.belgeNo || '—'}{o.tutar ? ` · ${o.tutar} TL` : ''}</span>
+                            <div className="text-[11px]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>{o.sebep}</div>
                           </div>
                         </div>
                       ))}
@@ -1259,16 +1261,16 @@ function OzetHucre({
 }) {
   const display = valueText !== undefined ? valueText : (value ?? 0).toLocaleString('tr-TR');
   return (
-    <div className="px-4 py-3" style={{ background: 'rgba(12,10,7,0.5)' }}>
-      <div className="text-[10px] uppercase font-semibold tracking-wider mb-1" style={{ color: 'rgba(250,250,249,0.45)' }}>
+    <div className="px-4 py-3" style={portalStyle({ background: 'rgba(12,10,7,0.5)' })}>
+      <div className="text-[10px] uppercase font-semibold tracking-wider mb-1" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
         {label}
       </div>
       <div className="flex items-baseline gap-2">
-        <span className="text-xl font-bold tabular-nums" style={{ color }}>
+        <span className="text-xl font-bold tabular-nums" style={portalStyle({ color })}>
           {display}
         </span>
         {alt && (
-          <span className="text-[11px]" style={{ color: 'rgba(250,250,249,0.4)' }}>
+          <span className="text-[11px]" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>
             {alt}
           </span>
         )}

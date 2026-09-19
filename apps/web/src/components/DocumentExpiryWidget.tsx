@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import React from 'react';
 import Link from 'next/link';
@@ -64,11 +66,11 @@ export default function DocumentExpiryWidget({
   }
 
   return (
-    <div className="border-b p-4" style={{ borderColor: HAIR }}>
+    <div className="border-b p-4" style={portalStyle({ borderColor: HAIR })}>
       <div className="mb-2 flex items-center justify-between">
-        <span className="flex items-center gap-2 text-[10.5px] font-extrabold uppercase tracking-[0.1em]" style={{ color: MUTED }}>
-          <AlertTriangle size={13} style={{ color: RED }} /> Evrak Yenileme
-          <span className="font-medium normal-case tracking-normal" style={{ color: FAINT }}>
+        <span className="flex items-center gap-2 text-[10.5px] font-extrabold uppercase tracking-[0.1em]" style={portalStyle({ color: MUTED })}>
+          <AlertTriangle size={13} style={portalStyle({ color: RED })} /> Evrak Yenileme
+          <span className="font-medium normal-case tracking-normal" style={portalStyle({ color: FAINT })}>
             · {expired.length > 0 && `${expired.length} dolmuş`}
             {expired.length > 0 && soon.length > 0 && ' · '}
             {soon.length > 0 && `${soon.length} yaklaşıyor`}
@@ -78,7 +80,7 @@ export default function DocumentExpiryWidget({
           <Link
             href="/panel/evraklar/yenileme"
             className="flex items-center gap-1 text-[11px] font-bold"
-            style={{ color: STEEL_BR }}
+            style={portalStyle({ color: STEEL_BR })}
           >
             Tümü <ArrowRight size={11} />
           </Link>
@@ -93,22 +95,22 @@ export default function DocumentExpiryWidget({
               key={d.id}
               href={`/panel/evraklar/${d.id}`}
               className="flex items-center justify-between gap-3 rounded-lg border px-2.5 py-2 transition hover:bg-white/[0.03]"
-              style={{ borderColor: HAIR, background: FIELD }}
+              style={portalStyle({ borderColor: HAIR, background: FIELD })}
             >
               <div className="flex min-w-0 flex-1 items-center gap-2">
-                <FileText size={13} style={{ color: FAINT, flexShrink: 0 }} />
-                <span className="truncate text-[12px]" style={{ color: 'rgba(245,245,244,0.86)' }}>
+                <FileText size={13} style={portalStyle({ color: FAINT, flexShrink: 0 })} />
+                <span className="truncate text-[12px]" style={portalStyle({ color: 'rgba(245,245,244,0.86)' })}>
                   {d.title}
                 </span>
                 {!taxpayerId && (
-                  <span className="truncate text-[11px]" style={{ color: FAINT }}>
+                  <span className="truncate text-[11px]" style={portalStyle({ color: FAINT })}>
                     · {taxpayerName(d.taxpayer)}
                   </span>
                 )}
               </div>
               <span
                 className="whitespace-nowrap rounded-md px-2 py-[2px] text-[10.5px] font-bold"
-                style={{ color, background: `${color}22` }}
+                style={portalStyle({ color, background: `${color}22` })}
               >
                 {expiringStatusLabel(d.status, d.daysLeft)}
               </span>
@@ -122,7 +124,7 @@ export default function DocumentExpiryWidget({
           <Link
             href="/panel/evraklar/yenileme"
             className="text-[11px]"
-            style={{ color: STEEL_BR }}
+            style={portalStyle({ color: STEEL_BR })}
           >
             +{safeDocs.length - visible.length} daha…
           </Link>

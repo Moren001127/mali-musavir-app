@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -133,51 +135,51 @@ export default function YeniOtomasyonPage() {
   }, {});
 
   return (
-    <div className="mx-auto max-w-3xl space-y-5 px-4 pb-16" style={{ color: TEXT }}>
+    <div className="mx-auto max-w-3xl space-y-5 px-4 pb-16" style={portalStyle({ color: TEXT })}>
       {/* ── Başlık ── */}
       <header
         className="relative overflow-hidden rounded-2xl border p-5"
-        style={{
+        style={portalStyle({
           borderColor: LINE,
           background:
             'radial-gradient(120% 140% at 0% 0%, rgba(168,85,247,0.18), transparent 46%), radial-gradient(120% 140% at 100% 0%, rgba(212,184,118,0.14), transparent 46%), #0f0d0b',
-        }}
+        })}
       >
         <div
           className="absolute inset-x-0 top-0 h-1"
-          style={{ background: 'linear-gradient(90deg, #a855f7, #c084fc, #60a5fa, #4ade80, #d4b876)' }}
+          style={portalStyle({ background: 'linear-gradient(90deg, #a855f7, #c084fc, #60a5fa, #4ade80, #d4b876)' })}
         />
         <button
           onClick={() => router.push('/panel/otomasyonlar')}
           className="inline-flex items-center gap-1.5 text-[12px] font-medium"
-          style={{ color: MUTED }}
+          style={portalStyle({ color: MUTED })}
         >
           <ChevronLeft size={14} /> Otomasyonlarım
         </button>
         <h1 className="mt-2 flex items-center gap-2.5 text-[26px] font-semibold leading-tight">
           <span
             className="grid h-10 w-10 place-items-center rounded-xl"
-            style={{ background: 'linear-gradient(135deg, #a855f7, #c084fc)', boxShadow: '0 6px 18px rgba(168,85,247,0.40)' }}
+            style={portalStyle({ background: 'linear-gradient(135deg, #a855f7, #c084fc)', boxShadow: '0 6px 18px rgba(168,85,247,0.40)' })}
           >
-            <Wand2 size={20} style={{ color: '#1a1410' }} />
+            <Wand2 size={20} style={portalStyle({ color: '#1a1410' })} />
           </span>
           Yeni Otomasyon
         </h1>
-        <p className="mt-2 max-w-2xl text-[13px]" style={{ color: MUTED }}>
+        <p className="mt-2 max-w-2xl text-[13px]" style={portalStyle({ color: MUTED })}>
           Otomatik yapılmasını istediğin işi Türkçe yaz. Moren AI cümleyi okuyup uygun otomasyonu
           kurar. Önizlemeyi inceleyip onayladığında çalışmaya başlar.
         </p>
       </header>
 
       {/* ── Yetenek kartı ── */}
-      <details className="rounded-xl border p-3 text-[12px]" style={{ borderColor: LINE, background: CARD }}>
-        <summary className="cursor-pointer font-medium" style={{ color: TEXT }}>
+      <details className="rounded-xl border p-3 text-[12px]" style={portalStyle({ borderColor: LINE, background: CARD })}>
+        <summary className="cursor-pointer font-medium" style={portalStyle({ color: TEXT })}>
           Moren AI Otomasyon ne yapabilir, ne yapamaz?
         </summary>
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <div>
-            <div className="mb-1 font-semibold" style={{ color: GREEN }}>YAPABİLİR</div>
-            <ul className="space-y-1" style={{ color: MUTED }}>
+            <div className="mb-1 font-semibold" style={portalStyle({ color: GREEN })}>YAPABİLİR</div>
+            <ul className="space-y-1" style={portalStyle({ color: MUTED })}>
               <li>• Mükellef / mizan / fatura / beyan verisi sorgular</li>
               <li>• In-app bildirim, e-posta, WhatsApp şablon mesajı gönderir</li>
               <li>• Fişi MIHSAP'tan çekip Word üretir, yazıcıya gönderir</li>
@@ -188,8 +190,8 @@ export default function YeniOtomasyonPage() {
             </ul>
           </div>
           <div>
-            <div className="mb-1 font-semibold" style={{ color: RED }}>YAPAMAZ (henüz)</div>
-            <ul className="space-y-1" style={{ color: MUTED }}>
+            <div className="mb-1 font-semibold" style={portalStyle({ color: RED })}>YAPAMAZ (henüz)</div>
+            <ul className="space-y-1" style={portalStyle({ color: MUTED })}>
               <li>• Luca'ya doğrudan fiş atma</li>
               <li>• PDF/Resim OCR (belge metne çevirme)</li>
               <li>• SMS gönderme (sağlayıcı bağlı değil)</li>
@@ -202,16 +204,16 @@ export default function YeniOtomasyonPage() {
         </div>
         <div
           className="mt-3 rounded-lg border p-2"
-          style={{ borderColor: `${AMBER}40`, background: `${AMBER}12`, color: TEXT }}
+          style={portalStyle({ borderColor: `${AMBER}40`, background: `${AMBER}12`, color: TEXT })}
         >
-          <strong style={{ color: AMBER }}>İpucu:</strong> Yapamayacağı bir şey istersen güven puanı 0
+          <strong style={portalStyle({ color: AMBER })}>İpucu:</strong> Yapamayacağı bir şey istersen güven puanı 0
           ile "yapamıyorum" mesajı görürsün. Sistem sessizce yanlış otomasyon kurmaz.
         </div>
       </details>
 
       {/* ── Cümle girişi ── */}
-      <section className="rounded-2xl border p-5" style={{ borderColor: LINE, background: CARD }}>
-        <label className="mb-2 block text-[13px] font-medium" style={{ color: TEXT }}>
+      <section className="rounded-2xl border p-5" style={portalStyle({ borderColor: LINE, background: CARD })}>
+        <label className="mb-2 block text-[13px] font-medium" style={portalStyle({ color: TEXT })}>
           Ne yapmasını istiyorsun?
         </label>
         <textarea
@@ -219,11 +221,11 @@ export default function YeniOtomasyonPage() {
           onChange={(e) => setPrompt(e.target.value)}
           placeholder="Örn: Her ayın 22'sinde KDV beyannamesi gecikenlere WhatsApp at…"
           className="min-h-[120px] w-full resize-y rounded-lg border p-3 font-mono text-[13px] outline-none"
-          style={{ borderColor: LINE, background: CARD2, color: TEXT }}
+          style={portalStyle({ borderColor: LINE, background: CARD2, color: TEXT })}
           maxLength={2000}
           disabled={parseMutation.isPending}
         />
-        <div className="mt-1 flex justify-between text-[11px]" style={{ color: MUTED }}>
+        <div className="mt-1 flex justify-between text-[11px]" style={portalStyle({ color: MUTED })}>
           <span>{prompt.length} / 2000</span>
           <span>Daha açık yazarsan daha doğru kurar.</span>
         </div>
@@ -233,7 +235,7 @@ export default function YeniOtomasyonPage() {
             onClick={() => parseMutation.mutate(prompt)}
             disabled={prompt.trim().length < 5 || parseMutation.isPending}
             className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-[13px] font-semibold disabled:opacity-50"
-            style={{ background: 'linear-gradient(135deg, #a855f7, #c084fc)', color: '#1a1410' }}
+            style={portalStyle({ background: 'linear-gradient(135deg, #a855f7, #c084fc)', color: '#1a1410' })}
           >
             {parseMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
             {parseMutation.isPending ? 'Cümle çevriliyor…' : 'Önizle'}
@@ -246,7 +248,7 @@ export default function YeniOtomasyonPage() {
               }}
               disabled={parseMutation.isPending}
               className="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-[13px] font-medium"
-              style={{ borderColor: LINE, color: TEXT }}
+              style={portalStyle({ borderColor: LINE, color: TEXT })}
             >
               Yeniden Üret
             </button>
@@ -255,13 +257,13 @@ export default function YeniOtomasyonPage() {
 
         {/* Örnekler */}
         <details className="mt-5" open>
-          <summary className="cursor-pointer text-[13px] font-medium" style={{ color: MUTED }}>
+          <summary className="cursor-pointer text-[13px] font-medium" style={portalStyle({ color: MUTED })}>
             Örnek cümleler (tıklayınca kullanılır)
           </summary>
           <div className="mt-3 space-y-4">
             {Object.entries(grouped).map(([cat, items]) => (
               <div key={cat}>
-                <h4 className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: VIOLET_SOFT }}>
+                <h4 className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider" style={portalStyle({ color: VIOLET_SOFT })}>
                   {cat}
                 </h4>
                 <ul className="space-y-1.5">
@@ -270,11 +272,11 @@ export default function YeniOtomasyonPage() {
                       <button
                         onClick={() => setPrompt(ex.cumle)}
                         className="block w-full rounded-lg border p-3 text-left text-[12px] transition-colors"
-                        style={{ borderColor: LINE, background: CARD2, color: TEXT }}
+                        style={portalStyle({ borderColor: LINE, background: CARD2, color: TEXT })}
                       >
                         <div>{ex.cumle}</div>
                         {ex.note && (
-                          <div className="mt-1 text-[10px] italic" style={{ color: MUTED }}>{ex.note}</div>
+                          <div className="mt-1 text-[10px] italic" style={portalStyle({ color: MUTED })}>{ex.note}</div>
                         )}
                       </button>
                     </li>
@@ -311,20 +313,20 @@ function PreviewPanel({
   const lowConfidence = parsed.confidence < 0.6;
 
   return (
-    <section className="overflow-hidden rounded-2xl border-2" style={{ borderColor: `${VIOLET}66`, background: CARD }}>
-      <div className="border-b px-5 py-4" style={{ borderColor: LINE }}>
-        <div className="flex items-center gap-2 text-[12px] font-medium uppercase tracking-wider" style={{ color: VIOLET_SOFT }}>
+    <section className="overflow-hidden rounded-2xl border-2" style={portalStyle({ borderColor: `${VIOLET}66`, background: CARD })}>
+      <div className="border-b px-5 py-4" style={portalStyle({ borderColor: LINE })}>
+        <div className="flex items-center gap-2 text-[12px] font-medium uppercase tracking-wider" style={portalStyle({ color: VIOLET_SOFT })}>
           <CheckCircle2 size={15} /> Önizleme
         </div>
-        <h2 className="mt-1 text-[19px] font-semibold" style={{ color: TEXT }}>{parsed.title}</h2>
-        {parsed.description && <p className="mt-1 text-[13px]" style={{ color: MUTED }}>{parsed.description}</p>}
+        <h2 className="mt-1 text-[19px] font-semibold" style={portalStyle({ color: TEXT })}>{parsed.title}</h2>
+        {parsed.description && <p className="mt-1 text-[13px]" style={portalStyle({ color: MUTED })}>{parsed.description}</p>}
       </div>
 
       <div className="space-y-4 px-5 py-5">
         {/* İnsan-okur açıklama */}
         <div
           className="rounded-lg border p-4 text-[13px] leading-relaxed"
-          style={{ borderColor: `${VIOLET}33`, background: `${VIOLET}10`, color: TEXT }}
+          style={portalStyle({ borderColor: `${VIOLET}33`, background: `${VIOLET}10`, color: TEXT })}
         >
           {parsed.humanReadablePreview}
         </div>
@@ -337,7 +339,7 @@ function PreviewPanel({
             value={triggerLabel(parsed.triggerType, parsed.triggerConfig)}
           />
           <Info
-            icon={<Zap size={15} style={{ color: VIOLET_SOFT }} />}
+            icon={<Zap size={15} style={portalStyle({ color: VIOLET_SOFT })} />}
             label="Tahmini maliyet"
             value={
               parsed.estimatedCostPerRun > 0
@@ -350,7 +352,7 @@ function PreviewPanel({
         {/* Adımlar */}
         {hasSteps && (
           <div>
-            <h3 className="mb-2 text-[13px] font-medium" style={{ color: TEXT }}>Adımlar</h3>
+            <h3 className="mb-2 text-[13px] font-medium" style={portalStyle({ color: TEXT })}>Adımlar</h3>
             <ol className="space-y-2 text-[12px]">
               {parsed.steps.steps.map((step: any, i: number) => (
                 <StepItem key={step.id ?? i} step={step} depth={0} index={i + 1} />
@@ -361,7 +363,7 @@ function PreviewPanel({
 
         {/* Yapamıyorum */}
         {!hasSteps && (
-          <div className="flex gap-2 rounded-lg border p-3 text-[13px]" style={{ borderColor: `${RED}55`, background: `${RED}14`, color: '#fecaca' }}>
+          <div className="flex gap-2 rounded-lg border p-3 text-[13px]" style={portalStyle({ borderColor: `${RED}55`, background: `${RED}14`, color: '#fecaca' })}>
             <AlertTriangle size={18} className="shrink-0" />
             <div>
               Bu cümleyi mevcut araçlarımla bir otomasyon olarak kuramadım. Açıklamaya bak; cümleyi daha
@@ -372,7 +374,7 @@ function PreviewPanel({
 
         {/* Düşük güven */}
         {lowConfidence && hasSteps && (
-          <div className="flex gap-2 rounded-lg border p-3 text-[13px]" style={{ borderColor: `${AMBER}55`, background: `${AMBER}14`, color: '#fde68a' }}>
+          <div className="flex gap-2 rounded-lg border p-3 text-[13px]" style={portalStyle({ borderColor: `${AMBER}55`, background: `${AMBER}14`, color: '#fde68a' })}>
             <AlertTriangle size={18} className="shrink-0" />
             <div>
               <b>Güven puanı düşük (%{Math.round(parsed.confidence * 100)}).</b> Cümlende bazı belirsizlikler
@@ -383,7 +385,7 @@ function PreviewPanel({
 
         {/* Gizlilik */}
         {parsed.privacyNotice && (
-          <div className="flex gap-2 rounded-lg border p-3 text-[13px]" style={{ borderColor: `${BLUE}55`, background: `${BLUE}14`, color: '#bfdbfe' }}>
+          <div className="flex gap-2 rounded-lg border p-3 text-[13px]" style={portalStyle({ borderColor: `${BLUE}55`, background: `${BLUE}14`, color: '#bfdbfe' })}>
             <ShieldAlert size={18} className="shrink-0" />
             <div>{parsed.privacyNotice}</div>
           </div>
@@ -391,14 +393,14 @@ function PreviewPanel({
 
         {/* Aksiyonlar */}
         {hasSteps && (
-          <div className="flex flex-wrap items-center gap-2 border-t pt-4" style={{ borderColor: LINE }}>
+          <div className="flex flex-wrap items-center gap-2 border-t pt-4" style={portalStyle({ borderColor: LINE })}>
             {lowConfidence ? (
               <>
                 <button
                   onClick={() => onConfirm(false)}
                   disabled={confirming}
                   className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-[13px] font-semibold disabled:opacity-50"
-                  style={{ background: 'linear-gradient(135deg, #a855f7, #c084fc)', color: '#1a1410' }}
+                  style={portalStyle({ background: 'linear-gradient(135deg, #a855f7, #c084fc)', color: '#1a1410' })}
                 >
                   {confirming && <Loader2 size={16} className="animate-spin" />}
                   <FileText size={15} /> Taslak Kaydet
@@ -407,7 +409,7 @@ function PreviewPanel({
                   onClick={() => onConfirm(true)}
                   disabled={confirming}
                   className="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-[13px] font-medium disabled:opacity-50"
-                  style={{ borderColor: LINE, color: TEXT }}
+                  style={portalStyle({ borderColor: LINE, color: TEXT })}
                 >
                   Yine de Aktif Et
                 </button>
@@ -418,7 +420,7 @@ function PreviewPanel({
                   onClick={() => onConfirm(true)}
                   disabled={confirming}
                   className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-[13px] font-semibold disabled:opacity-50"
-                  style={{ background: 'linear-gradient(135deg, #a855f7, #c084fc)', color: '#1a1410' }}
+                  style={portalStyle({ background: 'linear-gradient(135deg, #a855f7, #c084fc)', color: '#1a1410' })}
                 >
                   {confirming && <Loader2 size={16} className="animate-spin" />} Kur ve Aktif Et
                 </button>
@@ -426,7 +428,7 @@ function PreviewPanel({
                   onClick={() => onConfirm(false)}
                   disabled={confirming}
                   className="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-[13px] font-medium disabled:opacity-50"
-                  style={{ borderColor: LINE, color: TEXT }}
+                  style={portalStyle({ borderColor: LINE, color: TEXT })}
                 >
                   <FileText size={15} /> Taslak Kaydet
                 </button>
@@ -441,12 +443,12 @@ function PreviewPanel({
 
 function Info({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
-    <div className="rounded-lg border p-3" style={{ borderColor: LINE, background: CARD2 }}>
-      <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider" style={{ color: MUTED }}>
+    <div className="rounded-lg border p-3" style={portalStyle({ borderColor: LINE, background: CARD2 })}>
+      <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider" style={portalStyle({ color: MUTED })}>
         {icon}
         {label}
       </div>
-      <div className="mt-1 text-[13px]" style={{ color: TEXT }}>{value}</div>
+      <div className="mt-1 text-[13px]" style={portalStyle({ color: TEXT })}>{value}</div>
     </div>
   );
 }
@@ -454,24 +456,24 @@ function Info({ icon, label, value }: { icon: React.ReactNode; label: string; va
 function StepItem({ step, depth, index }: { step: any; depth: number; index: number }) {
   const isFlow = ['for_each', 'branch_if', 'parallel', 'wait', 'format_list'].includes(step.tool);
   return (
-    <li className="rounded-lg border p-3" style={{ borderColor: LINE, background: CARD2, marginLeft: depth * 14 }}>
+    <li className="rounded-lg border p-3" style={portalStyle({ borderColor: LINE, background: CARD2, marginLeft: depth * 14 })}>
       <div className="flex items-start gap-2">
         <span
           className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full text-[10px] font-semibold"
-          style={{ background: isFlow ? '#64748b' : VIOLET, color: '#1a1410' }}
+          style={portalStyle({ background: isFlow ? '#64748b' : VIOLET, color: '#1a1410' })}
         >
           {index}
         </span>
         <div className="flex-1">
-          <code className="rounded px-1.5 py-0.5 text-[11px] font-medium" style={{ background: '#0b0907', color: VIOLET_SOFT }}>
+          <code className="rounded px-1.5 py-0.5 text-[11px] font-medium" style={portalStyle({ background: '#0b0907', color: VIOLET_SOFT })}>
             {step.tool}
           </code>
           {step.outputAs && (
-            <span className="ml-2 text-[11px]" style={{ color: MUTED }}>
-              → <code style={{ color: TEXT }}>{step.outputAs}</code>
+            <span className="ml-2 text-[11px]" style={portalStyle({ color: MUTED })}>
+              → <code style={portalStyle({ color: TEXT })}>{step.outputAs}</code>
             </span>
           )}
-          <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words text-[11px]" style={{ color: MUTED }}>
+          <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words text-[11px]" style={portalStyle({ color: MUTED })}>
             {JSON.stringify(step.args, null, 2)}
           </pre>
         </div>
@@ -485,7 +487,7 @@ function StepItem({ step, depth, index }: { step: any; depth: number; index: num
       )}
       {Array.isArray(step.then) && step.then.length > 0 && (
         <div className="mt-2">
-          <div className="text-[10px] uppercase" style={{ color: MUTED }}>then:</div>
+          <div className="text-[10px] uppercase" style={portalStyle({ color: MUTED })}>then:</div>
           <ol className="space-y-1">
             {step.then.map((s: any, i: number) => (
               <StepItem key={s.id ?? i} step={s} depth={depth + 1} index={i + 1} />
@@ -495,7 +497,7 @@ function StepItem({ step, depth, index }: { step: any; depth: number; index: num
       )}
       {Array.isArray(step.else) && step.else.length > 0 && (
         <div className="mt-2">
-          <div className="text-[10px] uppercase" style={{ color: MUTED }}>else:</div>
+          <div className="text-[10px] uppercase" style={portalStyle({ color: MUTED })}>else:</div>
           <ol className="space-y-1">
             {step.else.map((s: any, i: number) => (
               <StepItem key={s.id ?? i} step={s} depth={depth + 1} index={i + 1} />
@@ -508,9 +510,9 @@ function StepItem({ step, depth, index }: { step: any; depth: number; index: num
 }
 
 function TriggerIcon({ t }: { t: 'CRON' | 'EVENT' | 'WEBHOOK' | 'MANUAL' }) {
-  if (t === 'CRON') return <Clock size={15} style={{ color: VIOLET_SOFT }} />;
-  if (t === 'WEBHOOK') return <Webhook size={15} style={{ color: VIOLET_SOFT }} />;
-  return <Sparkles size={15} style={{ color: VIOLET_SOFT }} />;
+  if (t === 'CRON') return <Clock size={15} style={portalStyle({ color: VIOLET_SOFT })} />;
+  if (t === 'WEBHOOK') return <Webhook size={15} style={portalStyle({ color: VIOLET_SOFT })} />;
+  return <Sparkles size={15} style={portalStyle({ color: VIOLET_SOFT })} />;
 }
 
 function triggerLabel(type: 'CRON' | 'EVENT' | 'WEBHOOK' | 'MANUAL', cfg: Record<string, unknown>): string {

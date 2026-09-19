@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -113,19 +115,19 @@ export default function TaxpayerStatsCard({ taxpayerId }: { taxpayerId: string }
       value={months}
       onChange={(e) => setMonths(parseInt(e.target.value, 10))}
       className="rounded-lg border px-2 py-1 text-[10.5px] outline-none"
-      style={{ background: FIELD, borderColor: HAIR, color: TEXT }}
+      style={portalStyle({ background: FIELD, borderColor: HAIR, color: TEXT })}
     >
-      <option value={1} style={{ background: '#0f0d0b' }}>Son 1 ay</option>
-      <option value={3} style={{ background: '#0f0d0b' }}>Son 3 ay</option>
-      <option value={6} style={{ background: '#0f0d0b' }}>Son 6 ay</option>
-      <option value={12} style={{ background: '#0f0d0b' }}>Son 12 ay</option>
+      <option value={1} style={portalStyle({ background: '#0f0d0b' })}>Son 1 ay</option>
+      <option value={3} style={portalStyle({ background: '#0f0d0b' })}>Son 3 ay</option>
+      <option value={6} style={portalStyle({ background: '#0f0d0b' })}>Son 6 ay</option>
+      <option value={12} style={portalStyle({ background: '#0f0d0b' })}>Son 12 ay</option>
     </select>
   );
 
   if (isLoading || !s) {
     return (
-      <div className="border-b p-4" style={{ borderColor: HAIR }}>
-        <div className="flex items-center gap-2 py-3 text-[12.5px]" style={{ color: MUTED }}>
+      <div className="border-b p-4" style={portalStyle({ borderColor: HAIR })}>
+        <div className="flex items-center gap-2 py-3 text-[12.5px]" style={portalStyle({ color: MUTED })}>
           <Loader2 size={14} className="animate-spin" /> Yükleniyor…
         </div>
       </div>
@@ -149,49 +151,49 @@ export default function TaxpayerStatsCard({ taxpayerId }: { taxpayerId: string }
   return (
     <>
       {/* CARİ BAKİYE */}
-      <div className="border-b p-4" style={{ borderColor: HAIR }}>
+      <div className="border-b p-4" style={portalStyle({ borderColor: HAIR })}>
         <div className="mb-3 flex items-center justify-between">
-          <span className="flex items-center gap-2 text-[10.5px] font-extrabold uppercase tracking-[0.1em]" style={{ color: MUTED }}>
-            <Wallet size={13} style={{ color: STEEL_BR }} /> Cari Bakiye
+          <span className="flex items-center gap-2 text-[10.5px] font-extrabold uppercase tracking-[0.1em]" style={portalStyle({ color: MUTED })}>
+            <Wallet size={13} style={portalStyle({ color: STEEL_BR })} /> Cari Bakiye
           </span>
           {periodSelect}
         </div>
         <div className="mb-2.5 flex items-end justify-between">
-          <span className="text-[27px] font-extrabold tabular-nums" style={{ color: TEXT, letterSpacing: '-0.01em' }}>
+          <span className="text-[27px] font-extrabold tabular-nums" style={portalStyle({ color: TEXT, letterSpacing: '-0.01em' })}>
             {fmtTRY(Math.abs(s.cari.bakiye))} ₺
           </span>
           <span
             className="rounded-lg border px-2.5 py-[3px] text-[11px] font-bold"
-            style={borc
+            style={portalStyle(borc
               ? { background: 'rgba(239,107,107,0.12)', borderColor: 'rgba(239,107,107,0.28)', color: RED }
-              : { background: 'rgba(95,207,142,0.12)', borderColor: 'rgba(95,207,142,0.28)', color: GREEN }}
+              : { background: 'rgba(95,207,142,0.12)', borderColor: 'rgba(95,207,142,0.28)', color: GREEN })}
           >
             {borc ? 'Borç' : 'Alacak'}
           </span>
         </div>
-        <div className="h-[7px] overflow-hidden rounded-md" style={{ background: 'rgba(255,255,255,0.06)' }}>
-          <span className="block h-full rounded-md" style={{ width: `${tahsilatPct}%`, background: `linear-gradient(90deg, ${GREEN}, #37b26c)` }} />
+        <div className="h-[7px] overflow-hidden rounded-md" style={portalStyle({ background: 'rgba(255,255,255,0.06)' })}>
+          <span className="block h-full rounded-md" style={portalStyle({ width: `${tahsilatPct}%`, background: `linear-gradient(90deg, ${GREEN}, #37b26c)` })} />
         </div>
-        <div className="mt-1.5 flex justify-between text-[10.5px]" style={{ color: MUTED }}>
-          <span>Tahakkuk <b style={{ color: 'rgba(245,245,244,0.85)', fontWeight: 600 }}>{fmtTRY(s.cari.tahakkukToplam)} ₺</b></span>
-          <span>Tahsilat <b style={{ color: 'rgba(245,245,244,0.85)', fontWeight: 600 }}>{fmtTRY(s.cari.tahsilatToplam)} ₺</b></span>
+        <div className="mt-1.5 flex justify-between text-[10.5px]" style={portalStyle({ color: MUTED })}>
+          <span>Tahakkuk <b style={portalStyle({ color: 'rgba(245,245,244,0.85)', fontWeight: 600 })}>{fmtTRY(s.cari.tahakkukToplam)} ₺</b></span>
+          <span>Tahsilat <b style={portalStyle({ color: 'rgba(245,245,244,0.85)', fontWeight: 600 })}>{fmtTRY(s.cari.tahsilatToplam)} ₺</b></span>
         </div>
       </div>
 
       {/* İŞ YÜKÜ */}
-      <div className="border-b p-4" style={{ borderColor: HAIR }}>
-        <div className="mb-3 flex items-center gap-2 text-[10.5px] font-extrabold uppercase tracking-[0.1em]" style={{ color: MUTED }}>
-          <BarChart3 size={13} style={{ color: STEEL_BR }} /> İş Yükü · Son {months} ay
+      <div className="border-b p-4" style={portalStyle({ borderColor: HAIR })}>
+        <div className="mb-3 flex items-center gap-2 text-[10.5px] font-extrabold uppercase tracking-[0.1em]" style={portalStyle({ color: MUTED })}>
+          <BarChart3 size={13} style={portalStyle({ color: STEEL_BR })} /> İş Yükü · Son {months} ay
         </div>
         <div className="grid grid-cols-2 gap-2">
           {items.map((it) => (
-            <div key={it.label} className="flex items-center gap-2.5 rounded-xl border p-[10px]" style={{ borderColor: HAIR, background: FIELD }}>
-              <span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-lg" style={{ background: `${it.color}22`, color: it.color }}>
+            <div key={it.label} className="flex items-center gap-2.5 rounded-xl border p-[10px]" style={portalStyle({ borderColor: HAIR, background: FIELD })}>
+              <span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-lg" style={portalStyle({ background: `${it.color}22`, color: it.color })}>
                 <it.icon size={15} />
               </span>
               <span className="min-w-0">
-                <span className="block text-[10px] uppercase tracking-[0.04em]" style={{ color: FAINT }}>{it.label}</span>
-                <span className="block text-[17px] font-extrabold leading-none tabular-nums" style={{ color: TEXT, fontFamily: 'JetBrains Mono, monospace' }}>
+                <span className="block text-[10px] uppercase tracking-[0.04em]" style={portalStyle({ color: FAINT })}>{it.label}</span>
+                <span className="block text-[17px] font-extrabold leading-none tabular-nums" style={portalStyle({ color: TEXT, fontFamily: 'JetBrains Mono, monospace' })}>
                   {it.value.toLocaleString('tr-TR')}
                 </span>
               </span>

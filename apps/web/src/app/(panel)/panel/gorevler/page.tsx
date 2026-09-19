@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 /**
  * Görevler & Notlar — "sakin komuta merkezi" düzeni (2026-09-14 yeniden tasarım).
@@ -322,39 +324,39 @@ export default function GorevlerPage() {
     <div className="space-y-3 max-w-none">
       <header
         className="relative overflow-hidden rounded-[18px] border px-5 py-4"
-        style={{
+        style={portalStyle({
           background:
             'radial-gradient(120% 140% at 0% 0%, rgba(212,184,118,0.16), transparent 46%), radial-gradient(120% 140% at 100% 0%, rgba(139,118,73,0.12), transparent 48%), #0f0d0b',
           borderColor: 'rgba(255,255,255,0.06)',
           boxShadow: '0 16px 42px rgba(0,0,0,0.28)',
-        }}
+        })}
       >
         <div
           className="absolute inset-x-0 top-0 h-1"
-          style={{ background: 'linear-gradient(90deg, #8b7649, #b8a06f, #d4b876, #e7cf95, #d4b876, #b8a06f)' }}
+          style={portalStyle({ background: 'linear-gradient(90deg, #8b7649, #b8a06f, #d4b876, #e7cf95, #d4b876, #b8a06f)' })}
         />
         <div className="mb-3 flex items-center gap-2.5">
-          <span className="h-px w-[26px]" style={{ background: GOLD }} />
-          <span className="text-[10px] font-bold uppercase tracking-[.18em]" style={{ color: GOLD_SOFT }}>Ofis Takip</span>
+          <span className="h-px w-[26px]" style={portalStyle({ background: GOLD })} />
+          <span className="text-[10px] font-bold uppercase tracking-[.18em]" style={portalStyle({ color: GOLD_SOFT })}>Ofis Takip</span>
         </div>
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex min-w-0 items-center gap-3.5">
             <span
               className="grid shrink-0 place-items-center rounded-xl"
-              style={{
+              style={portalStyle({
                 width: 46,
                 height: 46,
                 background: `linear-gradient(135deg, ${GOLD}, ${GOLD_SOFT})`,
                 boxShadow: '0 8px 22px rgba(212,184,118,0.30)',
-              }}
+              })}
             >
-              <CheckSquare size={24} style={{ color: '#1a1410' }} />
+              <CheckSquare size={24} style={portalStyle({ color: '#1a1410' })} />
             </span>
             <div className="min-w-0">
-              <h1 style={{ fontFamily: 'Fraunces, Georgia, serif', fontSize: 30, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em', lineHeight: 1.05 }}>
+              <h1 style={portalStyle({ fontFamily: 'Fraunces, Georgia, serif', fontSize: 30, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em', lineHeight: 1.05 })}>
                 Görevler & Notlar
               </h1>
-              <p className="mt-2 text-[13px] font-semibold" style={{ color: 'rgba(250,250,249,0.48)' }}>
+              <p className="mt-2 text-[13px] font-semibold" style={portalStyle({ color: 'rgba(250,250,249,0.48)' })}>
                 Tek seferlik veya tekrarlı hatırlatmalar — vade geldiğinde sistem bildirim atar
               </p>
             </div>
@@ -362,7 +364,7 @@ export default function GorevlerPage() {
           <button
             onClick={() => setDetay({ id: null, taslak: { taxpayerId: suzgec.mukellefId || undefined } })}
             className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-[10px] px-4 text-[12.5px] font-bold transition-all"
-            style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_SOFT})`, color: '#0f0d0b', boxShadow: '0 10px 24px rgba(212,184,118,0.16)' }}
+            style={portalStyle({ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_SOFT})`, color: '#0f0d0b', boxShadow: '0 10px 24px rgba(212,184,118,0.16)' })}
           >
             <Plus size={14} /> Yeni Görev
           </button>
@@ -376,7 +378,7 @@ export default function GorevlerPage() {
       <AkilliGiris mukellefler={mukellefler} varsayilanMukellefId={suzgec.mukellefId || undefined} onEkle={hizliEkle} />
 
       {/* Görünüm sekmeleri + süzgeçler — ayrı ton (Muzaffer Bey: "Ajanda/Kanban başlıklarının arka planı farklı olsun, ayırt edici") */}
-      <div className="rounded-xl px-3 py-2" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.11)' }}>
+      <div className="rounded-xl px-3 py-2" style={portalStyle({ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.11)' })}>
         <AracCubugu gorunum={gorunum} onGorunum={setGorunum} suzgec={suzgec} onSuzgec={setSuzgec} mukellefler={mukellefler} />
       </div>
 

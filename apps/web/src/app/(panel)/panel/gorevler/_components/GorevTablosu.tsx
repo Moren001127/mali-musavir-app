@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import { Fragment, useState, type CSSProperties, type ReactNode } from 'react';
 import Link from 'next/link';
@@ -54,32 +56,32 @@ export interface GorevTablosuProps {
 export function GorevTablosu({ gruplar, secili, onSec, onGrupSec, eylemler, acikId, basliksiz, bos }: GorevTablosuProps) {
   const dolu = gruplar.filter((g) => g.satirlar.length > 0);
   return (
-    <div className="overflow-x-auto rounded-xl" style={{ border: `1px solid ${KENAR_NOTR}`, background: 'rgba(255,255,255,0.02)' }}>
-      <table className="w-full" style={{ borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: 760 }}>
+    <div className="overflow-x-auto rounded-xl" style={portalStyle({ border: `1px solid ${KENAR_NOTR}`, background: 'rgba(255,255,255,0.02)' })}>
+      <table className="w-full" style={portalStyle({ borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: 760 })}>
         <colgroup>
-          <col style={{ width: 36 }} />
+          <col style={portalStyle({ width: 36 })} />
           <col />
-          <col style={{ width: 140 }} />
-          <col style={{ width: 92 }} />
-          <col style={{ width: 132 }} />
-          <col style={{ width: 156 }} />
+          <col style={portalStyle({ width: 140 })} />
+          <col style={portalStyle({ width: 92 })} />
+          <col style={portalStyle({ width: 132 })} />
+          <col style={portalStyle({ width: 156 })} />
         </colgroup>
         <thead>
-          <tr style={{ background: 'rgba(212,184,118,0.07)' }}>
-            <th style={{ ...HUCRE_BASLIK, textAlign: 'center', padding: '7px 4px' }} title="Seç">
+          <tr style={portalStyle({ background: 'rgba(212,184,118,0.07)' })}>
+            <th style={portalStyle({ ...HUCRE_BASLIK, textAlign: 'center', padding: '7px 4px' })} title="Seç">
               <span className="sr-only">Seç</span>☐
             </th>
-            <th style={HUCRE_BASLIK}>Görev</th>
-            <th style={HUCRE_BASLIK}>Kategori</th>
-            <th style={HUCRE_BASLIK}>Öncelik</th>
-            <th style={HUCRE_BASLIK}>Vade</th>
-            <th style={{ ...HUCRE_BASLIK, textAlign: 'center' }}>Eylemler</th>
+            <th style={portalStyle(HUCRE_BASLIK)}>Görev</th>
+            <th style={portalStyle(HUCRE_BASLIK)}>Kategori</th>
+            <th style={portalStyle(HUCRE_BASLIK)}>Öncelik</th>
+            <th style={portalStyle(HUCRE_BASLIK)}>Vade</th>
+            <th style={portalStyle({ ...HUCRE_BASLIK, textAlign: 'center' })}>Eylemler</th>
           </tr>
         </thead>
         <tbody>
           {dolu.length === 0 && (
             <tr>
-              <td colSpan={SUTUN} style={{ ...HUCRE, padding: 0 }}>
+              <td colSpan={SUTUN} style={portalStyle({ ...HUCRE, padding: 0 })}>
                 {bos}
               </td>
             </tr>
@@ -91,12 +93,12 @@ export function GorevTablosu({ gruplar, secili, onSec, onGrupSec, eylemler, acik
               <Fragment key={g.key}>
                 {!basliksiz && gi > 0 && (
                   <tr aria-hidden="true">
-                    <td colSpan={SUTUN} style={{ border: 'none', padding: 0, height: GRUP_BOSLUK, background: 'transparent' }} />
+                    <td colSpan={SUTUN} style={portalStyle({ border: 'none', padding: 0, height: GRUP_BOSLUK, background: 'transparent' })} />
                   </tr>
                 )}
                 {!basliksiz && (
-                  <tr style={{ background: GRUP_ZEMIN }}>
-                    <td style={{ ...HUCRE, borderTop: GRUP_CIZGI, borderBottom: GRUP_CIZGI, borderRight: 'none', borderLeft: `4px solid ${g.renk}`, padding: '10px 4px', textAlign: 'center' }}>
+                  <tr style={portalStyle({ background: GRUP_ZEMIN })}>
+                    <td style={portalStyle({ ...HUCRE, borderTop: GRUP_CIZGI, borderBottom: GRUP_CIZGI, borderRight: 'none', borderLeft: `4px solid ${g.renk}`, padding: '10px 4px', textAlign: 'center' })}>
                       {gorevIdleri.length > 0 && (
                         <input
                           type="checkbox"
@@ -104,20 +106,20 @@ export function GorevTablosu({ gruplar, secili, onSec, onGrupSec, eylemler, acik
                           onChange={(e) => onGrupSec(gorevIdleri, e.target.checked)}
                           title={hepsiSecili ? 'Grubun seçimini kaldır' : 'Gruptaki görevleri seç'}
                           className="h-3.5 w-3.5 cursor-pointer"
-                          style={{ accentColor: GOLD }}
+                          style={portalStyle({ accentColor: GOLD })}
                         />
                       )}
                     </td>
-                    <td colSpan={SUTUN - 1} style={{ ...HUCRE, borderTop: GRUP_CIZGI, borderBottom: GRUP_CIZGI, borderLeft: 'none', padding: '10px 12px' }}>
+                    <td colSpan={SUTUN - 1} style={portalStyle({ ...HUCRE, borderTop: GRUP_CIZGI, borderBottom: GRUP_CIZGI, borderLeft: 'none', padding: '10px 12px' })}>
                       <div className="flex items-center gap-2.5">
-                        <span className="text-[12px] font-extrabold uppercase" style={{ color: GOLD, letterSpacing: '.16em' }}>
+                        <span className="text-[12px] font-extrabold uppercase" style={portalStyle({ color: GOLD, letterSpacing: '.16em' })}>
                           {g.ad}
                         </span>
-                        <span className="rounded-md px-1.5 text-[10.5px] font-bold tabular-nums leading-[18px]" style={{ background: 'rgba(212,184,118,0.22)', color: GOLD }}>
+                        <span className="rounded-md px-1.5 text-[10.5px] font-bold tabular-nums leading-[18px]" style={portalStyle({ background: 'rgba(212,184,118,0.22)', color: GOLD })}>
                           {g.satirlar.length}
                         </span>
                         {g.ek && (
-                          <span className="text-[11px]" style={{ color: IKINCIL }}>
+                          <span className="text-[11px]" style={portalStyle({ color: IKINCIL })}>
                             · {g.ek}
                           </span>
                         )}
@@ -173,19 +175,19 @@ export function GorevSatiri({
   const arka = secili ? 'rgba(212,184,118,0.09)' : acik ? 'rgba(212,184,118,0.05)' : 'transparent';
 
   return (
-    <tr style={{ background: arka, boxShadow: acik ? `inset 3px 0 0 ${GOLD}` : undefined }} className="transition-colors hover:bg-white/[0.03]">
-      <td style={{ ...HUCRE, padding: '8px 4px', textAlign: 'center' }}>
-        <input type="checkbox" checked={secili} onChange={(e) => onSec(e.target.checked)} title="Seç" className="h-3.5 w-3.5 cursor-pointer" style={{ accentColor: GOLD }} />
+    <tr style={portalStyle({ background: arka, boxShadow: acik ? `inset 3px 0 0 ${GOLD}` : undefined })} className="transition-colors hover:bg-white/[0.03]">
+      <td style={portalStyle({ ...HUCRE, padding: '8px 4px', textAlign: 'center' })}>
+        <input type="checkbox" checked={secili} onChange={(e) => onSec(e.target.checked)} title="Seç" className="h-3.5 w-3.5 cursor-pointer" style={portalStyle({ accentColor: GOLD })} />
       </td>
-      <td style={{ ...HUCRE, minWidth: 0 }}>
+      <td style={portalStyle({ ...HUCRE, minWidth: 0 })}>
         <button
           type="button"
           onClick={() => eylemler.ac(t.id)}
           title="Detayı aç"
           className={`block w-full min-w-0 truncate text-left text-[13px] font-medium leading-5 transition hover:underline decoration-dotted underline-offset-4 ${kapali ? 'line-through opacity-50' : ''}`}
-          style={{ color: METIN }}
+          style={portalStyle({ color: METIN })}
         >
-          {t.pinned && <Pin size={11} className="mr-1 inline -translate-y-px" style={{ color: SABIT_RENK }} />}
+          {t.pinned && <Pin size={11} className="mr-1 inline -translate-y-px" style={portalStyle({ color: SABIT_RENK })} />}
           {t.title}
         </button>
         <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
@@ -193,7 +195,7 @@ export function GorevSatiri({
           <KaynakRozeti value={t.kaynak} />
           <DurumRozeti task={t} />
           {t.ekipIsId && (
-            <Link href="/panel/ekip" onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 text-[10.5px] font-medium hover:underline" style={{ color: IKINCIL }} title="Ekip konsolunda aç">
+            <Link href="/panel/ekip" onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 text-[10.5px] font-medium hover:underline" style={portalStyle({ color: IKINCIL })} title="Ekip konsolunda aç">
               <Users size={10} /> Ekipte
             </Link>
           )}
@@ -201,32 +203,32 @@ export function GorevSatiri({
           <TekrarIkonu task={t} />
         </div>
       </td>
-      <td style={HUCRE}>
+      <td style={portalStyle(HUCRE)}>
         <KategoriEtiketi value={t.category} />
       </td>
-      <td style={HUCRE}>
+      <td style={portalStyle(HUCRE)}>
         <OncelikEtiketi value={t.priority} />
       </td>
-      <td style={{ ...HUCRE, whiteSpace: 'nowrap' }}>
+      <td style={portalStyle({ ...HUCRE, whiteSpace: 'nowrap' })}>
         {tarih ? (
           <div className="leading-tight">
-            <div className="text-[12.5px] tabular-nums" style={{ color: 'rgba(250,250,249,0.88)' }}>
+            <div className="text-[12.5px] tabular-nums" style={portalStyle({ color: 'rgba(250,250,249,0.88)' })}>
               {kisaTarih(tarih)}
-              {!t.allDay && t.dueTime ? <span style={{ color: IKINCIL }}> {t.dueTime}</span> : null}
+              {!t.allDay && t.dueTime ? <span style={portalStyle({ color: IKINCIL })}> {t.dueTime}</span> : null}
             </div>
             {gecikme && (
-              <div className="text-[10.5px]" style={{ color: gecikti ? GECIKME_RENK : IKINCIL }}>
+              <div className="text-[10.5px]" style={portalStyle({ color: gecikti ? GECIKME_RENK : IKINCIL })}>
                 {gecikme}
               </div>
             )}
           </div>
         ) : (
-          <span className="text-[11px]" style={{ color: SONUK }}>
+          <span className="text-[11px]" style={portalStyle({ color: SONUK })}>
             —
           </span>
         )}
       </td>
-      <td style={{ ...HUCRE, padding: '6px 8px' }}>
+      <td style={portalStyle({ ...HUCRE, padding: '6px 8px' })}>
         <SatirEylemleri gorev={t} eylemler={eylemler} />
       </td>
     </tr>
@@ -316,7 +318,7 @@ function HizliNot({ gorev: t, eylemler }: { gorev: Task; eylemler: GorevEylemler
         };
         return (
           <div className="p-3">
-            <div className="mb-1.5 truncate text-[11px] font-medium" style={{ color: IKINCIL }} title={t.title}>
+            <div className="mb-1.5 truncate text-[11px] font-medium" style={portalStyle({ color: IKINCIL })} title={t.title}>
               {t.title}
             </div>
             <textarea
@@ -329,10 +331,10 @@ function HizliNot({ gorev: t, eylemler }: { gorev: Task; eylemler: GorevEylemler
               rows={3}
               placeholder="Not yaz… (Ctrl+Enter kaydeder)"
               className="w-full resize-none px-2.5 py-2 text-[12.5px]"
-              style={GIRDI}
+              style={portalStyle(GIRDI)}
             />
             <div className="mt-2 flex justify-end gap-2">
-              <button type="button" onClick={kapat} className="h-8 rounded-lg px-3 text-[12px] font-medium" style={{ color: IKINCIL }}>
+              <button type="button" onClick={kapat} className="h-8 rounded-lg px-3 text-[12px] font-medium" style={portalStyle({ color: IKINCIL })}>
                 Vazgeç
               </button>
               <button
@@ -340,7 +342,7 @@ function HizliNot({ gorev: t, eylemler }: { gorev: Task; eylemler: GorevEylemler
                 onClick={kaydet}
                 disabled={!metin.trim() || kaydediyor}
                 className="inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-[12px] font-semibold disabled:opacity-40"
-                style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}
+                style={portalStyle({ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' })}
               >
                 {kaydediyor ? <Loader2 size={12} className="animate-spin" /> : <MessageSquare size={12} />} Kaydet
               </button>
@@ -366,45 +368,45 @@ function EkipIstekSatiri({ istek: i, eylemler }: { istek: EkipIstek; eylemler: G
   const [kapaniyor, setKapaniyor] = useState(false);
   return (
     <tr className="transition-colors hover:bg-white/[0.03]">
-      <td style={{ ...HUCRE, padding: '8px 4px', textAlign: 'center' }}>
-        <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: EKIP_RENK, opacity: 0.85 }} title="Ekip isteği" />
+      <td style={portalStyle({ ...HUCRE, padding: '8px 4px', textAlign: 'center' })}>
+        <span className="inline-block h-1.5 w-1.5 rounded-full" style={portalStyle({ background: EKIP_RENK, opacity: 0.85 })} title="Ekip isteği" />
       </td>
-      <td style={{ ...HUCRE, minWidth: 0 }}>
-        <div className="truncate text-[13px] font-medium leading-5" style={{ color: METIN }} title={i.aciklama || i.baslik}>
+      <td style={portalStyle({ ...HUCRE, minWidth: 0 })}>
+        <div className="truncate text-[13px] font-medium leading-5" style={portalStyle({ color: METIN })} title={i.aciklama || i.baslik}>
           {i.baslik}
         </div>
         <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
           {i.mukellefAd && <MukellefCipi id={i.taxpayerId} ad={i.mukellefAd} />}
           <KaynakRozeti value="EKIP" />
           {i.ajanId && (
-            <span className="text-[10.5px]" style={{ color: IKINCIL }} title={`İsteyen ajan: ${i.ajanId}`}>
+            <span className="text-[10.5px]" style={portalStyle({ color: IKINCIL })} title={`İsteyen ajan: ${i.ajanId}`}>
               {ajanKisaAd(i.ajanId)} ajanı
             </span>
           )}
           {i.aciklama && (
-            <span className="min-w-0 truncate text-[11px]" style={{ color: IKINCIL, maxWidth: 420 }} title={i.aciklama}>
+            <span className="min-w-0 truncate text-[11px]" style={portalStyle({ color: IKINCIL, maxWidth: 420 })} title={i.aciklama}>
               {i.aciklama}
             </span>
           )}
         </div>
       </td>
-      <td style={HUCRE}>
+      <td style={portalStyle(HUCRE)}>
         <EkipIstekCipi />
       </td>
-      <td style={HUCRE}>
-        <span className="text-[11px]" style={{ color: SONUK }}>
+      <td style={portalStyle(HUCRE)}>
+        <span className="text-[11px]" style={portalStyle({ color: SONUK })}>
           —
         </span>
       </td>
-      <td style={{ ...HUCRE, whiteSpace: 'nowrap' }}>
-        <div className="text-[12px]" style={{ color: 'rgba(250,250,249,0.88)' }}>
+      <td style={portalStyle({ ...HUCRE, whiteSpace: 'nowrap' })}>
+        <div className="text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.88)' })}>
           {goreliZaman(i.createdAt)}
         </div>
-        <div className="text-[10.5px]" style={{ color: IKINCIL }}>
+        <div className="text-[10.5px]" style={portalStyle({ color: IKINCIL })}>
           istendi
         </div>
       </td>
-      <td style={{ ...HUCRE, padding: '6px 8px' }}>
+      <td style={portalStyle({ ...HUCRE, padding: '6px 8px' })}>
         <div className="flex items-center justify-center gap-1">
           <button
             type="button"

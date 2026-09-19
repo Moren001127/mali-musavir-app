@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 
 import { forwardRef, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Play, Loader2, Mic, MicOff, AlertTriangle, Square, Link2, X, Users } from 'lucide-react';
@@ -132,7 +134,7 @@ export const GorevKarti = forwardRef<
       sag={
         <span className="flex flex-wrap items-center justify-end gap-1.5">
           {vakaId && (
-            <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium" style={{ background: `${MUTED}1f`, border: `1px solid ${MUTED}44`, color: TEXT }} title={`Aynı iş zincirinde devam: ${vakaId}`}>
+            <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium" style={portalStyle({ background: `${MUTED}1f`, border: `1px solid ${MUTED}44`, color: TEXT })} title={`Aynı iş zincirinde devam: ${vakaId}`}>
               <Link2 size={10} /> iş zinciri
               <button type="button" onClick={() => setVakaId(undefined)} className="rounded p-px hover:bg-white/10" title="Bağı kaldır — yeni zincir aç">
                 <X size={10} />
@@ -141,7 +143,7 @@ export const GorevKarti = forwardRef<
           )}
         </span>
       }
-      style={{ scrollMarginTop: 16 }}
+      style={portalStyle({ scrollMarginTop: 16 })}
       className={className}
     >
       <div
@@ -152,7 +154,7 @@ export const GorevKarti = forwardRef<
         }}
       >
         {/* Yazı alanı */}
-        <div className="relative rounded-xl transition-[border-color,box-shadow]" style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${kenar}`, boxShadow: odakta ? `0 0 0 3px ${GOLD}14` : 'none' }}>
+        <div className="relative rounded-xl transition-[border-color,box-shadow]" style={portalStyle({ background: 'rgba(0,0,0,0.28)', border: `1px solid ${kenar}`, boxShadow: odakta ? `0 0 0 3px ${GOLD}14` : 'none' })}>
           <textarea
             ref={textareaRef}
             value={gorev}
@@ -169,7 +171,7 @@ export const GorevKarti = forwardRef<
             aria-label="Görev"
             placeholder={listening ? 'Dinliyorum…' : 'Örn: Bu ayın KDV kontrolünü yap.'}
             className="min-h-[88px] w-full resize-y bg-transparent px-4 py-3.5 pr-24 text-[14px] leading-relaxed outline-none"
-            style={{ color: TEXT }}
+            style={portalStyle({ color: TEXT })}
           />
           <button
             type="button"
@@ -177,20 +179,20 @@ export const GorevKarti = forwardRef<
             disabled={buCalisiyor}
             title={listening ? 'Dinlemeyi durdur' : 'Sesli söyle — konuş, metne dönüşsün'}
             className={`absolute right-2.5 top-2.5 inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[11.5px] font-medium transition hover:brightness-125 disabled:opacity-40 ${listening ? 'animate-pulse' : ''}`}
-            style={listening ? { background: `${KIRMIZI}1f`, border: `1px solid ${KIRMIZI}66`, color: KIRMIZI } : { background: 'rgba(255,255,255,0.04)', border: `1px solid ${CARD_BORDER}`, color: MUTED }}
+            style={portalStyle(listening ? { background: `${KIRMIZI}1f`, border: `1px solid ${KIRMIZI}66`, color: KIRMIZI } : { background: 'rgba(255,255,255,0.04)', border: `1px solid ${CARD_BORDER}`, color: MUTED })}
           >
             {listening ? <MicOff size={13} /> : <Mic size={13} />} {listening ? 'Dinliyor' : 'Sesli'}
           </button>
 
           {/* Alt satır: mükellef · mod · çalıştır */}
           <div className="flex flex-wrap items-center gap-2 px-3 pb-3">
-            <span className="inline-flex h-9 min-w-0 basis-full sm:basis-[200px] flex-1 items-center gap-2 rounded-xl px-3 text-[12.5px]" style={koyuAlan}>
-              <Users size={13} style={{ color: MUTED }} />
+            <span className="inline-flex h-9 min-w-0 basis-full sm:basis-[200px] flex-1 items-center gap-2 rounded-xl px-3 text-[12.5px]" style={portalStyle(koyuAlan)}>
+              <Users size={13} style={portalStyle({ color: MUTED })} />
               <span className="min-w-0 flex-1">
                 <MukellefSecici sade yerTutucu="Ofis geneli · mükellef seç" mukellefler={mukellefler} value={taxpayerId} onChange={setTaxpayerId} renk={GOLD} escNonce={escNonce} />
               </span>
             </span>
-            <span className="inline-flex h-9 overflow-hidden rounded-xl" style={koyuAlan} role="radiogroup" aria-label="Çalışma modu">
+            <span className="inline-flex h-9 overflow-hidden rounded-xl" style={portalStyle(koyuAlan)} role="radiogroup" aria-label="Çalışma modu">
               {(
                 [
                   ['kuru', 'Kuru test', 'Mükellefe mesaj gitmez, Luca’ya yazılmaz; yalnız "yapacaktım" raporu'],
@@ -213,7 +215,7 @@ export const GorevKarti = forwardRef<
                       } else if (dryRun) setCanliTeyit(true);
                     }}
                     className="px-3 text-[12px] font-medium transition"
-                    style={aktif ? { background: `${renk}1f`, color: renk, boxShadow: `inset 0 0 0 1px ${renk}4d` } : { color: MUTED }}
+                    style={portalStyle(aktif ? { background: `${renk}1f`, color: renk, boxShadow: `inset 0 0 0 1px ${renk}4d` } : { color: MUTED })}
                   >
                     {ad}
                   </button>
@@ -236,7 +238,7 @@ export const GorevKarti = forwardRef<
                 disabled={!calistirabilir}
                 title={baskaCalisiyor ? 'Devam eden görevin bitmesini bekleyin' : dryRun ? 'Görevi deneme modunda başlat' : 'Gerçek işlemi başlat'}
                 className="inline-flex h-9 items-center gap-1.5 rounded-xl px-4 text-[12.5px] font-semibold transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
-                style={{ background: `linear-gradient(140deg, ${dryRun ? GOLD : KIRMIZI}, ${koyuTon(dryRun ? GOLD : KIRMIZI)})`, border: `1px solid ${dryRun ? GOLD : KIRMIZI}`, color: '#0b0b0d' }}
+                style={portalStyle({ background: `linear-gradient(140deg, ${dryRun ? GOLD : KIRMIZI}, ${koyuTon(dryRun ? GOLD : KIRMIZI)})`, border: `1px solid ${dryRun ? GOLD : KIRMIZI}`, color: '#0b0b0d' })}
               >
                 {baskaCalisiyor ? <Loader2 size={13} className="animate-spin" /> : dryRun ? <Play size={13} /> : <AlertTriangle size={13} />}
                 {baskaCalisiyor ? 'Görev sürüyor' : maxBagli === false ? 'Bağlantı gerekli' : dryRun ? 'Başlat' : 'Canlı başlat'}
@@ -247,8 +249,8 @@ export const GorevKarti = forwardRef<
         </div>
 
         {canliTeyit && dryRun && (
-          <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl px-3.5 py-2.5 text-[12.5px]" style={{ background: `${KIRMIZI}12`, border: `1px solid ${KIRMIZI}66`, color: TEXT }}>
-            <AlertTriangle size={14} style={{ color: KIRMIZI }} />
+          <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl px-3.5 py-2.5 text-[12.5px]" style={portalStyle({ background: `${KIRMIZI}12`, border: `1px solid ${KIRMIZI}66`, color: TEXT })}>
+            <AlertTriangle size={14} style={portalStyle({ color: KIRMIZI })} />
             <span className="min-w-0 flex-1">
               <b>Canlı moda geçiliyor</b> — mükellefe mesaj gidebilir, Luca’ya fiş yazılabilir. Resmi gönderim (GİB/SGK/berat) yine sizde kalır.
             </span>
@@ -259,7 +261,7 @@ export const GorevKarti = forwardRef<
           </div>
         )}
 
-        <p className="mt-2.5" style={ipucuStil}>
+        <p className="mt-2.5" style={portalStyle(ipucuStil)}>
           {dryRun ? 'Kuru testte mesaj gönderilmez, kayıt değiştirilmez.' : 'Canlı mod: gerçek işlem yapılır; gönderimler onayınıza gelir.'}
         </p>
         {children}

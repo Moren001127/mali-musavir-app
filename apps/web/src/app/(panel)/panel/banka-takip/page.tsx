@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle, portalPaint } from '@/lib/portal-theme';
+
 
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -207,57 +209,57 @@ export default function BankaTakipPage() {
 
         {/* SEARCH */}
         <div className="flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2"
-             style={{ borderColor: LINE, background: CARD }}>
+             style={portalStyle({ borderColor: LINE, background: CARD })}>
           <div className="relative flex-1 min-w-[260px]">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: SUBTLE }} />
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={portalStyle({ color: SUBTLE })} />
             <input
               placeholder="Mükellef, VKN veya banka adı ara…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full bg-transparent pl-9 pr-3 py-1.5 text-[13px] outline-none"
-              style={{ color: TEXT }}
+              style={portalStyle({ color: TEXT })}
             />
           </div>
           {filterDurum !== 'tumu' && (
             <button
               onClick={() => setFilterDurum('tumu')}
               className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium"
-              style={{ borderColor: TONES.amber.bd, color: TONES.amber.fg, background: TONES.amber.bg }}
+              style={portalStyle({ borderColor: TONES.amber.bd, color: TONES.amber.fg, background: TONES.amber.bg })}
             >
               <X size={11} /> Filtre temiz
             </button>
           )}
-          <span className="ml-auto text-[11.5px]" style={{ color: MUTED }}>
+          <span className="ml-auto text-[11.5px]" style={portalStyle({ color: MUTED })}>
             {filtered.length} mükellef
           </span>
         </div>
 
         {/* LIST */}
         {isLoading && (
-          <div className="rounded-xl border p-12 text-center" style={{ borderColor: LINE, background: CARD }}>
-            <Loader2 size={26} className="mx-auto animate-spin" style={{ color: GOLD }} />
-            <div className="mt-3 text-[13px]" style={{ color: MUTED }}>Yükleniyor…</div>
+          <div className="rounded-xl border p-12 text-center" style={portalStyle({ borderColor: LINE, background: CARD })}>
+            <Loader2 size={26} className="mx-auto animate-spin" style={portalStyle({ color: GOLD })} />
+            <div className="mt-3 text-[13px]" style={portalStyle({ color: MUTED })}>Yükleniyor…</div>
           </div>
         )}
 
         {isError && (
           <div className="rounded-xl border p-5 flex items-start gap-3"
-               style={{ borderColor: TONES.red.bd, background: TONES.red.bg }}>
-            <AlertCircle size={18} style={{ color: TONES.red.fg }} />
+               style={portalStyle({ borderColor: TONES.red.bd, background: TONES.red.bg })}>
+            <AlertCircle size={18} style={portalStyle({ color: TONES.red.fg })} />
             <div>
-              <div className="font-semibold" style={{ color: TEXT }}>Liste yüklenemedi</div>
-              <div className="text-[12.5px] mt-1" style={{ color: MUTED }}>Sunucu yanıt vermedi.</div>
+              <div className="font-semibold" style={portalStyle({ color: TEXT })}>Liste yüklenemedi</div>
+              <div className="text-[12.5px] mt-1" style={portalStyle({ color: MUTED })}>Sunucu yanıt vermedi.</div>
             </div>
           </div>
         )}
 
         {!isLoading && !isError && filtered.length === 0 && (
-          <div className="rounded-xl border p-12 text-center" style={{ borderColor: LINE, background: CARD }}>
-            <Inbox size={28} className="mx-auto mb-3" style={{ color: SUBTLE }} />
-            <div className="font-semibold" style={{ color: TEXT }}>
+          <div className="rounded-xl border p-12 text-center" style={portalStyle({ borderColor: LINE, background: CARD })}>
+            <Inbox size={28} className="mx-auto mb-3" style={portalStyle({ color: SUBTLE })} />
+            <div className="font-semibold" style={portalStyle({ color: TEXT })}>
               {(data?.items.length || 0) === 0 ? 'Bilanço esasında mükellef yok' : 'Aramaya uygun sonuç yok'}
             </div>
-            <div className="mt-1.5 text-[12.5px]" style={{ color: MUTED }}>
+            <div className="mt-1.5 text-[12.5px]" style={portalStyle({ color: MUTED })}>
               {(data?.items.length || 0) === 0
                 ? 'Mükellef kartında "Defter Türü" alanını "BILANCO" olarak işaretle.'
                 : 'Farklı bir terim dene veya filtreyi temizle.'}
@@ -326,18 +328,18 @@ function Header({
   taskBusy: boolean;
 }) {
   return (
-    <div className="rounded-xl border p-5" style={{ borderColor: LINE, background: CARD }}>
+    <div className="rounded-xl border p-5" style={portalStyle({ borderColor: LINE, background: CARD })}>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.18em]"
-               style={{ color: GOLD }}>
+               style={portalStyle({ color: GOLD })}>
             <Landmark size={11} /> Banka Ekstre Takibi
           </div>
           <h1 className="mt-1.5 text-[26px] font-semibold leading-tight"
-              style={{ color: TEXT, fontFamily: 'Fraunces, serif' }}>
+              style={portalStyle({ color: TEXT, fontFamily: 'Fraunces, serif' })}>
             {CEYREK_LABELS[ceyrek]} · {yil}
           </h1>
-          <p className="mt-1 text-[12.5px]" style={{ color: MUTED }}>
+          <p className="mt-1 text-[12.5px]" style={portalStyle({ color: MUTED })}>
             Bilanço esasındaki mükellefler için 3 aylık banka ekstre kontrolü
           </p>
         </div>
@@ -358,7 +360,7 @@ function Header({
             onClick={onCreateTasks}
             disabled={taskBusy}
             className="inline-flex h-[34px] items-center gap-1.5 rounded-md border px-3 text-[12px] font-bold disabled:opacity-50"
-            style={{ borderColor: TONES.amber.bd, color: TONES.amber.fg, background: TONES.amber.bg }}
+            style={portalStyle({ borderColor: TONES.amber.bd, color: TONES.amber.fg, background: TONES.amber.bg })}
           >
             {taskBusy ? <Loader2 size={13} className="animate-spin" /> : <ClipboardList size={13} />}
             Eksikler için görev aç
@@ -368,17 +370,17 @@ function Header({
 
       {/* Completion progress */}
       <div className="mt-4 flex items-center gap-3">
-        <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: MUTED }}>
+        <div className="text-[11px] font-semibold uppercase tracking-wider" style={portalStyle({ color: MUTED })}>
           Dönem tamamlanma
         </div>
-        <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
+        <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.06)' })}>
           <div
             className="h-full transition-all"
-            style={{ width: `${completion}%`, background: `linear-gradient(90deg, ${GOLD}, ${TONES.green.fg})` }}
+            style={portalStyle({ width: `${completion}%`, background: `linear-gradient(90deg, ${GOLD}, ${TONES.green.fg})` })}
           />
         </div>
-        <div className="text-[13px] font-semibold tabular-nums" style={{ color: TEXT }}>
-          %{completion} <span style={{ color: MUTED, fontWeight: 400 }}>· {done}/{total}</span>
+        <div className="text-[13px] font-semibold tabular-nums" style={portalStyle({ color: TEXT })}>
+          %{completion} <span style={portalStyle({ color: MUTED, fontWeight: 400 })}>· {done}/{total}</span>
         </div>
       </div>
     </div>
@@ -400,14 +402,14 @@ function SelectField({
 }) {
   return (
     <div>
-      <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider" style={{ color: MUTED }}>
+      <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider" style={portalStyle({ color: MUTED })}>
         <Calendar size={10} className="inline mr-1" /> {label}
       </label>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className="h-[34px] rounded-md border bg-transparent px-2.5 text-[12.5px] font-medium outline-none"
-        style={{ borderColor: LINE, color: TEXT, background: SOFT, minWidth }}
+        style={portalStyle({ borderColor: LINE, color: TEXT, background: SOFT, minWidth })}
       >
         {children}
       </select>
@@ -445,24 +447,24 @@ function StatusStrip({
             key={p.key}
             onClick={() => onPick(isActive ? 'tumu' : p.key)}
             className="flex items-center gap-3 rounded-xl border px-4 py-3 text-left transition"
-            style={{
+            style={portalStyle({
               borderColor: isActive ? t.bd : LINE,
               background: isActive ? t.bg : CARD,
-            }}
-            onMouseEnter={(e) => !isActive && (e.currentTarget.style.background = CARD_HOVER)}
-            onMouseLeave={(e) => !isActive && (e.currentTarget.style.background = CARD)}
+            })}
+            onMouseEnter={(e) => !isActive && (e.currentTarget.style.background = portalPaint(CARD_HOVER, 'background'))}
+            onMouseLeave={(e) => !isActive && (e.currentTarget.style.background = portalPaint(CARD, 'background'))}
           >
             <div
               className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border tabular-nums text-[14px] font-bold"
-              style={{ borderColor: t.bd, background: t.bg, color: t.fg }}
+              style={portalStyle({ borderColor: t.bd, background: t.bg, color: t.fg })}
             >
               {p.count}
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-[13px] font-semibold" style={{ color: TEXT }}>{p.label}</div>
-              <div className="text-[11px]" style={{ color: MUTED }}>{p.hint}</div>
+              <div className="text-[13px] font-semibold" style={portalStyle({ color: TEXT })}>{p.label}</div>
+              <div className="text-[11px]" style={portalStyle({ color: MUTED })}>{p.hint}</div>
             </div>
-            {isActive && <Check size={14} style={{ color: t.fg }} />}
+            {isActive && <Check size={14} style={portalStyle({ color: t.fg })} />}
           </button>
         );
       })}
@@ -513,30 +515,30 @@ function MukellefRow({
   return (
     <div
       className="rounded-xl border overflow-hidden transition"
-      style={{
+      style={portalStyle({
         borderColor: LINE,
         background: CARD,
         borderLeftWidth: 3,
         borderLeftColor: edge,
-      }}
+      })}
     >
       {/* HEADER ROW */}
       <button
         type="button"
         onClick={onToggleExpand}
         className="flex w-full items-center gap-3 px-4 py-3 text-left transition"
-        onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.02)')}
-        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+        onMouseEnter={(e) => (e.currentTarget.style.background = portalPaint('rgba(255,255,255,0.02)', 'background'))}
+        onMouseLeave={(e) => (e.currentTarget.style.background = portalPaint('transparent', 'background'))}
       >
         {expanded ? (
-          <ChevronDown size={15} style={{ color: MUTED }} />
+          <ChevronDown size={15} style={portalStyle({ color: MUTED })} />
         ) : (
-          <ChevronRight size={15} style={{ color: MUTED }} />
+          <ChevronRight size={15} style={portalStyle({ color: MUTED })} />
         )}
-        <Building2 size={15} style={{ color: GOLD, flexShrink: 0 }} />
+        <Building2 size={15} style={portalStyle({ color: GOLD, flexShrink: 0 })} />
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[13.5px] font-semibold" style={{ color: TEXT }}>{ad}</div>
-          <div className="text-[11px]" style={{ color: MUTED }}>
+          <div className="truncate text-[13.5px] font-semibold" style={portalStyle({ color: TEXT })}>{ad}</div>
+          <div className="text-[11px]" style={portalStyle({ color: MUTED })}>
             VKN: {item.taxpayer.taxNumber} · {hesapSayisi} hesap
           </div>
         </div>
@@ -546,7 +548,7 @@ function MukellefRow({
         <span
           onClick={(e) => { e.stopPropagation(); onManageHesaplar(); }}
           className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-md border px-2 text-[11px] font-medium"
-          style={{ borderColor: LINE, color: GOLD, background: SOFT }}
+          style={portalStyle({ borderColor: LINE, color: GOLD, background: SOFT })}
         >
           <Edit3 size={11} /> Hesaplar
         </span>
@@ -554,27 +556,27 @@ function MukellefRow({
 
       {/* EXPANDED CONTENT */}
       {expanded && (
-        <div className="border-t" style={{ borderColor: LINE }}>
+        <div className="border-t" style={portalStyle({ borderColor: LINE })}>
           {hicHesap ? (
-            <div className="flex items-center gap-2 px-4 py-3 text-[12.5px]" style={{ color: MUTED }}>
-              <AlertCircle size={13} style={{ color: TONES.amber.fg }} />
+            <div className="flex items-center gap-2 px-4 py-3 text-[12.5px]" style={portalStyle({ color: MUTED })}>
+              <AlertCircle size={13} style={portalStyle({ color: TONES.amber.fg })} />
               Banka hesabı tanımlı değil. <button
                 onClick={onManageHesaplar}
                 className="font-semibold underline"
-                style={{ color: GOLD }}
+                style={portalStyle({ color: GOLD })}
               >Hesap ekle</button>
             </div>
           ) : (
             <>
               {/* Bulk actions */}
               <div className="flex items-center gap-2 px-4 py-2.5"
-                   style={{ background: 'rgba(255,255,255,0.015)', borderBottom: `1px solid ${LINE}` }}>
-                <span className="text-[11px]" style={{ color: MUTED }}>Toplu işlem:</span>
+                   style={portalStyle({ background: 'rgba(255,255,255,0.015)', borderBottom: `1px solid ${LINE}` })}>
+                <span className="text-[11px]" style={portalStyle({ color: MUTED })}>Toplu işlem:</span>
                 <button
                   onClick={() => onBulk('geldi')}
                   disabled={isPending}
                   className="rounded-md border px-2 py-1 text-[11px] font-bold disabled:opacity-50"
-                  style={{ borderColor: TONES.blue.bd, color: TONES.blue.fg, background: TONES.blue.bg }}
+                  style={portalStyle({ borderColor: TONES.blue.bd, color: TONES.blue.fg, background: TONES.blue.bg })}
                 >
                   Hepsi geldi
                 </button>
@@ -582,7 +584,7 @@ function MukellefRow({
                   onClick={() => onBulk('islendi')}
                   disabled={isPending}
                   className="rounded-md border px-2 py-1 text-[11px] font-bold disabled:opacity-50"
-                  style={{ borderColor: TONES.green.bd, color: TONES.green.fg, background: TONES.green.bg }}
+                  style={portalStyle({ borderColor: TONES.green.bd, color: TONES.green.fg, background: TONES.green.bg })}
                 >
                   Hepsi işlendi
                 </button>
@@ -610,7 +612,7 @@ function Badge({ label, tone }: { label: string; tone: keyof typeof TONES }) {
   return (
     <span
       className="rounded-md border px-2 py-1 text-[10.5px] font-bold uppercase tracking-wider"
-      style={{ borderColor: t.bd, color: t.fg, background: t.bg }}
+      style={portalStyle({ borderColor: t.bd, color: t.fg, background: t.bg })}
     >
       {label}
     </span>
@@ -634,22 +636,22 @@ function HesapRow({
   return (
     <div
       className="grid grid-cols-[1fr_auto_auto] gap-3 items-center px-4 py-2.5 border-t"
-      style={{ borderColor: LINE }}
+      style={portalStyle({ borderColor: LINE })}
     >
       <div className="min-w-0">
-        <div className="flex items-center gap-2 text-[13px] font-medium" style={{ color: TEXT }}>
-          <Landmark size={13} style={{ color: MUTED }} />
+        <div className="flex items-center gap-2 text-[13px] font-medium" style={portalStyle({ color: TEXT })}>
+          <Landmark size={13} style={portalStyle({ color: MUTED })} />
           <span className="truncate">{bh.bankaAdi}</span>
           {bh.paraBirimi && bh.paraBirimi !== 'TRY' && (
             <span className="rounded px-1.5 py-0.5 text-[10px] font-bold"
-                  style={{ background: 'rgba(167,139,250,0.15)', color: '#a78bfa' }}>
+                  style={portalStyle({ background: 'rgba(167,139,250,0.15)', color: '#a78bfa' })}>
               {bh.paraBirimi}
             </span>
           )}
         </div>
-        <div className="ml-[21px] mt-0.5 truncate font-mono text-[11px]" style={{ color: MUTED }}>
+        <div className="ml-[21px] mt-0.5 truncate font-mono text-[11px]" style={portalStyle({ color: MUTED })}>
           {bh.iban || bh.hesapNo || (bh.sube ? `Şube: ${bh.sube}` : '—')}
-          {bh.aciklama && <span className="ml-2" style={{ color: SUBTLE }}>· {bh.aciklama}</span>}
+          {bh.aciklama && <span className="ml-2" style={portalStyle({ color: SUBTLE })}>· {bh.aciklama}</span>}
         </div>
       </div>
 
@@ -698,12 +700,12 @@ function TogglePill({
       disabled={disabled}
       title={hint || (tarih ? `${label}: ${new Date(tarih).toLocaleString('tr-TR')}` : label)}
       className="inline-flex items-center justify-center gap-1.5 rounded-md border px-2.5 py-1 text-[11.5px] font-bold disabled:opacity-40 transition"
-      style={{
+      style={portalStyle({
         background: checked ? t.fg : t.bg,
         color: checked ? '#0f0d0b' : t.fg,
         borderColor: t.bd,
         minWidth: 96,
-      }}
+      })}
     >
       {checked ? <Check size={12} /> : <X size={12} />}
       {label}
@@ -764,44 +766,44 @@ function BankaHesapModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-         style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}
+         style={portalStyle({ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' })}
          onClick={onClose}>
       <div
         onClick={(e) => e.stopPropagation()}
         className="rounded-2xl border max-w-2xl w-full max-h-[85vh] overflow-y-auto"
-        style={{ background: '#1a1612', borderColor: LINE }}
+        style={portalStyle({ background: '#1a1612', borderColor: LINE })}
       >
-        <div className="px-5 py-4 flex items-center justify-between border-b" style={{ borderColor: LINE }}>
+        <div className="px-5 py-4 flex items-center justify-between border-b" style={portalStyle({ borderColor: LINE })}>
           <div>
-            <div className="text-[10px] uppercase font-bold tracking-wider" style={{ color: GOLD }}>
+            <div className="text-[10px] uppercase font-bold tracking-wider" style={portalStyle({ color: GOLD })}>
               Banka Hesapları
             </div>
-            <div className="mt-0.5 font-semibold" style={{ color: TEXT }}>{taxpayerName(item.taxpayer)}</div>
+            <div className="mt-0.5 font-semibold" style={portalStyle({ color: TEXT })}>{taxpayerName(item.taxpayer)}</div>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded hover:bg-white/5" style={{ color: MUTED }}>
+          <button onClick={onClose} className="p-1.5 rounded hover:bg-white/5" style={portalStyle({ color: MUTED })}>
             <X size={18} />
           </button>
         </div>
 
         {/* Mevcut hesaplar */}
         <div className="p-5 space-y-2">
-          <div className="text-[11px] uppercase font-semibold tracking-wider" style={{ color: MUTED }}>
+          <div className="text-[11px] uppercase font-semibold tracking-wider" style={portalStyle({ color: MUTED })}>
             Mevcut Hesaplar ({hesaplar.length})
           </div>
           {hesaplar.length === 0 ? (
-            <div className="text-[12px]" style={{ color: SUBTLE }}>Henüz banka hesabı eklenmemiş.</div>
+            <div className="text-[12px]" style={portalStyle({ color: SUBTLE })}>Henüz banka hesabı eklenmemiş.</div>
           ) : (
             <div className="space-y-1.5">
               {hesaplar.map((h) => (
                 <div
                   key={h.id}
                   className="flex items-center gap-3 rounded-md border px-3 py-2"
-                  style={{ background: SOFT, borderColor: LINE }}
+                  style={portalStyle({ background: SOFT, borderColor: LINE })}
                 >
-                  <Landmark size={14} style={{ color: GOLD }} />
+                  <Landmark size={14} style={portalStyle({ color: GOLD })} />
                   <div className="flex-1 min-w-0">
-                    <div className="text-[13px] font-medium" style={{ color: TEXT }}>{h.bankaAdi}</div>
-                    <div className="text-[11px] font-mono truncate" style={{ color: MUTED }}>
+                    <div className="text-[13px] font-medium" style={portalStyle({ color: TEXT })}>{h.bankaAdi}</div>
+                    <div className="text-[11px] font-mono truncate" style={portalStyle({ color: MUTED })}>
                       {h.iban || h.hesapNo || '—'}
                     </div>
                   </div>
@@ -811,7 +813,7 @@ function BankaHesapModal({
                     }}
                     disabled={deleteMut.isPending}
                     className="p-1.5 rounded border disabled:opacity-50"
-                    style={{ borderColor: TONES.red.bd, color: TONES.red.fg, background: TONES.red.bg }}
+                    style={portalStyle({ borderColor: TONES.red.bd, color: TONES.red.fg, background: TONES.red.bg })}
                   >
                     <Trash2 size={12} />
                   </button>
@@ -822,8 +824,8 @@ function BankaHesapModal({
         </div>
 
         {/* Yeni hesap formu */}
-        <div className="px-5 pb-5 space-y-3 border-t pt-4" style={{ borderColor: LINE }}>
-          <div className="text-[11px] uppercase font-semibold tracking-wider" style={{ color: MUTED }}>
+        <div className="px-5 pb-5 space-y-3 border-t pt-4" style={portalStyle({ borderColor: LINE })}>
+          <div className="text-[11px] uppercase font-semibold tracking-wider" style={portalStyle({ color: MUTED })}>
             Yeni Hesap Ekle
           </div>
           <div className="grid grid-cols-2 gap-2">
@@ -832,38 +834,38 @@ function BankaHesapModal({
               value={bankaAdi}
               onChange={(e) => setBankaAdi(e.target.value)}
               className="col-span-2 rounded-md border bg-transparent px-3 py-2 text-[13px]"
-              style={{ borderColor: LINE, color: TEXT, background: SOFT }}
+              style={portalStyle({ borderColor: LINE, color: TEXT, background: SOFT })}
             />
             <input
               placeholder="IBAN (TR…)"
               value={iban}
               onChange={(e) => setIban(e.target.value)}
               className="rounded-md border bg-transparent px-3 py-2 text-[13px] font-mono"
-              style={{ borderColor: LINE, color: TEXT, background: SOFT }}
+              style={portalStyle({ borderColor: LINE, color: TEXT, background: SOFT })}
             />
             <input
               placeholder="Hesap No (opsiyonel)"
               value={hesapNo}
               onChange={(e) => setHesapNo(e.target.value)}
               className="rounded-md border bg-transparent px-3 py-2 text-[13px]"
-              style={{ borderColor: LINE, color: TEXT, background: SOFT }}
+              style={portalStyle({ borderColor: LINE, color: TEXT, background: SOFT })}
             />
             <input
               placeholder="Açıklama (opsiyonel)"
               value={aciklama}
               onChange={(e) => setAciklama(e.target.value)}
               className="col-span-2 rounded-md border bg-transparent px-3 py-2 text-[13px]"
-              style={{ borderColor: LINE, color: TEXT, background: SOFT }}
+              style={portalStyle({ borderColor: LINE, color: TEXT, background: SOFT })}
             />
           </div>
           <button
             onClick={() => createMut.mutate()}
             disabled={!bankaAdi.trim() || createMut.isPending}
             className="w-full py-2.5 rounded-lg text-sm font-bold disabled:opacity-50"
-            style={{
+            style={portalStyle({
               background: bankaAdi.trim() ? `linear-gradient(135deg, ${GOLD}, #8b7649)` : SOFT,
               color: bankaAdi.trim() ? '#0f0d0b' : MUTED,
-            }}
+            })}
           >
             {createMut.isPending ? <Loader2 size={14} className="inline animate-spin mr-1" /> : <Plus size={14} className="inline mr-1" />}
             Hesap Ekle

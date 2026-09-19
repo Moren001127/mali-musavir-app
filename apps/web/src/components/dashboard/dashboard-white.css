@@ -1,0 +1,104 @@
+/* Yalnız D teması: ölçüler, yerleşim ve renkli ayraçlar mevcut haliyle kalır.
+   !important, mevcut satır içi renkleri ve fareyle üzerine gelme boyasını aşar. */
+html[data-theme='D'] [data-dashboard-root] {
+  color: #24313b;
+  color-scheme: light;
+}
+
+html[data-theme='D'] [data-dashboard-surface] {
+  background: #fff !important;
+  border-color: #dce4e4 !important;
+  box-shadow: 0 8px 24px rgba(36, 49, 59, 0.06) !important;
+}
+
+html[data-theme='D'] [data-dashboard-band='mint'] {
+  background: linear-gradient(110deg, #e0f2e9, #f4faf7) !important;
+  border-color: #c8e3d6 !important;
+}
+
+html[data-theme='D'] [data-dashboard-band='plum'] {
+  background: linear-gradient(110deg, #eee1f0, #faf5fb) !important;
+  border-color: #dfcfe3 !important;
+}
+
+html[data-theme='D'] [data-dashboard-band='peach'] {
+  background: linear-gradient(110deg, #fae7d9, #fff8f2) !important;
+  border-color: #eed8c8 !important;
+}
+
+html[data-theme='D'] [data-dashboard-band='neutral'] {
+  background: #f1f4f5 !important;
+  border-color: #dce4e4 !important;
+}
+
+html[data-theme='D'] [data-dashboard-kpi] {
+  --dashboard-kpi-start: #70420e;
+  --dashboard-kpi-end: #94651c;
+  --dashboard-kpi-edge: #b18545;
+  background: linear-gradient(115deg, var(--dashboard-kpi-start), var(--dashboard-kpi-end) 55%, color-mix(in srgb,var(--dashboard-kpi-end) 35%,white)) !important;
+  border-color: var(--dashboard-kpi-edge) !important;
+  box-shadow: 0 5px 16px rgba(36, 49, 59, 0.08) !important;
+  color: #fff !important;
+}
+
+html[data-theme='D'] [data-dashboard-kpi='sage'] {
+  --dashboard-kpi-start: #075743;
+  --dashboard-kpi-end: #347b63;
+  --dashboard-kpi-edge: #589c82;
+}
+
+html[data-theme='D'] [data-dashboard-kpi='sky'] {
+  --dashboard-kpi-start: #23458e;
+  --dashboard-kpi-end: #5373ae;
+  --dashboard-kpi-edge: #7790c0;
+}
+
+html[data-theme='D'] [data-dashboard-kpi='champagne'],
+html[data-theme='D'] [data-dashboard-kpi='burgundy'],
+html[data-theme='D'] [data-dashboard-kpi='copper'] {
+  --dashboard-kpi-start: #633572;
+  --dashboard-kpi-end: #91659e;
+  --dashboard-kpi-edge: #ad84b7;
+}
+
+html[data-theme='D'] [data-dashboard-kpi] :is(p, span, div, svg) {
+  color: #fff !important;
+}
+
+html[data-theme='D'] :is([data-dashboard-kpi-icon], [data-dashboard-kpi-badge]) {
+  background: rgba(0, 0, 0, 0.08) !important;
+  border-color: rgba(255, 255, 255, 0.26) !important;
+}
+
+html[data-theme='D'] [data-dashboard-kpi] .tabular-nums {
+  color: #fff !important;
+}
+
+html[data-theme='D'] [data-dashboard-kpi]:hover {
+  box-shadow: 0 8px 22px rgba(36, 49, 59, 0.13) !important;
+}
+
+html[data-theme='D'] [data-dashboard-alert='issue'] {
+  border-color: #c58239 !important;
+}
+
+html[data-theme='D'] [data-dashboard-alert='issue'] > p:first-of-type,
+html[data-theme='D'] [data-dashboard-alert='issue'] svg {
+  color: #fff !important;
+}
+
+/* Mevcut olaylar korunur; eski koyu fare rengi D temasını geri boyayamaz. */
+html[data-theme='D'] [data-dashboard-action] {
+  background: #fff !important;
+  border-color: #d4dfe0 !important;
+  color: #344b54 !important;
+}
+
+html[data-theme='D'] [data-dashboard-action]:hover {
+  background: #eaf3f0 !important;
+}
+
+/* Çizim içindeki yazılar satır içi biçim yardımcısından geçmez. */
+html[data-theme='D'] [data-dashboard-root] svg text {
+  fill: #344b54;
+}

@@ -1,4 +1,6 @@
 'use client';
+import { portalStyle, portalPaint } from '@/lib/portal-theme';
+
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams, useRouter } from 'next/navigation';
@@ -783,34 +785,34 @@ export default function MizanPage() {
       {/* Header — Fiş Yazdırma imzası: kart + üst renk şeridi + radial parıltı + degrade ikon kutusu */}
       <div
         className="relative overflow-hidden rounded-2xl border p-5"
-        style={{
+        style={portalStyle({
           borderColor: 'rgba(255,255,255,0.06)',
           background:
             'radial-gradient(120% 140% at 0% 0%, rgba(212,184,118,0.16), transparent 46%), radial-gradient(120% 140% at 100% 0%, rgba(139,118,73,0.12), transparent 48%), #0f0d0b',
-        }}
+        })}
       >
         <div
           className="absolute inset-x-0 top-0 h-1"
-          style={{ background: 'linear-gradient(90deg, #8b7649, #b8a06f, #d4b876, #e7cf95, #d4b876, #b8a06f)' }}
+          style={portalStyle({ background: 'linear-gradient(90deg, #8b7649, #b8a06f, #d4b876, #e7cf95, #d4b876, #b8a06f)' })}
         />
         <div className="flex items-center gap-2.5 mb-3">
-          <span className="w-[26px] h-px" style={{ background: GOLD }} />
-          <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>
+          <span className="w-[26px] h-px" style={portalStyle({ background: GOLD })} />
+          <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={portalStyle({ color: '#b8a06f' })}>
             <Sparkles size={10} className="inline mr-1" /> Kontrol
           </span>
         </div>
         <div className="flex items-center gap-3.5">
           <span
             className="grid place-items-center rounded-xl flex-shrink-0"
-            style={{ width: 46, height: 46, background: 'linear-gradient(135deg, #d4b876, #b8a06f)', boxShadow: '0 8px 22px rgba(212,184,118,0.32)' }}
+            style={portalStyle({ width: 46, height: 46, background: 'linear-gradient(135deg, #d4b876, #b8a06f)', boxShadow: '0 8px 22px rgba(212,184,118,0.32)' })}
           >
-            <FileSpreadsheet size={24} style={{ color: '#1a1410' }} />
+            <FileSpreadsheet size={24} style={portalStyle({ color: '#1a1410' })} />
           </span>
           <div className="min-w-0">
-            <h1 style={{ fontFamily: REPORT_FONT, fontSize: 30, fontWeight: 700, color: '#fafaf9', letterSpacing: 0, lineHeight: 1.05 }}>
+            <h1 style={portalStyle({ fontFamily: REPORT_FONT, fontSize: 30, fontWeight: 700, color: '#fafaf9', letterSpacing: 0, lineHeight: 1.05 })}>
               Mizan
             </h1>
-            <p className="text-[13px] mt-1.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
+            <p className="text-[13px] mt-1.5" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
               Kendi Excel dosyanı yükle veya Luca'dan tek tuşla çek. Hesap kodu denetimlerini otomatik yap. Geçmiş dönemleri arşivden görüntüle.
             </p>
           </div>
@@ -818,18 +820,18 @@ export default function MizanPage() {
       </div>
 
       {/* Komut barı */}
-      <div className="rounded-xl border p-5" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}>
+      <div className="rounded-xl border p-5" style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' })}>
         <div className="flex flex-wrap gap-3 items-end">
           <div className="flex-1 min-w-[260px]">
-            <label className="text-[11px] uppercase font-bold tracking-[.12em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
+            <label className="text-[11px] uppercase font-bold tracking-[.12em] block mb-1.5" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
               <Users size={11} className="inline mr-1" /> Mükellef
             </label>
             <button
               onClick={() => setPickerOpen(true)}
               className="w-full px-3 py-2.5 rounded-lg text-sm border outline-none flex items-center gap-2 text-left"
-              style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}
+              style={portalStyle({ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' })}
             >
-              <span className="flex-1 truncate" style={{ color: selectedTp ? '#fafaf9' : 'rgba(250,250,249,0.45)' }}>
+              <span className="flex-1 truncate" style={portalStyle({ color: selectedTp ? '#fafaf9' : 'rgba(250,250,249,0.45)' })}>
                 {selectedTp ? taxpayerName(selectedTp) : 'Mükellef seç…'}
               </span>
               {selectedTp && (
@@ -837,55 +839,55 @@ export default function MizanPage() {
                   <X size={13} />
                 </span>
               )}
-              <ChevronDown size={14} style={{ color: 'rgba(250,250,249,0.45)' }} />
+              <ChevronDown size={14} style={portalStyle({ color: 'rgba(250,250,249,0.45)' })} />
             </button>
           </div>
 
           <div>
-            <label className="text-[11px] uppercase font-bold tracking-[.12em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
+            <label className="text-[11px] uppercase font-bold tracking-[.12em] block mb-1.5" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
               Tür
             </label>
             <select
               value={donemTipi}
               onChange={(e) => setDonemTipi(e.target.value)}
               className="px-3 py-2.5 rounded-lg text-sm border outline-none"
-              style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9', minWidth: 220 }}
+              style={portalStyle({ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9', minWidth: 220 })}
             >
               {DONEM_TIPLERI.map((t) => (
-                <option key={t.value} value={t.value} style={{ background: '#0f0d0b' }}>{t.label}</option>
+                <option key={t.value} value={t.value} style={portalStyle({ background: '#0f0d0b' })}>{t.label}</option>
               ))}
             </select>
           </div>
 
           <div>
-            <label className="text-[11px] uppercase font-bold tracking-[.12em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
+            <label className="text-[11px] uppercase font-bold tracking-[.12em] block mb-1.5" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
               <Calendar size={11} className="inline mr-1" /> Yıl
             </label>
             <select
               value={year}
               onChange={(e) => setYear(parseInt(e.target.value))}
               className="px-3 py-2.5 rounded-lg text-sm border outline-none"
-              style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9', minWidth: 110 }}
+              style={portalStyle({ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9', minWidth: 110 })}
             >
               {Array.from({ length: 6 }, (_, i) => now.getFullYear() + 1 - i).map((y) => (
-                <option key={y} value={y} style={{ background: '#0f0d0b' }}>{y}</option>
+                <option key={y} value={y} style={portalStyle({ background: '#0f0d0b' })}>{y}</option>
               ))}
             </select>
           </div>
 
           {donemTipi === 'AYLIK' && (
             <div>
-              <label className="text-[11px] uppercase font-bold tracking-[.12em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
+              <label className="text-[11px] uppercase font-bold tracking-[.12em] block mb-1.5" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
                 Ay
               </label>
               <select
                 value={month}
                 onChange={(e) => setMonth(e.target.value)}
                 className="px-3 py-2.5 rounded-lg text-sm border outline-none"
-                style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9', minWidth: 140 }}
+                style={portalStyle({ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9', minWidth: 140 })}
               >
                 {AYLAR.map((a) => (
-                  <option key={a.v} value={a.v} style={{ background: '#0f0d0b' }}>{a.l}</option>
+                  <option key={a.v} value={a.v} style={portalStyle({ background: '#0f0d0b' })}>{a.l}</option>
                 ))}
               </select>
             </div>
@@ -903,7 +905,7 @@ export default function MizanPage() {
             onClick={handleUploadClick}
             disabled={uploadMut.isPending || lucaAgentMut.isPending}
             className="px-5 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 disabled:opacity-50"
-            style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}
+            style={portalStyle({ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' })}
           >
             {uploadMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
             Mizan Yükle
@@ -917,11 +919,11 @@ export default function MizanPage() {
             }}
             disabled={lucaAgentMut.isPending || !!lucaJobId || uploadMut.isPending}
             className="px-4 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-2 disabled:opacity-50 transition"
-            style={{
+            style={portalStyle({
               background: 'rgba(255,255,255,0.04)',
               border: '1px solid rgba(184,160,111,0.3)',
               color: GOLD,
-            }}
+            })}
             title="Güvenlik kodu gerekirse bu ekranda gösterilir"
           >
             {(lucaAgentMut.isPending || !!lucaJobId) ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
@@ -934,17 +936,17 @@ export default function MizanPage() {
       {lucaJobId && (
         <div
           className="rounded-lg p-3 text-sm"
-          style={{
+          style={portalStyle({
             background: 'rgba(184,160,111,0.08)',
             border: '1px solid rgba(184,160,111,0.3)',
             color: '#fafaf9',
-          }}
+          })}
         >
           <div className="flex items-center gap-3">
-            <Loader2 size={16} className="animate-spin" style={{ color: GOLD, flexShrink: 0 }} />
+            <Loader2 size={16} className="animate-spin" style={portalStyle({ color: GOLD, flexShrink: 0 })} />
             <div className="flex-1">
-              <div style={{ color: GOLD, fontWeight: 600, fontSize: 13 }}>Luca işlemi portal içinde yönetiliyor</div>
-              <div style={{ color: 'rgba(250,250,249,0.65)', fontSize: 12, marginTop: 2 }}>
+              <div style={portalStyle({ color: GOLD, fontWeight: 600, fontSize: 13 })}>Luca işlemi portal içinde yönetiliyor</div>
+              <div style={portalStyle({ color: 'rgba(250,250,249,0.65)', fontSize: 12, marginTop: 2 })}>
                 {lucaStatus || 'Moren agent Luca’dan mizan Excel’ini indiriyor…'}
               </div>
             </div>
@@ -952,7 +954,7 @@ export default function MizanPage() {
               onClick={() => cancelLucaMut.mutate()}
               disabled={cancelLucaMut.isPending}
               className="px-3 py-1.5 rounded-md text-xs disabled:opacity-50"
-              style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.6)', border: 0 }}
+              style={portalStyle({ background: 'rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.6)', border: 0 })}
             >
               {cancelLucaMut.isPending ? 'İptal ediliyor...' : 'İptal'}
             </button>
@@ -960,13 +962,13 @@ export default function MizanPage() {
           {currentChallenge ? (
             <div
               className="mt-3 grid gap-3 rounded-lg p-3 md:grid-cols-[220px_1fr_auto]"
-              style={{
+              style={portalStyle({
                 background: 'rgba(96,165,250,0.10)',
                 border: '1px solid rgba(96,165,250,0.30)',
-              }}
+              })}
             >
               <div>
-                <div className="mb-2 text-[11px] font-bold uppercase tracking-[.12em]" style={{ color: '#bfdbfe' }}>
+                <div className="mb-2 text-[11px] font-bold uppercase tracking-[.12em]" style={portalStyle({ color: '#bfdbfe' })}>
                   Luca Güvenlik Kodu
                 </div>
                 {currentChallenge.captchaImage ? (
@@ -974,19 +976,19 @@ export default function MizanPage() {
                     src={currentChallenge.captchaImage}
                     alt="Luca güvenlik kodu"
                     className="h-16 w-full rounded-md object-contain"
-                    style={{ background: '#fff', border: '1px solid rgba(255,255,255,0.22)' }}
+                    style={portalStyle({ background: '#fff', border: '1px solid rgba(255,255,255,0.22)' })}
                   />
                 ) : (
                   <div
                     className="flex h-16 items-center justify-center rounded-md text-xs"
-                    style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(250,250,249,0.65)' }}
+                    style={portalStyle({ background: 'rgba(255,255,255,0.06)', color: 'rgba(250,250,249,0.65)' })}
                   >
                     Kod görseli bekleniyor
                   </div>
                 )}
               </div>
               <div>
-                <label className="mb-2 block text-[11px] font-bold uppercase tracking-[.12em]" style={{ color: 'rgba(250,250,249,0.68)' }}>
+                <label className="mb-2 block text-[11px] font-bold uppercase tracking-[.12em]" style={portalStyle({ color: 'rgba(250,250,249,0.68)' })}>
                   Kodu buraya gir
                 </label>
                 <input
@@ -997,14 +999,14 @@ export default function MizanPage() {
                   }}
                   autoFocus
                   className="h-11 w-full rounded-lg border px-3 text-base font-bold outline-none"
-                  style={{
+                  style={portalStyle({
                     background: 'rgba(0,0,0,0.28)',
                     borderColor: 'rgba(191,219,254,0.35)',
                     color: '#fafaf9',
                     letterSpacing: '.08em',
-                  }}
+                  })}
                 />
-                <p className="mt-2 text-[12px]" style={{ color: 'rgba(250,250,249,0.62)' }}>
+                <p className="mt-2 text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.62)' })}>
                   Ayrı Luca sekmesi açılmadan, bu kod arka plandaki ajana iletilir.
                 </p>
               </div>
@@ -1012,7 +1014,7 @@ export default function MizanPage() {
                 onClick={() => answerCaptchaMut.mutate()}
                 disabled={answerCaptchaMut.isPending || !lucaCaptchaText.trim()}
                 className="self-end rounded-lg px-4 py-3 text-sm font-bold disabled:opacity-45"
-                style={{ background: '#60a5fa', color: '#06121f' }}
+                style={portalStyle({ background: '#60a5fa', color: '#06121f' })}
               >
                 {answerCaptchaMut.isPending ? 'Gönderiliyor...' : 'Kodu Gönder'}
               </button>
@@ -1020,11 +1022,11 @@ export default function MizanPage() {
           ) : (
             <div
               className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-[12.5px]"
-              style={{
+              style={portalStyle({
                 background: lucaReadyDevice ? 'rgba(34,197,94,0.08)' : 'rgba(245,158,11,0.08)',
                 border: `1px solid ${lucaReadyDevice ? 'rgba(34,197,94,0.22)' : 'rgba(245,158,11,0.24)'}`,
                 color: 'rgba(250,250,249,0.72)',
-              }}
+              })}
             >
               <span>
                 {lucaReadyDevice
@@ -1049,7 +1051,7 @@ export default function MizanPage() {
                     }
                   }}
                   className="rounded-md px-3 py-1.5 text-xs font-bold"
-                  style={{ background: 'rgba(184,160,111,0.16)', color: GOLD, border: '1px solid rgba(184,160,111,0.32)' }}
+                  style={portalStyle({ background: 'rgba(184,160,111,0.16)', color: GOLD, border: '1px solid rgba(184,160,111,0.32)' })}
                 >
                   Ajani Yenile
                 </button>
@@ -1060,17 +1062,17 @@ export default function MizanPage() {
           {/* Log container her zaman görünür; boş olsa bile işlem durumunu anlatır. */}
           <div
             className="mt-3 rounded-md p-2.5 text-[11.5px] font-mono space-y-0.5"
-            style={{
+            style={portalStyle({
               background: 'rgba(0,0,0,0.35)',
               border: '1px solid rgba(255,255,255,0.05)',
               color: 'rgba(250,250,249,0.75)',
               maxHeight: 200,
               overflowY: 'auto',
               minHeight: 60,
-            }}
+            })}
           >
             {lucaLogLines.length === 0 ? (
-              <div style={{ color: 'rgba(250,250,249,0.4)', fontStyle: 'italic' }}>
+              <div style={portalStyle({ color: 'rgba(250,250,249,0.4)', fontStyle: 'italic' })}>
                 Job oluşturuldu. Arka plan ajanı bekleniyor; güvenlik kodu gerekirse bu ekranda açılacak.
               </div>
             ) : (
@@ -1080,11 +1082,11 @@ export default function MizanPage() {
                 return (
                   <div
                     key={i}
-                    style={{
+                    style={portalStyle({
                       color: isErr ? '#fca5a5' : isOk ? '#86efac' : 'rgba(250,250,249,0.65)',
                       whiteSpace: 'pre-wrap',
                       wordBreak: 'break-word',
-                    }}
+                    })}
                   >
                     {line}
                   </div>
@@ -1106,21 +1108,21 @@ export default function MizanPage() {
             <Kpi label="Son Güncelleme" val={mizan.createdAt ? new Date(mizan.createdAt).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'} color="rgba(250,250,249,0.7)" small icon={null} />
           </div>
           {/* Kesin Kayıt ribbon */}
-          <div className="flex items-center justify-between rounded-xl p-3" style={{
+          <div className="flex items-center justify-between rounded-xl p-3" style={portalStyle({
             background: mizan.locked ? 'rgba(34,197,94,0.08)' : 'rgba(255,255,255,0.02)',
             border: `1px solid ${mizan.locked ? 'rgba(34,197,94,0.25)' : 'rgba(255,255,255,0.05)'}`,
-          }}>
+          })}>
             {mizan.locked ? (
               <div className="flex items-center gap-2">
-                <Lock size={14} style={{ color: '#22c55e' }} />
-                <span className="text-[13px] font-semibold" style={{ color: '#22c55e' }}>Kesin Kayıt</span>
-                <span className="text-[11.5px]" style={{ color: 'rgba(250,250,249,0.65)' }}>
+                <Lock size={14} style={portalStyle({ color: '#22c55e' })} />
+                <span className="text-[13px] font-semibold" style={portalStyle({ color: '#22c55e' })}>Kesin Kayıt</span>
+                <span className="text-[11.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.65)' })}>
                   · {mizan.lockedAt ? new Date(mizan.lockedAt).toLocaleString('tr-TR') : ''}
                   {mizan.lockNote && ` · ${mizan.lockNote}`}
                 </span>
               </div>
             ) : (
-              <div className="text-[12px]" style={{ color: 'rgba(250,250,249,0.55)' }}>
+              <div className="text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>
                 Bu mizan değişikliklere açık. Kesin kayıt olarak işaretledikten sonra düzeltme yapılamaz.
               </div>
             )}
@@ -1129,11 +1131,11 @@ export default function MizanPage() {
                 onClick={() => exportMut.mutate(mizan.id)}
                 disabled={exportMut.isPending}
                 className="px-3 py-1.5 rounded-lg text-[12px] font-bold flex items-center gap-1.5"
-                style={{
+                style={portalStyle({
                   background: 'rgba(96,165,250,0.10)',
                   color: '#93c5fd',
                   border: '1px solid rgba(96,165,250,0.28)',
-                }}
+                })}
               >
                 <Download size={12} /> Excel
               </button>
@@ -1141,11 +1143,11 @@ export default function MizanPage() {
                 onClick={() => mizan.locked ? handleUnlock(mizan.id) : handleLock(mizan.id)}
                 disabled={lockMut.isPending || unlockMut.isPending}
                 className="px-3 py-1.5 rounded-lg text-[12px] font-bold flex items-center gap-1.5"
-                style={{
+                style={portalStyle({
                   background: mizan.locked ? 'rgba(244,63,94,0.12)' : 'rgba(184,160,111,0.15)',
                   color: mizan.locked ? '#f43f5e' : GOLD,
                   border: `1px solid ${mizan.locked ? 'rgba(244,63,94,0.3)' : 'rgba(184,160,111,0.35)'}`,
-                }}
+                })}
               >
                 {mizan.locked ? <><Unlock size={12} /> Kilidi Aç</> : <><Lock size={12} /> Kesin Kayıt</>}
               </button>
@@ -1155,12 +1157,12 @@ export default function MizanPage() {
       )}
 
       {mizan && (
-        <div className="rounded-xl border p-4" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}>
+        <div className="rounded-xl border p-4" style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' })}>
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h3 className="text-[14px] font-semibold flex items-center gap-2.5" style={{ color: '#fafaf9' }}>
-              <span className="w-[3px] h-4 rounded-sm" style={{ background: GOLD }} />
+            <h3 className="text-[14px] font-semibold flex items-center gap-2.5" style={portalStyle({ color: '#fafaf9' })}>
+              <span className="w-[3px] h-4 rounded-sm" style={portalStyle({ background: GOLD })} />
               Denetim Kriterleri
-              <span className="text-[10.5px] font-medium px-2 py-[2px] rounded-md" style={{ background: 'rgba(184,160,111,0.12)', color: GOLD }}>
+              <span className="text-[10.5px] font-medium px-2 py-[2px] rounded-md" style={portalStyle({ background: 'rgba(184,160,111,0.12)', color: GOLD })}>
                 {SISTEM_DENETIM_KRITERLERI.length + denetimKriterleri.length} kriter
               </span>
             </h3>
@@ -1169,7 +1171,7 @@ export default function MizanPage() {
                 onClick={() => analyzeMut.mutate(mizan.id)}
                 disabled={analyzeMut.isPending}
                 className="px-3 py-1.5 rounded-lg text-[12px] font-bold flex items-center gap-1.5 disabled:opacity-50"
-                style={{ background: 'rgba(96,165,250,0.10)', color: '#93c5fd', border: '1px solid rgba(96,165,250,0.28)' }}
+                style={portalStyle({ background: 'rgba(96,165,250,0.10)', color: '#93c5fd', border: '1px solid rgba(96,165,250,0.28)' })}
               >
                 {analyzeMut.isPending ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
                 Analizi Yenile
@@ -1177,7 +1179,7 @@ export default function MizanPage() {
               <button
                 onClick={() => setCriteriaOpen((v) => !v)}
                 className="px-3 py-1.5 rounded-lg text-[12px] font-bold flex items-center gap-1.5"
-                style={{ background: criteriaOpen ? 'rgba(184,160,111,0.16)' : 'rgba(255,255,255,0.04)', color: criteriaOpen ? GOLD : 'rgba(250,250,249,0.72)', border: `1px solid ${criteriaOpen ? 'rgba(184,160,111,0.32)' : 'rgba(255,255,255,0.08)'}` }}
+                style={portalStyle({ background: criteriaOpen ? 'rgba(184,160,111,0.16)' : 'rgba(255,255,255,0.04)', color: criteriaOpen ? GOLD : 'rgba(250,250,249,0.72)', border: `1px solid ${criteriaOpen ? 'rgba(184,160,111,0.32)' : 'rgba(255,255,255,0.08)'}` })}
               >
                 <SlidersHorizontal size={12} />
                 {criteriaOpen ? 'Kapat' : 'Kriterler'}
@@ -1187,15 +1189,15 @@ export default function MizanPage() {
 
           {criteriaOpen && (
             <div className="mt-4 space-y-4">
-              <div className="rounded-xl border p-3.5" style={{ background: 'rgba(184,160,111,0.045)', borderColor: 'rgba(184,160,111,0.18)' }}>
+              <div className="rounded-xl border p-3.5" style={portalStyle({ background: 'rgba(184,160,111,0.045)', borderColor: 'rgba(184,160,111,0.18)' })}>
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <h4 className="text-[13px] font-bold" style={{ color: '#fafaf9' }}>Şu an kontrol edilen kriterler</h4>
-                    <p className="mt-0.5 text-[11.5px]" style={{ color: 'rgba(250,250,249,0.52)' }}>
+                    <h4 className="text-[13px] font-bold" style={portalStyle({ color: '#fafaf9' })}>Şu an kontrol edilen kriterler</h4>
+                    <p className="mt-0.5 text-[11.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.52)' })}>
                       Mizan analizi yenilendiğinde aşağıdaki kontroller çalışır; özel eklediğin kriterler de aynı liste mantığıyla altta yer alır.
                     </p>
                   </div>
-                  <span className="rounded-md px-2 py-1 text-[10.5px] font-bold" style={{ background: 'rgba(212,184,118,0.14)', color: GOLD }}>
+                  <span className="rounded-md px-2 py-1 text-[10.5px] font-bold" style={portalStyle({ background: 'rgba(212,184,118,0.14)', color: GOLD })}>
                     {SISTEM_DENETIM_KRITERLERI.length} mevcut kontrol
                   </span>
                 </div>
@@ -1205,32 +1207,32 @@ export default function MizanPage() {
                     <div
                       key={`${kriter.tip}-${kriter.hesap}`}
                       className="rounded-lg border p-3"
-                      style={{ background: 'rgba(10,9,7,0.42)', borderColor: 'rgba(255,255,255,0.07)' }}
+                      style={portalStyle({ background: 'rgba(10,9,7,0.42)', borderColor: 'rgba(255,255,255,0.07)' })}
                     >
                       <div className="flex flex-wrap items-center gap-2">
                         <span
                           className="rounded px-1.5 py-0.5 font-mono text-[10px] font-bold"
-                          style={{ background: 'rgba(147,197,253,0.11)', color: '#93c5fd' }}
+                          style={portalStyle({ background: 'rgba(147,197,253,0.11)', color: '#93c5fd' })}
                         >
                           {kriter.hesap}
                         </span>
                         <span
                           className="rounded px-1.5 py-0.5 text-[10px] font-bold"
-                          style={{
+                          style={portalStyle({
                             background: kriter.seviye === 'ERROR' ? 'rgba(244,63,94,0.12)' : 'rgba(245,158,11,0.12)',
                             color: kriter.seviye === 'ERROR' ? '#f43f5e' : '#f59e0b',
-                          }}
+                          })}
                         >
                           {kriter.seviye}
                         </span>
-                        <span className="min-w-0 truncate text-[12px] font-semibold" style={{ color: '#fafaf9' }}>
+                        <span className="min-w-0 truncate text-[12px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>
                           {kriter.tip}
                         </span>
                       </div>
-                      <div className="mt-2 text-[11.5px] font-semibold" style={{ color: GOLD }}>
+                      <div className="mt-2 text-[11.5px] font-semibold" style={portalStyle({ color: GOLD })}>
                         {kriter.kosul}
                       </div>
-                      <p className="mt-1 text-[11.5px] leading-relaxed" style={{ color: 'rgba(250,250,249,0.58)' }}>
+                      <p className="mt-1 text-[11.5px] leading-relaxed" style={portalStyle({ color: 'rgba(250,250,249,0.58)' })}>
                         {kriter.aciklama}
                       </p>
                     </div>
@@ -1238,46 +1240,46 @@ export default function MizanPage() {
                 </div>
               </div>
 
-              <div ref={criteriaFormRef} className="rounded-xl border p-3.5" style={{ background: 'rgba(255,255,255,0.018)', borderColor: editingCriterionId ? 'rgba(184,160,111,0.28)' : 'rgba(255,255,255,0.06)' }}>
+              <div ref={criteriaFormRef} className="rounded-xl border p-3.5" style={portalStyle({ background: 'rgba(255,255,255,0.018)', borderColor: editingCriterionId ? 'rgba(184,160,111,0.28)' : 'rgba(255,255,255,0.06)' })}>
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <h4 className="text-[13px] font-bold" style={{ color: '#fafaf9' }}>{editingCriterionId ? 'Kriteri düzenle' : 'Yeni kriter ekle'}</h4>
-                    <p className="mt-0.5 text-[11.5px]" style={{ color: 'rgba(250,250,249,0.52)' }}>
+                    <h4 className="text-[13px] font-bold" style={portalStyle({ color: '#fafaf9' })}>{editingCriterionId ? 'Kriteri düzenle' : 'Yeni kriter ekle'}</h4>
+                    <p className="mt-0.5 text-[11.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.52)' })}>
                       Ofise veya seçili mükellefe özel hesap deseni kontrolünü buradan ekleyebilirsin.
                     </p>
                   </div>
-                  <span className="rounded-md px-2 py-1 text-[10.5px] font-bold" style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.62)' }}>
+                  <span className="rounded-md px-2 py-1 text-[10.5px] font-bold" style={portalStyle({ background: 'rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.62)' })}>
                     {denetimKriterleri.length} ek kriter
                   </span>
                 </div>
 
               <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
                 <div className="md:col-span-2">
-                  <label className="text-[10.5px] uppercase font-bold tracking-[.1em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.48)' }}>Kriter Adı</label>
+                  <label className="text-[10.5px] uppercase font-bold tracking-[.1em] block mb-1.5" style={portalStyle({ color: 'rgba(250,250,249,0.48)' })}>Kriter Adı</label>
                   <input
                     value={criterionForm.ad}
                     onChange={(e) => setCriterionForm((f) => ({ ...f, ad: e.target.value }))}
                     className="w-full px-3 py-2 rounded-lg text-[12.5px] border outline-none"
-                    style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}
+                    style={portalStyle({ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' })}
                   />
                 </div>
                 <div>
-                  <label className="text-[10.5px] uppercase font-bold tracking-[.1em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.48)' }}>Hesap Deseni</label>
+                  <label className="text-[10.5px] uppercase font-bold tracking-[.1em] block mb-1.5" style={portalStyle({ color: 'rgba(250,250,249,0.48)' })}>Hesap Deseni</label>
                   <input
                     value={criterionForm.hesapPattern}
                     onChange={(e) => setCriterionForm((f) => ({ ...f, hesapPattern: e.target.value }))}
                     placeholder="120, 191, 600*"
                     className="w-full px-3 py-2 rounded-lg text-[12.5px] border outline-none font-mono"
-                    style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}
+                    style={portalStyle({ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' })}
                   />
                 </div>
                 <div>
-                  <label className="text-[10.5px] uppercase font-bold tracking-[.1em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.48)' }}>Koşul</label>
+                  <label className="text-[10.5px] uppercase font-bold tracking-[.1em] block mb-1.5" style={portalStyle({ color: 'rgba(250,250,249,0.48)' })}>Koşul</label>
                   <select
                     value={criterionForm.kosul}
                     onChange={(e) => setCriterionForm((f) => ({ ...f, kosul: e.target.value }))}
                     className="w-full px-3 py-2 rounded-lg text-[12.5px] border outline-none"
-                    style={{ background: '#11100e', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}
+                    style={portalStyle({ background: '#11100e', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' })}
                   >
                     {DENETIM_KOSULLARI.map((k) => (
                       <option key={k.value} value={k.value}>{k.label}</option>
@@ -1285,23 +1287,23 @@ export default function MizanPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="text-[10.5px] uppercase font-bold tracking-[.1em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.48)' }}>Eşik</label>
+                  <label className="text-[10.5px] uppercase font-bold tracking-[.1em] block mb-1.5" style={portalStyle({ color: 'rgba(250,250,249,0.48)' })}>Eşik</label>
                   <input
                     type="number"
                     value={criterionForm.esik}
                     onChange={(e) => setCriterionForm((f) => ({ ...f, esik: e.target.value }))}
                     disabled={!denetimEsikIster(criterionForm.kosul)}
                     className="w-full px-3 py-2 rounded-lg text-[12.5px] border outline-none font-mono disabled:opacity-35"
-                    style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}
+                    style={portalStyle({ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' })}
                   />
                 </div>
                 <div>
-                  <label className="text-[10.5px] uppercase font-bold tracking-[.1em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.48)' }}>Seviye</label>
+                  <label className="text-[10.5px] uppercase font-bold tracking-[.1em] block mb-1.5" style={portalStyle({ color: 'rgba(250,250,249,0.48)' })}>Seviye</label>
                   <select
                     value={criterionForm.seviye}
                     onChange={(e) => setCriterionForm((f) => ({ ...f, seviye: e.target.value }))}
                     className="w-full px-3 py-2 rounded-lg text-[12.5px] border outline-none"
-                    style={{ background: '#11100e', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}
+                    style={portalStyle({ background: '#11100e', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' })}
                   >
                     <option value="WARN">WARN</option>
                     <option value="ERROR">ERROR</option>
@@ -1309,13 +1311,13 @@ export default function MizanPage() {
                   </select>
                 </div>
                 <div className="md:col-span-5">
-                  <label className="text-[10.5px] uppercase font-bold tracking-[.1em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.48)' }}>Uyarı Mesajı</label>
+                  <label className="text-[10.5px] uppercase font-bold tracking-[.1em] block mb-1.5" style={portalStyle({ color: 'rgba(250,250,249,0.48)' })}>Uyarı Mesajı</label>
                   <input
                     value={criterionForm.mesaj}
                     onChange={(e) => setCriterionForm((f) => ({ ...f, mesaj: e.target.value }))}
                     placeholder="{hesapKodu} hesabı {esik} üstünde bakiye veriyor"
                     className="w-full px-3 py-2 rounded-lg text-[12.5px] border outline-none"
-                    style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}
+                    style={portalStyle({ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' })}
                   />
                 </div>
                 <div className="flex items-end">
@@ -1323,7 +1325,7 @@ export default function MizanPage() {
                     onClick={submitCriterionForm}
                     disabled={createCriterionMut.isPending || updateCriterionMut.isPending}
                     className="w-full px-3 py-2 rounded-lg text-[12.5px] font-bold flex items-center justify-center gap-1.5 disabled:opacity-50"
-                    style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}
+                    style={portalStyle({ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' })}
                   >
                     {(createCriterionMut.isPending || updateCriterionMut.isPending) ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
                     {editingCriterionId ? 'Güncelle' : 'Kaydet'}
@@ -1335,14 +1337,14 @@ export default function MizanPage() {
                 <button
                   onClick={resetCriterionForm}
                   className="mt-2 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-bold"
-                  style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(250,250,249,0.68)', border: '1px solid rgba(255,255,255,0.08)' }}
+                  style={portalStyle({ background: 'rgba(255,255,255,0.04)', color: 'rgba(250,250,249,0.68)', border: '1px solid rgba(255,255,255,0.08)' })}
                 >
                   <X size={12} />
                   Düzenlemeyi iptal et
                 </button>
               )}
 
-              <label className="inline-flex items-center gap-2 text-[12px]" style={{ color: 'rgba(250,250,249,0.68)' }}>
+              <label className="inline-flex items-center gap-2 text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.68)' })}>
                 <input
                   type="checkbox"
                   checked={criterionForSelectedOnly}
@@ -1354,35 +1356,35 @@ export default function MizanPage() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
                 {denetimKriterleri.length === 0 ? (
-                  <div className="rounded-lg px-3 py-3 text-[12px]" style={{ background: 'rgba(255,255,255,0.025)', color: 'rgba(250,250,249,0.48)', border: '1px dashed rgba(255,255,255,0.08)' }}>
+                  <div className="rounded-lg px-3 py-3 text-[12px]" style={portalStyle({ background: 'rgba(255,255,255,0.025)', color: 'rgba(250,250,249,0.48)', border: '1px dashed rgba(255,255,255,0.08)' })}>
                     Kayıtlı kriter yok
                   </div>
                 ) : denetimKriterleri.map((k: any) => {
                   const kosulLabel = DENETIM_KOSULLARI.find((x) => x.value === k.kosul)?.label || k.kosul;
                   const scoped = k.taxpayerId ? 'Mükellef' : 'Genel';
                   return (
-                    <div key={k.id} className="rounded-lg px-3 py-2.5 flex items-start gap-3" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                    <div key={k.id} className="rounded-lg px-3 py-2.5 flex items-start gap-3" style={portalStyle({ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)' })}>
                       <div className="mt-0.5">
-                        {k.aktif ? <CheckCircle2 size={15} style={{ color: '#22c55e' }} /> : <XCircle size={15} style={{ color: 'rgba(250,250,249,0.36)' }} />}
+                        {k.aktif ? <CheckCircle2 size={15} style={portalStyle({ color: '#22c55e' })} /> : <XCircle size={15} style={portalStyle({ color: 'rgba(250,250,249,0.36)' })} />}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-[12.5px] font-semibold truncate" style={{ color: '#fafaf9' }}>{k.ad}</span>
-                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: 'rgba(184,160,111,0.10)', color: GOLD }}>{scoped}</span>
-                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: k.seviye === 'ERROR' ? 'rgba(244,63,94,0.12)' : 'rgba(245,158,11,0.12)', color: k.seviye === 'ERROR' ? '#f43f5e' : '#f59e0b' }}>{k.seviye}</span>
+                          <span className="text-[12.5px] font-semibold truncate" style={portalStyle({ color: '#fafaf9' })}>{k.ad}</span>
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={portalStyle({ background: 'rgba(184,160,111,0.10)', color: GOLD })}>{scoped}</span>
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={portalStyle({ background: k.seviye === 'ERROR' ? 'rgba(244,63,94,0.12)' : 'rgba(245,158,11,0.12)', color: k.seviye === 'ERROR' ? '#f43f5e' : '#f59e0b' })}>{k.seviye}</span>
                         </div>
-                        <div className="mt-1 text-[11.5px] truncate" style={{ color: 'rgba(250,250,249,0.58)' }}>
-                          <span className="font-mono" style={{ color: '#93c5fd' }}>{k.hesapPattern}</span>
+                        <div className="mt-1 text-[11.5px] truncate" style={portalStyle({ color: 'rgba(250,250,249,0.58)' })}>
+                          <span className="font-mono" style={portalStyle({ color: '#93c5fd' })}>{k.hesapPattern}</span>
                           <span> · {kosulLabel}</span>
                           {k.esik != null && <span> · {fmtTRY(k.esik)}</span>}
                         </div>
-                        <div className="mt-1 text-[11px] truncate" style={{ color: 'rgba(250,250,249,0.42)' }}>{k.mesaj}</div>
+                        <div className="mt-1 text-[11px] truncate" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>{k.mesaj}</div>
                       </div>
                       <div className="flex gap-1">
                         <button
                           onClick={() => handleEditCriterion(k)}
                           className="p-1.5 rounded-md"
-                          style={{ color: GOLD, background: editingCriterionId === k.id ? 'rgba(184,160,111,0.18)' : 'rgba(184,160,111,0.08)' }}
+                          style={portalStyle({ color: GOLD, background: editingCriterionId === k.id ? 'rgba(184,160,111,0.18)' : 'rgba(184,160,111,0.08)' })}
                           title="Düzenle"
                         >
                           <Pencil size={13} />
@@ -1390,7 +1392,7 @@ export default function MizanPage() {
                         <button
                           onClick={() => updateCriterionMut.mutate({ id: k.id, data: { aktif: !k.aktif } })}
                           className="p-1.5 rounded-md"
-                          style={{ color: k.aktif ? '#22c55e' : 'rgba(250,250,249,0.44)', background: 'rgba(255,255,255,0.04)' }}
+                          style={portalStyle({ color: k.aktif ? '#22c55e' : 'rgba(250,250,249,0.44)', background: 'rgba(255,255,255,0.04)' })}
                           title={k.aktif ? 'Pasif yap' : 'Aktif yap'}
                         >
                           {k.aktif ? <CheckCircle2 size={13} /> : <Plus size={13} />}
@@ -1400,7 +1402,7 @@ export default function MizanPage() {
                             if (confirm('Bu denetim kriterini silmek istiyor musunuz?')) deleteCriterionMut.mutate(k.id);
                           }}
                           className="p-1.5 rounded-md"
-                          style={{ color: '#f43f5e', background: 'rgba(244,63,94,0.08)' }}
+                          style={portalStyle({ color: '#f43f5e', background: 'rgba(244,63,94,0.08)' })}
                           title="Sil"
                         >
                           <Trash2 size={13} />
@@ -1419,10 +1421,10 @@ export default function MizanPage() {
       {/* Anomaliler */}
       {anomaliler.length > 0 && (
         <div>
-          <h3 className="text-[14px] font-semibold mb-3 flex items-center gap-2.5" style={{ color: '#fafaf9' }}>
-            <span className="w-[3px] h-4 rounded-sm" style={{ background: GOLD }} />
+          <h3 className="text-[14px] font-semibold mb-3 flex items-center gap-2.5" style={portalStyle({ color: '#fafaf9' })}>
+            <span className="w-[3px] h-4 rounded-sm" style={portalStyle({ background: GOLD })} />
             Hesap Kodu Denetimi
-            <span className="text-[10.5px] font-medium px-2 py-[2px] rounded-md" style={{ background: 'rgba(245,158,11,0.12)', color: '#f59e0b' }}>
+            <span className="text-[10.5px] font-medium px-2 py-[2px] rounded-md" style={portalStyle({ background: 'rgba(245,158,11,0.12)', color: '#f59e0b' })}>
               {anomaliler.length} uyarı
             </span>
           </h3>
@@ -1431,23 +1433,23 @@ export default function MizanPage() {
               <div
                 key={a.id || i}
                 className="rounded-lg px-3 py-2.5 flex gap-2.5"
-                style={{
+                style={portalStyle({
                   background: 'rgba(255,255,255,0.02)',
                   border: `1px solid ${a.seviye === 'ERROR' ? 'rgba(244,63,94,0.28)' : 'rgba(245,158,11,0.26)'}`,
-                }}
+                })}
               >
                 <div
                   className="w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0 mt-[1px]"
-                  style={{
+                  style={portalStyle({
                     background: a.seviye === 'ERROR' ? 'rgba(244,63,94,0.15)' : 'rgba(245,158,11,0.15)',
                     color: a.seviye === 'ERROR' ? '#f43f5e' : '#f59e0b',
-                  }}
+                  })}
                 >
                   {a.seviye === 'ERROR' ? <XCircle size={12} /> : <AlertTriangle size={12} />}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[11.5px] font-semibold mb-0.5 tracking-wide" style={{ color: a.seviye === 'ERROR' ? '#fca5a5' : '#fcd34d' }}>{a.tip.replace(/_/g, ' ')}</p>
-                  <p className="text-[11px] leading-snug" style={{ color: 'rgba(250,250,249,0.62)' }}>{a.mesaj}</p>
+                  <p className="text-[11.5px] font-semibold mb-0.5 tracking-wide" style={portalStyle({ color: a.seviye === 'ERROR' ? '#fca5a5' : '#fcd34d' })}>{a.tip.replace(/_/g, ' ')}</p>
+                  <p className="text-[11px] leading-snug" style={portalStyle({ color: 'rgba(250,250,249,0.62)' })}>{a.mesaj}</p>
                 </div>
               </div>
             ))}
@@ -1457,20 +1459,20 @@ export default function MizanPage() {
 
       {/* Hesap Listesi: boş hal bildirimi */}
       {effectiveId && hesaplar.length === 0 && (
-        <div className="rounded-xl p-6 text-center" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
-          <FileSpreadsheet size={28} className="mx-auto mb-3" style={{ color: 'rgba(250,250,249,0.35)' }} />
-          <p className="text-[13.5px] font-medium" style={{ color: 'rgba(250,250,249,0.7)' }}>Mizan yükleniyor…</p>
-          <p className="text-[12px] mt-1.5" style={{ color: 'rgba(250,250,249,0.4)' }}>
+        <div className="rounded-xl p-6 text-center" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' })}>
+          <FileSpreadsheet size={28} className="mx-auto mb-3" style={portalStyle({ color: 'rgba(250,250,249,0.35)' })} />
+          <p className="text-[13.5px] font-medium" style={portalStyle({ color: 'rgba(250,250,249,0.7)' })}>Mizan yükleniyor…</p>
+          <p className="text-[12px] mt-1.5" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>
             Hesaplar getiriliyor. Birkaç saniye içinde görünecek. Görünmezse sayfayı yenileyin (F5).
           </p>
         </div>
       )}
       {!effectiveId && mizanList.length === 0 && taxpayerId && (
-        <div className="rounded-xl p-6 text-center" style={{ background: 'rgba(255,255,255,0.02)', border: '1px dashed rgba(184,160,111,0.20)' }}>
-          <FileSpreadsheet size={28} className="mx-auto mb-3" style={{ color: GOLD, opacity: 0.5 }} />
-          <p className="text-[13.5px] font-medium" style={{ color: '#fafaf9' }}>Bu mükellef için henüz mizan yok</p>
-          <p className="text-[12px] mt-1.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
-            Yukarıdan <strong style={{ color: GOLD }}>Mizan Yükle</strong> veya <strong style={{ color: GOLD }}>Luca'dan Çek</strong> ile başla.
+        <div className="rounded-xl p-6 text-center" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px dashed rgba(184,160,111,0.20)' })}>
+          <FileSpreadsheet size={28} className="mx-auto mb-3" style={portalStyle({ color: GOLD, opacity: 0.5 })} />
+          <p className="text-[13.5px] font-medium" style={portalStyle({ color: '#fafaf9' })}>Bu mükellef için henüz mizan yok</p>
+          <p className="text-[12px] mt-1.5" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
+            Yukarıdan <strong style={portalStyle({ color: GOLD })}>Mizan Yükle</strong> veya <strong style={portalStyle({ color: GOLD })}>Luca'dan Çek</strong> ile başla.
           </p>
         </div>
       )}
@@ -1483,10 +1485,10 @@ export default function MizanPage() {
       {/* Hesap Listesi */}
       {hesaplar.length > 0 && (
         <div>
-          <h3 className="text-[14px] font-semibold mb-3 flex items-center gap-2.5" style={{ color: '#fafaf9' }}>
-            <span className="w-[3px] h-4 rounded-sm" style={{ background: GOLD }} />
+          <h3 className="text-[14px] font-semibold mb-3 flex items-center gap-2.5" style={portalStyle({ color: '#fafaf9' })}>
+            <span className="w-[3px] h-4 rounded-sm" style={portalStyle({ background: GOLD })} />
             Hesap Listesi
-            <span className="text-[10.5px] font-medium px-2 py-[2px] rounded-md" style={{ background: 'rgba(184,160,111,0.12)', color: GOLD }}>
+            <span className="text-[10.5px] font-medium px-2 py-[2px] rounded-md" style={portalStyle({ background: 'rgba(184,160,111,0.12)', color: GOLD })}>
               {hesaplar.length}
             </span>
           </h3>
@@ -1507,56 +1509,56 @@ export default function MizanPage() {
 
       {/* Geçmiş Mizanlar */}
       <div>
-        <h3 className="text-[14px] font-semibold mb-3 flex items-center gap-2.5" style={{ color: '#fafaf9' }}>
-          <span className="w-[3px] h-4 rounded-sm" style={{ background: GOLD }} />
+        <h3 className="text-[14px] font-semibold mb-3 flex items-center gap-2.5" style={portalStyle({ color: '#fafaf9' })}>
+          <span className="w-[3px] h-4 rounded-sm" style={portalStyle({ background: GOLD })} />
           Geçmiş Mizanlar
-          <span className="text-[10.5px] font-medium px-2 py-[2px] rounded-md" style={{ background: 'rgba(184,160,111,0.12)', color: GOLD }}>
+          <span className="text-[10.5px] font-medium px-2 py-[2px] rounded-md" style={portalStyle({ background: 'rgba(184,160,111,0.12)', color: GOLD })}>
             {mizanList.length}
           </span>
         </h3>
         {mizanList.length === 0 ? (
-          <div className="rounded-xl py-10 text-center" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
-            <FileSpreadsheet size={24} style={{ color: 'rgba(250,250,249,0.3)', margin: '0 auto 8px' }} />
-            <p className="text-[13px]" style={{ color: 'rgba(250,250,249,0.5)' }}>Henüz kayıtlı mizan yok</p>
+          <div className="rounded-xl py-10 text-center" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' })}>
+            <FileSpreadsheet size={24} style={portalStyle({ color: 'rgba(250,250,249,0.3)', margin: '0 auto 8px' })} />
+            <p className="text-[13px]" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>Henüz kayıtlı mizan yok</p>
           </div>
         ) : (
-          <div className="rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+          <div className="rounded-xl overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' })}>
             <table className="w-full text-left text-[13px]">
               <thead>
-                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                  <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.45)' }}>Tarih</th>
-                  <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.45)' }}>Mükellef</th>
-                  <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.45)' }}>Dönem</th>
-                  <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.45)' }}>Tür</th>
-                  <th className="px-4 py-3 text-center text-[10.5px] font-bold uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.45)' }}>Hesap</th>
-                  <th className="px-4 py-3 text-center text-[10.5px] font-bold uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.45)' }}>Uyarı</th>
-                  <th className="px-4 py-3 text-right text-[10.5px] font-bold uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.45)' }}>İşlem</th>
+                <tr style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.05)' })}>
+                  <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-[.08em]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>Tarih</th>
+                  <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-[.08em]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>Mükellef</th>
+                  <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-[.08em]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>Dönem</th>
+                  <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-[.08em]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>Tür</th>
+                  <th className="px-4 py-3 text-center text-[10.5px] font-bold uppercase tracking-[.08em]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>Hesap</th>
+                  <th className="px-4 py-3 text-center text-[10.5px] font-bold uppercase tracking-[.08em]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>Uyarı</th>
+                  <th className="px-4 py-3 text-right text-[10.5px] font-bold uppercase tracking-[.08em]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>İşlem</th>
                 </tr>
               </thead>
               <tbody>
                 {mizanList.map((m: any, idx: number) => (
-                  <tr key={m.id} style={{ borderTop: idx === 0 ? 'none' : '1px solid rgba(255,255,255,0.03)' }}>
-                    <td className="px-4 py-3 font-mono text-[12px]" style={{ color: 'rgba(250,250,249,0.7)' }}>{new Date(m.createdAt).toLocaleDateString('tr-TR')}</td>
+                  <tr key={m.id} style={portalStyle({ borderTop: idx === 0 ? 'none' : '1px solid rgba(255,255,255,0.03)' })}>
+                    <td className="px-4 py-3 font-mono text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.7)' })}>{new Date(m.createdAt).toLocaleDateString('tr-TR')}</td>
                     <td className="px-4 py-3 font-medium">
-                      {m.locked && <Lock size={11} style={{ color: '#22c55e', display: 'inline', marginRight: 6, verticalAlign: 'middle' }} />}
+                      {m.locked && <Lock size={11} style={portalStyle({ color: '#22c55e', display: 'inline', marginRight: 6, verticalAlign: 'middle' })} />}
                       {m.taxpayer ? taxpayerName(m.taxpayer) : '—'}
                     </td>
                     <td className="px-4 py-3 text-[12px]">{formatDonemLabel(m.donem, m.donemTipi)}</td>
-                    <td className="px-4 py-3 text-[11.5px]" style={{ color: 'rgba(250,250,249,0.6)' }}>{formatDonemTipiLabel(m.donemTipi, m.donem)}</td>
+                    <td className="px-4 py-3 text-[11.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.6)' })}>{formatDonemTipiLabel(m.donemTipi, m.donem)}</td>
                     <td className="px-4 py-3 text-center font-mono">{m._count?.hesaplar ?? 0}</td>
                     <td className="px-4 py-3 text-center">
-                      <span className="text-[10.5px] font-bold px-2 py-0.5 rounded" style={{ background: (m._count?.anomaliler ?? 0) > 0 ? 'rgba(245,158,11,0.12)' : 'rgba(34,197,94,0.12)', color: (m._count?.anomaliler ?? 0) > 0 ? '#f59e0b' : '#22c55e' }}>
+                      <span className="text-[10.5px] font-bold px-2 py-0.5 rounded" style={portalStyle({ background: (m._count?.anomaliler ?? 0) > 0 ? 'rgba(245,158,11,0.12)' : 'rgba(34,197,94,0.12)', color: (m._count?.anomaliler ?? 0) > 0 ? '#f59e0b' : '#22c55e' })}>
                         {m._count?.anomaliler ?? 0}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="inline-flex gap-1.5">
-                        <a href={`/panel/mizan?id=${m.id}`} className="p-1.5 rounded-md" style={{ color: GOLD, background: 'rgba(184,160,111,0.08)' }}><Eye size={14} /></a>
+                        <a href={`/panel/mizan?id=${m.id}`} className="p-1.5 rounded-md" style={portalStyle({ color: GOLD, background: 'rgba(184,160,111,0.08)' })}><Eye size={14} /></a>
                         <button
                           onClick={() => exportMut.mutate(m.id)}
                           disabled={exportMut.isPending}
                           className="p-1.5 rounded-md disabled:opacity-40"
-                          style={{ color: '#93c5fd', background: 'rgba(96,165,250,0.08)' }}
+                          style={portalStyle({ color: '#93c5fd', background: 'rgba(96,165,250,0.08)' })}
                           title="Excel dışarı aktar"
                         >
                           <Download size={14} />
@@ -1568,7 +1570,7 @@ export default function MizanPage() {
                           }}
                           disabled={m.locked}
                           className="p-1.5 rounded-md disabled:opacity-30"
-                          style={{ color: '#f43f5e', background: 'rgba(244,63,94,0.08)' }}
+                          style={portalStyle({ color: '#f43f5e', background: 'rgba(244,63,94,0.08)' })}
                         >
                           <Trash2 size={14} />
                         </button>
@@ -1584,16 +1586,16 @@ export default function MizanPage() {
 
       {/* Mükellef Picker Modal */}
       {pickerOpen && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-[8vh]" style={{ background: 'rgba(0,0,0,.6)', backdropFilter: 'blur(6px)' }} onClick={() => setPickerOpen(false)}>
-          <div className="w-full max-w-xl rounded-2xl border flex flex-col overflow-hidden" style={{ background: 'rgba(17,14,12,0.98)', borderColor: 'rgba(255,255,255,0.05)', maxHeight: '84vh' }} onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
-              <h3 className="text-lg font-bold" style={{ color: '#fafaf9' }}>Mükellef Seç</h3>
+        <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-[8vh]" style={portalStyle({ background: 'rgba(0,0,0,.6)', backdropFilter: 'blur(6px)' })} onClick={() => setPickerOpen(false)}>
+          <div className="w-full max-w-xl rounded-2xl border flex flex-col overflow-hidden" style={portalStyle({ background: 'rgba(17,14,12,0.98)', borderColor: 'rgba(255,255,255,0.05)', maxHeight: '84vh' })} onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b" style={portalStyle({ borderColor: 'rgba(255,255,255,0.05)' })}>
+              <h3 className="text-lg font-bold" style={portalStyle({ color: '#fafaf9' })}>Mükellef Seç</h3>
               <button onClick={() => setPickerOpen(false)} className="p-1"><X size={16} /></button>
             </div>
-            <div className="px-5 py-3 border-b" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
-              <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg border" style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)' }}>
-                <Search size={14} style={{ color: 'rgba(250,250,249,0.45)' }} />
-                <input value={pickerSearch} onChange={(e) => setPickerSearch(e.target.value)} placeholder="Ara…" autoFocus className="flex-1 bg-transparent outline-none text-sm" style={{ color: '#fafaf9' }} />
+            <div className="px-5 py-3 border-b" style={portalStyle({ borderColor: 'rgba(255,255,255,0.05)' })}>
+              <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg border" style={portalStyle({ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)' })}>
+                <Search size={14} style={portalStyle({ color: 'rgba(250,250,249,0.45)' })} />
+                <input value={pickerSearch} onChange={(e) => setPickerSearch(e.target.value)} placeholder="Ara…" autoFocus className="flex-1 bg-transparent outline-none text-sm" style={portalStyle({ color: '#fafaf9' })} />
               </div>
             </div>
             <div className="flex-1 overflow-y-auto p-2">
@@ -1602,11 +1604,11 @@ export default function MizanPage() {
                   key={t.id}
                   onClick={() => { setTaxpayerId(t.id); setPickerOpen(false); setPickerSearch(''); }}
                   className="w-full flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg text-left transition-colors"
-                  style={{ background: taxpayerId === t.id ? 'rgba(184,160,111,.08)' : 'transparent', color: '#fafaf9' }}
-                  onMouseEnter={(e) => { if (taxpayerId !== t.id) (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,.03)'; }}
-                  onMouseLeave={(e) => { if (taxpayerId !== t.id) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+                  style={portalStyle({ background: taxpayerId === t.id ? 'rgba(184,160,111,.08)' : 'transparent', color: '#fafaf9' })}
+                  onMouseEnter={(e) => { if (taxpayerId !== t.id) (e.currentTarget as HTMLElement).style.background = portalPaint('rgba(255,255,255,.03)', 'background'); }}
+                  onMouseLeave={(e) => { if (taxpayerId !== t.id) (e.currentTarget as HTMLElement).style.background = portalPaint('transparent', 'background'); }}
                 >
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold" style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.7)' }}>{taxpayerName(t).charAt(0)}</div>
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold" style={portalStyle({ background: 'rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.7)' })}>{taxpayerName(t).charAt(0)}</div>
                   <span className="flex-1 truncate font-medium">{taxpayerName(t)}</span>
                 </button>
               ))}
@@ -1620,12 +1622,12 @@ export default function MizanPage() {
 
 function Kpi({ label, val, color, small, icon: Icon }: { label: string; val: string; color: string; small?: boolean; icon: any }) {
   return (
-    <div className="rounded-xl p-4" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
-      <div className="flex items-center gap-1.5 mb-2 text-[11px] font-bold uppercase tracking-[.1em]" style={{ color: 'rgba(250,250,249,0.5)' }}>
-        {Icon ? <Icon size={12} style={{ color }} /> : null}
+    <div className="rounded-xl p-4" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' })}>
+      <div className="flex items-center gap-1.5 mb-2 text-[11px] font-bold uppercase tracking-[.1em]" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
+        {Icon ? <Icon size={12} style={portalStyle({ color })} /> : null}
         {label}
       </div>
-      <p className="leading-none tabular-nums" style={{ fontFamily: FINANCIAL_FONT, fontSize: small ? 15 : 22, fontWeight: 700, color, letterSpacing: 0 }}>
+      <p className="leading-none tabular-nums" style={portalStyle({ fontFamily: FINANCIAL_FONT, fontSize: small ? 15 : 22, fontWeight: 700, color, letterSpacing: 0 })}>
         {val}
       </p>
     </div>
@@ -1718,55 +1720,55 @@ function MizanTable({
   }, [focusCell, ROWS]);
 
   return (
-    <div ref={tableRef} className="rounded-xl overflow-hidden" style={{
+    <div ref={tableRef} className="rounded-xl overflow-hidden" style={portalStyle({
       background: '#0a0907',
       border: '1px solid rgba(212,184,118,0.42)',
       boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.06), 0 18px 40px rgba(0,0,0,0.30)',
       fontFamily: REPORT_FONT,
-    }}>
+    })}>
       {/* === ÜST BAŞLIK BLOĞU (Excel benzeri: MİZAN / Mükellef / Dönem) === */}
-      <div style={{
+      <div style={portalStyle({
         background: 'linear-gradient(180deg, rgba(184,160,111,0.12), rgba(184,160,111,0.04))',
         borderBottom: '1px solid rgba(212,184,118,0.46)',
         padding: '14px 24px',
-      }}>
-        <div className="text-center" style={{
+      })}>
+        <div className="text-center" style={portalStyle({
           fontSize: 16,
           fontWeight: 700,
           letterSpacing: '0.15em',
           color: GOLD,
           marginBottom: 6,
-        }}>MİZAN</div>
-        <div className="text-center" style={{
+        })}>MİZAN</div>
+        <div className="text-center" style={portalStyle({
           fontSize: 14,
           fontWeight: 600,
           color: '#fafaf9',
           marginBottom: 10,
-        }}>{mukellefAdi}</div>
-        <div className="flex flex-wrap gap-x-8 gap-y-1 text-[11.5px]" style={{ color: 'rgba(250,250,249,0.7)' }}>
-          <div><span style={{ color: 'rgba(250,250,249,0.45)' }}>Dönem :</span> <span style={{ color: '#fafaf9', fontWeight: 600 }}>{dateRange.baslangic}-{dateRange.bitis}</span></div>
-          <div><span style={{ color: 'rgba(250,250,249,0.45)' }}>Tarih Aralığı :</span> <span style={{ color: '#fafaf9', fontWeight: 600 }}>{dateRange.baslangic}-{dateRange.bitis}</span></div>
+        })}>{mukellefAdi}</div>
+        <div className="flex flex-wrap gap-x-8 gap-y-1 text-[11.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.7)' })}>
+          <div><span style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>Dönem :</span> <span style={portalStyle({ color: '#fafaf9', fontWeight: 600 })}>{dateRange.baslangic}-{dateRange.bitis}</span></div>
+          <div><span style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>Tarih Aralığı :</span> <span style={portalStyle({ color: '#fafaf9', fontWeight: 600 })}>{dateRange.baslangic}-{dateRange.bitis}</span></div>
         </div>
       </div>
 
       {/* === TABLO === */}
-      <div style={{ overflowX: 'auto' }}>
-        <table className="w-full text-left" style={{ fontFamily: REPORT_FONT, fontVariantNumeric: 'tabular-nums', borderCollapse: 'separate', borderSpacing: 0, tableLayout: 'fixed', minWidth: 1080 }}>
+      <div style={portalStyle({ overflowX: 'auto' })}>
+        <table className="w-full text-left" style={portalStyle({ fontFamily: REPORT_FONT, fontVariantNumeric: 'tabular-nums', borderCollapse: 'separate', borderSpacing: 0, tableLayout: 'fixed', minWidth: 1080 })}>
           <colgroup>
-            <col style={{ width: 110 }} /> {/* HESAP KODU */}
+            <col style={portalStyle({ width: 110 })} /> {/* HESAP KODU */}
             <col /> {/* HESAP ADI — esnek */}
-            <col style={{ width: 140 }} /> {/* BORÇ */}
-            <col style={{ width: 140 }} /> {/* ALACAK */}
-            <col style={{ width: 150 }} /> {/* BORÇ BAKİYESİ */}
-            <col style={{ width: 150 }} /> {/* ALACAK BAKİYESİ */}
+            <col style={portalStyle({ width: 140 })} /> {/* BORÇ */}
+            <col style={portalStyle({ width: 140 })} /> {/* ALACAK */}
+            <col style={portalStyle({ width: 150 })} /> {/* BORÇ BAKİYESİ */}
+            <col style={portalStyle({ width: 150 })} /> {/* ALACAK BAKİYESİ */}
           </colgroup>
           <thead>
-            <tr style={{ background: 'rgba(184,160,111,0.14)' }}>
+            <tr style={portalStyle({ background: 'rgba(184,160,111,0.14)' })}>
               {['HESAP KODU', 'HESAP ADI', 'BORÇ', 'ALACAK', 'BORÇ BAKİYESİ', 'ALACAK BAKİYESİ'].map((label, i) => (
                 <th
                   key={label}
                   className={`px-3 py-3 text-[12px] font-bold tracking-[.05em] ${i >= 2 ? 'text-right' : 'text-left'}`}
-                  style={{
+                  style={portalStyle({
                     color: '#f5efe3',
                     borderRight: i < 5 ? '1px solid rgba(212,184,118,0.46)' : 'none',
                     borderBottom: '1px solid rgba(212,184,118,0.58)',
@@ -1774,7 +1776,7 @@ function MizanTable({
                     position: 'sticky',
                     top: 0,
                     zIndex: 1,
-                  }}
+                  })}
                 >
                   {label}
                 </th>
@@ -1816,7 +1818,7 @@ function MizanTable({
               ];
 
               return (
-                <tr key={h.id} style={{ background: rowBg }}>
+                <tr key={h.id} style={portalStyle({ background: rowBg })}>
                   {cells.map((c, colIdx) => {
                     const focused = focusCell?.row === rowIdx && focusCell?.col === colIdx;
                     const isAmountCell = colIdx >= 2;
@@ -1830,7 +1832,7 @@ function MizanTable({
                         onClick={() => setFocusCell({ row: rowIdx, col: colIdx })}
                         onFocus={() => setFocusCell({ row: rowIdx, col: colIdx })}
                         className={`px-3 py-2.5 ${c.align === 'right' ? 'text-right' : 'text-left'} truncate`}
-                        style={{
+                        style={portalStyle({
                           borderRight: colIdx < COLS - 1 ? '1px solid rgba(212,184,118,0.24)' : 'none',
                           borderBottom: '1px solid rgba(255,255,255,0.14)',
                           fontSize: isAmountCell ? FINANCIAL_AMOUNT_SIZE : fontSize,
@@ -1853,7 +1855,7 @@ function MizanTable({
                           paddingLeft: colIdx === 1 ? (isUpper ? 14 : lvl === 2 ? 18 : 26) : undefined,
                           letterSpacing: 0,
                           userSelect: 'text',
-                        }}
+                        })}
                       >
                         {c.val}
                       </td>
@@ -1864,11 +1866,11 @@ function MizanTable({
             })}
           </tbody>
           <tfoot>
-            <tr style={{ background: 'linear-gradient(180deg, rgba(212,184,118,0.20), rgba(212,184,118,0.13))' }}>
+            <tr style={portalStyle({ background: 'linear-gradient(180deg, rgba(212,184,118,0.20), rgba(212,184,118,0.13))' })}>
               <td
                 colSpan={2}
                 className="px-3 py-3 text-left font-bold"
-                style={{
+                style={portalStyle({
                   color: TOTAL_AMOUNT_COLOR,
                   borderTop: '2px solid rgba(212,184,118,0.72)',
                   borderRight: '1px solid rgba(212,184,118,0.36)',
@@ -1878,7 +1880,7 @@ function MizanTable({
                   bottom: 0,
                   zIndex: 1,
                   background: 'rgba(36,31,20,0.96)',
-                }}
+                })}
               >
                 ALT TOPLAM
               </td>
@@ -1891,7 +1893,7 @@ function MizanTable({
                 <td
                   key={idx}
                   className="px-3 py-3 text-right font-mono"
-                  style={{
+                  style={portalStyle({
                     color: TOTAL_AMOUNT_COLOR,
                     borderTop: '2px solid rgba(212,184,118,0.72)',
                     borderRight: idx < 3 ? '1px solid rgba(212,184,118,0.36)' : 'none',
@@ -1904,7 +1906,7 @@ function MizanTable({
                     bottom: 0,
                     zIndex: 1,
                     background: 'rgba(36,31,20,0.96)',
-                  }}
+                  })}
                 >
                   {fmtTRY(amount)}
                 </td>
@@ -1915,11 +1917,11 @@ function MizanTable({
       </div>
 
       {/* Footer ipucu */}
-      <div className="px-4 py-2 text-[10.5px]" style={{
+      <div className="px-4 py-2 text-[10.5px]" style={portalStyle({
         background: 'rgba(255,255,255,0.02)',
         borderTop: '1px solid rgba(255,255,255,0.08)',
         color: 'rgba(250,250,249,0.45)',
-      }}>
+      })}>
         💡 Hücreye tıkla → ok tuşları, Tab, Home/End ile gez. Esc seçimi kaldırır.
       </div>
     </div>

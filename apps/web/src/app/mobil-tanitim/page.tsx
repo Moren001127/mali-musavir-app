@@ -1,3 +1,5 @@
+
+import { portalStyle, portalCss } from '@/lib/portal-theme';
 import Link from 'next/link';
 import {
   BellRing,
@@ -65,7 +67,7 @@ const quick = [
 export default function MobilTanitimPublicPage() {
   return (
     <main className="mobil-page">
-      <style>{`
+      <style>{portalCss(`
         .mobil-page {
           min-height: 100vh;
           padding: 14px;
@@ -109,24 +111,24 @@ export default function MobilTanitimPublicPage() {
           .module-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
           .group-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         }
-      `}</style>
+      `)}</style>
 
       <div className="mobil-shell">
-        <section className="mobil-card" style={{ borderColor: 'rgba(212,184,118,0.2)', background: '#0f0d0b' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <span style={logoBox(GOLD)}>
+        <section className="mobil-card" style={portalStyle({ borderColor: 'rgba(212,184,118,0.2)', background: '#0f0d0b' })}>
+          <div style={portalStyle({ display: 'flex', alignItems: 'center', gap: 12 })}>
+            <span style={portalStyle(logoBox(GOLD))}>
               <Smartphone size={22} />
             </span>
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <p style={{ margin: 0, color: GOLD, fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0 }}>
+            <div style={portalStyle({ minWidth: 0, flex: 1 })}>
+              <p style={portalStyle({ margin: 0, color: GOLD, fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0 })}>
                 Mobil PWA Önizlemesi
               </p>
-              <h1 style={{ margin: '6px 0 0', color: '#fafaf9', fontSize: 25, lineHeight: 1.14, fontFamily: 'Fraunces, Georgia, serif', letterSpacing: 0 }}>
+              <h1 style={portalStyle({ margin: '6px 0 0', color: '#fafaf9', fontSize: 25, lineHeight: 1.14, fontFamily: 'Fraunces, Georgia, serif', letterSpacing: 0 })}>
                 Portalın gerçek modülleri
               </h1>
             </div>
           </div>
-          <p style={{ margin: '12px 0 0', color: 'rgba(250,250,249,0.64)', fontSize: 14, lineHeight: 1.55 }}>
+          <p style={portalStyle({ margin: '12px 0 0', color: 'rgba(250,250,249,0.64)', fontSize: 14, lineHeight: 1.55 })}>
             Bu görünüm telefonda kurulacak PWA için hazırlandı. Hayali alanlar yok; aktif portal modülleri öne çıkarıldı.
           </p>
         </section>
@@ -139,13 +141,13 @@ export default function MobilTanitimPublicPage() {
         </section>
 
         <section className="mobil-card">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-            <span style={smallLogo}>M</span>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <h2 style={sectionTitle}>Moren Portal</h2>
-              <p style={sectionSub}>Telefonda ilk açılacak hızlı işlemler</p>
+          <div style={portalStyle({ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 })}>
+            <span style={portalStyle(smallLogo)}>M</span>
+            <div style={portalStyle({ flex: 1, minWidth: 0 })}>
+              <h2 style={portalStyle(sectionTitle)}>Moren Portal</h2>
+              <p style={portalStyle(sectionSub)}>Telefonda ilk açılacak hızlı işlemler</p>
             </div>
-            <BellRing size={18} style={{ color: GOLD }} />
+            <BellRing size={18} style={portalStyle({ color: GOLD })} />
           </div>
 
           <div className="mobil-grid">
@@ -156,12 +158,12 @@ export default function MobilTanitimPublicPage() {
         </section>
 
         <section className="mobil-card">
-          <div style={sectionHeader}>
+          <div style={portalStyle(sectionHeader)}>
             <div>
-              <h2 style={sectionTitle}>İlk PWA modülleri</h2>
-              <p style={sectionSub}>Telefonda öncelikli kullanılacak ekranlar</p>
+              <h2 style={portalStyle(sectionTitle)}>İlk PWA modülleri</h2>
+              <p style={portalStyle(sectionSub)}>Telefonda öncelikli kullanılacak ekranlar</p>
             </div>
-            <span style={countBadge(GOLD)}>{firstModules.length}</span>
+            <span style={portalStyle(countBadge(GOLD))}>{firstModules.length}</span>
           </div>
           <div className="module-list">
             {firstModules.map((module) => (
@@ -171,12 +173,12 @@ export default function MobilTanitimPublicPage() {
         </section>
 
         <section className="mobil-card">
-          <div style={sectionHeader}>
+          <div style={portalStyle(sectionHeader)}>
             <div>
-              <h2 style={sectionTitle}>Portal grupları</h2>
-              <p style={sectionSub}>Tasarım bu gerçek menü haritasına göre ilerliyor</p>
+              <h2 style={portalStyle(sectionTitle)}>Portal grupları</h2>
+              <p style={portalStyle(sectionSub)}>Tasarım bu gerçek menü haritasına göre ilerliyor</p>
             </div>
-            <CheckCircle2 size={19} style={{ color: SAGE }} />
+            <CheckCircle2 size={19} style={portalStyle({ color: SAGE })} />
           </div>
           <div className="group-list">
             {groups.map((group) => (
@@ -185,9 +187,9 @@ export default function MobilTanitimPublicPage() {
           </div>
         </section>
 
-        <section className="mobil-card" style={{ borderColor: 'rgba(212,184,118,0.22)' }}>
-          <h2 style={sectionTitle}>Kurulum notu</h2>
-          <p style={{ margin: '8px 0 0', color: 'rgba(250,250,249,0.62)', fontSize: 13, lineHeight: 1.55 }}>
+        <section className="mobil-card" style={portalStyle({ borderColor: 'rgba(212,184,118,0.22)' })}>
+          <h2 style={portalStyle(sectionTitle)}>Kurulum notu</h2>
+          <p style={portalStyle({ margin: '8px 0 0', color: 'rgba(250,250,249,0.62)', fontSize: 13, lineHeight: 1.55 })}>
             Gerçek kurulum için canlı HTTPS adresine deploy gerekir. Lokal Wi-Fi adresi sadece önizleme içindir.
           </p>
         </section>
@@ -198,11 +200,11 @@ export default function MobilTanitimPublicPage() {
 
 function Stat({ label, value, color }: { label: string; value: string; color: string }) {
   return (
-    <div className="mobil-card" style={{ minHeight: 82, background: `${color}0f`, borderColor: `${color}28` }}>
-      <p style={{ margin: 0, color: 'rgba(250,250,249,0.54)', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0 }}>
+    <div className="mobil-card" style={portalStyle({ minHeight: 82, background: `${color}0f`, borderColor: `${color}28` })}>
+      <p style={portalStyle({ margin: 0, color: 'rgba(250,250,249,0.54)', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0 })}>
         {label}
       </p>
-      <p style={{ margin: '8px 0 0', color, fontSize: 25, lineHeight: 1, fontWeight: 800, fontFamily: 'Fraunces, Georgia, serif', letterSpacing: 0 }}>
+      <p style={portalStyle({ margin: '8px 0 0', color, fontSize: 25, lineHeight: 1, fontWeight: 800, fontFamily: 'Fraunces, Georgia, serif', letterSpacing: 0 })}>
         {value}
       </p>
     </div>
@@ -212,13 +214,13 @@ function Stat({ label, value, color }: { label: string; value: string; color: st
 function QuickCard({ item }: { item: (typeof quick)[number] }) {
   const Icon = item.icon;
   return (
-    <Link href={item.href} style={cardLink(item.color, 96)}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Icon size={19} style={{ color: item.color }} />
-        <ChevronRight size={16} style={{ color: 'rgba(250,250,249,0.42)' }} />
+    <Link href={item.href} style={portalStyle(cardLink(item.color, 96))}>
+      <div style={portalStyle({ display: 'flex', justifyContent: 'space-between', alignItems: 'center' })}>
+        <Icon size={19} style={portalStyle({ color: item.color })} />
+        <ChevronRight size={16} style={portalStyle({ color: 'rgba(250,250,249,0.42)' })} />
       </div>
-      <p style={{ margin: '12px 0 0', color: '#fafaf9', fontSize: 14, fontWeight: 750, lineHeight: 1.15 }}>{item.label}</p>
-      <p style={{ margin: '5px 0 0', color: 'rgba(250,250,249,0.48)', fontSize: 11.5, lineHeight: 1.2 }}>{item.desc}</p>
+      <p style={portalStyle({ margin: '12px 0 0', color: '#fafaf9', fontSize: 14, fontWeight: 750, lineHeight: 1.15 })}>{item.label}</p>
+      <p style={portalStyle({ margin: '5px 0 0', color: 'rgba(250,250,249,0.48)', fontSize: 11.5, lineHeight: 1.2 })}>{item.desc}</p>
     </Link>
   );
 }
@@ -226,19 +228,19 @@ function QuickCard({ item }: { item: (typeof quick)[number] }) {
 function ModuleRow({ module }: { module: (typeof firstModules)[number] }) {
   const Icon = module.icon;
   return (
-    <Link href={module.href} style={rowLink(module.color)}>
-      <span style={logoBox(module.color)}>
+    <Link href={module.href} style={portalStyle(rowLink(module.color))}>
+      <span style={portalStyle(logoBox(module.color))}>
         <Icon size={17} />
       </span>
-      <span style={{ minWidth: 0, flex: 1 }}>
-        <span style={{ display: 'block', color: '#fafaf9', fontSize: 13.5, fontWeight: 750, lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+      <span style={portalStyle({ minWidth: 0, flex: 1 })}>
+        <span style={portalStyle({ display: 'block', color: '#fafaf9', fontSize: 13.5, fontWeight: 750, lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' })}>
           {module.label}
         </span>
-        <span style={{ display: 'block', marginTop: 4, color: 'rgba(250,250,249,0.48)', fontSize: 11, lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <span style={portalStyle({ display: 'block', marginTop: 4, color: 'rgba(250,250,249,0.48)', fontSize: 11, lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' })}>
           {module.group}
         </span>
       </span>
-      <ChevronRight size={16} style={{ color: module.color, flexShrink: 0 }} />
+      <ChevronRight size={16} style={portalStyle({ color: module.color, flexShrink: 0 })} />
     </Link>
   );
 }
@@ -246,13 +248,13 @@ function ModuleRow({ module }: { module: (typeof firstModules)[number] }) {
 function GroupCard({ group }: { group: (typeof groups)[number] }) {
   const Icon = group.icon;
   return (
-    <div style={rowBox(group.color)}>
-      <span style={logoBox(group.color)}>
+    <div style={portalStyle(rowBox(group.color))}>
+      <span style={portalStyle(logoBox(group.color))}>
         <Icon size={17} />
       </span>
-      <span style={{ minWidth: 0, flex: 1 }}>
-        <span style={{ display: 'block', color: '#fafaf9', fontSize: 13.5, fontWeight: 750, lineHeight: 1.2 }}>{group.label}</span>
-        <span style={{ display: 'block', marginTop: 4, color: 'rgba(250,250,249,0.48)', fontSize: 11, lineHeight: 1.2 }}>{group.count}</span>
+      <span style={portalStyle({ minWidth: 0, flex: 1 })}>
+        <span style={portalStyle({ display: 'block', color: '#fafaf9', fontSize: 13.5, fontWeight: 750, lineHeight: 1.2 })}>{group.label}</span>
+        <span style={portalStyle({ display: 'block', marginTop: 4, color: 'rgba(250,250,249,0.48)', fontSize: 11, lineHeight: 1.2 })}>{group.count}</span>
       </span>
     </div>
   );
