@@ -1887,7 +1887,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <div className="flex flex-col gap-3 px-0 py-1 sm:flex-row sm:items-end sm:justify-between">
+      <div data-dashboard-intro className="flex flex-col gap-3 px-0 py-1 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <div className="mb-1.5 flex items-center gap-2.5"><span className="w-[26px] h-px" style={{ background: GOLD }} /><span className="text-[9.5px] uppercase font-bold tracking-[.18em]" style={portalStyle({ color: '#b8a06f' })}>Gösterge</span></div>
           <h1 style={portalStyle({ fontFamily: 'Fraunces, serif', fontSize: 28, fontWeight: 650, color: '#fafaf9', letterSpacing: '-.02em' })}>Ofis Paneli</h1>
@@ -1904,7 +1904,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Sayaç kartları */}
-      <div className="grid grid-cols-1 gap-2.5 pb-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div data-dashboard-counters className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           title="Aktif Mükellef"
           value={activeCount || totalTx}

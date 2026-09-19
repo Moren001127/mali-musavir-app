@@ -33,9 +33,9 @@ html[data-theme='D'] [data-dashboard-band='neutral'] {
 
 html[data-theme='D'] [data-dashboard-kpi] {
   --dashboard-kpi-start: #70420e;
-  --dashboard-kpi-end: #94651c;
+  --dashboard-kpi-end: #d89b38;
   --dashboard-kpi-edge: #b18545;
-  background: linear-gradient(115deg, color-mix(in srgb,var(--dashboard-kpi-end) 36%,white), color-mix(in srgb,var(--dashboard-kpi-end) 16%,white)) !important;
+  background: linear-gradient(115deg, color-mix(in srgb,var(--dashboard-kpi-end) 65%,white), color-mix(in srgb,var(--dashboard-kpi-end) 38%,white)) !important;
   border-color: var(--dashboard-kpi-edge) !important;
   box-shadow: 0 5px 16px rgba(36, 49, 59, 0.08) !important;
   color: var(--dashboard-kpi-start) !important;
@@ -43,19 +43,19 @@ html[data-theme='D'] [data-dashboard-kpi] {
 
 html[data-theme='D'] [data-dashboard-kpi='sage'] {
   --dashboard-kpi-start: #075743;
-  --dashboard-kpi-end: #347b63;
+  --dashboard-kpi-end: #229b75;
   --dashboard-kpi-edge: #589c82;
 }
 
 html[data-theme='D'] [data-dashboard-kpi='sky'] {
   --dashboard-kpi-start: #215d6c;
-  --dashboard-kpi-end: #43899a;
+  --dashboard-kpi-end: #328fc1;
   --dashboard-kpi-edge: #73a6b2;
 }
 
 html[data-theme='D'] [data-dashboard-kpi='champagne'] {
   --dashboard-kpi-start: #843d56;
-  --dashboard-kpi-end: #bb718a;
+  --dashboard-kpi-end: #c85e8a;
   --dashboard-kpi-edge: #cc96a8;
 }
 
@@ -161,3 +161,10 @@ html[data-theme='D'] [data-beyan-section] > div:first-child { color: #73518a !im
 html[data-theme='D'] [data-beyan-progress='pending'] { background: linear-gradient(90deg,#537cb3,#83a9d6) !important; }
 html[data-theme='D'] [data-beyan-progress='done'] { background: linear-gradient(90deg,#28845c,#65b891) !important; }
 html[data-theme='D'] [data-beyan-progress='error'] { background: linear-gradient(90deg,#bd4569,#df839f) !important; }
+
+/* İlk ekranda sayaçlar ve grafik birlikte görünür. */
+html[data-theme='D'] [data-dashboard-intro] { padding-top: 0; padding-bottom: 0; }
+html[data-theme='D'] [data-dashboard-intro] h1 { font-size: 25px !important; }
+html[data-theme='D'] [data-dashboard-counters] { margin-top: 12px !important; margin-bottom: 14px !important; }
+html[data-theme='D'] [data-dashboard-counters] [data-dashboard-kpi] { padding: 10px 14px !important; }
+html[data-theme='D'] [data-dashboard-counters] + .workflow-distribution { margin-top: 0 !important; }

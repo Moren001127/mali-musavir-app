@@ -1,13 +1,13 @@
-import { useId } from 'react';
+import { useState } from 'react';
 import './is-akisi-dagilim.css';
 
 const STAGES = [
-  { key: 'evrak', label: 'Evrak bekliyor', color: '#b98044' },
-  { key: 'yukleme', label: 'Yükleme', color: '#38998d' },
-  { key: 'islenme', label: 'Fatura işleme', color: '#6089c7' },
-  { key: 'kontrol', label: 'KDV kontrol', color: '#5897ad' },
-  { key: 'beyanname', label: 'Beyanname', color: '#9972b6' },
-  { key: 'tamam', label: 'Tamamlandı', color: '#4f9b70' },
+  { key: 'evrak', label: 'Evrak bekliyor', color: '#db9435' },
+  { key: 'yukleme', label: 'Yükleme', color: '#159caa' },
+  { key: 'islenme', label: 'Fatura işleme', color: '#4279db' },
+  { key: 'kontrol', label: 'KDV kontrol', color: '#8861c4' },
+  { key: 'beyanname', label: 'Beyanname', color: '#cf658b' },
+  { key: 'tamam', label: 'Tamamlandı', color: '#249b72' },
 ] as const;
 
 type Counts = Record<(typeof STAGES)[number]['key'], number>;
@@ -17,7 +17,7 @@ export function IsAkisiDagilim({ counts, period, loading }: {
   period?: string;
   loading: boolean;
 }) {
-  const chartId = useId();
+  const [active, setActive] = useState<number | null>(null);
   const valid = counts && STAGES.every(({ key }) => Number.isInteger(counts[key]) && counts[key] >= 0);
   const total = valid ? STAGES.reduce((sum, { key }) => sum + counts[key], 0) : 0;
   const yearFirst = period?.trim().match(/^(\d{4})[-/](0?[1-9]|1[0-2])$/);
@@ -30,17 +30,24 @@ export function IsAkisiDagilim({ counts, period, loading }: {
     : 'Bu ay';
 
   const values = STAGES.map(({ key }) => valid ? counts[key] : 0);
-  const step = Math.max(1, Math.ceil(Math.max(...values) / 4));
-  const points = values.map((value, index) => ({ x: 70 + index * 174, y: 260 - value / (step * 4) * 200 }));
-  const line = points.map((point, index) => `${index ? 'L' : 'M'} ${point.x} ${point.y}`).join(' ');
+  const circumference = 2 * Math.PI * 88;
+  let offset = 0;
+  const segments = values.map(value => {
+    const length = total ? value / total * circumference : 0;
+    const segment = { offset, length };
+    offset += length;
+    return segment;
+  });
+  const selected = active === null ? null : STAGES[active];
+  const selectedValue = active === null ? (valid ? counts.tamam : 0) : values[active];
 
   return (
     <section className="workflow-distribution" aria-label="İş akışı aşama dağılımı" aria-busy={loading}>
       <header className="workflow-distribution__header">
         <div>
           <p className="workflow-distribution__eyebrow">{periodLabel} · Güncel durum</p>
-          <h2>İşin hangi aşamasındayız?</h2>
-          <p>İş akışındaki mükelleflerin aşamalara göre dağılımı</p>
+          <h2>Ofisin iş akışı</h2>
+          <p>Aşamaların dağılımı ve tamamlanma oranı</p>
         </div>
         {valid && <div className="workflow-distribution__total"><strong>{total.toLocaleString('tr-TR')}</strong><span>mükellef</span></div>}
       </header>
@@ -49,41 +56,38 @@ export function IsAkisiDagilim({ counts, period, loading }: {
           {loading ? 'İş akışı yükleniyor…' : !valid ? 'İş akışı verisi alınamadı.' : 'Bu dönem iş akışında mükellef bulunmuyor.'}
         </p>
       ) : (
-        <figure className="workflow-distribution__figure">
-          <div className="workflow-distribution__scroll" tabIndex={0} role="region" aria-label="Aşama grafiği; dar ekranlarda yatay kaydırılabilir">
-            <svg className="workflow-distribution__chart" viewBox="0 0 1010 340" role="img" aria-labelledby={`${chartId}-title ${chartId}-description`}>
-              <title id={`${chartId}-title`}>İş akışının aşamalara göre dağılımı</title>
-              <desc id={`${chartId}-description`}>{STAGES.map(({ label }, index) => `${label}: ${values[index]} mükellef`).join('. ')}. Güncel aşama dağılımı.</desc>
-              <defs>
-                <linearGradient id={`${chartId}-fill`} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#458eac" stopOpacity=".32" /><stop offset="100%" stopColor="#458eac" stopOpacity=".03" />
-                </linearGradient>
-                <linearGradient id={`${chartId}-stroke`} x1="0" y1="0" x2="1" y2="0">
-                  <stop offset="0%" stopColor="#4276b8" /><stop offset="100%" stopColor="#298c76" />
-                </linearGradient>
-              </defs>
-              <text x="24" y="25" className="workflow-distribution__tick">Mükellef sayısı</text>
-              {[0, 1, 2, 3, 4].map(index => <g key={index}>
-                <line x1="70" x2="940" y1={260 - index * 50} y2={260 - index * 50} className="workflow-distribution__grid" />
-                <text x="48" y={265 - index * 50} textAnchor="end" className="workflow-distribution__tick">{(index * step).toLocaleString('tr-TR')}</text>
-              </g>)}
-              <path d={`${line} L 940 260 L 70 260 Z`} fill={`url(#${chartId}-fill)`} />
-              <path d={line} fill="none" stroke={`url(#${chartId}-stroke)`} strokeWidth="3.5" strokeLinejoin="round" strokeLinecap="round" />
-              {STAGES.map(({ key, label, color }, index) => {
-                const point = points[index];
-                return <g key={key}>
-                  <title>{label}: {values[index]} mükellef</title>
-                  <circle cx={point.x} cy={point.y} r="12" fill={color} fillOpacity=".14" />
-                  <circle cx={point.x} cy={point.y} r="5.5" fill={color} stroke="var(--distribution-bg)" strokeWidth="2.5" />
-                  <text x={point.x} y={point.y - 20} textAnchor="middle" className="workflow-distribution__point-value">{values[index].toLocaleString('tr-TR')}</text>
-                  <text x={point.x} y="292" textAnchor="middle" className="workflow-distribution__stage">{label}</text>
-                  <text x={point.x} y="314" textAnchor="middle" className="workflow-distribution__tick">%{(values[index] / total * 100).toLocaleString('tr-TR', { maximumFractionDigits: 1 })}</text>
-                </g>;
-              })}
+        <div className="workflow-distribution__body">
+          <figure className="workflow-distribution__ring-wrap">
+            <svg className="workflow-distribution__ring" viewBox="0 0 240 240" role="img" aria-label={STAGES.map(({label}, i) => label + ': ' + values[i]).join(', ')}>
+              <circle cx="120" cy="120" r="88" fill="none" stroke="var(--distribution-track)" strokeWidth="24" />
+              {STAGES.map(({key, color}, i) => values[i] > 0 && <circle key={key}
+                cx="120" cy="120" r="88" fill="none" stroke={color}
+                strokeWidth={active === i ? 30 : 24}
+                strokeDasharray={Math.max(0, segments[i].length - Math.min(3, segments[i].length * .15)) + ' ' + circumference}
+                strokeDashoffset={-segments[i].offset} transform="rotate(-90 120 120)"
+                opacity={active === null || active === i ? 1 : .3}
+                onMouseEnter={() => setActive(i)} onMouseLeave={() => setActive(null)}>
+                <title>{STAGES[i].label}: {values[i]} mükellef</title>
+              </circle>)}
+              <text x="120" y="112" textAnchor="middle" className="workflow-distribution__ring-value">%{Math.round(selectedValue / total * 100)}</text>
+              <text x="120" y="139" textAnchor="middle" className="workflow-distribution__ring-label">{selected?.label ?? 'Tamamlandı'}</text>
+              <text x="120" y="160" textAnchor="middle" className="workflow-distribution__ring-count">{selectedValue} / {total} mükellef</text>
             </svg>
+            <figcaption>İş akışının güncel dağılımı</figcaption>
+          </figure>
+          <div className="workflow-distribution__legend" aria-label="Aşama ayrıntıları">
+            {STAGES.map(({key, label, color}, i) => <button type="button" key={key}
+              className="workflow-distribution__legend-item" aria-pressed={active === i}
+              onMouseEnter={() => setActive(i)} onMouseLeave={() => setActive(null)}
+              onFocus={() => setActive(i)} onBlur={() => setActive(null)}
+              onClick={() => setActive(active === i ? null : i)}>
+              <span className="workflow-distribution__dot" style={{background:color}} />
+              <span className="workflow-distribution__legend-label">{label}</span>
+              <strong>{values[i].toLocaleString('tr-TR')}</strong>
+              <span className="workflow-distribution__share">%{(values[i] / total * 100).toLocaleString('tr-TR', {maximumFractionDigits:1})}</span>
+            </button>)}
           </div>
-          <figcaption>Her nokta, ilgili aşamadaki mükellef sayısını gösterir. Her mükellef tek aşamada sayılır.</figcaption>
-        </figure>
+        </div>
       )}
     </section>
   );
