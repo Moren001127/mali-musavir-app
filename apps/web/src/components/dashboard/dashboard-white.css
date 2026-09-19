@@ -48,12 +48,17 @@ html[data-theme='D'] [data-dashboard-kpi='sage'] {
 }
 
 html[data-theme='D'] [data-dashboard-kpi='sky'] {
-  --dashboard-kpi-start: #23458e;
-  --dashboard-kpi-end: #5373ae;
-  --dashboard-kpi-edge: #7790c0;
+  --dashboard-kpi-start: #215d6c;
+  --dashboard-kpi-end: #43899a;
+  --dashboard-kpi-edge: #73a6b2;
 }
 
-html[data-theme='D'] [data-dashboard-kpi='champagne'],
+html[data-theme='D'] [data-dashboard-kpi='champagne'] {
+  --dashboard-kpi-start: #843d56;
+  --dashboard-kpi-end: #bb718a;
+  --dashboard-kpi-edge: #cc96a8;
+}
+
 html[data-theme='D'] [data-dashboard-kpi='burgundy'],
 html[data-theme='D'] [data-dashboard-kpi='copper'] {
   --dashboard-kpi-start: #633572;
