@@ -168,3 +168,19 @@ html[data-theme='D'] [data-dashboard-intro] h1 { font-size: 25px !important; }
 html[data-theme='D'] [data-dashboard-counters] { margin-top: 12px !important; margin-bottom: 14px !important; }
 html[data-theme='D'] [data-dashboard-counters] [data-dashboard-kpi] { padding: 10px 14px !important; }
 html[data-theme='D'] [data-dashboard-counters] + .workflow-distribution { margin-top: 0 !important; }
+
+/* Ana sayaçlarda doygun zemin ve yüksek karşıtlıklı beyaz metin. */
+html[data-theme='D'] [data-dashboard-counters] [data-dashboard-kpi] {
+  --counter-solid: #a85a0b;
+  background: var(--counter-solid) !important;
+  border-color: var(--counter-solid) !important;
+  color: #fff !important;
+}
+html[data-theme='D'] [data-dashboard-counters] [data-dashboard-kpi='sage'] { --counter-solid: #137957; }
+html[data-theme='D'] [data-dashboard-counters] [data-dashboard-kpi='sky'] { --counter-solid: #2469b1; }
+html[data-theme='D'] [data-dashboard-counters] [data-dashboard-kpi='champagne'] { --counter-solid: #a13e70; }
+html[data-theme='D'] [data-dashboard-counters] [data-dashboard-kpi] :is(p, span, div, svg, .tabular-nums) { color: #fff !important; }
+html[data-theme='D'] [data-dashboard-counters] :is([data-dashboard-kpi-icon], [data-dashboard-kpi-badge]) {
+  background: rgba(255,255,255,.16) !important;
+  border-color: rgba(255,255,255,.24) !important;
+}
