@@ -56,3 +56,7 @@ html[data-theme='D'] .ofis-beyan__icon { background: #e8f5ef; color: #218368; }
 .ofis-beyan__tooltip b { font-variant-numeric: tabular-nums; }
 .ofis-beyan__empty { flex: 1; display: grid; place-content: center; min-height: 0; padding: 10px; text-align: center; font-size: 12px; color: var(--beyan-muted); }
 @media (max-width: 480px) { .ofis-beyan { padding: 12px 10px 8px; } .ofis-beyan__legend { gap: 4px 8px; } }
+
+.ofis-beyan__columns { grid-template-rows: minmax(0, 1fr); }
+.ofis-beyan__column { min-height: 0; }
+.ofis-beyan__drawing svg { position: absolute; inset: 0; }

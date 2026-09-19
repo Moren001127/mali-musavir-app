@@ -22,7 +22,7 @@ export function OfisPanoramasi({ donem, donemTuru, setDonem, setDonemTuru }: Pan
     if (!grid) return;
     const fit = () => {
       const available = window.innerHeight - grid.getBoundingClientRect().top - 16;
-      grid.style.setProperty('--panorama-height', `${Math.max(330, Math.min(550, available))}px`);
+      grid.style.setProperty('--panorama-height', `${Math.max(280, Math.min(550, available))}px`);
     };
     const observer = new ResizeObserver(fit);
     const root = grid.closest('[data-dashboard-root]');
