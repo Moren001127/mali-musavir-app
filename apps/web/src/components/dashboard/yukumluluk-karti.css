@@ -11,7 +11,7 @@
 .yukumluluk-karti__icon { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; background: var(--yk-soft); color: var(--yk-accent); flex-shrink: 0; }
 .yukumluluk-karti__heading { min-width: 0; }
 .yukumluluk-karti__heading p { margin: 0 0 2px; color: var(--yk-muted); font-size: 9px; letter-spacing: .055em; line-height: 1.25; white-space: nowrap; }
-.yukumluluk-karti .yukumluluk-karti__header h2 { margin: 0; font-family: inherit; font-size: 21px; line-height: 1.1; font-weight: 750; letter-spacing: -.45px; color: var(--yk-text); }
+.yukumluluk-karti .yukumluluk-karti__header h2 { margin: 0; font-family: inherit; font-size: 16px; line-height: 1.2; font-weight: 650; letter-spacing: -.15px; color: var(--yk-text); }
 .yukumluluk-karti__period { display: inline-flex; align-items: center; gap: 5px; margin-left: auto; padding: 6px 8px; border: 1px solid var(--yk-line); border-radius: 20px; color: var(--yk-muted); background: color-mix(in srgb, var(--yk-track) 25%, var(--yk-bg)); font-size: 10px; line-height: 1.2; white-space: nowrap; }
 .yukumluluk-karti__header a { display: grid; place-items: center; width: 30px; height: 30px; flex-shrink: 0; border: 1px solid #c4d6f7; border-radius: 50%; background: color-mix(in srgb, var(--yk-track) 20%, var(--yk-bg)); color: var(--yk-text); box-shadow: 0 2px 5px #24477b08; }
 .yukumluluk-karti__header a:hover { background: var(--yk-soft); color: var(--yk-accent); }

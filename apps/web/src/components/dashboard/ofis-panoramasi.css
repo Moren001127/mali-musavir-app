@@ -16,6 +16,3 @@
 @media(max-width:560px){.ofis-panorama__controls{align-items:flex-start;flex-direction:column}.ofis-panorama__controls>div{width:100%}.ofis-panorama__controls :is(input,select){width:50%}.ofis-panorama__aside{grid-template-columns:1fr}}
 html:not([data-theme='D']) .ofis-panorama{color:#e7edf8}
 html:not([data-theme='D']) .ofis-panorama__controls :is(select,input){background:#142337;border-color:#35465e;color:#e7edf8}
-.dashboard-period-toolbar{display:flex;align-items:center;gap:8px}
-.dashboard-period-toolbar :is(select,input){height:30px;padding:3px 9px;border:1px solid #d8e2ee;border-radius:8px;background:#fff;color:#314662;font-size:12px;min-width:0}
-@media(max-width:600px){.dashboard-period-toolbar{width:100%}.dashboard-period-toolbar :is(select,input){width:50%}}

@@ -21,7 +21,14 @@ export function OfisPanoramasi({ donem, donemTuru }: PanoramaPeriodProps) {
     const grid = gridRef.current;
     if (!grid) return;
     const fit = () => {
-      const available = window.innerHeight - grid.getBoundingClientRect().top - 16;
+      // Alttaki dönem seçimine kaydırıldığında grafik yüksekliği büyümesin.
+      let scrollOffset = window.scrollY;
+      let parent = grid.parentElement;
+      while (parent && parent !== document.body) {
+        scrollOffset += parent.scrollTop;
+        parent = parent.parentElement;
+      }
+      const available = window.innerHeight - grid.getBoundingClientRect().top - scrollOffset - 16;
       grid.style.setProperty('--panorama-height', `${Math.max(280, Math.min(680, available))}px`);
     };
     const observer = new ResizeObserver(fit);
