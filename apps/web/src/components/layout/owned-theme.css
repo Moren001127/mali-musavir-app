@@ -168,7 +168,7 @@ html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-group] {
 }
 
 html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-group] p {
-  font-weight: 750;
+  font-weight: 600;
 }
 
 html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-icon] {
@@ -177,7 +177,7 @@ html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-icon] {
 }
 
 html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-item] {
-  font-weight: 700 !important;
+  font-weight: 500 !important;
   font-size: 14px;
   color: #f4f8fc !important;
   background: rgba(255,255,255,.04) !important;
@@ -192,7 +192,7 @@ html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-item]:focus-visibl
 }
 
 html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-active='true'] {
-  font-weight: 750 !important;
+  font-weight: 600 !important;
   color: #ffffff !important;
   background: rgba(255, 255, 255, 0.13) !important;
   border-color: transparent !important;

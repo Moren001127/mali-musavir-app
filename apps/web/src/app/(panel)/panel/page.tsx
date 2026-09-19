@@ -39,7 +39,7 @@ import { ReactNode, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { KritikUyariStatCard } from '@/components/dashboard/KritikUyariStatCard';
 import { BuHaftaTakvim } from '@/components/dashboard/BuHaftaTakvim';
-import { IsAkisiDagilim } from '@/components/dashboard/IsAkisiDagilim';
+import { OfisPanoramasi, type PanoramaPeriodProps } from '@/components/dashboard/OfisPanoramasi';
 
 const GOLD = '#d4b876';
 const TRACK_BLUE = '#7dd3fc';
@@ -314,16 +314,11 @@ function donemEtiket(key?: string | null): string {
   return key;
 }
 
-function ToplubeyannameTable() {
-  return <ToplubeyannamePanel />;
+function ToplubeyannameTable(props: PanoramaPeriodProps) {
+  return <ToplubeyannamePanel {...props} />;
 }
 
-function ToplubeyannamePanel() {
-  const [donem, setDonem] = useState<string>(() => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  });
-  const [donemTuru, setDonemTuru] = useState<DonemTuru>('VERILME');
+function ToplubeyannamePanel({ donem, setDonem, donemTuru, setDonemTuru }: PanoramaPeriodProps) {
   const [modal, setModal] = useState<ModalState>(null);
 
   const { data, isLoading, refetch } = useQuery({
@@ -1634,6 +1629,13 @@ function MobilePortalHome({
 }
 
 export default function DashboardPage() {
+  const [panoramaDonem, setPanoramaDonem] = useState(() => {
+    const now = new Date();
+    return now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+  });
+  const [panoramaDonemTuru, setPanoramaDonemTuru] = useState<DonemTuru>('VERILME');
+  const panoramaPeriod = { donem: panoramaDonem, setDonem: setPanoramaDonem, donemTuru: panoramaDonemTuru, setDonemTuru: setPanoramaDonemTuru };
+
   const { data: taxpayers } = useQuery({ queryKey: ['taxpayers'], queryFn: () => api.get('/taxpayers').then((r) => r.data).catch(() => []) });
   const { data: unreadRaw } = useQuery({ queryKey: ['notifications', 'unread'], queryFn: () => api.get('/notifications/unread-count').then((r) => r.data).catch(() => 0) });
   const { data: agentEvents = [] } = useQuery<any[]>({ queryKey: ['agent-events', 'dashboard'], queryFn: () => api.get('/agent/events?limit=100').then((r) => r.data).catch(() => []), refetchInterval: 15_000 });
@@ -1845,7 +1847,7 @@ export default function DashboardPage() {
           v1.36.74: scale-siz pulse — banner ekrandan taşmıyor, sadece glow nefes alıyor. */}
       {dueTasks.length > 0 && (
         <div
-          className="rounded-2xl px-5 py-4 flex items-center gap-4 flex-wrap"
+          data-dashboard-reminder className="rounded-2xl px-5 py-4 flex items-center gap-4 flex-wrap"
           style={portalStyle({
             background: 'linear-gradient(135deg, rgba(244,63,94,0.12), rgba(239,68,68,0.08))',
             border: '1px solid rgba(244,63,94,0.4)',
@@ -1941,11 +1943,7 @@ export default function DashboardPage() {
         <KritikUyariStatCard />
       </div>
 
-      <IsAkisiDagilim
-        counts={workflowData?.queueUnavailable ? undefined : workflowData?.counts}
-        period={workflowData?.donem}
-        loading={!workflowData}
-      />
+      <OfisPanoramasi {...panoramaPeriod} />
 
       <div
         data-dashboard-surface className="rounded-2xl overflow-hidden"
@@ -1955,7 +1953,7 @@ export default function DashboardPage() {
           boxShadow: '0 18px 44px rgba(0,0,0,0.20), inset 0 1px 0 rgba(255,255,255,0.035)',
         })}
       >
-        <ToplubeyannameTable />
+        <ToplubeyannameTable {...panoramaPeriod} />
       </div>
 
       <DashboardSectionBridge from="Beyanname Takibi" to="Bu Ay İş Akışı" />
