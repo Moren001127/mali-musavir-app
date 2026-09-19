@@ -489,7 +489,7 @@ function BeyanCompactTable({
   compact?: boolean;
 }) {
   return (
-    <div className={compact ? 'px-5 pb-4' : 'px-5 py-4'}>
+    <div data-beyan-table-section className={compact ? 'px-5 pb-4' : 'px-5 py-4'}>
       <div data-beyan-section className="mb-2.5 flex items-center justify-between gap-3">
         <div className="text-[11px] font-bold uppercase tracking-[0.14em]" style={portalStyle({ color: BEYAN_TONE.accentSoft })}>
           {title}
@@ -498,7 +498,7 @@ function BeyanCompactTable({
           {donemEtiket(donem)}
         </div>
       </div>
-      <div className="overflow-x-auto rounded-xl" style={portalStyle({ border: `1px solid ${BEYAN_TONE.borderSoft}`, background: BEYAN_TONE.tableBg })}>
+      <div data-beyan-table-scroll className="overflow-x-auto rounded-xl" style={portalStyle({ border: `1px solid ${BEYAN_TONE.borderSoft}`, background: BEYAN_TONE.tableBg })}>
         <table className="w-full min-w-[760px] border-collapse text-[12px]" style={portalStyle({ color: BEYAN_TONE.title })}>
           <thead>
             <tr style={portalStyle({ background: BEYAN_TONE.headBg, borderBottom: `1px solid ${BEYAN_TONE.borderSoft}` })}>
@@ -567,7 +567,7 @@ function YardimciBeyanCard({
   const onayText = row.beyanTipi === 'EDEFTER' ? 'Verilen' : 'Onaylanan';
 
   return (
-    <div className="overflow-hidden rounded-xl" style={portalStyle({ background: BEYAN_TONE.rowAlt, border: `1px solid ${BEYAN_TONE.borderSoft}` })}>
+    <div data-beyan-mini className="overflow-hidden rounded-xl" style={portalStyle({ background: BEYAN_TONE.rowAlt, border: `1px solid ${BEYAN_TONE.borderSoft}` })}>
       <div className="grid grid-cols-[minmax(140px,1fr)_82px_92px_82px_minmax(150px,1fr)] items-center gap-0 px-3 py-2">
         <button
           type="button"
@@ -1943,7 +1943,7 @@ export default function DashboardPage() {
       <OfisPanoramasi {...panoramaPeriod} />
 
       <div
-        data-dashboard-surface className="rounded-2xl overflow-hidden"
+        data-beyan-panel data-dashboard-surface className="rounded-2xl overflow-hidden"
         style={portalStyle({
           background: 'radial-gradient(circle at 6% 0%, rgba(216,189,134,0.12), transparent 34%), radial-gradient(circle at 92% 12%, rgba(140,200,255,0.07), transparent 30%), linear-gradient(180deg, rgba(19,19,17,0.94), rgba(12,11,10,0.91))',
           border: `1px solid ${BEYAN_TONE.border}`,
