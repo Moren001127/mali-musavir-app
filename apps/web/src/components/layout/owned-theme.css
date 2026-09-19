@@ -138,7 +138,7 @@ html[data-theme='D'] [data-moren-auth-features] > :nth-child(3) {
   --moren-owned-primary-line: var(--moren-owned-amber-line);
 }
 
-/* Yalnız masaüstü sol menü: ölçüler sabit, yazılar tok, çerçeveler sade.
+/* Yalnız masaüstü sol menü: yazılar tok, çerçeveler sade.
    Önemli kurallar mevcut satır içi ve fare olaylarındaki renkleri de karşılar. */
 html[data-theme='D'] [data-moren-sidebar] {
   --moren-owned-nav-background: linear-gradient(180deg, #102e5c 0%, #116873 100%);
@@ -146,6 +146,10 @@ html[data-theme='D'] [data-moren-sidebar] {
   --moren-owned-primary-line: rgba(222, 238, 244, 0.12);
   border-right-color: rgba(222, 238, 244, 0.12) !important;
   box-shadow: none !important;
+}
+
+html[data-theme='D'] [data-moren-sidebar][data-collapsed='false'] {
+  width: 256px !important;
 }
 
 html[data-theme='D'] [data-moren-sidebar] * {

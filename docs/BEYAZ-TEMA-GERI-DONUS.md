@@ -17,12 +17,12 @@ Fatura İşleme Merkezi ve alt adresleri eski A kapsamını kullanır.
 İlk sürüm `surum-beyaz-tema-2026-09-19`, kullanıcı düzeltmeleri ise
 `surum-beyaz-tema-duzeltme-2026-09-19` etiketiyle işaretlenir. Başvuru Sayıları
 alanının tamamen kaldırıldığı, modül renklerinin sadeleştirildiği ve menü yazılarının
-güçlendirildiği son sürüm `surum-beyaz-tema-alan-kaldirma-2026-09-19`.
+güçlendirildiği ve sol menünün 256 piksele daraltıldığı son sürüm `surum-beyaz-tema-dar-menu-2026-09-19`.
 Tüm tema
 çalışmasını koyu tema öncesine geri almak için, temiz çalışma alanında:
 
 ```powershell
-git revert --no-edit yedek-beyaz-tema-oncesi-2026-09-19..surum-beyaz-tema-alan-kaldirma-2026-09-19
+git revert --no-edit yedek-beyaz-tema-oncesi-2026-09-19..surum-beyaz-tema-dar-menu-2026-09-19
 git push origin main
 ```
 
@@ -31,7 +31,7 @@ zorla gönderim kullanma. Yayının başarılı olduğunu ve giriş ekranını d
 Bu işlem veritabanını, belgeleri veya operasyon kayıtlarını geri sarmaz.
 
 Yalnız ilk beyaz tema sonrasındaki düzeltmeler geri istenirse
-`surum-beyaz-tema-2026-09-19..surum-beyaz-tema-alan-kaldirma-2026-09-19`
+`surum-beyaz-tema-2026-09-19..surum-beyaz-tema-dar-menu-2026-09-19`
 aralığını geri al. Düzeltmeler kullanıcının isteğiyle brifing alanının kaldırılmasını, menüde
 Moren / Mali Müşavirlik yazı markasını ve daha belirgin sayaçları da içerir.
 
@@ -53,3 +53,4 @@ Renk dönüşümü `portalStyle` ile yalnız görsel CSS alanlarına uygulanır;
 renkler silinmez. Renk birleştirmeleri dönüşümden önce tamamlandığı için eski
 saydamlık ekleri korunur. Menü/giriş ve gösterge panelinin özel renkleri ayrı,
 D ile sınırlandırılmış dosyalardadır. Eski temada bu kurallar etkin değildir.
+
