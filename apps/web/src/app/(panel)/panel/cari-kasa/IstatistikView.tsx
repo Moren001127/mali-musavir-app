@@ -12,7 +12,7 @@ import { portalStyle } from '@/lib/portal-theme';
  * kalmayan bir dosya, sonraki okuyanı yanlış yere bakmaya gönderirdi.
  */
 
-import React from 'react';
+import React, { type CSSProperties } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { BarChart3, Loader2 } from 'lucide-react';
@@ -118,7 +118,7 @@ function ViewHeader({ icon: Icon, title, subtitle, actions }: {
 }
 
 
-function KpiCard({ label, value, color = TEXT, accent = false, suffix = '₺' }: {
+function KpiCard({ label, value, color = '#087f78', accent = false, suffix = '₺' }: {
   label: string;
   value: string;
   color?: string;
@@ -127,18 +127,18 @@ function KpiCard({ label, value, color = TEXT, accent = false, suffix = '₺' }:
 }) {
   // Vurgu rengi kartın kendi rengidir; altın her karta sabitlenmiyordu,
   // artık gelir yeşil / gider kırmızı kendi tonuyla parlıyor.
-  const vurguRenk = color || GOLD;
+  const vurguRenk = color || '#087f78';
   return (
-    <div
+    <div data-portal-kpi
       className="relative overflow-hidden rounded-2xl px-4 py-3.5"
       style={
-        portalStyle(accent
+        portalStyle({ ...({ '--kpi-tone': portalStyle({ color: vurguRenk }).color } as CSSProperties), ...(accent
           ? {
               background: `linear-gradient(140deg, ${vurguRenk}1f, rgba(255,255,255,0.01) 60%)`,
               border: `1px solid ${vurguRenk}3d`,
               boxShadow: '0 14px 32px rgba(0,0,0,0.20)',
             }
-          : { ...cardline, boxShadow: '0 14px 32px rgba(0,0,0,0.20)' })
+          : { ...cardline, boxShadow: '0 14px 32px rgba(0,0,0,0.20)' }) })
       }
     >
       <span
@@ -212,7 +212,7 @@ export function IstatistikView() {
           <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-3">
             <KpiCard label="12 Ay Tahakkuk" value={milyon(kpi.toplamTahakkuk12Ay)} color={OK} />
             <KpiCard label="12 Ay Tahsilat" value={milyon(kpi.toplamTahsilat12Ay)} color={DEBT} />
-            <KpiCard label="Net" value={(kpi.toplamTahsilat12Ay - kpi.toplamTahakkuk12Ay >= 0 ? '+' : '') + milyon(kpi.toplamTahsilat12Ay - kpi.toplamTahakkuk12Ay)} color={GOLD} accent />
+            <KpiCard label="Net" value={(kpi.toplamTahsilat12Ay - kpi.toplamTahakkuk12Ay >= 0 ? '+' : '') + milyon(kpi.toplamTahsilat12Ay - kpi.toplamTahakkuk12Ay)} color="#75509c" accent />
             <KpiCard label="Tahsilat Oranı" value={'%' + kpi.tahsilatOrani.toLocaleString('tr-TR', { maximumFractionDigits: 0 })} color={OK} suffix="" />
           </div>
 

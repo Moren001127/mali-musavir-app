@@ -102,3 +102,38 @@ html[data-theme='D'] [data-dashboard-action]:hover {
 html[data-theme='D'] [data-dashboard-root] svg text {
   fill: #344b54;
 }
+
+/* Akış sayaçları: renk yalnız çizgide değil, kart yüzeyinde de okunur. */
+html[data-theme='D'] [data-workflow-counter] {
+  --flow-start: #aa4d15;
+  --flow-end: #e5a258;
+  background: linear-gradient(125deg, color-mix(in srgb,var(--flow-end) 22%,white), #fff) !important;
+  border: 1px solid color-mix(in srgb, var(--flow-start) 45%, white) !important;
+  border-radius: 18px;
+  box-shadow: 0 5px 14px color-mix(in srgb, var(--flow-start) 16%, transparent) !important;
+}
+html[data-theme='D'] [data-workflow-counter='yukleme'] { --flow-start: #08756e; --flow-end: #42ada3; }
+html[data-theme='D'] [data-workflow-counter='islenme'] { --flow-start: #305cac; --flow-end: #7a9edb; }
+html[data-theme='D'] [data-workflow-counter='kontrol'] { --flow-start: #7142a0; --flow-end: #ad85cf; }
+html[data-theme='D'] [data-workflow-counter='beyanname'] { --flow-start: #a63861; --flow-end: #d583a2; }
+html[data-theme='D'] [data-workflow-counter='tamam'] { --flow-start: #237746; --flow-end: #70b58a; }
+html[data-theme='D'] [data-workflow-counter] :is(div, span, svg) { color: var(--flow-start) !important; }
+html[data-theme='D'] [data-workflow-counter] > div:first-child > :is(div, span) {
+  background: #ffffff80 !important; border-color: color-mix(in srgb,var(--flow-start) 24%,white) !important;
+}
+html[data-theme='D'] [data-workflow-counter] > div:last-child { background: color-mix(in srgb,var(--flow-start) 12%,white) !important; }
+html[data-theme='D'] [data-workflow-counter] > div:last-child > div { background: var(--flow-start) !important; }
+
+/* Tablo bütünlüğü: tek çerçeve, sakin başlık ve ince satır ayırıcıları. */
+html[data-theme='D'] [data-dashboard-root] table {
+  border-collapse: separate; border-spacing: 0;
+  border: 1px solid #ced9df; border-radius: 12px; overflow: hidden;
+  background: #fff;
+}
+html[data-theme='D'] [data-dashboard-root] table thead th {
+  background: #e9eef2 !important; color: #344552 !important;
+  border-bottom: 1px solid #cbd6de; font-weight: 700;
+}
+html[data-theme='D'] [data-dashboard-root] table tbody td { border-bottom: 1px solid #e4e9ed; }
+html[data-theme='D'] [data-dashboard-root] table tbody tr:last-child td { border-bottom: 0; }
+html[data-theme='D'] [data-dashboard-root] table tbody tr:nth-child(even):not(:hover):not([aria-selected='true']) { background: #f8fafb; }

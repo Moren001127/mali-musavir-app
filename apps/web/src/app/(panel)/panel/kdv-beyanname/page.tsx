@@ -2,7 +2,7 @@
 import { portalStyle } from '@/lib/portal-theme';
 
 
-import React, { useState } from 'react';
+import React, { useState, type CSSProperties } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
@@ -886,11 +886,14 @@ function GenelBakisPano({ donem, onSelect }: { donem: string; onSelect: (id: str
 
 function StatCard({ icon: Icon, label, value, accent, sub, active, onClick }: { icon: any; label: string; value: string; accent: string; sub?: string; active?: boolean; onClick?: () => void }) {
   return (
-    <button
+    <button data-portal-kpi
       type="button"
       onClick={onClick}
       className="w-full rounded-xl border p-3 text-left transition hover:bg-white/[0.04] focus:outline-none"
       style={portalStyle({
+        ...({ '--kpi-tone': portalStyle({ color: accent }).color } as CSSProperties),
+        outline: active ? `2px solid ${accent}` : undefined,
+        outlineOffset: active ? 2 : undefined,
         background: active ? `${accent}1a` : 'rgba(255,255,255,0.02)',
         borderColor: active ? accent : 'rgba(255,255,255,0.06)',
         boxShadow: active ? `0 0 0 1px ${accent}55` : undefined,

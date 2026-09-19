@@ -1,0 +1,104 @@
+/* Yalnız Aylık Takip Listesi ve D teması. Satır içi eski renkler A için korunur. */
+html[data-theme="D"] .aylik-takip [data-aylik-asama="all"] {
+  --aylik-bas: #39243f; --aylik-son: #785e7e; --aylik-yazi: #fff; --aylik-vurgu: #b59dbd;
+}
+html[data-theme="D"] .aylik-takip [data-aylik-asama="evrak-gelmedi"] {
+  --aylik-bas: #efb58e; --aylik-son: #fff3e9; --aylik-yazi: #542709; --aylik-vurgu: #ad4b13;
+}
+html[data-theme="D"] .aylik-takip [data-aylik-asama="yukleme-bekliyor"] {
+  --aylik-bas: #77cfc5; --aylik-son: #eafaf7; --aylik-yazi: #104b48; --aylik-vurgu: #087c73;
+}
+html[data-theme="D"] .aylik-takip [data-aylik-asama="islem-bekliyor"] {
+  --aylik-bas: #94bdeb; --aylik-son: #eff6ff; --aylik-yazi: #1c3b64; --aylik-vurgu: #3269ae;
+}
+html[data-theme="D"] .aylik-takip [data-aylik-asama="kontrol-bekliyor"] {
+  --aylik-bas: #bea6e4; --aylik-son: #f6f0ff; --aylik-yazi: #432767; --aylik-vurgu: #7b50ad;
+}
+html[data-theme="D"] .aylik-takip [data-aylik-asama="beyanname-bekliyor"] {
+  --aylik-bas: #dda0b3; --aylik-son: #fff0f4; --aylik-yazi: #60273d; --aylik-vurgu: #a64969;
+}
+html[data-theme="D"] .aylik-takip [data-aylik-asama="verildi"] {
+  --aylik-bas: #91cda1; --aylik-son: #edf9ef; --aylik-yazi: #204a2c; --aylik-vurgu: #32814b;
+}
+/* !important yalnız bu sayfanın eski satır içi renklerini geçersiz kılar. */
+html[data-theme="D"] .aylik-takip .aylik-takip-sayac {
+  background: linear-gradient(115deg, var(--aylik-bas), var(--aylik-son)) !important;
+  border-color: var(--aylik-bas) !important;
+  border-radius: 14px;
+  box-shadow: 0 3px 10px rgba(48, 31, 57, .08);
+}
+html[data-theme="D"] .aylik-takip .aylik-takip-sayac div {
+  color: var(--aylik-yazi) !important;
+}
+html[data-theme="D"] .aylik-takip .aylik-takip-sayac > span {
+  background: var(--aylik-vurgu) !important;
+}
+html[data-theme="D"] .aylik-takip .aylik-takip-sayac:hover {
+  border-color: var(--aylik-vurgu) !important;
+  box-shadow: 0 5px 14px rgba(48, 31, 57, .16);
+}
+html[data-theme="D"] .aylik-takip .aylik-takip-sayac[data-aylik-secili="true"] {
+  border-color: var(--aylik-vurgu) !important;
+  box-shadow: inset 0 0 0 1px var(--aylik-vurgu), 0 5px 14px rgba(48, 31, 57, .18);
+}
+html[data-theme="D"] .aylik-takip .aylik-takip-baslik {
+  background: linear-gradient(115deg, #eee6f1, #fff 75%) !important;
+  border-color: #ddd2e2 !important;
+  box-shadow: 0 4px 16px rgba(57, 36, 63, .07) !important;
+}
+html[data-theme="D"] .aylik-takip .aylik-takip-baslik h1 {
+  color: #432c4c !important;
+}
+html[data-theme="D"] .aylik-takip .aylik-takip-serit {
+  background: linear-gradient(90deg, #52345f, #bca4c8, #eee6f1) !important;
+}
+html[data-theme="D"] .aylik-takip .aylik-takip-ust-etiket span {
+  color: #705679 !important;
+}
+html[data-theme="D"] .aylik-takip .aylik-takip-ust-etiket span:first-child {
+  background: #705679 !important;
+}
+html[data-theme="D"] .aylik-takip :is(.aylik-takip-baslik-ikon, .aylik-takip-aktar) {
+  background: linear-gradient(120deg, #432c4c, #715479) !important;
+  color: #fff !important;
+  box-shadow: 0 4px 12px rgba(57, 36, 63, .16) !important;
+}
+html[data-theme="D"] .aylik-takip .aylik-takip-baslik-ikon svg {
+  color: #fff !important;
+}
+html[data-theme="D"] .aylik-takip .aylik-takip-donem {
+  background: #f1eaf4 !important;
+  color: #583963 !important;
+  border-color: #d9cbe0 !important;
+}
+html[data-theme="D"] .aylik-takip .aylik-takip-tablo-baslik {
+  background: #f0ecf3 !important;
+  color: #514258 !important;
+  border-bottom-color: #dcd3e2 !important;
+}
+html[data-theme="D"] .aylik-takip .aylik-takip-tablo {
+  background: #fff !important;
+  border-color: #a99ab2 !important;
+  box-shadow: 0 2px 8px rgba(57, 36, 63, .05);
+}
+html[data-theme="D"] .aylik-takip .aylik-takip-satir {
+  background: #fff !important;
+  border-bottom-color: #e7e3ea !important;
+}
+/* Başlık ilk çocuk; satırlar doğrudan aynı kapsayıcıda bulunur. */
+html[data-theme="D"] .aylik-takip .aylik-takip-satir:nth-child(odd) {
+  background: #faf9fb !important;
+}
+html[data-theme="D"] .aylik-takip .aylik-takip-satir:hover,
+html[data-theme="D"] .aylik-takip .aylik-takip-satir:focus-within {
+  background: #f3eff6 !important;
+}
+html[data-theme="D"] .aylik-takip .aylik-takip-satir > input {
+  background: #fff !important;
+  border-color: #dfd9e4 !important;
+  color: #352d3b !important;
+}
+html[data-theme="D"] .aylik-takip .aylik-takip-sayfalama {
+  background: #fff;
+  border-top-color: transparent !important;
+}

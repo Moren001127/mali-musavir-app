@@ -488,8 +488,9 @@ function AiUsageWidget({ data }: { data: any }) {
 function StatBox({ label, value, color, icon: Icon }: any) {
   return (
     <div
+      data-portal-kpi
       className="relative overflow-hidden rounded-2xl border p-4"
-      style={portalStyle({ borderColor: `${color}40`, background: `linear-gradient(135deg, ${color}26, ${color}0a 58%, rgba(255,255,255,0.02))` })}
+      style={portalStyle({ '--kpi-tone': portalStyle({color}).color, borderColor: `${color}40`, background: `linear-gradient(135deg, ${color}26, ${color}0a 58%, rgba(255,255,255,0.02))` } as React.CSSProperties)}
     >
       <div className="flex items-center justify-between">
         <span className="text-[10px] uppercase font-bold tracking-[.16em]" style={portalStyle({ color })}>{label}</span>

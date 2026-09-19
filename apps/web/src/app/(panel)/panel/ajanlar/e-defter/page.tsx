@@ -1188,7 +1188,7 @@ function LegendItem({ color, label, value, active, onClick }: { color: string; l
 
 function BigStat({ label, value, color }: { label: string; value: number; color: string }) {
   return (
-    <div className="rounded-xl p-3" style={portalStyle({ background: PANEL, border: `1px solid ${BORDER}` })}>
+    <div data-portal-kpi className="rounded-xl p-3" style={portalStyle({ '--kpi-tone': portalStyle({color}).color, background: PANEL, border: `1px solid ${BORDER}` } as React.CSSProperties)}>
       <div className="text-[9px] uppercase tracking-[.18em] mb-1" style={portalStyle({ color: MUTED2 })}>{label}</div>
       <div className="text-2xl font-bold tabular-nums leading-none" style={portalStyle({ color })}>{value}</div>
     </div>
@@ -1436,4 +1436,3 @@ function KurallarTab() {
     </div>
   );
 }
-

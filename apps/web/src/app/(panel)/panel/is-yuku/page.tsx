@@ -1,5 +1,6 @@
 'use client';
 import { portalStyle } from '@/lib/portal-theme';
+import './is-yuku-d.css';
 
 
 import React, { useState, useMemo } from 'react';
@@ -122,9 +123,9 @@ export default function IsYukuPage() {
   }, [data, stageFilter]);
 
   return (
-    <div className="space-y-6 max-w-7xl">
+    <div className="is-yuku space-y-6 max-w-7xl">
       <header
-        className="relative overflow-hidden rounded-[18px] border px-5 py-3"
+        className="akis-baslik relative overflow-hidden rounded-[18px] border px-5 py-3"
         style={portalStyle({
           background:
             'radial-gradient(120% 140% at 0% 0%, rgba(212,184,118,0.16), transparent 46%), radial-gradient(120% 140% at 100% 0%, rgba(139,118,73,0.12), transparent 48%), #0f0d0b',
@@ -133,7 +134,7 @@ export default function IsYukuPage() {
         })}
       >
         <div
-          className="absolute inset-x-0 top-0 h-1"
+          className="akis-baslik-serit absolute inset-x-0 top-0 h-1"
           style={portalStyle({ background: 'linear-gradient(90deg, #8b7649, #b8a06f, #d4b876, #e7cf95, #d4b876, #b8a06f)' })}
         />
         <div className="mb-2 flex items-center gap-2.5">
@@ -143,7 +144,7 @@ export default function IsYukuPage() {
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex min-w-0 items-center gap-3.5">
             <span
-              className="grid shrink-0 place-items-center rounded-xl"
+              className="akis-baslik-ikon grid shrink-0 place-items-center rounded-xl"
               style={portalStyle({
                 width: 40,
                 height: 40,
@@ -264,7 +265,7 @@ export default function IsYukuPage() {
 
           {/* GEÇ KALANLAR — uyarı kartı */}
           {gecKalanlar.length > 0 && (
-            <div className="rounded-2xl overflow-hidden"
+            <div className="akis-gec-kalanlar rounded-2xl overflow-hidden"
               style={portalStyle({
                 background: 'linear-gradient(135deg, rgba(239,68,68,0.06), rgba(239,68,68,0.02))',
                 border: '1px solid rgba(239,68,68,0.25)',
@@ -299,7 +300,7 @@ function WorkflowSummary({ data, evrakPct }: { data: WorkflowData; evrakPct: num
 
   return (
     <div
-      className="rounded-3xl overflow-hidden"
+      className="akis-ozet rounded-3xl overflow-hidden"
       style={portalStyle({
         background: 'radial-gradient(circle at 0% 0%, rgba(212,184,118,0.14), transparent 46%), linear-gradient(135deg, rgba(255,255,255,0.035), rgba(255,255,255,0.012))',
         border: '1px solid rgba(212,184,118,0.24)',
@@ -341,7 +342,8 @@ function WorkflowSummary({ data, evrakPct }: { data: WorkflowData; evrakPct: num
               <Link
                 key={stage}
                 href="#pipeline"
-                className="p-3 transition hover:bg-white/[0.03]"
+                data-akis-asama={stage}
+                className="akis-sayac p-3 transition hover:bg-white/[0.03]"
                 style={portalStyle({ borderLeft: '1px solid rgba(255,255,255,0.055)' })}
               >
                 <div className="flex items-center justify-between gap-2">
@@ -378,7 +380,7 @@ function HeroCard({
   const isUrgent = item.bekleyenGun >= 5;
 
   return (
-    <div className="rounded-3xl overflow-hidden relative"
+    <div data-akis-asama={item.stage} className="akis-oncelikli rounded-3xl overflow-hidden relative"
       style={portalStyle({
         background: `radial-gradient(circle at 30% 0%, ${cfg.gradient}, transparent 70%), linear-gradient(135deg, rgba(212,184,118,0.08), rgba(212,184,118,0.02))`,
         border: '1px solid rgba(212,184,118,0.30)',
@@ -421,7 +423,7 @@ function HeroCard({
           </h2>
         </div>
         <div className="flex items-center gap-3 mt-3 flex-wrap">
-          <span className="inline-flex items-center gap-1.5 text-[11.5px] font-bold uppercase tracking-wider px-2.5 py-1 rounded"
+          <span className="akis-asama-rozet inline-flex items-center gap-1.5 text-[11.5px] font-bold uppercase tracking-wider px-2.5 py-1 rounded"
             style={portalStyle({ background: cfg.gradient, color: cfg.color, border: `1px solid ${cfg.color}33` })}>
             <Icon size={11} /> {cfg.label}
           </span>
@@ -439,7 +441,7 @@ function HeroCard({
       <div className="px-7 pb-7 pt-2 flex items-center gap-3 flex-wrap">
         <Link
           href={item.actionPath}
-          className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-[14px] font-bold transition-all hover:scale-[1.02]"
+          className="akis-eylem inline-flex items-center gap-2 px-6 py-3 rounded-xl text-[14px] font-bold transition-all hover:scale-[1.02]"
           style={portalStyle({
             background: `linear-gradient(135deg, ${GOLD}, ${GOLD_SOFT})`,
             color: '#0f0d0b',
@@ -512,7 +514,8 @@ function MiniSiraKart({ item, sira }: { item: QueueItem; sira: number }) {
   const cfg = STAGE_CONFIG[item.stage];
   return (
     <Link href={item.actionPath}
-      className="rounded-xl p-3.5 transition-all hover:scale-[1.02] block"
+      data-akis-asama={item.stage}
+      className="akis-siradaki rounded-xl p-3.5 transition-all hover:scale-[1.02] block"
       style={portalStyle({
         background: 'rgba(255,255,255,0.02)',
         border: '1px solid rgba(255,255,255,0.05)',
@@ -549,7 +552,7 @@ function PipelineSutun({ stage, items }: { stage: Stage; items: QueueItem[] }) {
   const isEmpty = sirali.length === 0;
 
   return (
-    <div className="rounded-2xl overflow-hidden flex flex-col"
+    <div data-akis-asama={stage} className="akis-sutun rounded-2xl overflow-hidden flex flex-col"
       style={portalStyle({
         background: `linear-gradient(180deg, ${cfg.gradient} 0%, ${cfg.bg} 100%)`,
         border: `1px solid ${cfg.color}38`,

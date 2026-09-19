@@ -74,6 +74,10 @@ html[data-theme="D"] :where(input:not([type=checkbox]):not([type=radio]):not([ty
 html[data-theme="D"] :where(input, select, textarea):focus-visible { outline: 2px solid #73b5a8; outline-offset: 2px; box-shadow: 0 0 0 3px #e5f3ef; }
 html[data-theme="D"] :where(button, a, [role=tab]):focus-visible { outline: 2px solid #087f78; outline-offset: 3px; }
 html[data-theme="D"] :where(input, textarea)::placeholder { color: #7a8790; }
+/* Simgeli arama ve giriş alanlarında yazı simgenin altına girmesin. */
+html[data-theme="D"] input.pl-10 { padding-left: 2.5rem; }
+html[data-theme="D"] input.pl-12 { padding-left: 3rem; }
+html[data-theme="D"] input.pr-12 { padding-right: 3rem; }
 html[data-theme="D"] input:-webkit-autofill { -webkit-text-fill-color: #24313b; -webkit-box-shadow: 0 0 0 1000px #f2faf7 inset; }
 html[data-theme="D"] :where(select option, select optgroup) { color: #24313b; background: #fff; }
 html[data-theme="D"] .beyan-dark-select option { color: #24313b !important; background: #fff !important; }
@@ -85,6 +89,25 @@ html[data-theme="D"] :where(table th) { border-color: #dce3e6; }
 html[data-theme="D"] thead th { background-color: var(--surface-2) !important; color: var(--text-secondary) !important; }
 html[data-theme="D"] :where(table td, table tr) { border-color: #e5eaed; }
 html[data-theme="D"] :where(dialog, [role=dialog]) { color: var(--text); }
+/* Modüllerde tablo yüzeyini bir bütün olarak tanımlar; hücre işaretleri korunur. */
+html[data-theme="D"] [data-panel-main] table {
+  border: 1px solid #cbd6de;
+  background: #fff;
+}
+html[data-theme="D"] [data-panel-main] table thead th {
+  background: #eaf0f3 !important;
+  color: #354956 !important;
+  border-bottom: 1px solid #c3d0d9;
+  font-weight: 700;
+}
+html[data-theme="D"] [data-panel-main] table tbody td { border-bottom: 1px solid #dfe6eb; }
+html[data-theme="D"] [data-panel-main] table tbody tr:last-child td { border-bottom: 0; }
+html[data-theme="D"] [data-panel-main] table tbody tr:nth-child(even):not(:hover):not([aria-selected="true"]) { background-color: #f7f9fb; }
+html[data-theme="D"] [data-portal-page-header] {
+  background: linear-gradient(115deg,#edf2f5,#fff 75%) !important;
+  border-color: #cfdbe2 !important;
+  box-shadow: 0 4px 16px #24313b08 !important;
+}
 html[data-theme="D"] ::selection { background: #c9e9df; color: #173f38; }
 html[data-theme="D"] [data-sonner-toaster] { --normal-bg: #fff; --normal-text: #24313b; --normal-border: #dce3e6; }
 html[data-theme="D"] .section-pillbar::-webkit-scrollbar-thumb { background: linear-gradient(90deg,#73a69d,#a89bc1); }
@@ -99,6 +122,12 @@ html[data-theme="D"] [data-portal-kpi] {
 html[data-theme="D"] [data-portal-kpi] :where(p,span,div,svg) { color: #fff !important; }
 html[data-theme="D"] [data-portal-kpi] button { background: rgba(20,30,40,.18) !important; color: #fff !important; }
 html[data-theme="D"] [data-portal-card] { background: #fff !important; }
+html[data-theme="D"] [data-portal-soft-counter] {
+  background: linear-gradient(135deg, color-mix(in srgb,var(--counter-tone) 14%,white), #fff) !important;
+  border-color: color-mix(in srgb,var(--counter-tone) 25%,white) !important;
+}
+html[data-theme="D"] [data-portal-soft-counter] :is(p,span,svg) { color: var(--counter-tone) !important; }
+html[data-theme="D"] [data-portal-soft-counter] > div:first-child { background: #ffffff80 !important; border-color: color-mix(in srgb,var(--counter-tone) 25%,white) !important; }
 html[data-theme="D"] [data-portal-band] { background: linear-gradient(110deg, color-mix(in srgb, var(--band-tone,#087f78) 15%,white), #fff); border-bottom: 1px solid var(--border-soft); }
 html[data-theme="D"] :is(.btn-primary,.btn-gold)[class~="text-white"],
 html[data-theme="D"] :is(.btn-primary,.btn-gold) [class~="text-white"],

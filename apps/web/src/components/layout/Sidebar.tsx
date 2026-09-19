@@ -249,7 +249,7 @@ export default function Sidebar() {
 
   return (
     <>
-    <aside data-moren-owned="navigation" data-portal-navigation="true"
+    <aside data-moren-sidebar="true" data-moren-owned="navigation" data-portal-navigation="true"
       className="flex flex-col flex-shrink-0 overflow-hidden relative"
       data-collapsed={collapsed ? 'true' : 'false'}
       style={ownedThemeStyle({
@@ -262,18 +262,21 @@ export default function Sidebar() {
     >
       {/* Dekoratif radial gradient arka plan */}
       <div
+        data-moren-sidebar-decoration="true"
         className="absolute inset-0 pointer-events-none opacity-25"
         style={ownedThemeStyle({
           background: 'radial-gradient(circle at 42% 0%, rgba(212,184,118,0.10), transparent 33%), radial-gradient(circle at 110% 28%, rgba(240,154,168,0.045), transparent 36%), radial-gradient(circle at 40% 100%, rgba(143,215,189,0.04), transparent 42%)',
         })}
       />
       <div
+        data-moren-sidebar-decoration="true"
         className="pointer-events-none absolute inset-y-0 right-0 w-px"
         style={ownedThemeStyle({ background: 'linear-gradient(180deg, transparent, rgba(212,184,118,0.20), transparent)' })}
       />
 
       {/* === LOGO === */}
       <div
+        data-moren-sidebar-brand="true"
         className={collapsed ? 'relative px-1.5 py-2.5' : 'relative px-3 py-3'}
         style={ownedThemeStyle({
           borderBottom: '1px solid rgba(212,184,118,0.10)',
@@ -281,6 +284,7 @@ export default function Sidebar() {
         })}
       >
         <Link
+          data-moren-sidebar-panel="true"
           href="/panel"
           className={collapsed
             ? 'group relative flex h-12 items-center justify-center rounded-xl border transition-all duration-300 hover:border-[#d4b87666]'
@@ -295,13 +299,17 @@ export default function Sidebar() {
           onMouseEnter={(e) => showCollapsedTooltip(e, 'Moren Mali Müşavirlik', GOLD)}
           onMouseLeave={hideCollapsedTooltip}
         >
-          <span className={collapsed ? 'block h-9 w-[54px]' : 'block h-[104px] w-[150px]'}>
+          <span data-moren-sidebar-original-logo="true" className={collapsed ? 'block h-9 w-[54px]' : 'block h-[104px] w-[150px]'}>
             <img
               src={collapsed ? '/brand/moren-logo-mark.png' : '/brand/moren-logo-gold.png'}
               alt="Moren Mali Müşavirlik"
               className="block h-full w-full object-contain"
               style={ownedThemeStyle({ filter: 'none' })}
             />
+          </span>
+          <span data-moren-sidebar-wordmark="true" className="hidden" aria-hidden="true">
+            <span data-moren-sidebar-brand-name="true">Moren</span>
+            <span data-moren-sidebar-brand-subtitle="true">Mali Müşavirlik</span>
           </span>
         </Link>
         <button
@@ -334,6 +342,7 @@ export default function Sidebar() {
               {/* Grup Başlığı */}
               <div className={collapsed ? 'mb-1 flex justify-center px-0' : 'px-1 mb-1'}>
                 <div
+                  data-moren-sidebar-group="true"
                   className={collapsed
                     ? 'flex h-8 w-8 items-center justify-center rounded-lg border'
                     : 'flex items-center gap-1.5 rounded-lg border px-2 py-1'
@@ -347,6 +356,7 @@ export default function Sidebar() {
                   })}
                 >
                   <span
+                    data-moren-sidebar-icon="true"
                     className="flex h-[22px] w-[22px] items-center justify-center rounded-md"
                     style={ownedThemeStyle({
                       background: `${group.color}18`,
@@ -369,6 +379,7 @@ export default function Sidebar() {
                         {group.label}
                       </p>
                       <div
+                        data-moren-sidebar-decoration="true"
                         className="h-px flex-1"
                         style={ownedThemeStyle({ background: `linear-gradient(90deg, ${group.color}44, transparent)` })}
                       />
@@ -392,6 +403,8 @@ export default function Sidebar() {
 
                   return (
                     <Link
+                      data-moren-sidebar-item="true"
+                      data-moren-sidebar-active={active ? 'true' : 'false'}
                       key={href}
                       href={href}
                       className={collapsed
@@ -432,10 +445,12 @@ export default function Sidebar() {
                       aria-label={label}
                     >
                       <span
+                        data-moren-sidebar-decoration="true"
                         className="absolute inset-y-1 left-1 w-10 rounded-full opacity-0 blur-md transition-opacity duration-300 group-hover:opacity-50"
                         style={ownedThemeStyle({ background: `${group.color}1b` })}
                       />
                       <span
+                        data-moren-sidebar-decoration="true"
                         className="absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100"
                         style={ownedThemeStyle({
                           background: `linear-gradient(90deg, transparent 0%, ${group.color}0f 46%, transparent 100%)`,
@@ -446,6 +461,7 @@ export default function Sidebar() {
                       {active && (
                         <>
                           <span
+                            data-moren-sidebar-indicator="true"
                             className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full"
                             style={ownedThemeStyle({
                               background: `linear-gradient(180deg, ${group.color}, ${group.color}99)`,
@@ -454,6 +470,7 @@ export default function Sidebar() {
                           />
                           {/* Parıltı efekti */}
                           <span
+                            data-moren-sidebar-decoration="true"
                             className="absolute left-0 top-0 bottom-0 w-full opacity-50 pointer-events-none"
                             style={ownedThemeStyle({
                               background: `linear-gradient(90deg, ${group.color}10 0%, transparent 50%)`,
@@ -464,6 +481,7 @@ export default function Sidebar() {
 
                       {/* İkon kutucuğu */}
                       <div
+                        data-moren-sidebar-icon="true"
                         className="relative flex items-center justify-center flex-shrink-0 transition-all duration-300 group-hover:scale-105"
                         style={ownedThemeStyle({
                           width: collapsed ? 28 : 26,
@@ -557,6 +575,7 @@ export default function Sidebar() {
             </div>
           ) : (
           <div
+            data-moren-sidebar-panel="true"
             className="relative overflow-hidden rounded-xl p-3 group transition-all duration-300"
             style={ownedThemeStyle({
               background: 'linear-gradient(135deg, rgba(212,184,118,0.055), rgba(255,255,255,0.012))',
@@ -565,12 +584,14 @@ export default function Sidebar() {
             })}
           >
             <div
+              data-moren-sidebar-decoration="true"
               className="absolute -bottom-5 -right-5 w-20 h-20 rounded-full"
               style={ownedThemeStyle({ background: 'radial-gradient(circle, #d4b876, transparent 70%)', opacity: 0.18 })}
             />
             <div className="relative flex items-center gap-3">
               <div className="relative">
                 <div
+                  data-moren-sidebar-decoration="true"
                   className="absolute inset-0 rounded-lg blur-sm opacity-40"
                   style={ownedThemeStyle({ background: 'linear-gradient(135deg, #d4b876, #8b7649)' })}
                 />

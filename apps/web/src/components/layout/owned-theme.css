@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Kaushan+Script&family=Cormorant+Garamond:ital,wght@1,600&display=swap');
+
 /* Bu değişkenler yalnız bu görevin bileşenlerinde ve D temasında etkindir. */
 html[data-theme='D'] [data-moren-owned] {
   --moren-owned-surface: #ffffff;
@@ -134,4 +136,117 @@ html[data-theme='D'] [data-moren-auth-features] > :nth-child(3) {
   --moren-owned-primary: var(--moren-owned-amber);
   --moren-owned-primary-soft: var(--moren-owned-amber-soft);
   --moren-owned-primary-line: var(--moren-owned-amber-line);
+}
+
+/* Yalnız masaüstü sol menü: ölçüler sabit, yazılar tok, çerçeveler sade.
+   Önemli kurallar mevcut satır içi ve fare olaylarındaki renkleri de karşılar. */
+html[data-theme='D'] [data-moren-sidebar] {
+  --moren-owned-nav-background: linear-gradient(180deg, #102e5c 0%, #116873 100%);
+  --moren-owned-line: rgba(222, 238, 244, 0.1);
+  --moren-owned-primary-line: rgba(222, 238, 244, 0.12);
+  border-right-color: rgba(222, 238, 244, 0.12) !important;
+  box-shadow: none !important;
+}
+
+html[data-theme='D'] [data-moren-sidebar] * {
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+
+html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-decoration] {
+  opacity: 0 !important;
+}
+
+html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-panel],
+html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-group] {
+  background: rgba(255,255,255,.035) !important;
+  border-color: rgba(255,255,255,.42) !important;
+}
+
+html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-group] p {
+  font-weight: 600;
+}
+
+html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-icon] {
+  background: rgba(255,255,255,.06) !important;
+  border-color: rgba(255,255,255,.25) !important;
+}
+
+html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-item] {
+  font-weight: 600 !important;
+  color: #d3dfe7 !important;
+  background: rgba(255,255,255,.04) !important;
+  border-color: rgba(255,255,255,.52) !important;
+}
+
+html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-item]:hover,
+html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-item]:focus-visible {
+  color: #ffffff !important;
+  background: rgba(255, 255, 255, 0.07) !important;
+  border-color: rgba(255,255,255,.72) !important;
+}
+
+html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-active='true'] {
+  color: #ffffff !important;
+  background: rgba(255, 255, 255, 0.13) !important;
+  border-color: rgba(255,255,255,.85) !important;
+}
+
+html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-active='true'] svg {
+  color: #ffffff !important;
+  opacity: 1 !important;
+}
+
+html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-indicator] {
+  background: #ffffff !important;
+}
+
+/* Fatura Merkezi'nin Kaushan Script / Cormorant Garamond marka dili.
+   Bağlantı kutusunun ölçüsü sabit; A'da özgün görsel görünmeye devam eder. */
+html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-brand] {
+  background: transparent !important;
+}
+
+html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-original-logo] {
+  display: none;
+}
+
+html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-wordmark] {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  text-align: center;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-brand-name] {
+  font-family: 'Kaushan Script', cursive;
+  font-size: 68px;
+  font-weight: 400;
+  line-height: 1.05;
+  letter-spacing: 0.3px;
+}
+
+html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-brand-subtitle] {
+  margin-top: 4px;
+  font-family: 'Kaushan Script', cursive;
+  font-size: 20px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 1.15;
+  letter-spacing: 0.3px;
+  color: #d4e9ef;
+}
+
+html[data-theme='D'] [data-moren-sidebar][data-collapsed='true'] [data-moren-sidebar-brand-name] {
+  font-size: 21px;
+}
+
+html[data-theme='D'] [data-moren-sidebar][data-collapsed='true'] [data-moren-sidebar-brand-subtitle] {
+  display: none;
 }

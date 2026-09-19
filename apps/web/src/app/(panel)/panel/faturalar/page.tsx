@@ -2,7 +2,7 @@
 import { portalStyle, portalPaint } from '@/lib/portal-theme';
 
 
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -628,8 +628,9 @@ ${isPdf
         ].map(({ label, value, sub, icon: Icon }, idx) => (
           <div
             key={label}
+            data-portal-soft-counter
             className="flex-1 min-w-[160px] flex items-center gap-2.5 px-4 py-2.5"
-            style={portalStyle(idx > 0 ? { borderLeft: '1px solid rgba(255,255,255,0.04)' } : undefined)}
+            style={portalStyle({ '--counter-tone': ['#69468c','#315ca2','#19774c','#087b78'][idx], ...(idx > 0 ? { borderLeft: '1px solid rgba(255,255,255,0.04)' } : {}) } as CSSProperties)}
           >
             <div className="w-8 h-8 rounded-[9px] flex items-center justify-center flex-shrink-0" style={portalStyle({ background: 'rgba(184,160,111,0.08)', border: '1px solid rgba(184,160,111,0.15)', color: '#d4b876' })}>
               <Icon size={15} />
@@ -1079,11 +1080,11 @@ function MihsapConnectionBadge({ session }: { session: any }) {
   );
 }
 
-function StatBox({ label, value, sub, color, icon: Icon }: any) {
+function StatBox({ label, value, sub, color = '#087f78', icon: Icon }: any) {
   return (
-    <div
+    <div data-portal-kpi
       className="rounded-2xl p-4 border flex items-center gap-3"
-      style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' })}
+      style={portalStyle({ ...({ '--kpi-tone': portalStyle({ color }).color } as CSSProperties), background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' })}
     >
       <div
         className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"

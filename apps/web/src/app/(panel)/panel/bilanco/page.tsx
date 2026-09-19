@@ -1,7 +1,7 @@
 'use client';
 import { portalStyle } from '@/lib/portal-theme';
 
-import React, { useState } from 'react';
+import React, { useState, type CSSProperties } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { mizanApi, bilancoApi, fmtTRY } from '@/lib/mizan';
 import { api } from '@/lib/api';
@@ -259,10 +259,10 @@ export default function BilancoPage() {
       {bilanco && (
         <>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <Kpi label="Aktif Toplamı" val={fmtTRY(bilanco.aktifToplami)} color={GOLD} />
-            <Kpi label="Pasif Toplamı" val={fmtTRY(bilanco.pasifToplami)} color={GOLD} />
-            <Kpi label="Özkaynaklar" val={fmtTRY(bilanco.ozkaynaklar)} color={TOTAL_COLOR} />
-            <Kpi label={denk ? '✓ Bilanço Denk' : `Fark: ${fmtTRY(fark)}`} val={fmtTRY(Math.abs(fark))} color={denk ? TOTAL_COLOR : '#f43f5e'} />
+            <Kpi label="Aktif Toplamı" val={fmtTRY(bilanco.aktifToplami)} color="#305ea2" />
+            <Kpi label="Pasif Toplamı" val={fmtTRY(bilanco.pasifToplami)} color="#75509c" />
+            <Kpi label="Özkaynaklar" val={fmtTRY(bilanco.ozkaynaklar)} color="#087f78" />
+            <Kpi label={denk ? '✓ Bilanço Denk' : `Fark: ${fmtTRY(fark)}`} val={fmtTRY(Math.abs(fark))} color={denk ? '#22c55e' : '#f43f5e'} />
           </div>
           {/* Kesin Kayıt ribbon */}
           <div className="flex items-center justify-between rounded-xl p-3" style={portalStyle({
@@ -714,7 +714,7 @@ export default function BilancoPage() {
 
 function Kpi({ label, val, color }: { label: string; val: string; color: string }) {
   return (
-    <div className="rounded-xl p-4" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' })}>
+    <div data-portal-kpi className="rounded-xl p-4" style={portalStyle({ ...({ '--kpi-tone': portalStyle({ color }).color } as CSSProperties), background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' })}>
       <div className="text-[11px] font-bold uppercase tracking-[.1em] mb-2" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>{label}</div>
       <p className="leading-none tabular-nums" style={portalStyle({ fontFamily: FINANCIAL_FONT, fontSize: 22, fontWeight: 700, color, letterSpacing: 0 })}>{val}</p>
     </div>

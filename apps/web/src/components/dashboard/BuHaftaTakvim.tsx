@@ -1,6 +1,7 @@
 'use client';
 import { portalStyle } from '@/lib/portal-theme';
 import './dashboard-white.css';
+import './calendar-white.css';
 
 /**
  * v1.36.82 — Yaklaşan Beyanname Son Tarihleri (canlı liste)
@@ -210,13 +211,13 @@ export function BuHaftaTakvim() {
 
   return (
     <div
-      data-dashboard-surface data-dashboard-root className="rounded-2xl p-4 sm:p-5"
+      data-calendar data-dashboard-surface data-dashboard-root className="rounded-2xl p-4 sm:p-5"
       style={portalStyle({
         background: 'linear-gradient(180deg, rgba(245,166,184,0.052), rgba(255,255,255,0.014))',
         border: '1px solid rgba(245,166,184,0.16)',
       })}
     >
-      <div data-dashboard-band="peach" className="flex flex-wrap items-center gap-2.5 mb-3">
+      <div data-calendar-header data-dashboard-band="peach" className="flex flex-wrap items-center gap-2.5 mb-3">
         <span className="w-[3px] h-4 rounded-sm" style={{ background: ROSE }} />
         <h3 className="text-[14px] font-semibold flex items-center gap-2" style={portalStyle({ color: '#fafaf9' })}>
           <Calendar size={14} style={portalStyle({ color: ROSE_SOFT })} />
@@ -273,7 +274,7 @@ export function BuHaftaTakvim() {
           </p>
         </div>
       ) : (
-        <div className="space-y-1.5">
+        <div data-calendar-deadlines className="space-y-1.5">
           {visibleRows.map((r, i) => {
             const key = `${r.date.getFullYear()}-${r.date.getMonth() + 1}-${r.date.getDate()}`;
             const dayTasks = taskMap.get(key) || [];
@@ -298,6 +299,8 @@ function CalendarDayTile({ day }: { day: ReturnType<typeof buildCalendarDays>[nu
 
   return (
     <div
+      data-calendar-day={hasDeadline ? (day.gunFark <= 3 ? 'urgent' : 'deadline') : hasTask ? 'task' : 'quiet'}
+      data-calendar-today={day.gunFark === 0 ? 'true' : undefined}
       className="min-h-[76px] rounded-xl p-2.5 transition-all"
       title={titleParts.join('\n')}
       style={portalStyle({
@@ -308,7 +311,7 @@ function CalendarDayTile({ day }: { day: ReturnType<typeof buildCalendarDays>[nu
     >
       <div className="flex items-start justify-between gap-2">
         <div>
-          <div className="text-[17px] leading-none tabular-nums" style={portalStyle({ fontFamily: 'Fraunces, serif', fontWeight: 700, color: hasDeadline ? tone.pillText : hasTask ? '#93c5fd' : 'rgba(250,250,249,0.72)' })}>
+          <div data-calendar-date className="text-[17px] leading-none tabular-nums" style={portalStyle({ fontFamily: 'Fraunces, serif', fontWeight: 700, color: hasDeadline ? tone.pillText : hasTask ? '#93c5fd' : 'rgba(250,250,249,0.72)' })}>
             {day.date.getDate()}
           </div>
           <div className="text-[9px] uppercase font-bold mt-1" style={portalStyle({ color: 'rgba(250,250,249,0.38)' })}>{month}</div>
@@ -322,12 +325,12 @@ function CalendarDayTile({ day }: { day: ReturnType<typeof buildCalendarDays>[nu
       </div>
       <div className="mt-2 flex flex-wrap gap-1">
         {hasDeadline && (
-          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={portalStyle({ background: tone.pillBg, border: `1px solid ${tone.pillBorder}`, color: tone.pillText })}>
+          <span data-calendar-day-badge="deadline" className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={portalStyle({ background: tone.pillBg, border: `1px solid ${tone.pillBorder}`, color: tone.pillText })}>
             {day.deadlines.length} son
           </span>
         )}
         {hasTask && (
-          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={portalStyle({ background: 'rgba(96,165,250,0.11)', border: '1px solid rgba(96,165,250,0.28)', color: '#93c5fd' })}>
+          <span data-calendar-day-badge="task" className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={portalStyle({ background: 'rgba(96,165,250,0.11)', border: '1px solid rgba(96,165,250,0.28)', color: '#93c5fd' })}>
             {day.tasks.length} not
           </span>
         )}
@@ -344,6 +347,9 @@ function DeadlineRowItem({ row, dayTasks }: { row: DeadlineRow; dayTasks: string
 
   return (
     <div
+      data-calendar-row
+      data-calendar-kind={row.title.startsWith('KDV') ? 'vat' : row.title.includes('MUHSGK') ? 'payroll' : row.title.startsWith('e-Defter') ? 'ledger' : /Gelir|Kurumlar|Geçici/.test(row.title) ? 'income' : row.title.startsWith('Damga') ? 'stamp' : 'tourism'}
+      data-calendar-urgency={row.gunFark <= 1 ? 'immediate' : row.gunFark <= 3 ? 'soon' : 'planned'}
       className="rounded-xl flex items-center gap-3 pl-1 pr-3 py-2 transition-all hover:translate-x-[2px] relative"
       style={portalStyle({
         background: tone.bg,
@@ -354,7 +360,7 @@ function DeadlineRowItem({ row, dayTasks }: { row: DeadlineRow; dayTasks: string
       {/* Sol: tarih bloğu */}
       <div className="pl-3 pr-1 min-w-[58px] flex flex-col items-start">
         <span
-          className="tabular-nums leading-none"
+          data-calendar-date className="tabular-nums leading-none"
           style={portalStyle({
             fontFamily: 'Fraunces, serif',
             fontSize: 22,
@@ -373,7 +379,7 @@ function DeadlineRowItem({ row, dayTasks }: { row: DeadlineRow; dayTasks: string
       {/* Orta: ikon + başlık + altyazı */}
       <div className="flex-1 min-w-0 flex items-center gap-3">
         <div
-          className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+          data-calendar-icon className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
           style={portalStyle({
             background: tone.pillBg,
             border: `1px solid ${tone.pillBorder}`,
@@ -414,7 +420,7 @@ function DeadlineRowItem({ row, dayTasks }: { row: DeadlineRow; dayTasks: string
       )}
 
       <span
-        className="text-[10.5px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full flex-shrink-0"
+        data-calendar-remaining className="text-[10.5px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full flex-shrink-0"
         style={portalStyle({
           background: tone.pillBg,
           color: tone.pillText,

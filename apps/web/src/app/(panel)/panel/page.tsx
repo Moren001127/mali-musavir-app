@@ -37,9 +37,7 @@ import type { OzetRow, BeyanTipi, DonemTuru } from '@/lib/beyanname-takip';
 import Link from 'next/link';
 import { ReactNode, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useMe } from '@/hooks/useAuth';
 import { KritikUyariStatCard } from '@/components/dashboard/KritikUyariStatCard';
-import { BugunMasasi } from '@/components/dashboard/BugunMasasi';
 import { GundemKart } from '@/components/dashboard/GundemKart';
 import { BuHaftaTakvim } from '@/components/dashboard/BuHaftaTakvim';
 
@@ -65,23 +63,6 @@ const BEYAN_TONE = {
   tableBg: 'rgba(8,8,7,0.36)',
   headBg: 'rgba(244,239,229,0.035)',
 };
-
-/** Selam hitabı: ofis sahibi "Muzaffer Bey" (hafıza kuralı); diğer kullanıcılar yalnız ad (unvan/cinsiyet bilinmiyor). */
-function selamHitabi(user: any): string | undefined {
-  const ad = displayUserName(user);
-  if (!ad) return undefined;
-  return /^muzaffer@/i.test(String(user?.email || '')) ? `${ad} Bey` : ad;
-}
-
-function displayUserName(user: any): string | undefined {
-  const first = String(user?.firstName || '').trim();
-  if (first && !/^admin$/i.test(first)) return first.replace(/\b(Bey|Hanım|Hanim|Bay|Bayan)\b/gi, '').trim().split(/\s+/)[0] || undefined;
-
-  const full = [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim();
-  const candidate = full || user?.fullName || user?.name || user?.displayName;
-  if (!candidate || /^admin$/i.test(String(candidate).trim())) return undefined;
-  return String(candidate).replace(/\b(Bey|Hanım|Hanim|Bay|Bayan)\b/gi, '').trim().split(/\s+/)[0] || undefined;
-}
 
 type Task = {
   id: string;
@@ -202,6 +183,7 @@ function WorkflowOverview({ counts, total, activeCount }: { counts?: WorkflowCou
             return (
               <Link
                 key={step.key}
+                data-workflow-counter={step.key}
                 href={step.href}
                 className="group min-h-[96px] rounded-lg px-3.5 py-3 transition-all"
                 style={portalStyle({
@@ -1653,7 +1635,6 @@ export default function DashboardPage() {
   const { data: agentEvents = [] } = useQuery<any[]>({ queryKey: ['agent-events', 'dashboard'], queryFn: () => api.get('/agent/events?limit=100').then((r) => r.data).catch(() => []), refetchInterval: 15_000 });
   const { data: agentStats } = useQuery<any>({ queryKey: ['agent-stats'], queryFn: () => api.get('/agent/stats').then((r) => r.data).catch(() => null) });
   const { data: agentStatuses = [] } = useQuery<any[]>({ queryKey: ['agent-statuses'], queryFn: () => api.get('/agent/status').then((r) => r.data).catch(() => []), refetchInterval: 30_000 });
-  const { data: meUser } = useMe();
   const agentEventList = useMemo(() => {
     const raw = agentEvents as any;
     if (Array.isArray(raw)) return raw;
@@ -1956,15 +1937,12 @@ export default function DashboardPage() {
         <KritikUyariStatCard />
       </div>
 
-      {/* Üst alan: sol 2/3 "Bugün Masanızda" (mükellef kartları + nabız şeridi + genel işler),
-          sağ 1/3 "Başvuru Sayıları" (kur, TÜFE, gecikme zammı, asgari ücret, Resmî Gazete).
-          Eski AI brifing + sayaç tekrarı kaldırıldı — bkz. components/dashboard/BugunMasasi.tsx */}
+      {/* Brifing kaldırıldı; sol alan daha sonra eklenecek sayaçlar için ayrıldı. */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-        <div className="xl:col-span-2 min-w-0"><BugunMasasi hitap={selamHitabi(meUser)} /></div>
-        <div className="min-w-0"><GundemKart /></div>
+        <div className="min-w-0 xl:col-start-3"><GundemKart /></div>
       </div>
 
-      <DashboardSectionBridge from="Bugünün İş Listesi" to="Beyanname Takibi" tone="mint" />
+      <DashboardSectionBridge from="Başvuru Sayıları" to="Beyanname Takibi" tone="mint" />
 
       <div
         data-dashboard-surface className="rounded-2xl overflow-hidden"

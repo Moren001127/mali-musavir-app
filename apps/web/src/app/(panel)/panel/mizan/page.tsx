@@ -1,7 +1,7 @@
 'use client';
 import { portalStyle, portalPaint } from '@/lib/portal-theme';
 
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, type CSSProperties } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { mizanApi, fmtTRY } from '@/lib/mizan';
@@ -1101,11 +1101,11 @@ export default function MizanPage() {
       {mizan && (
         <>
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-            <Kpi label="Toplam Hesap" val={hesaplar.length.toString()} color="#fafaf9" icon={FileText} />
-            <Kpi label="Toplam Borç" val={fmtTRY(toplamBorc)} color={GOLD} icon={null} />
-            <Kpi label="Toplam Alacak" val={fmtTRY(toplamAlacak)} color={GOLD} icon={null} />
+            <Kpi label="Toplam Hesap" val={hesaplar.length.toString()} color="#305ea2" icon={FileText} />
+            <Kpi label="Toplam Borç" val={fmtTRY(toplamBorc)} color="#75509c" icon={null} />
+            <Kpi label="Toplam Alacak" val={fmtTRY(toplamAlacak)} color="#087f78" icon={null} />
             <Kpi label="Denetim Uyarısı" val={anomaliler.length.toString()} color={anomaliler.length > 0 ? '#f59e0b' : '#22c55e'} icon={AlertTriangle} />
-            <Kpi label="Son Güncelleme" val={mizan.createdAt ? new Date(mizan.createdAt).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'} color="rgba(250,250,249,0.7)" small icon={null} />
+            <Kpi label="Son Güncelleme" val={mizan.createdAt ? new Date(mizan.createdAt).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'} color="#305ea2" small icon={null} />
           </div>
           {/* Kesin Kayıt ribbon */}
           <div className="flex items-center justify-between rounded-xl p-3" style={portalStyle({
@@ -1622,7 +1622,7 @@ export default function MizanPage() {
 
 function Kpi({ label, val, color, small, icon: Icon }: { label: string; val: string; color: string; small?: boolean; icon: any }) {
   return (
-    <div className="rounded-xl p-4" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' })}>
+    <div data-portal-kpi className="rounded-xl p-4" style={portalStyle({ ...({ '--kpi-tone': portalStyle({ color }).color } as CSSProperties), background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' })}>
       <div className="flex items-center gap-1.5 mb-2 text-[11px] font-bold uppercase tracking-[.1em]" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
         {Icon ? <Icon size={12} style={portalStyle({ color })} /> : null}
         {label}

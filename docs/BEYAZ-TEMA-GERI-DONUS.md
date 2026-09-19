@@ -14,17 +14,22 @@ Fatura İşleme Merkezi ve alt adresleri eski A kapsamını kullanır.
 
 ## Kullanıcı “eski haline al” dediğinde
 
-Bu sürüm `surum-beyaz-tema-2026-09-19` etiketiyle işaretlenir. Sadece bu tema
-değişikliğini geri almak için, temiz çalışma alanında:
+İlk sürüm `surum-beyaz-tema-2026-09-19`, kullanıcı düzeltmeleri ise
+`surum-beyaz-tema-duzeltme-2026-09-19` etiketiyle işaretlenir. Tüm tema
+çalışmasını koyu tema öncesine geri almak için, temiz çalışma alanında:
 
 ```powershell
-git revert --no-edit surum-beyaz-tema-2026-09-19
+git revert --no-edit yedek-beyaz-tema-oncesi-2026-09-19..surum-beyaz-tema-duzeltme-2026-09-19
 git push origin main
 ```
 
 Sonraki değişikliklerle çakışma varsa bunları koruyarak çöz; `reset --hard` veya
 zorla gönderim kullanma. Yayının başarılı olduğunu ve giriş ekranını doğrula.
 Bu işlem veritabanını, belgeleri veya operasyon kayıtlarını geri sarmaz.
+
+Yalnız son görsel düzeltmeler geri istenirse düzeltme etiketini tek başına geri
+al. Düzeltmeler kullanıcının isteğiyle brifing alanının kaldırılmasını, menüde
+Moren / Mali Müşavirlik yazı markasını ve daha belirgin sayaçları da içerir.
 
 Alternatif: `MOREN_PORTAL_THEME=A` ile web servisini **yeniden derleyip yayınla**.
 Kök yerleşim A'yı seçer, renk yardımcıları özgün koyu renkleri kullanır. Statik

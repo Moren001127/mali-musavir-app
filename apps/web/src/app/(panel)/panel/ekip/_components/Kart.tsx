@@ -112,19 +112,20 @@ export function KPI({ etiket, deger, altBilgi, renk = TEMA.mavi, ikon, vurgu = f
     </>
   );
   const stil: CSSProperties = {
+    ...({ '--kpi-tone': portalStyle({ color: renk }).color } as CSSProperties),
     background: vurgu ? `linear-gradient(140deg, ${renk}2e, #1a1b21 65%)` : YUZEY.notr,
     border: `1px solid ${vurgu ? `${renk}55` : YUZEY.kenar}`,
     boxShadow: '0 14px 32px rgba(0,0,0,0.26)',
   };
   if (onClick) {
     return (
-      <button type="button" onClick={onClick} title={title} className="relative min-w-0 overflow-hidden rounded-2xl px-4 py-3 text-left transition-[transform] duration-150 hover:-translate-y-px" style={portalStyle(stil)}>
+      <button data-portal-kpi type="button" onClick={onClick} title={title} className="relative min-w-0 overflow-hidden rounded-2xl px-4 py-3 text-left transition-[transform] duration-150 hover:-translate-y-px" style={portalStyle(stil)}>
         {icerik}
       </button>
     );
   }
   return (
-    <div className="relative min-w-0 overflow-hidden rounded-2xl px-4 py-3" style={portalStyle(stil)} title={title}>
+    <div data-portal-kpi className="relative min-w-0 overflow-hidden rounded-2xl px-4 py-3" style={portalStyle(stil)} title={title}>
       {icerik}
     </div>
   );

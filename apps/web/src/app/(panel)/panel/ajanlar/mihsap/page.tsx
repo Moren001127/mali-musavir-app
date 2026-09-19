@@ -997,8 +997,9 @@ function PendingDecisionRow({ row, onaylaPendingMut, reddetPendingMut }: {
 function KpiMini({ label, value, color, icon }: { label: string; value: number; color: string; icon: string }) {
   return (
     <div
+      data-portal-kpi
       className="rounded-lg px-3 py-2.5 border flex items-center gap-3"
-      style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' })}
+      style={portalStyle({ '--kpi-tone': portalStyle({color}).color, background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' } as React.CSSProperties)}
     >
       <div
         className="w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold flex-shrink-0"

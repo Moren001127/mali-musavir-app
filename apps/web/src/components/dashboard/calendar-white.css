@@ -1,0 +1,199 @@
+/* Takvimin yalnız D görünümü. Tarih sırası ve yedi günlük şerit korunur. */
+html[data-theme='D'] [data-calendar][data-dashboard-surface] {
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  border: 1px solid #bacbd1 !important;
+  box-shadow: 0 3px 12px rgba(36, 49, 59, 0.04) !important;
+}
+
+html[data-theme='D'] [data-calendar] [data-calendar-header] {
+  min-height: 76px;
+  padding: 18px 20px;
+  margin-bottom: 20px;
+  border: 1px solid #cbdedc;
+  border-radius: 12px;
+  background: linear-gradient(110deg, #deeeea, #f2f7f7) !important;
+  border-color: #cbdedc !important;
+}
+
+html[data-theme='D'] [data-calendar-header] h3 {
+  font-size: 19px;
+  line-height: 1.4;
+  font-weight: 700;
+  color: #173f47 !important;
+}
+
+html[data-theme='D'] [data-calendar-header] h3 svg {
+  width: 20px;
+  height: 20px;
+  color: #28756d !important;
+}
+
+html[data-theme='D'] [data-calendar-header] > span:first-child {
+  height: 26px;
+  background: #28756d !important;
+}
+
+html[data-theme='D'] [data-calendar-header] > span:not(:first-child):not(:last-child) {
+  padding: 5px 9px;
+  background: #fff !important;
+  border-color: #c8dcd8 !important;
+  color: #365861 !important;
+  font-size: 10px;
+}
+
+html[data-theme='D'] [data-calendar-header] > span:last-child {
+  font-size: 12px;
+  font-weight: 600;
+  color: #47616a !important;
+}
+
+/* Beyaz boş günler; son tarih mavi, yakın son tarih gül, görev mürdüm. */
+html[data-theme='D'] [data-calendar-day] {
+  --calendar-day-ink: #435762;
+  --calendar-day-edge: #dfe7ea;
+  --calendar-day-wash: #fff;
+  min-height: 92px;
+  padding: 13px 12px;
+  background: var(--calendar-day-wash) !important;
+  border-color: var(--calendar-day-edge) !important;
+  box-shadow: inset 0 3px 0 var(--calendar-day-edge) !important;
+}
+
+html[data-theme='D'] [data-calendar-day='deadline'] {
+  --calendar-day-ink: #2c5992;
+  --calendar-day-edge: #a8c5e4;
+  --calendar-day-wash: #eff5fd;
+}
+
+html[data-theme='D'] [data-calendar-day='urgent'] {
+  --calendar-day-ink: #a13852;
+  --calendar-day-edge: #dfa5b5;
+  --calendar-day-wash: #fff2f5;
+}
+
+html[data-theme='D'] [data-calendar-day='task'] {
+  --calendar-day-ink: #725088;
+  --calendar-day-edge: #c6afd5;
+  --calendar-day-wash: #f7f1fb;
+}
+
+/* Bugün çerçeveyle ayrılır; varsa aciliyet rengi kaybolmaz. */
+html[data-theme='D'] [data-calendar-day][data-calendar-today='true'] {
+  border-color: #28756d !important;
+  box-shadow: inset 0 3px 0 #28756d, 0 0 0 1px #28756d !important;
+}
+
+html[data-theme='D'] [data-calendar] [data-calendar-date] {
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif !important;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700 !important;
+  letter-spacing: -0.03em !important;
+  font-size: 24px !important;
+  line-height: 1.15;
+  color: #243a49 !important;
+}
+
+html[data-theme='D'] [data-calendar-day] [data-calendar-date] {
+  color: var(--calendar-day-ink) !important;
+}
+
+html[data-theme='D'] [data-calendar-day] [data-calendar-day-badge] {
+  background: #fff !important;
+  border-color: var(--calendar-day-edge) !important;
+  color: var(--calendar-day-ink) !important;
+  font-size: 10px;
+}
+
+html[data-theme='D'] [data-calendar-day] [data-calendar-day-badge='task'] {
+  background: #f5eef9 !important;
+  border-color: #dac8e4 !important;
+  color: #725088 !important;
+}
+
+/* Tür vurgusu aciliyetten bağımsızdır: aynı günün vergileri ayırt edilir. */
+html[data-theme='D'] [data-calendar-deadlines] {
+  border-top: 1px solid #d3dfe4;
+  overflow: hidden;
+}
+
+html[data-theme='D'] [data-calendar-row] {
+  --calendar-kind: #34776f;
+  --calendar-kind-wash: #ecf6f3;
+  min-height: 72px;
+  padding-top: 12px;
+  padding-bottom: 12px;
+  margin-top: 0 !important;
+  border-radius: 0;
+  border: 0 !important;
+  border-bottom: 1px solid #e2e8eb !important;
+  background: #fff !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+html[data-theme='D'] [data-calendar-row]:last-child {
+  border-bottom: 0 !important;
+}
+
+html[data-theme='D'] [data-calendar-row][data-calendar-kind='vat'] {
+  --calendar-kind: #3568a8;
+  --calendar-kind-wash: #edf3fc;
+}
+
+html[data-theme='D'] [data-calendar-row][data-calendar-kind='payroll'] {
+  --calendar-kind: #805495;
+  --calendar-kind-wash: #f5eef9;
+}
+
+html[data-theme='D'] [data-calendar-row][data-calendar-kind='ledger'] {
+  --calendar-kind: #23715e;
+  --calendar-kind-wash: #eaf5ef;
+}
+
+html[data-theme='D'] [data-calendar-row][data-calendar-kind='income'] {
+  --calendar-kind: #53659b;
+  --calendar-kind-wash: #eff1fa;
+}
+
+html[data-theme='D'] [data-calendar-row][data-calendar-kind='stamp'] {
+  --calendar-kind: #99536b;
+  --calendar-kind-wash: #fbf0f4;
+}
+
+html[data-theme='D'] [data-calendar-row] [data-calendar-icon] {
+  background: var(--calendar-kind-wash) !important;
+  border-color: transparent !important;
+  color: var(--calendar-kind) !important;
+}
+
+html[data-theme='D'] [data-calendar-row] [data-calendar-remaining] {
+  background: #edf5f3 !important;
+  border-color: #cfe2dd !important;
+  color: #34645b !important;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 11px;
+}
+
+html[data-theme='D'] [data-calendar-row][data-calendar-urgency='soon'] [data-calendar-remaining] {
+  background: #fff4e5 !important;
+  border-color: #ead4b2 !important;
+  color: #87561c !important;
+}
+
+html[data-theme='D'] [data-calendar-row][data-calendar-urgency='immediate'] [data-calendar-remaining] {
+  background: #fcecf1 !important;
+  border-color: #e9bdca !important;
+  color: #a13852 !important;
+}
+
+@media (max-width: 640px) {
+  html[data-theme='D'] [data-calendar] [data-calendar-header] {
+    padding: 14px;
+  }
+
+  html[data-theme='D'] [data-calendar-header] > span:last-child {
+    width: 100%;
+    margin-left: 0;
+  }
+}

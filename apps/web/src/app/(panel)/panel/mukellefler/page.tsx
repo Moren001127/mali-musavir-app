@@ -1,4 +1,5 @@
 'use client';
+import './aylik-takip.css';
 import { portalStyle, portalPaint } from '@/lib/portal-theme';
 
 
@@ -327,9 +328,9 @@ export default function MukelleflerPage() {
   const beyannameDonemiStr = getPreviousMonthPeriodLabel(year, month);
 
   return (
-    <div className="space-y-3 max-w-none">
+    <div className="aylik-takip space-y-3 max-w-none">
       <header
-        className="relative overflow-hidden rounded-[18px] border px-5 py-4"
+        className="aylik-takip-baslik relative overflow-hidden rounded-[18px] border px-5 py-4"
         style={portalStyle({
           background:
             'radial-gradient(120% 140% at 0% 0%, rgba(212,184,118,0.16), transparent 46%), radial-gradient(120% 140% at 100% 0%, rgba(139,118,73,0.12), transparent 48%), #0f0d0b',
@@ -338,17 +339,17 @@ export default function MukelleflerPage() {
         })}
       >
         <div
-          className="absolute inset-x-0 top-0 h-1"
+          className="aylik-takip-serit absolute inset-x-0 top-0 h-1"
           style={portalStyle({ background: 'linear-gradient(90deg, #8b7649, #b8a06f, #d4b876, #e7cf95, #d4b876, #b8a06f)' })}
         />
-        <div className="mb-3 flex items-center gap-2.5">
+        <div className="aylik-takip-ust-etiket mb-3 flex items-center gap-2.5">
           <span className="h-px w-[26px]" style={portalStyle({ background: GOLD })} />
           <span className="text-[10px] font-bold uppercase tracking-[.18em]" style={portalStyle({ color: GOLD_SOFT })}>Mükellef CRM</span>
         </div>
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex min-w-0 items-center gap-3.5">
             <span
-              className="grid shrink-0 place-items-center rounded-xl"
+              className="aylik-takip-baslik-ikon grid shrink-0 place-items-center rounded-xl"
               style={portalStyle({
                 width: 46,
                 height: 46,
@@ -368,7 +369,7 @@ export default function MukelleflerPage() {
                   İşlem ayı: {donemStr}
                 </span>
                 <span
-                  className="inline-flex items-center rounded-full px-2.5 py-1 text-[11.5px] font-bold"
+                  className="aylik-takip-donem inline-flex items-center rounded-full px-2.5 py-1 text-[11.5px] font-bold"
                   style={portalStyle({ background: 'rgba(212,184,118,0.11)', border: '1px solid rgba(212,184,118,0.32)', color: GOLD })}
                 >
                   Beyanname dönemi: {beyannameDonemiStr}
@@ -411,7 +412,7 @@ export default function MukelleflerPage() {
               a.click();
               URL.revokeObjectURL(url);
             }}
-            className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-[10px] px-4 text-[12.5px] font-bold transition-all"
+            className="aylik-takip-aktar inline-flex h-10 shrink-0 items-center gap-1.5 rounded-[10px] px-4 text-[12.5px] font-bold transition-all"
             style={portalStyle({ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_SOFT})`, color: '#0f0d0b', boxShadow: '0 10px 24px rgba(212,184,118,0.16)' })}
           >
             <Upload size={14} /> Dışa Aktar
@@ -457,7 +458,7 @@ export default function MukelleflerPage() {
         </div>
 
         <div
-          className="inline-flex items-center gap-1.5 rounded-[10px] px-3 py-2 text-[11.5px] font-bold"
+          className="aylik-takip-donem inline-flex items-center gap-1.5 rounded-[10px] px-3 py-2 text-[11.5px] font-bold"
           style={portalStyle({ background: 'rgba(212,184,118,0.1)', border: '1px solid rgba(212,184,118,0.24)', color: GOLD })}
           title={`${donemStr} işlem ayında ${beyannameDonemiStr} beyannameleri takip edilir`}
         >
@@ -500,7 +501,9 @@ export default function MukelleflerPage() {
                 if (next === 'all') setProfileFilter('all');
                 setPage(1);
               }}
-              className="relative overflow-hidden rounded-[11px] px-3.5 py-3 text-left transition-all"
+              data-aylik-asama={c.key}
+              data-aylik-secili={active ? 'true' : 'false'}
+              className="aylik-takip-sayac relative overflow-hidden rounded-[11px] px-3.5 py-3 text-left transition-all"
               style={portalStyle({
                 background: active ? `${c.color}14` : 'rgba(255,255,255,0.02)',
                 border: `1px solid ${active ? `${c.color}66` : 'rgba(255,255,255,0.07)'}`,
@@ -521,9 +524,9 @@ export default function MukelleflerPage() {
       </div>
 
       {/* TABLO */}
-      <div className="rounded-xl overflow-x-auto overflow-y-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.018)', border: '1px solid rgba(255,255,255,0.07)' })}>
+      <div className="aylik-takip-tablo rounded-xl overflow-x-auto overflow-y-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.018)', border: '1px solid rgba(255,255,255,0.07)' })}>
         <div
-          className="grid min-w-[1180px] w-full items-center px-3 py-2.5 text-[9.5px] font-semibold uppercase"
+          className="aylik-takip-tablo-baslik grid min-w-[1180px] w-full items-center px-3 py-2.5 text-[9.5px] font-semibold uppercase"
           style={portalStyle({
             gridTemplateColumns: TAXPAYER_TABLE_GRID,
             gap: 8,
@@ -573,7 +576,7 @@ export default function MukelleflerPage() {
         {/* Sayfalama */}
         {!isLoading && filtered.length > 0 && (
           <div
-            className="px-5 py-3.5 flex items-center justify-between"
+            className="aylik-takip-sayfalama px-5 py-3.5 flex items-center justify-between"
             style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.04)', fontSize: 12, color: 'rgba(250,250,249,0.4)' })}
           >
             <span className="tabular-nums">
@@ -659,7 +662,7 @@ function TaxpayerRow({
 
   return (
     <div
-      className="grid min-w-[1180px] w-full items-center px-3 py-2 transition-all group"
+      className="aylik-takip-satir grid min-w-[1180px] w-full items-center px-3 py-2 transition-all group"
       style={portalStyle({
         gridTemplateColumns: TAXPAYER_TABLE_GRID,
         gap: 8,

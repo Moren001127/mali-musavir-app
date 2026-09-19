@@ -14,6 +14,7 @@ interface PageHeaderProps {
 export function PageHeader({ title, subtitle, backHref, action }: PageHeaderProps) {
   return (
     <div
+      data-portal-page-header
       className="mb-3 flex items-center justify-between rounded-2xl px-4 py-3"
       style={portalStyle({
         background: 'linear-gradient(135deg, rgba(212,184,118,0.055), rgba(8,18,18,0.70))',
