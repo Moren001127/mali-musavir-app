@@ -38,7 +38,6 @@ import Link from 'next/link';
 import { ReactNode, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { KritikUyariStatCard } from '@/components/dashboard/KritikUyariStatCard';
-import { GundemKart } from '@/components/dashboard/GundemKart';
 import { BuHaftaTakvim } from '@/components/dashboard/BuHaftaTakvim';
 
 const GOLD = '#d4b876';
@@ -1936,13 +1935,6 @@ export default function DashboardPage() {
         {/* Kritik Uyarı — tıklanabilir kart, detayı altta açılır panel */}
         <KritikUyariStatCard />
       </div>
-
-      {/* Brifing kaldırıldı; sol alan daha sonra eklenecek sayaçlar için ayrıldı. */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-        <div className="min-w-0 xl:col-start-3"><GundemKart /></div>
-      </div>
-
-      <DashboardSectionBridge from="Başvuru Sayıları" to="Beyanname Takibi" tone="mint" />
 
       <div
         data-dashboard-surface className="rounded-2xl overflow-hidden"

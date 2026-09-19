@@ -15,11 +15,13 @@ Fatura İşleme Merkezi ve alt adresleri eski A kapsamını kullanır.
 ## Kullanıcı “eski haline al” dediğinde
 
 İlk sürüm `surum-beyaz-tema-2026-09-19`, kullanıcı düzeltmeleri ise
-`surum-beyaz-tema-duzeltme-2026-09-19` etiketiyle işaretlenir. Tüm tema
+`surum-beyaz-tema-duzeltme-2026-09-19` etiketiyle işaretlenir. Başvuru Sayıları
+alanının tamamen kaldırıldığı son sürüm `surum-beyaz-tema-alan-kaldirma-2026-09-19`.
+Tüm tema
 çalışmasını koyu tema öncesine geri almak için, temiz çalışma alanında:
 
 ```powershell
-git revert --no-edit yedek-beyaz-tema-oncesi-2026-09-19..surum-beyaz-tema-duzeltme-2026-09-19
+git revert --no-edit yedek-beyaz-tema-oncesi-2026-09-19..surum-beyaz-tema-alan-kaldirma-2026-09-19
 git push origin main
 ```
 
