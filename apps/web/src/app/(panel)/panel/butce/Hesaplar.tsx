@@ -15,12 +15,12 @@ import {
 } from '@/lib/butce';
 import {
   Kutu, KPI, Dugme, Modal, Alan, Girdi, Secim, Bos, Rozet, Yukleniyor,
-  ParaGirdi, paraCoz, paraGiris, Anahtar, RenkSecici,
+  ParaGirdi, paraCoz, paraGiris, Anahtar, RenkSecici, tonAdi,
   GOLD, OK, KIRMIZI, TURUNCU, MAVI, MOR, MUTED, TEXT, ROW_SEP, CARD_BORDER,
 } from './ui';
 
 const DEFTERLER: Array<{ deger: Defter; etiket: string; renk: string }> = [
-  { deger: 'SAHSI', etiket: 'Kişisel', renk: MAVI },
+  { deger: 'SAHSI', etiket: 'Kişisel', renk: GOLD },
   { deger: 'OFIS', etiket: 'Ofis', renk: MOR },
 ];
 
@@ -178,6 +178,8 @@ export default function Hesaplar() {
               return (
                 <div
                   key={h.id}
+                  data-butce-hesap-kart
+                  data-ton={tonAdi(renk)}
                   className="relative overflow-hidden rounded-xl p-3"
                   style={portalStyle({
                     background: `linear-gradient(150deg, ${renk}14, rgba(255,255,255,0.012) 55%)`,
@@ -185,14 +187,15 @@ export default function Hesaplar() {
                     opacity: h.aktif ? 1 : 0.55,
                   })}
                 >
-                  <div
+                  <div data-butce-parilti
                     className="pointer-events-none absolute -right-8 -top-10 h-24 w-24 rounded-full opacity-20"
                     style={portalStyle({ background: `radial-gradient(circle, ${renk}, transparent 68%)` })}
                   />
 
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-1.5 text-[12.5px] font-semibold" style={portalStyle({ color: TEXT })}>
+                      <div data-butce-kart-ad className="flex flex-wrap items-center gap-1.5 text-[12.5px] font-semibold" style={portalStyle({ color: TEXT })}>
+                        <i data-butce-renk-nokta style={portalStyle({ background: renk })} />
                         {h.bankaAdi} · {h.ad}
                         {!h.aktif && <Rozet metin="pasif" renk={MUTED} />}
                       </div>
@@ -209,6 +212,7 @@ export default function Hesaplar() {
 
                   <div className="mt-2">
                     <div
+                      data-butce-sayi={h.bakiye < 0 ? 'kirmizi' : 'ink'}
                       className="text-[20px] font-semibold leading-tight tabular-nums"
                       style={portalStyle({ color: h.bakiye < 0 ? KIRMIZI : renk })}
                     >
@@ -221,6 +225,7 @@ export default function Hesaplar() {
 
                   {kmh && (
                     <div
+                      data-butce-ic
                       className="mt-2 rounded-lg px-2.5 py-2"
                       style={portalStyle({ background: 'rgba(0,0,0,0.25)', border: `1px solid ${ROW_SEP}` })}
                     >
@@ -231,6 +236,7 @@ export default function Hesaplar() {
                         </span>
                       </div>
                       <div
+                        data-butce-cubuk
                         className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full"
                         style={portalStyle({ background: 'rgba(255,255,255,0.06)' })}
                       >
@@ -270,13 +276,15 @@ export default function Hesaplar() {
                 "hangi bankada ne kadar, kasada ne kadar" tek bakışta görünsün. */}
             {kasaVar && (
               <div
+                data-butce-hesap-kart="kasa"
+                data-ton="mor"
                 className="relative overflow-hidden rounded-xl p-3"
                 style={portalStyle({
                   background: `linear-gradient(150deg, ${MOR}14, rgba(255,255,255,0.012) 55%)`,
                   border: `1px dashed ${MOR}44`,
                 })}
               >
-                <div
+                <div data-butce-parilti
                   className="pointer-events-none absolute -right-8 -top-10 h-24 w-24 rounded-full opacity-20"
                   style={portalStyle({ background: `radial-gradient(circle, ${MOR}, transparent 68%)` })}
                 />
@@ -297,6 +305,7 @@ export default function Hesaplar() {
 
                 <div className="mt-2">
                   <div
+                    data-butce-sayi={kasa!.bakiye < 0 ? 'kirmizi' : 'ink'}
                     className="text-[20px] font-semibold leading-tight tabular-nums"
                     style={portalStyle({ color: kasa!.bakiye < 0 ? KIRMIZI : MOR })}
                   >
@@ -313,7 +322,7 @@ export default function Hesaplar() {
                   </Dugme>
                 </div>
 
-                <p className="mt-2 text-[10px] leading-relaxed" style={portalStyle({ color: 'rgba(113,113,122,0.9)' })}>
+                <p data-butce-not className="mt-2 text-[10px] leading-relaxed" style={portalStyle({ color: 'rgba(113,113,122,0.9)' })}>
                   Bu paranın hangi bankada olduğunu bilmek isterseniz, ilgili kayıtları düzenleyip
                   ödeme kaynağına hesap seçin; tutar o hesabın bakiyesine geçer.
                 </p>
@@ -359,6 +368,7 @@ export default function Hesaplar() {
         >
           <div className="space-y-3">
             <div
+              data-butce-uyari="kehribar"
               className="flex items-start gap-2 rounded-xl px-3 py-2.5 text-[11.5px]"
               style={portalStyle({ background: `${TURUNCU}12`, border: `1px solid ${TURUNCU}30`, color: MUTED })}
             >
@@ -493,7 +503,7 @@ function HesapModal({
         >
           <div className="flex items-center gap-2">
             {isaretGoster && (
-              <div className="flex flex-shrink-0 overflow-hidden rounded-lg" style={portalStyle({ border: `1px solid ${CARD_BORDER}` })}>
+              <div data-butce-segment className="flex flex-shrink-0 overflow-hidden rounded-lg" style={portalStyle({ border: `1px solid ${CARD_BORDER}` })}>
                 {[
                   { eksi: false, etiket: '+' },
                   { eksi: true, etiket: '−' },
@@ -505,6 +515,7 @@ function HesapModal({
                       key={s.etiket}
                       type="button"
                       onClick={() => setForm({ ...form, acilisEksi: s.eksi })}
+                      data-butce-segment-dugme data-aktif={secili ? 'true' : 'false'} data-ton={s.eksi ? 'kirmizi' : 'yesil'}
                       className="px-2.5 py-[7px] text-[12px] transition"
                       style={portalStyle({ background: secili ? `${c}22` : 'transparent', color: secili ? c : MUTED })}
                     >
@@ -735,6 +746,7 @@ function AktarimModal({
 
         {ayniHesap && (
           <div
+            data-butce-uyari="kirmizi"
             className="flex items-start gap-2 rounded-xl px-3 py-2.5 text-[11.5px] sm:col-span-2"
             style={portalStyle({ background: `${KIRMIZI}12`, border: `1px solid ${KIRMIZI}30`, color: KIRMIZI })}
           >
@@ -744,6 +756,7 @@ function AktarimModal({
         )}
 
         <div
+          data-butce-uyari="mavi"
           className="flex items-start gap-2 rounded-xl px-3 py-2.5 text-[11px] sm:col-span-2"
           style={portalStyle({ background: `${MAVI}12`, border: `1px solid ${MAVI}30`, color: MUTED })}
         >
@@ -819,24 +832,27 @@ function HareketModal({ hesap, kapat }: { hesap: BankaHesap; kapat: () => void }
     >
       <div className="mb-3 flex items-center justify-between gap-2">
         <div
+          data-butce-donem
           className="flex items-center gap-1 rounded-xl px-1.5 py-1"
           style={portalStyle({ background: 'rgba(0,0,0,0.3)', border: `1px solid ${CARD_BORDER}` })}
         >
           <button
             type="button"
             onClick={() => setDonem(donemKaydir(donem, -1))}
+            data-butce-ikon-dugme
             className="rounded-lg p-1 transition hover:bg-white/[0.06]"
             style={portalStyle({ color: MUTED })}
             aria-label="Önceki ay"
           >
             <ChevronLeft size={15} />
           </button>
-          <span className="min-w-[110px] text-center text-[12.5px] font-medium" style={portalStyle({ color: GOLD })}>
+          <span data-butce-donem-etiket className="min-w-[110px] text-center text-[12.5px] font-medium" style={portalStyle({ color: GOLD })}>
             {donemTR(donem)}
           </span>
           <button
             type="button"
             onClick={() => setDonem(donemKaydir(donem, 1))}
+            data-butce-ikon-dugme
             className="rounded-lg p-1 transition hover:bg-white/[0.06]"
             style={portalStyle({ color: MUTED })}
             aria-label="Sonraki ay"
@@ -856,7 +872,7 @@ function HareketModal({ hesap, kapat }: { hesap: BankaHesap; kapat: () => void }
       ) : (
         <div className="max-h-[440px] overflow-y-auto pr-1">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[620px] text-[12px]">
+            <table data-butce-tablo className="w-full min-w-[620px] text-[12px]">
               <thead className="sticky top-0" style={portalStyle({ background: '#0c0c0e' })}>
                 <tr className="text-left text-[10.5px] uppercase tracking-wider" style={portalStyle({ color: MUTED })}>
                   <th className="pb-2 font-medium">Tarih</th>
@@ -970,6 +986,7 @@ function KasaHareketModal({ kapat }: { kapat: () => void }) {
             {hareketler.map((h) => (
               <div
                 key={h.id}
+                data-butce-satir
                 className="flex items-center justify-between gap-3 rounded-lg px-3 py-2"
                 style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: `1px solid ${ROW_SEP}` })}
               >
@@ -1011,7 +1028,7 @@ function KasaHareketModal({ kapat }: { kapat: () => void }) {
         )}
       </div>
 
-      <p className="mt-3 text-[10.5px] leading-relaxed" style={portalStyle({ color: 'rgba(113,113,122,0.9)' })}>
+      <p data-butce-not className="mt-3 text-[10.5px] leading-relaxed" style={portalStyle({ color: 'rgba(113,113,122,0.9)' })}>
         Bu hareketler bir banka hesabına bağlanmadığı için kasada görünür. Bir kaydı düzenleyip ödeme
         kaynağına hesap seçerseniz tutar o hesabın bakiyesine geçer ve kasadan düşer.
       </p>

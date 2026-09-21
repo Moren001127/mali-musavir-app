@@ -1,4 +1,5 @@
 'use client';
+import './butce-white.css';
 import { portalStyle, portalPaint } from '@/lib/portal-theme';
 
 
@@ -60,7 +61,7 @@ export default function ButcePage() {
 
   if (erisim.isError) {
     return (
-      <div className="mx-auto max-w-md py-24 text-center">
+      <div data-butce data-butce-bulunamadi className="mx-auto max-w-md py-24 text-center">
         <Lock size={28} className="mx-auto mb-3" style={portalStyle({ color: MUTED })} />
         <h1 className="text-[15px] font-semibold" style={portalStyle({ color: TEXT })}>
           Sayfa bulunamadı
@@ -80,68 +81,87 @@ export default function ButcePage() {
   // giderin kendi kartında ve kategori kırılımında görünüyor.
 
   return (
-    <div className="space-y-4 pb-10">
-      {/* Başlık */}
-      <header data-portal-page-header className="relative overflow-hidden rounded-2xl px-5 py-4"
+    <div data-butce className="space-y-4 pb-10">
+      {/* Başlık — beyaz temada rehber kalıbı: simge kutusu + başlık + açıklama; bant/parıltı yok */}
+      <header data-butce-baslik className="relative overflow-hidden rounded-2xl px-5 py-4"
         style={portalStyle({
           background: 'linear-gradient(140deg, rgba(230,200,120,0.09), rgba(255,255,255,0.01) 58%)',
           border: `1px solid ${CARD_BORDER}`,
         })}
       >
-        <div
+        <div data-butce-parilti
           className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full opacity-25"
           style={portalStyle({ background: `radial-gradient(circle, ${GOLD}, transparent 66%)` })}
         />
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="flex items-center gap-2 text-[17px] font-semibold" style={portalStyle({ color: TEXT })}>
-              Kişisel Bütçe & Borç Yönetimi
-              <button
-                onClick={() => {
-                  pinBileti.sil();
-                  setKilitAcik(false);
-                }}
-                title="Modülü kilitle"
-                className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] transition hover:brightness-125"
-                style={portalStyle({ background: 'rgba(255,255,255,0.05)', color: MUTED, border: `1px solid ${CARD_BORDER}` })}
-              >
-                <Lock size={9} /> yalnız size özel · kilitle
-              </button>
-            </h1>
-            <p className="mt-0.5 text-[12px]" style={portalStyle({ color: MUTED })}>
-              Gelir–gider takibi, kredi kartı ekstre yönetimi ve en verimli borç kapatma planı
-            </p>
+          <div className="flex min-w-0 items-center gap-3">
+            <span
+              data-butce-baslik-ikon
+              className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl"
+              style={portalStyle({ background: `${GOLD}1a`, border: `1px solid ${GOLD}44`, color: GOLD })}
+            >
+              <Wallet size={18} />
+            </span>
+            <div className="min-w-0">
+              <h1 className="text-[17px] font-semibold" style={portalStyle({ color: TEXT })}>
+                Kişisel Bütçe & Borç Yönetimi
+              </h1>
+              <p className="mt-0.5 text-[12px]" style={portalStyle({ color: MUTED })}>
+                Gelir–gider takibi, kredi kartı ekstre yönetimi ve en verimli borç kapatma planı
+              </p>
+            </div>
           </div>
 
-          {donemSecici && (
-            <div
-              className="flex items-center gap-1 rounded-xl px-1.5 py-1"
-              style={portalStyle({ background: 'rgba(0,0,0,0.3)', border: `1px solid ${CARD_BORDER}` })}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => {
+                pinBileti.sil();
+                setKilitAcik(false);
+              }}
+              title="Modülü kilitle"
+              data-butce-kilit
+              className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10.5px] transition hover:brightness-125"
+              style={portalStyle({ background: 'rgba(255,255,255,0.05)', color: MUTED, border: `1px solid ${CARD_BORDER}` })}
             >
-              <button
-                onClick={() => setDonem(donemKaydir(donem, -1))}
-                className="rounded-lg p-1 transition hover:bg-white/[0.06]"
-                style={portalStyle({ color: MUTED })}
+              <Lock size={10} /> yalnız size özel · kilitle
+            </button>
+
+            {donemSecici && (
+              <div
+                data-butce-donem
+                className="flex items-center gap-1 rounded-xl px-1.5 py-1"
+                style={portalStyle({ background: 'rgba(0,0,0,0.3)', border: `1px solid ${CARD_BORDER}` })}
               >
-                <ChevronLeft size={15} />
-              </button>
-              <span className="min-w-[110px] text-center text-[12.5px] font-medium" style={portalStyle({ color: GOLD })}>
-                {donemTR(donem)}
-              </span>
-              <button
-                onClick={() => setDonem(donemKaydir(donem, 1))}
-                className="rounded-lg p-1 transition hover:bg-white/[0.06]"
-                style={portalStyle({ color: MUTED })}
-              >
-                <ChevronRight size={15} />
-              </button>
-            </div>
-          )}
+                <button
+                  onClick={() => setDonem(donemKaydir(donem, -1))}
+                  data-butce-ikon-dugme
+                  className="rounded-lg p-1 transition hover:bg-white/[0.06]"
+                  style={portalStyle({ color: MUTED })}
+                  aria-label="Önceki ay"
+                >
+                  <ChevronLeft size={15} />
+                </button>
+                <span data-butce-donem-etiket className="min-w-[110px] text-center text-[12.5px] font-medium" style={portalStyle({ color: GOLD })}>
+                  {donemTR(donem)}
+                </span>
+                <button
+                  onClick={() => setDonem(donemKaydir(donem, 1))}
+                  data-butce-ikon-dugme
+                  className="rounded-lg p-1 transition hover:bg-white/[0.06]"
+                  style={portalStyle({ color: MUTED })}
+                  aria-label="Sonraki ay"
+                >
+                  <ChevronRight size={15} />
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
-      {/* Araç çubuğu — gider türü süzgeci ve sekmeler tek şeritte */}
+      {/* Araç çubuğu — sekmeler tek şeritte */}
       <div
+        data-butce-sekme-serit
         className="rounded-2xl p-2.5"
         style={portalStyle({
           background: 'linear-gradient(180deg, rgba(255,255,255,0.035), rgba(0,0,0,0.25))',
@@ -151,6 +171,7 @@ export default function ButcePage() {
       >
         {/* Sekmeler */}
         <nav
+          data-butce-sekmeler
           className="flex flex-wrap gap-1 rounded-xl p-1"
           style={portalStyle({ background: 'rgba(0,0,0,0.32)', border: `1px solid ${CARD_BORDER}` })}
         >
@@ -161,6 +182,8 @@ export default function ButcePage() {
               <button
                 key={s.anahtar}
                 onClick={() => setSekme(s.anahtar)}
+                data-butce-sekme
+                aria-current={aktif ? 'page' : undefined}
                 className="group relative flex items-center gap-1.5 rounded-lg px-3 py-[7px] text-[12.5px] font-medium transition-all duration-150"
                 style={portalStyle({
                   background: aktif
@@ -180,6 +203,7 @@ export default function ButcePage() {
                 {s.etiket}
                 {aktif && (
                   <span
+                    data-butce-sekme-cizgi
                     className="absolute inset-x-3 -bottom-[1px] h-[2px] rounded-full"
                     style={portalStyle({ background: `linear-gradient(90deg, transparent, ${GOLD}, transparent)` })}
                   />

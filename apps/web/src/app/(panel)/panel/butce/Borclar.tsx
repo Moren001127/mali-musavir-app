@@ -71,6 +71,7 @@ export default function Borclar() {
               return (
                 <div
                   key={b.id}
+                  data-butce-satir
                   className="rounded-xl px-4 py-3"
                   style={portalStyle({
                     background: 'rgba(255,255,255,0.02)',
@@ -96,7 +97,7 @@ export default function Borclar() {
                         <div className="text-[10.5px]" style={portalStyle({ color: MUTED })}>
                           Kalan
                         </div>
-                        <div className="text-[16px] font-semibold tabular-nums" style={portalStyle({ color: TURUNCU })}>
+                        <div data-butce-sayi className="text-[16px] font-semibold tabular-nums" style={portalStyle({ color: TURUNCU })}>
                           {para(b.kalanAnapara)} ₺
                         </div>
                       </div>
@@ -108,6 +109,7 @@ export default function Borclar() {
                         )}
                         <button
                           onClick={() => setModal(b)}
+                          data-butce-ikon-dugme
                           className="rounded-md p-1 transition hover:bg-white/[0.06]"
                           style={portalStyle({ color: MUTED })}
                         >
@@ -115,6 +117,7 @@ export default function Borclar() {
                         </button>
                         <button
                           onClick={() => sil.mutate(b.id)}
+                          data-butce-ikon-dugme="tehlike"
                           className="rounded-md p-1 transition hover:bg-white/[0.06]"
                           style={portalStyle({ color: KIRMIZI })}
                         >
@@ -125,7 +128,7 @@ export default function Borclar() {
                   </div>
 
                   <div className="mt-2.5 flex items-center gap-3">
-                    <div className="h-1.5 flex-1 overflow-hidden rounded-full" style={portalStyle({ background: 'rgba(255,255,255,0.06)' })}>
+                    <div data-butce-cubuk className="h-1.5 flex-1 overflow-hidden rounded-full" style={portalStyle({ background: 'rgba(255,255,255,0.06)' })}>
                       <div style={portalStyle({ width: `${ilerleme}%`, height: '100%', background: OK })} />
                     </div>
                     <span className="text-[10.5px] tabular-nums" style={portalStyle({ color: MUTED })}>

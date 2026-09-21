@@ -57,7 +57,7 @@ export default function AiKutu({
       )}
 
       {rapor && !rapor.hata && (
-        <p className="mt-3 text-[10px]" style={portalStyle({ color: 'rgba(113,113,122,0.8)' })}>
+        <p data-butce-not className="mt-3 text-[10px]" style={portalStyle({ color: 'rgba(113,113,122,0.8)' })}>
           {rapor.model} · {new Date(rapor.createdAt).toLocaleString('tr-TR')}
           {rapor.onbellek ? ' · kayıtlı yorum' : ''}
         </p>

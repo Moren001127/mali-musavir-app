@@ -15,7 +15,7 @@ import {
 } from '@/lib/butce';
 import {
   Kutu, Dugme, Modal, Alan, Girdi, Secim, Bos, Rozet, Yukleniyor, ParaGirdi, paraCoz, paraGiris,
-  Anahtar,
+  Anahtar, tonAdi,
   GOLD, OK, KIRMIZI, TURUNCU, MAVI, MOR, MUTED, TEXT, ROW_SEP, CARD_BORDER,
 } from './ui';
 
@@ -136,6 +136,8 @@ export default function Kartlar() {
               return (
                 <div
                   key={k.id}
+                  data-butce-hesap-kart="kart"
+                  data-ton={tonAdi(renk)}
                   className="relative overflow-hidden rounded-2xl p-4"
                   style={portalStyle({
                     background: `linear-gradient(150deg, ${renk}14, rgba(255,255,255,0.012) 55%)`,
@@ -143,13 +145,14 @@ export default function Kartlar() {
                     opacity: k.aktif ? 1 : 0.6,
                   })}
                 >
-                  <div
+                  <div data-butce-parilti
                     className="pointer-events-none absolute -right-10 -top-12 h-36 w-36 rounded-full opacity-20"
                     style={portalStyle({ background: `radial-gradient(circle, ${renk}, transparent 68%)` })}
                   />
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <div className="flex items-center gap-2 text-[13.5px] font-semibold" style={portalStyle({ color: TEXT })}>
+                      <div data-butce-kart-ad className="flex items-center gap-2 text-[13.5px] font-semibold" style={portalStyle({ color: TEXT })}>
+                        <i data-butce-renk-nokta style={portalStyle({ background: renk })} />
                         {k.bankaAdi} · {k.kartAdi}
                         {!k.aktif && <Rozet metin="pasif" renk={MUTED} />}
                       </div>
@@ -161,6 +164,7 @@ export default function Kartlar() {
                     <div className="flex gap-1">
                       <button
                         onClick={() => setKartModal(k)}
+                        data-butce-ikon-dugme
                         className="rounded-md p-1 transition hover:bg-white/[0.08]"
                         style={portalStyle({ color: MUTED })}
                         title="Düzenle"
@@ -169,6 +173,7 @@ export default function Kartlar() {
                       </button>
                       <button
                         onClick={() => setSilModal(k)}
+                        data-butce-ikon-dugme="tehlike"
                         className="rounded-md p-1 transition hover:bg-white/[0.08]"
                         style={portalStyle({ color: KIRMIZI })}
                         title="Sil"
@@ -188,7 +193,7 @@ export default function Kartlar() {
                         style={portalStyle({ color: MUTED })}
                         title="Kesilen ekstrenin ödenmemiş kısmı — son ödeme tarihinde bu tutar ödenir."
                       >
-                        Ekstre borcu <span style={portalStyle({ color: 'rgba(113,113,122,0.75)' })}>· ödenecek</span>
+                        Ekstre borcu <span data-butce-not style={portalStyle({ color: 'rgba(113,113,122,0.75)' })}>· ödenecek</span>
                       </span>
                       <span className="text-[12.5px] tabular-nums" style={portalStyle({ color: TEXT })}>
                         {para(k.ekstreBorcu ?? 0)} ₺
@@ -201,7 +206,7 @@ export default function Kartlar() {
                         title="Son kesimden bugüne yapılan harcama. Gelecek ekstreye gider, şimdi ödenmez."
                       >
                         Dönem içi harcama{' '}
-                        <span style={portalStyle({ color: 'rgba(113,113,122,0.75)' })}>
+                        <span data-butce-not style={portalStyle({ color: 'rgba(113,113,122,0.75)' })}>
                           · {gunAy(k.donemIciBaslangic) || '—'} – bugün
                         </span>
                       </span>
@@ -210,6 +215,7 @@ export default function Kartlar() {
                       </span>
                     </div>
                     <div
+                      data-butce-ayrac
                       className="flex items-end justify-between gap-3 border-t pt-1.5"
                       style={portalStyle({ borderColor: ROW_SEP })}
                     >
@@ -217,7 +223,7 @@ export default function Kartlar() {
                         <div className="text-[10.5px] uppercase tracking-wider" style={portalStyle({ color: MUTED })}>
                           Güncel borç
                         </div>
-                        <div className="text-[20px] font-semibold tabular-nums" style={portalStyle({ color: renk })}>
+                        <div data-butce-sayi="ink" className="text-[20px] font-semibold tabular-nums" style={portalStyle({ color: renk })}>
                           {para(guncelBorc)} ₺
                         </div>
                       </div>
@@ -225,7 +231,7 @@ export default function Kartlar() {
                         <div className="text-[10.5px]" style={portalStyle({ color: MUTED })}>
                           Kullanılabilir limit
                         </div>
-                        <div className="text-[12.5px] tabular-nums" style={portalStyle({ color: TEXT })}>
+                        <div data-butce-sayi="mor" className="text-[12.5px] tabular-nums" style={portalStyle({ color: TEXT })}>
                           {para(k.kullanilabilirLimit)} ₺
                         </div>
                       </div>
@@ -233,8 +239,9 @@ export default function Kartlar() {
                   </div>
 
                   {k.kartLimiti > 0 && (
-                    <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full" style={portalStyle({ background: 'rgba(255,255,255,0.06)' })}>
+                    <div data-butce-cubuk className="mt-2 h-1.5 w-full overflow-hidden rounded-full" style={portalStyle({ background: 'rgba(255,255,255,0.06)' })}>
                       <div
+                        data-butce-limit-dolgu={kullanimOran > 80 ? 'kirmizi' : kullanimOran > 50 ? 'kehribar' : 'mor'}
                         style={portalStyle({
                           width: `${kullanimOran}%`,
                           height: '100%',
@@ -246,6 +253,7 @@ export default function Kartlar() {
 
                   {/* Güncel ekstre */}
                   <div
+                    data-butce-ic
                     className="mt-3 rounded-xl px-3 py-2.5"
                     style={portalStyle({ background: 'rgba(0,0,0,0.25)', border: `1px solid ${ROW_SEP}` })}
                   >
@@ -413,6 +421,7 @@ function KartSilModal({ kart, kapat, silindi }: { kart: Kart; kapat: () => void;
     >
       <div className="space-y-3">
         <div
+          data-butce-uyari="kirmizi"
           className="flex items-start gap-2 rounded-xl px-3 py-2.5 text-[11.5px]"
           style={portalStyle({ background: `${KIRMIZI}12`, border: `1px solid ${KIRMIZI}30`, color: MUTED })}
         >
@@ -484,7 +493,7 @@ function EkstreGecmisi({ kartlar }: { kartlar: Kart[] }) {
       renk={MAVI}
     >
       <div className="max-h-[320px] overflow-y-auto pr-1">
-        <table className="w-full text-[12px]">
+        <table data-butce-tablo className="w-full text-[12px]">
           <thead>
             <tr className="text-left text-[10.5px] uppercase tracking-wider" style={portalStyle({ color: MUTED })}>
               <th className="pb-2 font-medium">Kart</th>
@@ -518,7 +527,7 @@ function EkstreGecmisi({ kartlar }: { kartlar: Kart[] }) {
                     <span className="flex flex-col leading-tight">
                       <span>{e.donem}</span>
                       {e.harcamaBaslangic && e.harcamaBitis && (
-                        <span className="text-[10px]" style={portalStyle({ color: 'rgba(113,113,122,0.8)' })}>
+                        <span data-butce-not className="text-[10px]" style={portalStyle({ color: 'rgba(113,113,122,0.8)' })}>
                           {gunAy(e.harcamaBaslangic)} – {gunAy(e.harcamaBitis)} harcamaları
                         </span>
                       )}
@@ -641,6 +650,7 @@ function KartModal({ kart, kapat, kaydedildi }: { kart: Kart | null; kapat: () =
         <Alan etiket="Renk">
           <input
             type="color"
+            data-butce-renk-girdi
             value={form.renk}
             onChange={(e) => setForm({ ...form, renk: e.target.value })}
             style={portalStyle({ width: '100%', height: 34, background: 'transparent', border: `1px solid ${CARD_BORDER}`, borderRadius: 10 })}
@@ -727,7 +737,7 @@ function EkstreModal({
         </div>
 
         {ekstre.borcTutari !== null && (
-          <div className="border-t pt-4" style={portalStyle({ borderColor: ROW_SEP })}>
+          <div data-butce-ayrac className="border-t pt-4" style={portalStyle({ borderColor: ROW_SEP })}>
             <div className="mb-2 flex items-center justify-between text-[12px]" style={portalStyle({ color: MUTED })}>
               <span>Ödenen: {para(ekstre.odenenTutar)} ₺</span>
               <span>Kalan: {para(ekstre.kalanTutar ?? 0)} ₺</span>
@@ -791,6 +801,7 @@ function PdfModal({ kart, kapat, tamamlandi }: { kart: Kart; kapat: () => void; 
       <div className="space-y-3">
         <div
           onClick={() => dosyaRef.current?.click()}
+          data-butce-dosya data-dolu={dosya ? 'true' : 'false'}
           className="cursor-pointer rounded-xl px-4 py-8 text-center transition hover:bg-white/[0.03]"
           style={portalStyle({ border: `1px dashed ${dosya ? MOR : CARD_BORDER}`, color: dosya ? TEXT : MUTED })}
         >
@@ -818,6 +829,7 @@ function PdfModal({ kart, kapat, tamamlandi }: { kart: Kart; kapat: () => void; 
         </div>
 
         <div
+          data-butce-uyari="mor"
           className="flex items-start gap-2 rounded-xl px-3 py-2.5 text-[11px]"
           style={portalStyle({ background: `${MOR}12`, border: `1px solid ${MOR}30`, color: MUTED })}
         >
@@ -932,7 +944,7 @@ function HareketModal({
           </div>
 
           <div className="max-h-[440px] overflow-y-auto pr-1">
-            <table className="w-full text-[12px]">
+            <table data-butce-tablo className="w-full text-[12px]">
               <thead className="sticky top-0" style={portalStyle({ background: '#0c0c0e' })}>
                 <tr className="text-left text-[10.5px] uppercase tracking-wider" style={portalStyle({ color: MUTED })}>
                   <th className="pb-2 font-medium">Tarih</th>

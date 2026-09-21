@@ -92,7 +92,7 @@ export default function Ayarlar() {
           </div>
 
           <div>
-            <span className="mb-1.5 block text-[11px] font-medium" style={portalStyle({ color: MUTED })}>
+            <span data-butce-alan-etiket className="mb-1.5 block text-[11px] font-medium" style={portalStyle({ color: MUTED })}>
               Varsayılan strateji
             </span>
             <div className="grid gap-2 sm:grid-cols-2">
@@ -121,6 +121,7 @@ export default function Ayarlar() {
                     key={s.deger}
                     type="button"
                     onClick={() => setForm({ ...form, strateji: s.deger })}
+                    data-butce-secenek data-ton={s.deger === 'CIG' ? 'yesil' : 'mavi'} data-aktif={secili ? 'true' : 'false'}
                     className="relative rounded-xl px-3.5 py-3 text-left transition"
                     style={portalStyle({
                       background: secili ? `${s.renk}12` : 'rgba(255,255,255,0.02)',
@@ -136,7 +137,7 @@ export default function Ayarlar() {
                     <div className="mt-1 text-[11px] leading-snug" style={portalStyle({ color: MUTED })}>
                       {s.ozet}
                     </div>
-                    <div className="mt-1 text-[10.5px]" style={portalStyle({ color: secili ? s.renk : 'rgba(113,113,122,0.8)' })}>
+                    <div data-butce-secenek-alt className="mt-1 text-[10.5px]" style={portalStyle({ color: secili ? s.renk : 'rgba(113,113,122,0.8)' })}>
                       {s.fayda}
                     </div>
                   </button>
@@ -185,6 +186,7 @@ export default function Ayarlar() {
               return (
                 <div
                   key={k.alan}
+                  data-butce-satir
                   className="flex items-center justify-between gap-3 rounded-xl px-3.5 py-2.5"
                   style={portalStyle({
                     background: acik ? 'rgba(255,255,255,0.028)' : 'rgba(255,255,255,0.012)',
@@ -193,6 +195,7 @@ export default function Ayarlar() {
                 >
                   <span className="flex min-w-0 items-center gap-2.5">
                     <span
+                      data-butce-ikon-kutu data-ton={k.alan === 'hatirlatmaWhatsapp' ? 'yesil' : k.alan === 'hatirlatmaPortal' ? 'civit' : 'mor'} data-aktif={acik ? 'true' : 'false'}
                       className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
                       style={portalStyle({
                         background: acik ? `${k.renk}16` : 'rgba(255,255,255,0.04)',
@@ -206,7 +209,7 @@ export default function Ayarlar() {
                       <span className="block truncate text-[12.5px]" style={portalStyle({ color: acik ? TEXT : MUTED })}>
                         {k.ad}
                       </span>
-                      <span className="block truncate text-[10.5px]" style={portalStyle({ color: 'rgba(113,113,122,0.85)' })}>
+                      <span data-butce-not className="block truncate text-[10.5px]" style={portalStyle({ color: 'rgba(113,113,122,0.85)' })}>
                         {k.aciklama}
                       </span>
                     </span>
@@ -250,6 +253,7 @@ export default function Ayarlar() {
 
       {/* ===== Tek kaydet çubuğu ===== */}
       <div
+        data-butce-kaydet-cubugu data-degisti={degisti ? 'true' : 'false'}
         className="flex items-center justify-between gap-3 rounded-2xl px-4 py-3"
         style={portalStyle({
           background: degisti ? `${GOLD}0f` : 'rgba(255,255,255,0.018)',
@@ -343,11 +347,12 @@ function KategoriYonetimi({ kategoriler }: { kategoriler: Kategori[] }) {
 
   const liste = (baslik: string, renk: string, ikon: React.ReactNode, kayitlar: Kategori[], gider: boolean) => (
     <div>
-      <div className="mb-2 flex items-center gap-1.5 text-[11px] uppercase tracking-wider" style={portalStyle({ color: renk })}>
+      <div data-butce-sutun-baslik className="mb-2 flex items-center gap-1.5 text-[11px] uppercase tracking-wider" style={portalStyle({ color: renk })}>
         {ikon} {baslik} <span style={portalStyle({ color: MUTED })}>({kayitlar.length})</span>
       </div>
       {kayitlar.length === 0 ? (
         <div
+          data-butce-bos
           className="rounded-xl px-3 py-4 text-center text-[11.5px]"
           style={portalStyle({ border: `1px dashed ${ROW_SEP}`, color: MUTED })}
         >
@@ -358,6 +363,7 @@ function KategoriYonetimi({ kategoriler }: { kategoriler: Kategori[] }) {
           {kayitlar.map((c) => (
             <div
               key={c.id}
+              data-butce-satir
               className="group flex items-center justify-between gap-2 rounded-lg px-3 py-2"
               style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: `1px solid ${ROW_SEP}` })}
             >
@@ -374,11 +380,12 @@ function KategoriYonetimi({ kategoriler }: { kategoriler: Kategori[] }) {
                     onClick={() =>
                       defterDegistir.mutate({ ...c, defter: c.defter === 'OFIS' ? 'SAHSI' : 'OFIS' })
                     }
+                    data-butce-cip={c.defter === 'OFIS' ? 'mor' : 'civit'}
                     className="rounded-md px-2 py-0.5 text-[10px] transition hover:brightness-125"
                     style={portalStyle({
-                      color: c.defter === 'OFIS' ? MAVI : GOLD,
-                      background: c.defter === 'OFIS' ? `${MAVI}14` : `${GOLD}14`,
-                      border: `1px solid ${c.defter === 'OFIS' ? `${MAVI}3d` : `${GOLD}3d`}`,
+                      color: c.defter === 'OFIS' ? MOR : GOLD,
+                      background: c.defter === 'OFIS' ? `${MOR}14` : `${GOLD}14`,
+                      border: `1px solid ${c.defter === 'OFIS' ? `${MOR}3d` : `${GOLD}3d`}`,
                     })}
                     title={
                       c.defter === 'OFIS'
@@ -391,6 +398,7 @@ function KategoriYonetimi({ kategoriler }: { kategoriler: Kategori[] }) {
                 )}
                 <button
                   onClick={() => sil.mutate(c.id)}
+                  data-butce-ikon-dugme="tehlike"
                   className="rounded-md p-1 opacity-0 transition group-hover:opacity-100 hover:bg-white/[0.06]"
                   style={portalStyle({ color: KIRMIZI })}
                   title="Sil"
@@ -418,6 +426,7 @@ function KategoriYonetimi({ kategoriler }: { kategoriler: Kategori[] }) {
     >
       {/* Ekleme satırı */}
       <div
+        data-butce-ic
         className="mb-4 rounded-xl px-3.5 py-3"
         style={portalStyle({ background: 'rgba(255,255,255,0.022)', border: `1px solid ${ROW_SEP}` })}
       >
@@ -460,7 +469,7 @@ function KategoriYonetimi({ kategoriler }: { kategoriler: Kategori[] }) {
             </div>
           )}
           <div>
-            <span className="mb-1 block text-[11px] font-medium" style={portalStyle({ color: MUTED })}>
+            <span data-butce-alan-etiket className="mb-1 block text-[11px] font-medium" style={portalStyle({ color: MUTED })}>
               Renk
             </span>
             <div className="flex h-[33px] items-center">
@@ -549,6 +558,7 @@ function BildirimTesti() {
           {sonuc.map((m) => (
             <div
               key={m.anahtar}
+              data-butce-ic
               className="rounded-xl px-3.5 py-3"
               style={portalStyle({ background: 'rgba(0,0,0,0.25)', border: `1px solid ${ROW_SEP}` })}
             >

@@ -78,24 +78,26 @@ export default function NakitAkis() {
         />
 
         <div
+          data-butce-kpi data-ton="mavi" data-vurgu="false"
           className="relative overflow-hidden rounded-2xl px-4 py-3.5"
           style={portalStyle({ background: CARD_BG, border: `1px solid ${CARD_BORDER}`, boxShadow: '0 14px 32px rgba(0,0,0,0.20)' })}
         >
-          <div className="flex items-center gap-2">
-            <span style={portalStyle({ color: MAVI })}>
+          <div data-butce-kpi-ust className="flex items-center gap-2">
+            <span data-butce-kpi-ikon style={portalStyle({ color: MAVI })}>
               <CalendarDays size={14} />
             </span>
-            <span className="text-[11px] uppercase tracking-wider" style={portalStyle({ color: MUTED })}>
+            <span data-butce-kpi-etiket className="text-[11px] uppercase tracking-wider" style={portalStyle({ color: MUTED })}>
               Ne kadar ileriyi görelim
             </span>
           </div>
-          <div className="mt-2 flex gap-1.5">
+          <div data-butce-segment="genis" className="mt-2 flex gap-1.5">
             {[30, 60, 90].map((s) => {
               const secili = s === gunSayisi;
               return (
                 <button
                   key={s}
                   onClick={() => setGunSayisi(s)}
+                  data-butce-segment-dugme data-aktif={secili ? 'true' : 'false'}
                   className="flex-1 rounded-xl py-1.5 text-[12px] font-medium transition-all hover:brightness-110"
                   style={
                     portalStyle(secili
@@ -141,7 +143,7 @@ export default function NakitAkis() {
         renk={acikVar ? KIRMIZI : OK}
       >
         {!acikVar ? (
-          <div className="flex items-center gap-2 text-[12px]" style={portalStyle({ color: OK })}>
+          <div data-butce-uyari="yesil" className="flex items-center gap-2 rounded-xl px-3.5 py-2.5 text-[12px]" style={portalStyle({ color: OK })}>
             <LineChart size={14} /> Önümüzdeki {gunSayisi} günde bakiyeniz hiç eksiye düşmüyor.
           </div>
         ) : (
@@ -150,6 +152,7 @@ export default function NakitAkis() {
               {veri.acikGunler.map((g) => (
                 <div
                   key={g.tarih}
+                  data-butce-uyari="kirmizi"
                   className="rounded-xl px-3.5 py-2.5"
                   style={portalStyle({ background: `${KIRMIZI}0d`, border: `1px solid ${KIRMIZI}33` })}
                 >
@@ -192,6 +195,7 @@ export default function NakitAkis() {
             {veri.oneriler.map((o, i) => (
               <div
                 key={`${o.tarih}-${i}`}
+                data-butce-satir
                 className="rounded-xl px-4 py-3"
                 style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: `1px solid ${ROW_SEP}` })}
               >
@@ -226,6 +230,7 @@ export default function NakitAkis() {
                   {o.secenekler.map((s, j) => (
                     <div
                       key={`${o.tarih}-${i}-${j}`}
+                      data-butce-secenek data-ton="yesil" data-aktif={s.onerilen ? 'true' : 'false'}
                       className="rounded-xl px-3 py-2.5"
                       style={portalStyle({
                         background: s.onerilen ? `${OK}0f` : 'rgba(255,255,255,0.02)',
@@ -284,6 +289,7 @@ export default function NakitAkis() {
             {takvimGunleri.map((g) => (
               <div
                 key={g.tarih}
+                data-butce-satir={g.bakiye < 0 ? 'eksi' : 'kayit'}
                 className="flex flex-wrap items-start gap-3 rounded-xl px-3 py-2"
                 style={portalStyle({
                   background: g.bakiye < 0 ? `${KIRMIZI}0d` : 'rgba(255,255,255,0.02)',
@@ -387,18 +393,19 @@ function BakiyeGrafigi({ gunler }: { gunler: AkisGunu[] }) {
       >
         {/* Yatayda esneyen çizim; çizgi kalınlığı non-scaling-stroke ile sabit kalır. */}
         <svg
+          data-butce-akis-grafik
           viewBox={`0 0 ${GENISLIK} ${YUKSEKLIK}`}
           preserveAspectRatio="none"
           style={portalStyle({ width: '100%', height: YUKSEKLIK, display: 'block' })}
         >
           <defs>
             <linearGradient id="nakitArtiDolgu" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={GOLD} stopOpacity="0.42" />
-              <stop offset="100%" stopColor={GOLD} stopOpacity="0.03" />
+              <stop data-durak="arti" offset="0%" stopColor={GOLD} stopOpacity="0.42" />
+              <stop data-durak="arti" offset="100%" stopColor={GOLD} stopOpacity="0.03" />
             </linearGradient>
             <linearGradient id="nakitEksiDolgu" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={KIRMIZI} stopOpacity="0.05" />
-              <stop offset="100%" stopColor={KIRMIZI} stopOpacity="0.5" />
+              <stop data-durak="eksi" offset="0%" stopColor={KIRMIZI} stopOpacity="0.05" />
+              <stop data-durak="eksi" offset="100%" stopColor={KIRMIZI} stopOpacity="0.5" />
             </linearGradient>
             <clipPath id="nakitUstBolge">
               <rect x="0" y="0" width={GENISLIK} height={Math.max(sifirY, 0)} />
@@ -412,6 +419,7 @@ function BakiyeGrafigi({ gunler }: { gunler: AkisGunu[] }) {
           <path d={alanYolu} fill="url(#nakitEksiDolgu)" clipPath="url(#nakitAltBolge)" />
 
           <line
+            data-butce-sifir-cizgi
             x1="0"
             x2={GENISLIK}
             y1={sifirY}
@@ -423,6 +431,7 @@ function BakiyeGrafigi({ gunler }: { gunler: AkisGunu[] }) {
           />
 
           <path
+            data-seri="arti"
             d={cizgi}
             fill="none"
             stroke={GOLD}
@@ -431,6 +440,7 @@ function BakiyeGrafigi({ gunler }: { gunler: AkisGunu[] }) {
             vectorEffect="non-scaling-stroke"
           />
           <path
+            data-seri="eksi"
             d={cizgi}
             fill="none"
             stroke={KIRMIZI}
@@ -444,6 +454,7 @@ function BakiyeGrafigi({ gunler }: { gunler: AkisGunu[] }) {
           {paraKisa(olcek.ust)} ₺
         </span>
         <span
+          data-butce-not
           className="pointer-events-none absolute right-1 text-[10px]"
           style={portalStyle({ top: Math.max(0, sifirY - 14), color: 'rgba(255,255,255,0.5)' })}
         >
@@ -459,10 +470,12 @@ function BakiyeGrafigi({ gunler }: { gunler: AkisGunu[] }) {
         {secili && (
           <>
             <div
+              data-butce-imlec-cizgi
               className="pointer-events-none absolute top-0 w-px"
               style={portalStyle({ left: `${seciliYuzde}%`, height: YUKSEKLIK, background: 'rgba(255,255,255,0.22)' })}
             />
             <div
+              data-butce-imlec-nokta={secili.bakiye < 0 ? 'eksi' : 'arti'}
               className="pointer-events-none absolute h-[7px] w-[7px] rounded-full"
               style={portalStyle({
                 left: `${seciliYuzde}%`,
@@ -473,6 +486,7 @@ function BakiyeGrafigi({ gunler }: { gunler: AkisGunu[] }) {
               })}
             />
             <div
+              data-butce-ipucu-kutu
               className="pointer-events-none absolute z-10 rounded-xl px-3 py-2"
               style={portalStyle({
                 left: `${Math.min(88, Math.max(12, seciliYuzde))}%`,
@@ -488,6 +502,7 @@ function BakiyeGrafigi({ gunler }: { gunler: AkisGunu[] }) {
                 {tarihTR(secili.tarih)} · {gunAdi(secili.tarih)}
               </div>
               <div
+                data-butce-sayi={secili.bakiye < 0 ? 'kirmizi' : 'ink'}
                 className="text-[14px] font-semibold tabular-nums"
                 style={portalStyle({ color: secili.bakiye < 0 ? KIRMIZI : GOLD })}
               >
@@ -535,6 +550,7 @@ function HareketEtiketi({ hareket }: { hareket: AkisHareketOzet }) {
   const renk = giris ? OK : KIRMIZI;
   return (
     <span
+      data-butce-hareket-etiketi data-ton={giris ? 'yesil' : 'kirmizi'} data-kesin={hareket.kesin ? 'true' : 'false'}
       className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px]"
       style={portalStyle({
         background: `${renk}0f`,
@@ -556,7 +572,7 @@ function HareketEtiketi({ hareket }: { hareket: AkisHareketOzet }) {
 
 function NotSatiri() {
   return (
-    <p className="px-1 text-[11px] leading-relaxed" style={portalStyle({ color: MUTED })}>
+    <p data-butce-not className="px-1 text-[11px] leading-relaxed" style={portalStyle({ color: MUTED })}>
       Beklenen tahsilatlarınızı Gelir &amp; Gider ekranından “planlanan” olarak girerseniz bu tablo daha isabetli olur.
     </p>
   );

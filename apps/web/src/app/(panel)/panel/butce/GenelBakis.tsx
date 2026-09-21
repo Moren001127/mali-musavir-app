@@ -62,6 +62,7 @@ export default function GenelBakis({
             return (
               <div
                 key={i}
+                data-butce-uyari={u.seviye === 'KRITIK' ? 'kirmizi' : u.seviye === 'UYARI' ? 'kehribar' : 'mavi'}
                 className="flex items-start gap-3 rounded-xl px-4 py-3"
                 style={portalStyle({ background: `${renk}12`, border: `1px solid ${renk}33` })}
               >
@@ -83,7 +84,7 @@ export default function GenelBakis({
       )}
 
       {/* KPI şeridi */}
-      <p className="text-[11px] leading-relaxed" style={portalStyle({ color: 'rgba(113,113,122,0.9)' })}>
+      <p data-butce-not className="text-[11px] leading-relaxed" style={portalStyle({ color: 'rgba(113,113,122,0.9)' })}>
         Üst sıra <strong style={portalStyle({ color: MUTED })}>bu ayın hareketini</strong>, alt sıra{' '}
         <strong style={portalStyle({ color: MUTED })}>bugünkü durumunuzu</strong> gösterir.
       </p>
@@ -158,7 +159,7 @@ export default function GenelBakis({
 
         {/* Aylık zorunlu ödeme */}
         <Kutu baslik="Bu ayın zorunlu borç ödemesi" aciklama="Kart asgarileri + kredi taksitleri" renk={TURUNCU}>
-          <div className="text-[26px] font-semibold tabular-nums" style={portalStyle({ color: TURUNCU })}>
+          <div data-butce-buyuk-sayi className="text-[26px] font-semibold tabular-nums" style={portalStyle({ color: TURUNCU })}>
             {para(ozet.borcOzet.aylikZorunluOdeme)} ₺
           </div>
           {/* Kapasite ELDEKİ PARADAN okunur — Ödeme Planı ekranıyla aynı hesap */}
@@ -173,7 +174,7 @@ export default function GenelBakis({
               <span>Nakit yastığı</span>
               <span className="tabular-nums">{para(ozet.nakitYastigi)} ₺</span>
             </div>
-            <div className="flex justify-between border-t pt-1" style={portalStyle({ borderColor: ROW_SEP, color: TEXT })}>
+            <div data-butce-ayrac className="flex justify-between border-t pt-1" style={portalStyle({ borderColor: ROW_SEP, color: TEXT })}>
               <span>Borca ayrılabilir</span>
               <span className="tabular-nums" style={portalStyle({ color: GOLD })}>
                 {para(ozet.odemeKapasitesi)} ₺
@@ -195,7 +196,7 @@ export default function GenelBakis({
             <Bos metin="30 gün içinde ödemesi gelen kart ekstresi yok." />
           ) : (
             <div className="max-h-[300px] overflow-y-auto pr-1">
-              <table className="w-full text-[12px]">
+              <table data-butce-tablo data-basliksiz className="w-full text-[12px]">
                 <tbody>
                   {ozet.yaklasanOdemeler.map((e) => {
                     const d = ekstreDurumBilgi(e.durum);
@@ -252,7 +253,7 @@ export default function GenelBakis({
                         {/* Mesleki/kişisel ayrımı artık kategori satırında görünür */}
                         <Rozet
                           metin={k.defter === 'OFIS' ? 'ofis' : 'kişisel'}
-                          renk={k.defter === 'OFIS' ? MAVI : GOLD}
+                          renk={k.defter === 'OFIS' ? MOR : GOLD}
                         />
                       </span>
                       <span className="flex-shrink-0 tabular-nums" style={portalStyle({ color: MUTED })}>

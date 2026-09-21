@@ -130,6 +130,7 @@ export default function AiMetin({ metin, soluk }: { metin: string; soluk?: boole
           return (
             <h4
               key={bi}
+              data-butce-ai-baslik
               className="pt-1 text-[12px] font-semibold uppercase tracking-wider"
               style={portalStyle({ color: GOLD })}
             >
@@ -143,7 +144,7 @@ export default function AiMetin({ metin, soluk }: { metin: string; soluk?: boole
             <ul key={bi} className="space-y-1.5">
               {b.maddeler.map((m, mi) => (
                 <li key={mi} className="flex gap-2.5 text-[12.5px] leading-[1.7]" style={portalStyle({ color: renk })}>
-                  <span className="mt-[7px] h-1 w-1 flex-shrink-0 rounded-full" style={portalStyle({ background: GOLD })} />
+                  <span data-butce-ai-madde className="mt-[7px] h-1 w-1 flex-shrink-0 rounded-full" style={portalStyle({ background: GOLD })} />
                   <span>{satirParcala(m, `${bi}-${mi}`)}</span>
                 </li>
               ))}
@@ -154,7 +155,7 @@ export default function AiMetin({ metin, soluk }: { metin: string; soluk?: boole
         if (b.tur === 'tablo') {
           return (
             <div key={bi} className="overflow-x-auto">
-              <table className="w-full text-[12px]">
+              <table data-butce-tablo className="w-full text-[12px]">
                 <thead>
                   <tr className="text-left text-[10.5px] uppercase tracking-wider" style={portalStyle({ color: MUTED })}>
                     {b.basliklar.map((h, hi) => (

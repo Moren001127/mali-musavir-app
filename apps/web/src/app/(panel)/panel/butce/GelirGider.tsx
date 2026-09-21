@@ -16,7 +16,7 @@ import {
 } from '@/lib/butce';
 import {
   Kutu, Dugme, Modal, Alan, Girdi, Secim, Bos, Rozet, Yukleniyor, Anahtar,
-  ParaGirdi, paraCoz, paraGiris,
+  ParaGirdi, paraCoz, paraGiris, tonAdi,
   GOLD, OK, KIRMIZI, MUTED, TEXT, ROW_SEP, MAVI, MOR, TURUNCU, CARD_BORDER,
 } from './ui';
 
@@ -32,10 +32,10 @@ const KILITLI_GELIR_KATEGORISI = 'Müşavirlik Ücreti';
 /** Ofis / kişisel gider ayrımı hareket düzeyinde tutulur; aynı kart ve hesap ikisinde de kullanılabilir. */
 const DEFTERLER: Array<{ deger: Defter; etiket: string; renk: string }> = [
   { deger: 'SAHSI', etiket: 'Kişisel', renk: GOLD },
-  { deger: 'OFIS', etiket: 'Ofis', renk: MAVI },
+  { deger: 'OFIS', etiket: 'Ofis', renk: MOR },
 ];
 
-const defterRenk = (d?: Defter | null) => (d === 'OFIS' ? MAVI : GOLD);
+const defterRenk = (d?: Defter | null) => (d === 'OFIS' ? MOR : GOLD);
 
 /** Türkçe harf kurallarıyla küçültür — "İ" ile "I" araması birbirine karışmasın. */
 const kucult = (s: string | null | undefined) => String(s || '').toLocaleLowerCase('tr-TR');
@@ -59,6 +59,7 @@ function DefterSecici({
 }) {
   return (
     <div
+      data-butce-segment
       className="flex items-center gap-1 rounded-xl p-1"
       style={portalStyle({ background: 'rgba(0,0,0,0.28)', border: `1px solid ${CARD_BORDER}` })}
     >
@@ -69,6 +70,7 @@ function DefterSecici({
             key={d.deger}
             type="button"
             onClick={() => degistir(d.deger)}
+            data-butce-segment-dugme data-aktif={aktif ? 'true' : 'false'} data-ton={d.deger === 'OFIS' ? 'mor' : 'civit'}
             className="flex-1 rounded-lg px-2.5 py-1 text-[11.5px] transition"
             style={portalStyle({
               background: aktif ? `${d.renk}1f` : 'transparent',
@@ -96,12 +98,12 @@ function DefterAlani({
 }) {
   return (
     <div className="block">
-      <span className="mb-1 block text-[11px] font-medium" style={portalStyle({ color: MUTED })}>
+      <span data-butce-alan-etiket className="mb-1 block text-[11px] font-medium" style={portalStyle({ color: MUTED })}>
         Gider türü
       </span>
       <DefterSecici deger={deger} degistir={degistir} />
       {ipucu && (
-        <span className="mt-1 block text-[10px]" style={portalStyle({ color: 'rgba(113,113,122,0.85)' })}>
+        <span data-butce-alan-ipucu className="mt-1 block text-[10px]" style={portalStyle({ color: 'rgba(113,113,122,0.85)' })}>
           {ipucu}
         </span>
       )}
@@ -204,6 +206,7 @@ export default function GelirGider({ donem, defter = 'TUMU' }: { donem: string; 
     return (
     <div
       key={i.id}
+      data-butce-satir={i.planlanan ? 'beklenen' : 'kayit'}
       className="group flex items-start justify-between gap-3 rounded-lg px-3 py-2 transition"
       style={portalStyle({
         background: i.planlanan ? `${TURUNCU}0a` : 'rgba(255,255,255,0.02)',
@@ -251,6 +254,7 @@ export default function GelirGider({ donem, defter = 'TUMU' }: { donem: string; 
               onClick={() =>
                 aktifHesaplar.length > 0 ? setGerceklesKayit(i) : gerceklestiHizli.mutate(i.id)
               }
+              data-butce-cip="yesil"
               className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg px-2 py-0.5 text-[10.5px] transition hover:brightness-110"
               style={portalStyle({ background: `${OK}14`, border: `1px solid ${OK}3d`, color: OK })}
               title="Bu beklenen kaydı gerçekleşmiş yap"
@@ -260,6 +264,7 @@ export default function GelirGider({ donem, defter = 'TUMU' }: { donem: string; 
           )}
           {cariTahsilat ? (
             <span
+              data-butce-cip="mor"
               className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg px-2 py-0.5 text-[10.5px]"
               style={portalStyle({ background: `${MOR}14`, border: `1px solid ${MOR}3d`, color: MOR })}
               title="Bu kayıt Cari Kasa'nın tahsilatıdır; düzeltme Cari Kasa > Tahsilat ekranından yapılır"
@@ -270,6 +275,7 @@ export default function GelirGider({ donem, defter = 'TUMU' }: { donem: string; 
             <>
               <button
                 onClick={() => setModal(i)}
+                data-butce-ikon-dugme
                 className="rounded-md p-1 opacity-0 transition group-hover:opacity-100 hover:bg-white/[0.06]"
                 style={portalStyle({ color: MUTED })}
                 title="Düzenle"
@@ -278,6 +284,7 @@ export default function GelirGider({ donem, defter = 'TUMU' }: { donem: string; 
               </button>
               <button
                 onClick={() => sil.mutate(i.id)}
+                data-butce-ikon-dugme="tehlike"
                 className="rounded-md p-1 opacity-0 transition group-hover:opacity-100 hover:bg-white/[0.06]"
                 style={portalStyle({ color: KIRMIZI })}
                 title="Sil"
@@ -309,6 +316,7 @@ export default function GelirGider({ donem, defter = 'TUMU' }: { donem: string; 
               <SlidersHorizontal size={13} /> Filtreler
               {aktifFiltreSayisi > 0 && (
                 <span
+                  data-butce-sayac-rozet
                   className="ml-0.5 inline-flex h-[16px] min-w-[16px] items-center justify-center rounded-full px-1 text-[10px] font-semibold"
                   style={portalStyle({ background: `${GOLD}2e`, color: GOLD, border: `1px solid ${GOLD}55` })}
                 >
@@ -327,6 +335,7 @@ export default function GelirGider({ donem, defter = 'TUMU' }: { donem: string; 
       >
         {filtreAcik && (
           <div
+            data-butce-ic
             className="mb-3 rounded-xl p-3"
             style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: `1px solid ${CARD_BORDER}` })}
           >
@@ -694,6 +703,7 @@ function IslemModal({
         </Alan>
 
         <div
+          data-butce-uyari="kehribar"
           className="flex items-start justify-between gap-3 rounded-xl px-3 py-2.5 sm:col-span-2"
           style={portalStyle({ background: `${TURUNCU}10`, border: `1px solid ${TURUNCU}30` })}
         >
@@ -713,6 +723,7 @@ function IslemModal({
 
         {(hesapEksik || kartEksik) && (
           <div
+            data-butce-uyari="kirmizi"
             className="flex items-start gap-2 rounded-xl px-3 py-2.5 text-[11.5px] sm:col-span-2"
             style={portalStyle({ background: `${KIRMIZI}12`, border: `1px solid ${KIRMIZI}30`, color: KIRMIZI })}
           >
@@ -782,6 +793,7 @@ function GerceklestiModal({
         }}
       >
         <div
+          data-butce-ic
           className="rounded-xl px-3 py-2.5 sm:col-span-2"
           style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: `1px solid ${CARD_BORDER}` })}
         >
@@ -926,6 +938,7 @@ function AktarimModal({
 
         {(ayniHesap || hesapsizAyniDefter) && (
           <div
+            data-butce-uyari="kirmizi"
             className="flex items-start gap-2 rounded-xl px-3 py-2.5 text-[11.5px] sm:col-span-2"
             style={portalStyle({ background: `${KIRMIZI}12`, border: `1px solid ${KIRMIZI}30`, color: KIRMIZI })}
           >
@@ -939,6 +952,7 @@ function AktarimModal({
         )}
 
         <div
+          data-butce-uyari="mavi"
           className="flex items-start gap-2 rounded-xl px-3 py-2.5 text-[11px] sm:col-span-2"
           style={portalStyle({ background: `${MAVI}12`, border: `1px solid ${MAVI}30`, color: MUTED })}
         >
@@ -982,22 +996,25 @@ function KayitSutunu({
 }) {
   return (
     <div
+      data-butce-sutun
+      data-ton={tonAdi(renk)}
       className="rounded-xl p-3"
       style={portalStyle({ background: 'rgba(0,0,0,0.18)', border: `1px solid ${CARD_BORDER}` })}
     >
-      <div className="mb-2.5 flex items-center justify-between gap-2">
+      <div data-butce-sutun-baslik className="mb-2.5 flex items-center justify-between gap-2">
         <span
           className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider"
           style={portalStyle({ color: renk })}
         >
           {ikon} {baslik} <span style={portalStyle({ color: MUTED })}>({kayitlar.length})</span>
         </span>
-        <span className="text-[13px] font-semibold tabular-nums" style={portalStyle({ color: renk })}>
+        <span data-butce-sutun-toplam className="text-[13px] font-semibold tabular-nums" style={portalStyle({ color: renk })}>
           {para(toplam)} ₺
         </span>
       </div>
       {kayitlar.length === 0 ? (
         <div
+          data-butce-bos
           className="rounded-lg px-3 py-6 text-center text-[11.5px]"
           style={portalStyle({ border: `1px dashed ${ROW_SEP}`, color: MUTED })}
         >
@@ -1047,6 +1064,7 @@ function AylikKirilim({ donem }: { donem: string }) {
       renk={GOLD}
       sag={
         <div
+          data-butce-segment
           className="flex rounded-lg p-0.5"
           style={portalStyle({ background: 'rgba(0,0,0,0.32)', border: `1px solid ${CARD_BORDER}` })}
         >
@@ -1057,6 +1075,7 @@ function AylikKirilim({ donem }: { donem: string }) {
             <button
               key={String(x.deger)}
               onClick={() => setTumYil(x.deger)}
+              data-butce-segment-dugme data-aktif={tumYil === x.deger ? 'true' : 'false'}
               className="rounded-md px-3 py-1 text-[11.5px] font-medium transition"
               style={
                 portalStyle(tumYil === x.deger
@@ -1114,16 +1133,19 @@ function KirilimBolumu({
 
   return (
     <section
+      data-butce-bolum
+      data-ton={tonAdi(renk)}
       className="overflow-hidden rounded-xl"
       style={portalStyle({ background: 'rgba(0,0,0,0.18)', border: `1px solid ${CARD_BORDER}` })}
     >
       {/* Başlık şeridi — portal dili: solda renk çubuğu, sağda toplam */}
       <header
+        data-butce-bolum-baslik
         className="flex items-center justify-between gap-3 px-3.5 py-2.5"
         style={portalStyle({ background: `linear-gradient(90deg, ${renk}14, transparent 60%)` })}
       >
         <span className="flex items-center gap-2">
-          <i className="h-3.5 w-[3px] rounded-full" style={portalStyle({ background: renk })} />
+          <i data-butce-bolum-cizgi className="h-3.5 w-[3px] rounded-full" style={portalStyle({ background: renk })} />
           <span className="text-[12px] font-semibold" style={portalStyle({ color: TEXT })}>
             {baslik}
           </span>
@@ -1143,10 +1165,11 @@ function KirilimBolumu({
       ) : tumYil ? (
         /* TÜM YIL — matris. Tablo kendi içinde kayar, sayfayı yana kaydırmaz. */
         <div className="overflow-x-auto">
-          <table className="w-full min-w-max text-[12px]">
+          <table data-butce-tablo data-butce-matris className="w-full min-w-max text-[12px]">
             <thead>
               <tr style={portalStyle({ color: MUTED, borderTop: `1px solid ${ROW_SEP}` })}>
                 <th
+                  data-butce-yapisik
                   className="sticky left-0 z-10 px-3.5 py-2 text-left text-[10.5px] font-medium uppercase tracking-wider"
                   style={portalStyle({ background: '#0e0e11' })}
                 >
@@ -1172,6 +1195,7 @@ function KirilimBolumu({
               {dolu.map((s) => (
                 <tr key={s.ad} className="group" style={portalStyle({ borderTop: `1px solid ${ROW_SEP}` })}>
                   <td
+                    data-butce-yapisik
                     className="sticky left-0 z-10 whitespace-nowrap px-3.5 py-2"
                     style={portalStyle({ background: '#0e0e11', color: TEXT })}
                   >
@@ -1185,7 +1209,7 @@ function KirilimBolumu({
                       {s.aylar[d] ? (
                         <span style={portalStyle({ color: TEXT })}>{para(s.aylar[d])}</span>
                       ) : (
-                        <span style={portalStyle({ color: 'rgba(113,113,122,0.35)' })}>·</span>
+                        <span data-butce-sifir style={portalStyle({ color: 'rgba(113,113,122,0.35)' })}>·</span>
                       )}
                     </td>
                   ))}
@@ -1197,8 +1221,9 @@ function KirilimBolumu({
                   </td>
                 </tr>
               ))}
-              <tr style={portalStyle({ borderTop: `1px solid ${renk}33`, background: 'rgba(255,255,255,0.022)' })}>
+              <tr data-butce-toplam-satir style={portalStyle({ borderTop: `1px solid ${renk}33`, background: 'rgba(255,255,255,0.022)' })}>
                 <td
+                  data-butce-yapisik
                   className="sticky left-0 z-10 px-3.5 py-2 text-[11px] uppercase tracking-wider"
                   style={portalStyle({ background: '#111114', color: MUTED })}
                 >
@@ -1208,6 +1233,7 @@ function KirilimBolumu({
                   <td
                     key={d}
                     className="whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums"
+                    data-butce-sifir={sutunToplam(d) ? undefined : ''}
                     style={portalStyle({ color: sutunToplam(d) ? renk : 'rgba(113,113,122,0.35)' })}
                   >
                     {sutunToplam(d) ? para(sutunToplam(d)) : '·'}
@@ -1226,12 +1252,13 @@ function KirilimBolumu({
       ) : (
         /* BU AY — tek sütun için tablo kurmak yerine pay çubuklu liste.
            "Neyin payı ne" sorusu rakam sütunundan okunmuyordu. */
-        <div style={portalStyle({ borderTop: `1px solid ${ROW_SEP}` })}>
+        <div data-butce-ayrac style={portalStyle({ borderTop: `1px solid ${ROW_SEP}` })}>
           {dolu.map((s) => {
             const oran = genelToplam > 0 ? (s.secilenToplam / genelToplam) * 100 : 0;
             return (
               <div
                 key={s.ad}
+                data-butce-liste-satir
                 className="flex items-center gap-3 px-3.5 py-2.5"
                 style={portalStyle({ borderBottom: `1px solid ${ROW_SEP}` })}
               >
@@ -1241,6 +1268,7 @@ function KirilimBolumu({
                     {s.ad}
                   </span>
                   <span
+                    data-butce-cubuk
                     className="mt-1 block h-[3px] w-full overflow-hidden rounded-full"
                     style={portalStyle({ background: 'rgba(255,255,255,0.05)' })}
                   >

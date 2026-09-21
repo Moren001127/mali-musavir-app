@@ -40,6 +40,7 @@ export default class HataSiniri extends React.Component<
 
     return (
       <div
+        data-butce-uyari="kirmizi"
         className="rounded-2xl px-5 py-4"
         style={portalStyle({ background: `${KIRMIZI}0d`, border: `1px solid ${KIRMIZI}33` })}
       >
@@ -54,6 +55,7 @@ export default class HataSiniri extends React.Component<
               hata verebilir; birkaç dakika sonra yenilemeyi deneyin.
             </p>
             <pre
+              data-butce-ic
               className="mt-2 max-h-[160px] overflow-auto whitespace-pre-wrap rounded-lg px-3 py-2 text-[11px]"
               style={portalStyle({ background: 'rgba(0,0,0,0.35)', border: `1px solid ${CARD_BORDER}`, color: TEXT })}
             >
@@ -61,6 +63,7 @@ export default class HataSiniri extends React.Component<
             </pre>
             <button
               onClick={() => this.setState({ hata: null })}
+              data-butce-dugme="tehlike" data-ton="kirmizi"
               className="mt-2.5 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11.5px] transition hover:brightness-110"
               style={portalStyle({ background: `${KIRMIZI}16`, border: `1px solid ${KIRMIZI}3d`, color: KIRMIZI })}
             >

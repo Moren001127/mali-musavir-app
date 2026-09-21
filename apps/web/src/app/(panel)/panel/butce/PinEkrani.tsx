@@ -69,8 +69,9 @@ export default function PinEkrani({ acildi }: { acildi: () => void }) {
   };
 
   return (
-    <div className="flex min-h-[65vh] items-center justify-center px-4">
+    <div data-butce data-butce-pin className="flex min-h-[65vh] items-center justify-center px-4">
       <div
+        data-butce-pin-kart
         className="relative w-full max-w-sm overflow-hidden rounded-2xl px-6 py-7 text-center"
         style={portalStyle({
           background: 'linear-gradient(160deg, rgba(230,200,120,0.08), rgba(255,255,255,0.012) 60%)',
@@ -78,12 +79,13 @@ export default function PinEkrani({ acildi }: { acildi: () => void }) {
           boxShadow: '0 30px 70px rgba(0,0,0,0.45)',
         })}
       >
-        <div
+        <div data-butce-parilti
           className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full opacity-25"
           style={portalStyle({ background: `radial-gradient(circle, ${GOLD}, transparent 66%)` })}
         />
 
         <div
+          data-butce-pin-ikon
           className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl"
           style={portalStyle({ background: `${GOLD}1a`, border: `1px solid ${GOLD}44`, color: GOLD })}
         >
@@ -101,6 +103,7 @@ export default function PinEkrani({ acildi }: { acildi: () => void }) {
 
         {kilitli ? (
           <div
+            data-butce-uyari="kirmizi"
             className="mt-5 rounded-xl px-4 py-3 text-[12px]"
             style={portalStyle({ background: `${KIRMIZI}14`, border: `1px solid ${KIRMIZI}38`, color: KIRMIZI })}
           >
@@ -115,6 +118,8 @@ export default function PinEkrani({ acildi }: { acildi: () => void }) {
             }}
           >
             <input
+              data-butce-girdi
+              data-butce-pin-girdi
               ref={ilkRef}
               value={pin}
               onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
@@ -135,6 +140,8 @@ export default function PinEkrani({ acildi }: { acildi: () => void }) {
             />
             {!kurulu && (
               <input
+                data-butce-girdi
+                data-butce-pin-girdi
                 value={pin2}
                 onChange={(e) => setPin2(e.target.value.replace(/\D/g, '').slice(0, 6))}
                 type="password"
@@ -177,7 +184,7 @@ export default function PinEkrani({ acildi }: { acildi: () => void }) {
           </form>
         )}
 
-        <p className="mt-4 flex items-center justify-center gap-1.5 text-[10.5px]" style={portalStyle({ color: MUTED })}>
+        <p data-butce-pin-not className="mt-4 flex items-center justify-center gap-1.5 text-[10.5px]" style={portalStyle({ color: MUTED })}>
           <ShieldCheck size={11} style={portalStyle({ color: OK })} />
           Şifre geri döndürülemez biçimde saklanır; 5 yanlış denemede kilitlenir.
         </p>

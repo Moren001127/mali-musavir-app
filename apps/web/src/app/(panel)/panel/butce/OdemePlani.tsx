@@ -62,11 +62,12 @@ export default function OdemePlani({ donem, defter = 'TUMU' }: { donem: string; 
         baslik="Ödeme kapasitesi"
         aciklama="Her ay tekrar eden kapasite ile bu ay öncesinden devreden bakiye ayrı tutulur."
         sag={
-          <div className="flex items-center gap-1.5">
+          <div data-butce-segment className="flex items-center gap-1.5">
             {(['CIG', 'KARTOPU'] as const).map((st) => (
               <button
                 key={st}
                 onClick={() => setStrateji(st)}
+                data-butce-segment-dugme data-aktif={aktifStrateji === st ? 'true' : 'false'}
                 className="rounded-lg px-2.5 py-1 text-[11px] transition"
                 style={portalStyle({
                   background: aktifStrateji === st ? `${GOLD}1f` : 'transparent',
@@ -111,6 +112,7 @@ export default function OdemePlani({ donem, defter = 'TUMU' }: { donem: string; 
       {/* Gün bazlı gerçeklik kontrolü — aylık kapasite yetse bile gün tutmayabilir */}
       {(akis.data?.acikGunler?.length ?? 0) > 0 && (
         <div
+          data-butce-uyari="kehribar"
           className="flex items-start gap-3 rounded-xl px-4 py-3"
           style={portalStyle({ background: `${TURUNCU}12`, border: `1px solid ${TURUNCU}33` })}
         >
@@ -136,6 +138,7 @@ export default function OdemePlani({ donem, defter = 'TUMU' }: { donem: string; 
           {/* Uyarılar */}
           {s.acik > 0 && (
             <div
+              data-butce-uyari="kirmizi"
               className="flex items-start gap-3 rounded-xl px-4 py-3"
               style={portalStyle({ background: `${KIRMIZI}12`, border: `1px solid ${KIRMIZI}33` })}
             >
@@ -226,6 +229,7 @@ export default function OdemePlani({ donem, defter = 'TUMU' }: { donem: string; 
                 return (
                   <div
                     key={x.id}
+                    data-butce-liste-satir
                     className="py-3.5"
                     style={portalStyle({ borderTop: i === 0 ? 'none' : `1px solid ${ROW_SEP}` })}
                   >
@@ -249,6 +253,7 @@ export default function OdemePlani({ donem, defter = 'TUMU' }: { donem: string; 
 
                     {/* Ne kadarı kapandı — ince, tek renk, dikkat çalmayan gösterge */}
                     <div
+                      data-butce-cubuk
                       className="mt-2.5 h-[2px] w-full overflow-hidden rounded-full"
                       style={portalStyle({ background: 'rgba(255,255,255,0.06)' })}
                     >
@@ -262,18 +267,19 @@ export default function OdemePlani({ donem, defter = 'TUMU' }: { donem: string; 
 
               {/* Toplam — aynı hizada, biraz daha güçlü */}
               <div
+                data-butce-ayrac
                 className="flex items-baseline justify-between gap-4 pt-4"
                 style={portalStyle({ borderTop: `1px solid ${CARD_BORDER}` })}
               >
                 <span className="text-[11.5px] uppercase tracking-[0.14em]" style={portalStyle({ color: MUTED })}>
                   Toplam
                 </span>
-                <span className="text-[16px] tabular-nums" style={portalStyle({ color: MAVI })}>
+                <span data-butce-sayi="ink" className="text-[16px] font-semibold tabular-nums" style={portalStyle({ color: MAVI })}>
                   {para(s.ilkAy.reduce((t, x) => t + x.toplam, 0))} ₺
                 </span>
               </div>
             </div>
-            <p className="mt-3 text-[10.5px]" style={portalStyle({ color: 'rgba(113,113,122,0.85)' })}>
+            <p data-butce-not className="mt-3 text-[10.5px]" style={portalStyle({ color: 'rgba(113,113,122,0.85)' })}>
               {plan.not}
             </p>
           </Kutu>
@@ -288,6 +294,7 @@ export default function OdemePlani({ donem, defter = 'TUMU' }: { donem: string; 
                   return (
                     <div
                       key={st}
+                      data-butce-secenek data-ton="yesil" data-aktif={kazanan ? 'true' : 'false'}
                       className="rounded-xl px-4 py-3"
                       style={portalStyle({
                         background: kazanan ? `${OK}10` : 'rgba(255,255,255,0.02)',
@@ -345,6 +352,7 @@ export default function OdemePlani({ donem, defter = 'TUMU' }: { donem: string; 
                   {s.kapanisSirasi.map((x, i) => (
                     <div key={x.id} className="flex items-center gap-3">
                       <span
+                        data-butce-sira
                         className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[11px] font-semibold"
                         style={portalStyle({ background: `${MAVI}1f`, color: MAVI, border: `1px solid ${MAVI}44` })}
                       >
@@ -391,6 +399,7 @@ export default function OdemePlani({ donem, defter = 'TUMU' }: { donem: string; 
                 {faydaSorgu.data.siralama.map((f, i) => (
                   <div
                     key={f.id}
+                    data-butce-secenek data-ton="yesil" data-aktif={i === 0 ? 'true' : 'false'}
                     className="flex items-center justify-between gap-3 rounded-xl px-3.5 py-2.5"
                     style={portalStyle({
                       background: i === 0 ? `${OK}10` : 'rgba(255,255,255,0.02)',
@@ -406,7 +415,7 @@ export default function OdemePlani({ donem, defter = 'TUMU' }: { donem: string; 
                     </span>
                   </div>
                 ))}
-                <p className="pt-1 text-[10.5px]" style={portalStyle({ color: 'rgba(113,113,122,0.85)' })}>
+                <p data-butce-not className="pt-1 text-[10.5px]" style={portalStyle({ color: 'rgba(113,113,122,0.85)' })}>
                   Kazanç: bu tutar bugün kapatılırsa o borcun kalan ömrü boyunca işlemeyecek faiz.
                 </p>
               </div>

@@ -173,6 +173,7 @@ export default function Danisman() {
     >
       {/* ===== Sohbet ===== */}
       <section
+        data-butce-sohbet
         className="relative flex min-h-0 flex-col overflow-hidden rounded-2xl"
         style={portalStyle({
           background: 'linear-gradient(165deg, rgba(176,160,224,0.05), rgba(255,255,255,0.012) 45%)',
@@ -180,18 +181,20 @@ export default function Danisman() {
           boxShadow: '0 18px 44px rgba(0,0,0,0.24)',
         })}
       >
-        <div
+        <div data-butce-parilti
           className="pointer-events-none absolute inset-x-0 top-0 h-px"
           style={portalStyle({ background: `linear-gradient(90deg, transparent, ${MOR}66, transparent)` })}
         />
 
         {/* Başlık */}
         <header
+          data-butce-sohbet-baslik
           className="flex items-center justify-between gap-3 px-5 py-3.5"
           style={portalStyle({ borderBottom: `1px solid ${ROW_SEP}` })}
         >
           <div className="flex items-center gap-3">
             <span
+              data-butce-ikon-kutu data-ton="mor" data-aktif="true"
               className="flex h-9 w-9 items-center justify-center rounded-xl"
               style={portalStyle({ background: `${MOR}1a`, border: `1px solid ${MOR}3d`, color: MOR })}
             >
@@ -209,6 +212,7 @@ export default function Danisman() {
           {mesajlar.length > 0 && (
             <button
               onClick={() => setMesajlar([])}
+              data-butce-dugme="sade" data-ton="kursun"
               className="flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[11px] transition hover:bg-white/[0.06]"
               style={portalStyle({ color: MUTED })}
               title="Ekrandaki sohbeti gizle (kayıtlar silinmez)"
@@ -223,6 +227,7 @@ export default function Danisman() {
           {bos ? (
             <div className="flex h-full min-h-[360px] flex-col items-center justify-center px-6 text-center">
               <span
+                data-butce-ikon-kutu data-ton="mor" data-aktif="true"
                 className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl"
                 style={portalStyle({ background: `${MOR}14`, border: `1px solid ${MOR}33`, color: MOR })}
               >
@@ -242,6 +247,7 @@ export default function Danisman() {
                     <button
                       key={s}
                       onClick={() => gonder(s)}
+                      data-butce-cip="mor"
                       className="rounded-xl px-3 py-1.5 text-[11.5px] transition hover:brightness-125"
                       style={portalStyle({ background: `${MOR}14`, border: `1px solid ${MOR}33`, color: MOR })}
                     >
@@ -256,6 +262,7 @@ export default function Danisman() {
               m.rol === 'soru' ? (
                 <div key={m.id} className="flex justify-end gap-2.5">
                   <div
+                    data-butce-balon="soru"
                     className="max-w-[80%] rounded-2xl rounded-tr-md px-3.5 py-2.5 text-[12.5px] leading-relaxed"
                     style={portalStyle({ background: `${GOLD}16`, border: `1px solid ${GOLD}33`, color: TEXT })}
                   >
@@ -265,6 +272,7 @@ export default function Danisman() {
                     </div>
                   </div>
                   <span
+                    data-butce-ikon-kutu data-ton="civit" data-aktif="true"
                     className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
                     style={portalStyle({ background: `${GOLD}14`, border: `1px solid ${GOLD}30`, color: GOLD })}
                   >
@@ -274,6 +282,7 @@ export default function Danisman() {
               ) : (
                 <div key={m.id} className="flex gap-2.5">
                   <span
+                    data-butce-ikon-kutu data-ton={m.hata ? 'kirmizi' : 'mor'} data-aktif="true"
                     className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
                     style={portalStyle({
                       background: m.hata ? 'rgba(224,105,122,0.12)' : `${MOR}14`,
@@ -284,6 +293,7 @@ export default function Danisman() {
                     <Sparkles size={13} />
                   </span>
                   <div
+                    data-butce-balon="cevap"
                     className="group max-w-[85%] rounded-2xl rounded-tl-md px-4 py-3"
                     style={portalStyle({
                       background: 'rgba(255,255,255,0.025)',
@@ -292,13 +302,14 @@ export default function Danisman() {
                   >
                     <AiMetin metin={m.metin} soluk={m.hata} />
                     <div className="mt-2 flex items-center justify-between gap-3">
-                      <span className="text-[10px]" style={portalStyle({ color: 'rgba(113,113,122,0.85)' })}>
+                      <span data-butce-not className="text-[10px]" style={portalStyle({ color: 'rgba(113,113,122,0.85)' })}>
                         {m.model ? `${m.model} · ` : ''}
                         {m.zaman.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
                       </span>
                       {!m.hata && (
                         <button
                           onClick={() => kopyala(m)}
+                          data-butce-ikon-dugme
                           className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] opacity-0 transition group-hover:opacity-100 hover:bg-white/[0.06]"
                           style={portalStyle({ color: kopyalanan === m.id ? OK : MUTED })}
                         >
@@ -316,12 +327,14 @@ export default function Danisman() {
           {sor.isPending && (
             <div className="flex gap-2.5">
               <span
+                data-butce-ikon-kutu data-ton="mor" data-aktif="true"
                 className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
                 style={portalStyle({ background: `${MOR}14`, border: `1px solid ${MOR}30`, color: MOR })}
               >
                 <Sparkles size={13} />
               </span>
               <div
+                data-butce-balon="cevap"
                 className="flex items-center gap-2 rounded-2xl rounded-tl-md px-4 py-3 text-[12px]"
                 style={portalStyle({ background: 'rgba(255,255,255,0.025)', border: `1px solid ${ROW_SEP}`, color: MUTED })}
               >
@@ -334,6 +347,7 @@ export default function Danisman() {
 
         {/* Girdi */}
         <form
+          data-butce-sohbet-girdi
           className="flex items-end gap-2 px-5 py-4"
           style={portalStyle({ borderTop: `1px solid ${ROW_SEP}` })}
           onSubmit={(e) => {
@@ -342,6 +356,7 @@ export default function Danisman() {
           }}
         >
           <textarea
+            data-butce-girdi
             value={girdi}
             onChange={(e) => setGirdi(e.target.value)}
             onKeyDown={(e) => {
@@ -367,6 +382,7 @@ export default function Danisman() {
           <button
             type="submit"
             disabled={!girdi.trim() || sor.isPending}
+            data-butce-dugme="birincil" data-ton="mor"
             className="flex h-[38px] items-center gap-1.5 rounded-xl px-4 text-[12px] font-medium transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
             style={portalStyle({ background: `linear-gradient(140deg, ${MOR}dd, ${MOR}99)`, color: '#0b0b0d', border: `1px solid ${MOR}` })}
           >
@@ -377,8 +393,9 @@ export default function Danisman() {
       </section>
 
       {/* ===== Yan panel: hazır sorular ===== */}
-      <aside className="min-h-0 space-y-3 overflow-y-auto pr-1">
+      <aside data-butce-yan className="min-h-0 space-y-3 overflow-y-auto pr-1">
         <div
+          data-butce-yan-kart
           className="rounded-2xl px-4 py-3.5"
           style={portalStyle({ background: 'rgba(255,255,255,0.018)', border: `1px solid ${CARD_BORDER}` })}
         >
@@ -394,7 +411,7 @@ export default function Danisman() {
               const Ikon = g.ikon;
               return (
                 <div key={g.baslik}>
-                  <div className="mb-1.5 flex items-center gap-1.5 text-[10.5px] uppercase tracking-wider" style={portalStyle({ color: g.renk })}>
+                  <div data-butce-sutun-baslik className="mb-1.5 flex items-center gap-1.5 text-[10.5px] uppercase tracking-wider" style={portalStyle({ color: g.renk })}>
                     <Ikon size={11} /> {g.baslik}
                   </div>
                   <div className="space-y-1">
@@ -403,6 +420,7 @@ export default function Danisman() {
                         key={s}
                         onClick={() => gonder(s)}
                         disabled={sor.isPending}
+                        data-butce-soru
                         className="w-full rounded-lg px-2.5 py-1.5 text-left text-[11.5px] leading-snug transition hover:bg-white/[0.05] disabled:opacity-40"
                         style={portalStyle({ color: MUTED, border: `1px solid ${ROW_SEP}` })}
                       >
@@ -417,6 +435,7 @@ export default function Danisman() {
         </div>
 
         <div
+          data-butce-uyari="yesil"
           className="flex items-start gap-2 rounded-2xl px-4 py-3 text-[10.5px] leading-relaxed"
           style={portalStyle({ background: 'rgba(90,209,138,0.07)', border: '1px solid rgba(90,209,138,0.22)', color: MUTED })}
         >
