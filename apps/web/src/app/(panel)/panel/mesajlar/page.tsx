@@ -1,19 +1,16 @@
 'use client';
-import './beyaz-inceleme.css';
-import { portalStyle } from '@/lib/portal-theme';
-
+import './mesajlar-white.css';
 
 import { useState, useMemo, useRef, useEffect, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import {
   MessageCircle, Send, Search, Clock, AlertCircle, CheckCircle2,
-  Loader2, Phone, User, X, FileText, AlertTriangle, Plus, Users,
-  Paperclip, Image as ImageIcon, Link2, Smile, Trash2, Check, CheckCheck,
+  Loader2, Phone, X, FileText, AlertTriangle, Plus, Users,
+  Paperclip, Image as ImageIcon, Link2, Smile, Trash2, Check, CheckCheck, Bot, Zap, Inbox,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-const GOLD = '#d4b876';
 const QUICK_EMOJIS = [
   '😀', '😁', '😂', '😊', '😍', '🥰', '😉', '👍', '🙏', '👏', '✅', '📌',
   '📎', '📄', '💰', '📊', '⏰', '⚠️', '❤️', '🤝', '🙋‍♂️', '🙋‍♀️', '☕', '🎉',
@@ -23,7 +20,7 @@ function WhatsAppAvatar({
   name,
   url,
   active,
-  size = 42,
+  size = 40,
 }: {
   name?: string | null;
   url?: string | null;
@@ -31,34 +28,21 @@ function WhatsAppAvatar({
   size?: number;
 }) {
   const initial = (name || '?').trim().charAt(0).toUpperCase() || '?';
-  const dotSize = Math.max(9, Math.round(size * 0.26));
+  const dotSize = Math.min(18, Math.max(9, Math.round(size * 0.26)));
   return (
-    <div className="relative flex-shrink-0" style={portalStyle({ width: size, height: size })}>
+    <div className="relative flex-shrink-0" style={{ width: size, height: size }}>
       <div
-        className="rounded-full flex items-center justify-center overflow-hidden text-[12px] font-semibold h-full w-full"
-        style={portalStyle({
-          fontSize: Math.max(12, Math.round(size * 0.34)),
-          background: active ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.04)',
-          color: active ? '#86efac' : 'rgba(250,250,249,0.55)',
-          border: `1px solid ${active ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.08)'}`,
-        })}
+        className={`wm-avatar ${active ? 'wm-avatar-active' : ''}`}
+        style={{ fontSize: Math.max(12, Math.round(size * 0.34)) }}
       >
         {url ? <img src={url} alt={name || 'WhatsApp profil'} className="h-full w-full object-cover" /> : initial}
       </div>
-      {/* Çevrimiçi yeşil noktası (WhatsApp tarzı) */}
+      {/* Çevrimiçi noktası (WhatsApp tarzı) */}
       {active && (
         <span
           title="çevrimiçi"
-          style={portalStyle({
-            position: 'absolute',
-            right: Math.round(size * 0.02),
-            bottom: Math.round(size * 0.02),
-            width: dotSize,
-            height: dotSize,
-            borderRadius: '50%',
-            background: '#25d366',
-            border: '2px solid #1c1c1a',
-          })}
+          className="wm-avatar-dot"
+          style={{ right: Math.round(size * 0.02), bottom: Math.round(size * 0.02), width: dotSize, height: dotSize }}
         />
       )}
     </div>
@@ -84,6 +68,9 @@ interface Conversation {
   lastMessage: string;
   lastMessageAt: string;
   lastMessageDirection: 'incoming' | 'outgoing';
+  lastMessageFailed?: boolean;
+  /** Sunucu sağlar (şimdilik hep 0); sıfırdan büyükse yeşil rozet. */
+  unreadCount?: number;
   windowOpen: boolean;
   lastInboundAt: string | null;
   totalMessages: number;
@@ -266,20 +253,30 @@ function presenceText(p?: ChatPresence | null): string | null {
   return null;
 }
 
-function deliveryMeta(message: ChatMessage): { label: string; color: string; icon: typeof Check | typeof CheckCheck | typeof Clock | typeof AlertTriangle } {
+type DeliveryTone = 'failed' | 'read' | 'delivered' | 'pending' | 'sent';
+
+function deliveryMeta(message: ChatMessage): { label: string; tone: DeliveryTone; icon: typeof Check | typeof CheckCheck | typeof Clock | typeof AlertTriangle } {
   if (message.failed || message.deliveryStatus === 'failed') {
-    return { label: 'Gönderilemedi', color: '#fca5a5', icon: AlertTriangle };
+    return { label: 'Gönderilemedi', tone: 'failed', icon: AlertTriangle };
   }
   if (message.deliveryStatus === 'read' || message.deliveryStatus === 'played') {
-    return { label: 'Okundu', color: '#60a5fa', icon: CheckCheck };
+    return { label: 'Okundu', tone: 'read', icon: CheckCheck };
   }
   if (message.deliveryStatus === 'delivered') {
-    return { label: 'Teslim edildi', color: 'rgba(250,250,249,0.58)', icon: CheckCheck };
+    return { label: 'Teslim edildi', tone: 'delivered', icon: CheckCheck };
   }
   if (message.deliveryStatus === 'pending') {
-    return { label: 'Gönderiliyor', color: 'rgba(250,250,249,0.5)', icon: Clock };
+    return { label: 'Gönderiliyor', tone: 'pending', icon: Clock };
   }
-  return { label: 'Gönderildi', color: 'rgba(250,250,249,0.55)', icon: Check };
+  return { label: 'Gönderildi', tone: 'sent', icon: Check };
+}
+
+/** Giden mesajın kaynağı (kayıt konusundan): MOREN AI botu, otomatik hatırlatma/şablon, ya da elle yazılan. */
+function mesajKaynagi(subject?: string | null): 'bot' | 'otomatik' | null {
+  const s = String(subject || '');
+  if (/bot cevab/i.test(s)) return 'bot';
+  if (/hat[ıi]rlatma|sablon|şablon|ak[ıi]ll[ıi] bildirim|brifing|d[öo]k[üu]manlar[ıi]|hesap d[öo]k[üu]m[üu]/i.test(s)) return 'otomatik';
+  return null;
 }
 
 export default function MesajlarPage() {
@@ -364,6 +361,20 @@ export default function MesajlarPage() {
     }
   }, [contacts, selectedContactId, showStartModal]);
 
+  // Pencereler Escape ile kapanır
+  useEffect(() => {
+    if (!showStartModal && !showLinkModal && !showAvatarPreview && !showEmojiPicker) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      setShowStartModal(false);
+      setShowLinkModal(false);
+      setShowAvatarPreview(false);
+      setShowEmojiPicker(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showStartModal, showLinkModal, showAvatarPreview, showEmojiPicker]);
+
   // Mesaj gönderme
   const sendMut = useMutation({
     mutationFn: (payload: { message?: string; templateName?: string; templateParams?: string[] }) =>
@@ -381,7 +392,7 @@ export default function MesajlarPage() {
     onError: (e: any) => toast.error(e?.message || 'Gönderim hatası'),
   });
 
-  // Konuşma listesi filtrele
+  // Konuşma başlatma
   const startMut = useMutation({
     mutationFn: () => {
       if (startMode === 'manual') {
@@ -504,8 +515,6 @@ export default function MesajlarPage() {
 
   // QR (Baileys) hattinda Meta'nin 24 SAAT PENCERESI YOKTUR: baglanti acikken
   // istenen kisiye istenen zaman normal mesaj yazilir. Tek kosul baglantidir.
-  // Eskiden windowOpen (Meta kavrami) da hesaba katiliyor, baglanti kopunca ekran
-  // "Pencere kapali" deyip kullaniciyi sablon yoluna itiyordu.
   const qrConnected = Boolean(qrStatus?.connected);
   // Durum daha gelmediyse ALARM VERME (ilk acilista yanlis kirmizi cikiyordu).
   const qrDurumBilindi = qrStatus !== undefined;
@@ -526,7 +535,7 @@ export default function MesajlarPage() {
     }
   }, [selectedId]);
 
-  // Mesaj geldikçe en alta scroll
+  // Mesaj geldikçe en alta kaydır
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -594,101 +603,91 @@ export default function MesajlarPage() {
     }
   };
 
+  const baglantiCipi = !qrDurumBilindi ? (
+    <span className="wm-chip wm-chip-notr"><Loader2 size={12} className="animate-spin" /> Durum kontrol ediliyor</span>
+  ) : qrConnected ? (
+    <span className="wm-chip wm-chip-yesil"><CheckCircle2 size={12} /> Bağlı</span>
+  ) : (
+    <span className="wm-chip wm-chip-kirmizi"><AlertCircle size={12} /> Bağlantı kapalı</span>
+  );
 
   return (
-    <div data-inceleme="mesajlar" className="flex h-[calc(100vh-164px)] lg:h-[calc(100vh-88px)] w-full gap-3 max-w-[2200px]">
+    <div data-inceleme="mesajlar" className="wm flex h-[calc(100vh-164px)] w-full max-w-[2200px] gap-3 lg:h-[calc(100vh-88px)]">
       {/* SOL: KONUŞMA LİSTESİ */}
-      <div
-        data-inceleme-yuzey
-        className="w-[340px] xl:w-[400px] 2xl:w-[440px] flex-shrink-0 rounded-2xl flex flex-col overflow-hidden"
-        style={portalStyle({ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)' })}
-      >
-        {/* Üst başlık + arama */}
-        <div data-inceleme-baslik-kompakt className="px-4 py-3 flex items-center gap-2.5" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.06)' })}>
-          <MessageCircle size={20} style={portalStyle({ color: GOLD })} />
-          <h1 className="text-[17px] font-semibold flex-1 truncate" style={portalStyle({ color: '#fafaf9' })}>WhatsApp Mesajlar</h1>
-          <span className="text-[13px] tabular-nums" style={portalStyle({ color: 'rgba(250,250,249,0.62)' })}>
-            {conversations.length} kişi
-          </span>
+      <div className="wm-card flex w-[350px] flex-shrink-0 flex-col overflow-hidden xl:w-[400px] 2xl:w-[440px]">
+        {/* Başlık satırı: yumuşak yeşil simge kutusu + başlık + kişi sayısı çipi + yeni sohbet */}
+        <div className="wm-list-head flex items-center gap-2.5 px-4 py-3">
+          <span className="wm-head-icon"><MessageCircle size={18} /></span>
+          <h1 className="wm-title min-w-0 flex-1 truncate">WhatsApp Mesajlar</h1>
+          <span className="wm-chip wm-chip-notr tabular-nums">{conversations.length} kişi</span>
           <button
             type="button"
             onClick={openStartModal}
             title="Yeni konuşma"
-            className="h-9 w-9 flex-shrink-0 rounded-[10px] flex items-center justify-center"
-            style={portalStyle({ background: 'rgba(212,184,118,0.12)', border: '1px solid rgba(212,184,118,0.24)', color: GOLD })}
+            className="wm-btn wm-btn-secondary wm-btn-sm"
           >
-            <Plus size={18} />
+            <Plus size={15} /> <span className="hidden xl:inline">Yeni</span>
           </button>
         </div>
-        <div className="px-4 py-3" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.05)' })}>
+        <div className="wm-list-search px-4 py-2.5">
           <div className="relative">
-            <Search size={17} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={portalStyle({ color: 'rgba(250,250,249,0.48)' })} />
+            <Search size={15} className="wm-input-icon absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Mükellef veya telefon ara..."
-              className="w-full h-11 pl-11 pr-4 rounded-[11px] text-[14px] outline-none"
-              style={portalStyle({ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' })}
+              placeholder="Mükellef veya telefon ara…"
+              className="wm-input h-10 w-full pl-9 pr-3"
             />
           </div>
         </div>
 
-        {/* Konuşma listesi */}
+        {/* Konuşma satırları */}
         <div className="flex-1 overflow-y-auto">
           {isLoading ? (
-            <div className="p-6 text-center text-[12.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
-              <Loader2 size={16} className="animate-spin mx-auto mb-2" /> Yükleniyor...
+            <div className="wm-muted p-6 text-center text-[12.5px]">
+              <Loader2 size={16} className="mx-auto mb-2 animate-spin" /> Yükleniyor...
             </div>
           ) : filteredConversations.length === 0 ? (
-            <div className="p-6 text-center text-[12.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
-              <MessageCircle size={20} className="mx-auto mb-2" style={portalStyle({ color: 'rgba(250,250,249,0.25)' })} />
-              {conversations.length === 0
-                ? 'Henüz bir mesajlaşma yok.'
-                : 'Aramaya uyan kayıt yok.'}
+            <div className="wm-empty m-4 px-4 py-8 text-center">
+              <MessageCircle size={20} className="mx-auto mb-2" />
+              <div className="text-[12.5px]">
+                {conversations.length === 0
+                  ? 'Henüz bir mesajlaşma yok.'
+                  : 'Aramaya uyan kayıt yok.'}
+              </div>
             </div>
           ) : (
             filteredConversations.map((c) => {
               const id = c.conversationId || c.taxpayerId;
               const isSelected = id === selectedId;
+              const unread = Number(c.unreadCount || 0);
+              const gorunenAd = c.kisiAdi || c.taxpayerName;
               return (
                 <button
                   key={id}
                   type="button"
                   onClick={() => setSelectedId(id)}
-                  data-inceleme-secili={isSelected}
-                  className="w-full px-4 py-3 text-left flex items-start gap-3 transition-colors"
-                  style={portalStyle({
-                    background: isSelected ? 'rgba(212,184,118,0.08)' : 'transparent',
-                    borderBottom: '1px solid rgba(255,255,255,0.04)',
-                    borderLeft: isSelected ? `2px solid ${GOLD}` : '2px solid transparent',
-                  })}
+                  data-selected={isSelected ? 'true' : undefined}
+                  title={c.phone ? `${gorunenAd} · ${c.phone}` : gorunenAd}
+                  className="wm-row flex w-full items-center gap-3 px-4 py-2.5 text-left"
                 >
-                  {/* Avatar */}
-                  {/* REHBER ADI önce: kullanıcı bu numaraya ad yazdıysa firma
-                      adı yerine o görünür. Firma bağı değişmez. */}
-                  <WhatsAppAvatar name={c.kisiAdi || c.taxpayerName} url={c.avatarUrl} active={isLivePresence(c.presence)} />
-
-                  <div className="flex-1 min-w-0">
+                  {/* REHBER ADI önce: kullanıcı bu numaraya ad yazdıysa firma adı yerine o görünür. Firma bağı değişmez. */}
+                  <WhatsAppAvatar name={gorunenAd} url={c.avatarUrl} active={isLivePresence(c.presence)} size={40} />
+                  <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-[16px] font-semibold truncate" style={portalStyle({ color: '#fafaf9' })}>
-                        {c.kisiAdi || c.taxpayerName}
-                      </span>
-                      <span className="text-[12.5px] tabular-nums flex-shrink-0" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>
-                        {fmtTime(c.lastMessageAt)}
-                      </span>
+                      <span className="wm-row-name truncate">{gorunenAd}</span>
+                      <span className="wm-row-time flex-shrink-0 tabular-nums">{fmtTime(c.lastMessageAt)}</span>
                     </div>
-                    <div className="flex items-center gap-1.5 mt-0.5">
+                    <div className="mt-0.5 flex items-center gap-1.5">
                       {c.lastMessageDirection === 'outgoing' && (
-                        <Send size={11} style={portalStyle({ color: 'rgba(250,250,249,0.45)' })} />
+                        c.lastMessageFailed
+                          ? <AlertTriangle size={12} className="wm-row-tick wm-tick-failed flex-shrink-0" />
+                          : <CheckCheck size={13} className="wm-row-tick flex-shrink-0" />
                       )}
-                      {c.phone && (
-                        <span className="text-[12px] font-medium tabular-nums truncate max-w-[104px] flex-shrink-0" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
-                          {c.phone}
-                        </span>
-                      )}
-                      <span className="text-[13.5px] truncate flex-1 min-w-0" style={portalStyle({ color: 'rgba(250,250,249,0.68)' })}>
+                      <span className={`wm-row-last min-w-0 flex-1 truncate ${unread > 0 ? 'wm-row-last-unread' : ''}`}>
                         {renderWhatsAppLogText(c.lastMessage) || '(boş mesaj)'}
                       </span>
+                      {unread > 0 && <span className="wm-unread tabular-nums">{unread}</span>}
                     </div>
                   </div>
                 </button>
@@ -699,114 +698,83 @@ export default function MesajlarPage() {
       </div>
 
       {/* SAĞ: SOHBET */}
-      <div
-        data-inceleme-yuzey
-        className="flex-1 rounded-2xl flex flex-col overflow-hidden min-w-0"
-        style={portalStyle({ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)' })}
-      >
+      <div className="wm-card flex min-w-0 flex-1 flex-col overflow-hidden">
         {!selectedId ? (
-          <div className="flex-1 flex items-center justify-center p-10">
-            <div className="text-center">
-              <MessageCircle size={36} className="mx-auto mb-3" style={portalStyle({ color: 'rgba(250,250,249,0.2)' })} />
-              <p className="text-[14px]" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
-                Sol taraftan bir mükellef seç, konuşmaya başla
-              </p>
+          <div className="flex flex-1 items-center justify-center p-8">
+            <div className="wm-empty w-full max-w-md px-6 py-10 text-center">
+              <span className="wm-empty-icon mx-auto mb-3"><Inbox size={22} /></span>
+              <div className="wm-empty-title">Bir konuşma seç</div>
+              <p className="wm-empty-text mt-1">Sol listeden bir mükellef seç; mesajlar burada açılır.</p>
             </div>
           </div>
         ) : (
           <>
-            {/* Sohbet başlık */}
-            <div data-inceleme-baslik className="px-6 py-3 flex items-center gap-3.5" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.02)' })}>
+            {/* Sohbet başlığı */}
+            <div className="wm-chat-head flex items-center gap-3 px-5 py-3">
               <button type="button" onClick={() => setShowProfilePanel(true)} className="rounded-full" title="Kişi bilgisi">
-                <WhatsAppAvatar name={chatData?.taxpayer?.kisiAdi || chatData?.taxpayer?.name} url={chatData?.taxpayer?.avatarUrl} active={isLivePresence(chatData?.presence)} />
+                <WhatsAppAvatar name={chatData?.taxpayer?.kisiAdi || chatData?.taxpayer?.name} url={chatData?.taxpayer?.avatarUrl} active={isLivePresence(chatData?.presence)} size={40} />
               </button>
-              <button type="button" onClick={() => setShowProfilePanel(true)} className="flex-1 min-w-0 text-left">
-                <div className="text-[17px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>
+              <button type="button" onClick={() => setShowProfilePanel(true)} className="min-w-0 flex-1 text-left">
+                <div className="wm-chat-name truncate">
                   {chatData?.taxpayer?.kisiAdi || chatData?.taxpayer?.name || 'Yükleniyor...'}
                 </div>
-                <div className="flex items-center gap-3 text-[13px]" style={portalStyle({ color: 'rgba(250,250,249,0.62)' })}>
-                  {/* Rehber adı gösteriliyorsa firma adı kaybolmasın — hangi
-                      mükellefle konuşulduğu görünür kalmalı. */}
+                <div className="wm-chat-meta mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5">
+                  {/* Rehber adı gösteriliyorsa firma adı kaybolmasın — hangi mükellefle konuşulduğu görünür kalmalı. */}
                   {chatData?.taxpayer?.kisiAdi && chatData?.taxpayer?.name && (
                     <span className="truncate">{chatData.taxpayer.name}</span>
                   )}
                   {chatData?.taxpayer?.phone && (
-                    <span className="flex items-center gap-1">
-                      <Phone size={12} /> {chatData.taxpayer.phone}
-                    </span>
+                    <span className="inline-flex items-center gap-1 tabular-nums"><Phone size={11} /> {chatData.taxpayer.phone}</span>
                   )}
                   {chatData?.taxpayer?.taxNumber && (
-                    <span>VKN: {chatData.taxpayer.taxNumber}</span>
+                    <span className="tabular-nums">VKN {chatData.taxpayer.taxNumber}</span>
                   )}
                   {presenceText(chatData?.presence) && (
-                    <span style={portalStyle({ color: '#86efac' })}>{presenceText(chatData?.presence)}</span>
+                    <span className={isLivePresence(chatData?.presence) ? 'wm-presence-live' : ''}>{presenceText(chatData?.presence)}</span>
                   )}
                 </div>
               </button>
-              <button
-                type="button"
-                onClick={handleDeleteConversation}
-                disabled={deleteConversationMut.isPending}
-                title="Konuşmayı sil"
-                className="h-10 w-10 rounded-md flex items-center justify-center disabled:opacity-50"
-                style={portalStyle({ background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.18)', color: '#fca5a5' })}
-              >
-                {deleteConversationMut.isPending ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={16} />}
-              </button>
-              {chatData?.taxpayer?.phone && (
+              <div className="flex flex-shrink-0 items-center gap-2">
+                {baglantiCipi}
+                {chatData?.taxpayer?.unknownContact && (
+                  <button
+                    type="button"
+                    onClick={() => setShowLinkModal(true)}
+                    className="wm-btn wm-btn-civit wm-btn-sm"
+                  >
+                    <Link2 size={13} /> Mükellefe Bağla
+                  </button>
+                )}
+                {chatData?.taxpayer?.phone && (
+                  <button
+                    type="button"
+                    onClick={openWhatsAppFromHeader}
+                    title="WhatsApp'ta aç ve ara"
+                    className="wm-btn wm-btn-secondary wm-btn-icon"
+                  >
+                    <Phone size={15} />
+                  </button>
+                )}
                 <button
                   type="button"
-                  onClick={openWhatsAppFromHeader}
-                  title="WhatsApp'ta aç ve ara"
-                  className="h-10 w-10 rounded-md flex items-center justify-center"
-                  style={portalStyle({ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.82)' })}
+                  onClick={handleDeleteConversation}
+                  disabled={deleteConversationMut.isPending}
+                  title="Konuşmayı sil"
+                  className="wm-btn wm-btn-danger wm-btn-icon"
                 >
-                  <Phone size={17} />
+                  {deleteConversationMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={15} />}
                 </button>
-              )}
-              {chatData?.taxpayer?.unknownContact && (
-                <button
-                  type="button"
-                  onClick={() => setShowLinkModal(true)}
-                  className="h-10 px-3.5 rounded-md flex items-center gap-1.5 text-[13px] font-semibold"
-                  style={portalStyle({ background: 'rgba(212,184,118,0.12)', border: '1px solid rgba(212,184,118,0.24)', color: GOLD })}
-                >
-                  <Link2 size={14} /> Mükellefe Bağla
-                </button>
-              )}
-              {/* Konuşma durumu */}
-              {!qrDurumBilindi ? (
-                <div className="text-[13px] flex items-center gap-1.5 px-3 py-1.5 rounded-md" style={portalStyle({ background: 'rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.5)' })}>
-                  <Loader2 size={13} className="animate-spin" /> Durum kontrol ediliyor
-                </div>
-              ) : qrConnected ? (
-                <div className="text-[13px] flex items-center gap-1.5 px-3 py-1.5 rounded-md" style={portalStyle({ background: 'rgba(34,197,94,0.1)', color: '#86efac' })}>
-                  <CheckCircle2 size={13} /> QR bağlı
-                </div>
-              ) : (
-                <div className="text-[13px] flex items-center gap-1.5 px-3 py-1.5 rounded-md" style={portalStyle({ background: 'rgba(248,113,113,0.1)', color: '#fca5a5' })}>
-                  <AlertCircle size={13} /> Bağlantı kapalı
-                </div>
-              )}
+              </div>
             </div>
 
-            {/* Mesaj listesi */}
-            <div
-              ref={scrollRef}
-              data-inceleme-sohbet
-              className="flex-1 overflow-y-auto px-6 py-4 space-y-2"
-              style={portalStyle({
-                backgroundColor: '#0b141a',
-                backgroundImage: 'radial-gradient(rgba(255,255,255,0.022) 1px, transparent 1px)',
-                backgroundSize: '18px 18px',
-              })}
-            >
+            {/* Mesajlar */}
+            <div ref={scrollRef} data-wm-sohbet className="wm-chat flex-1 space-y-2 overflow-y-auto px-6 py-4">
               {!chatData ? (
-                <div className="text-center py-10" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>
-                  <Loader2 size={16} className="animate-spin mx-auto" />
+                <div className="wm-muted py-10 text-center">
+                  <Loader2 size={16} className="mx-auto animate-spin" />
                 </div>
               ) : chatData.messages.length === 0 ? (
-                <div className="text-center py-10 text-[12.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
+                <div className="wm-muted py-10 text-center text-[12.5px]">
                   {qrConnected ? 'Henüz mesaj yok. Aşağıdan normal WhatsApp mesajı yazabilirsin.' : 'Henüz mesaj yok. Bağlantı gelince buradan yazabilirsin.'}
                 </div>
               ) : (
@@ -816,77 +784,63 @@ export default function MesajlarPage() {
                   const docs = m.documents?.length ? m.documents : parsed.docs;
                   const delivery = incoming ? null : deliveryMeta(m);
                   const DeliveryIcon = delivery?.icon;
+                  const kaynak = incoming ? null : mesajKaynagi(m.subject);
                   const prev = idx > 0 ? chatData.messages[idx - 1] : null;
                   const showDate = !prev || sameDayKey(prev.occurredAt) !== sameDayKey(m.occurredAt);
+                  const bubbleTone = `${incoming ? 'wm-bubble-in' : kaynak ? 'wm-bubble-sys' : 'wm-bubble-out'}${m.failed ? ' wm-bubble-hatali' : ''}`;
                   return (
                     <Fragment key={m.id}>
                       {showDate && (
                         <div className="flex justify-center py-1.5">
-                          <span
-                            className="px-3 py-1 rounded-[8px] text-[11px] font-medium"
-                            style={portalStyle({ background: 'rgba(255,255,255,0.06)', color: 'rgba(250,250,249,0.6)' })}
-                          >
-                            {fmtDateSeparator(m.occurredAt)}
-                          </span>
+                          <span className="wm-date">{fmtDateSeparator(m.occurredAt)}</span>
                         </div>
                       )}
                       <div className={`flex ${incoming ? 'justify-start' : 'justify-end'}`}>
-                      <div
-                        data-inceleme-mesaj={incoming ? 'gelen' : 'giden'}
-                        className="max-w-[min(76%,780px)] px-3.5 py-2.5 rounded-[10px] text-[15px] leading-[1.55]"
-                        style={portalStyle({
-                          background: incoming ? '#1f2c33' : '#114a3a',
-                          border: incoming ? '1px solid rgba(255,255,255,0.04)' : '1px solid rgba(37,211,102,0.16)',
-                          color: '#e9edef',
-                          borderTopLeftRadius: incoming ? 3 : 10,
-                          borderTopRightRadius: incoming ? 10 : 3,
-                        })}
-                      >
-                        <div className="whitespace-pre-wrap break-words">{parsed.text || '(boş)'}</div>
-                        {docs.length > 0 && (
-                          <div className="mt-2 space-y-1.5">
-                            {docs.map((doc) => (
-                              <div
-                                key={doc.id}
-                                className="overflow-hidden rounded-md border"
-                                style={portalStyle({
-                                  borderColor: incoming ? 'rgba(255,255,255,0.12)' : 'rgba(37,211,102,0.28)',
-                                  background: incoming ? 'rgba(255,255,255,0.04)' : 'rgba(37,211,102,0.08)',
-                                })}
-                              >
-                                {isImageDoc(doc) && doc.url ? (
-                                  <button type="button" onClick={() => openDocument(doc.id)} className="block w-full">
-                                    <img src={doc.url} alt={doc.title} className="max-h-64 w-full object-contain" />
-                                  </button>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    onClick={() => openDocument(doc.id)}
-                                    className="flex max-w-full items-center gap-2 px-2.5 py-2 text-left text-[11.5px]"
-                                    style={portalStyle({ color: '#fafaf9' })}
-                                  >
-                                    {isPdfDoc(doc) ? <FileText size={16} className="shrink-0" /> : <ImageIcon size={16} className="shrink-0" />}
-                                    <span className="min-w-0 flex-1 truncate">{doc.title}</span>
-                                  </button>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        {m.failed && (
-                          <div className="mt-2 flex items-center gap-1.5 text-[10.5px]" style={portalStyle({ color: '#fca5a5' })}>
-                            <AlertTriangle size={11} /> WhatsApp'a gonderilemedi
-                          </div>
-                        )}
-                        <div className="mt-1 flex items-center justify-end gap-1.5 text-[11px] tabular-nums" style={portalStyle({ color: 'rgba(233,237,239,0.5)' })}>
-                          <span title={fmtFullTime(m.occurredAt)}>{fmtClock(m.occurredAt)}</span>
-                          {delivery && DeliveryIcon && (
-                            <span className="inline-flex items-center" style={portalStyle({ color: delivery.color })} title={delivery.label}>
-                              <DeliveryIcon size={14} />
-                            </span>
+                        <div className={`wm-bubble ${bubbleTone}`}>
+                          {kaynak && (
+                            <div className="wm-bubble-tag">
+                              {kaynak === 'bot' ? <><Bot size={11} /> MOREN AI botu</> : <><Zap size={11} /> Otomatik mesaj</>}
+                            </div>
                           )}
+                          {(parsed.text || docs.length === 0) && (
+                            <div className="whitespace-pre-wrap break-words">{parsed.text || '(boş)'}</div>
+                          )}
+                          {docs.length > 0 && (
+                            <div className={`space-y-1.5 ${parsed.text ? 'mt-2' : ''}`}>
+                              {docs.map((doc) => (
+                                <div key={doc.id} className="wm-doc overflow-hidden">
+                                  {isImageDoc(doc) && doc.url ? (
+                                    <button type="button" onClick={() => openDocument(doc.id)} className="block w-full">
+                                      <img src={doc.url} alt={doc.title} className="max-h-64 w-full object-contain" />
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => openDocument(doc.id)}
+                                      className="flex max-w-full items-center gap-2.5 px-2.5 py-2 text-left"
+                                    >
+                                      <span className="wm-doc-icon">{isPdfDoc(doc) ? <FileText size={15} /> : <ImageIcon size={15} />}</span>
+                                      <span className="wm-doc-title min-w-0 flex-1 truncate">{doc.title}</span>
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {m.failed && (
+                            <div className="wm-bubble-failed mt-2 flex items-center gap-1.5">
+                              <AlertTriangle size={11} /> WhatsApp&apos;a gönderilemedi
+                            </div>
+                          )}
+                          <div className="wm-bubble-meta mt-1 flex items-center justify-end gap-1.5 tabular-nums">
+                            <span title={fmtFullTime(m.occurredAt)}>{fmtClock(m.occurredAt)}</span>
+                            {delivery && DeliveryIcon && (
+                              <span className={`inline-flex items-center wm-tick-${delivery.tone}`} title={delivery.label}>
+                                <DeliveryIcon size={14} />
+                              </span>
+                            )}
+                          </div>
                         </div>
-                      </div>
                       </div>
                     </Fragment>
                   );
@@ -894,110 +848,98 @@ export default function MesajlarPage() {
               )}
             </div>
 
-            {/* Alt input */}
-            <div data-inceleme-yazi className="px-5 py-3.5" style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.015)' })}>
+            {/* Yazı kutusu */}
+            <div className="wm-compose px-4 py-3">
               {freeFormAvailable ? (
                 <>
-                {qrDurumBilindi && !qrConnected && (
-                  <div className="mb-2 flex items-start gap-2 px-3 py-2 rounded-[10px]" style={portalStyle({ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.22)' })}>
-                    <AlertCircle size={14} className="flex-shrink-0 mt-0.5" style={portalStyle({ color: '#fbbf24' })} />
-                    <div className="text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.8)' })}>
-                      Bağlantı şu an kopuk. Gönderirken otomatik yeniden bağlanmayı deneyecek; olmazsa
-                      {' '}<strong>Ayarlar › Entegrasyonlar › WhatsApp</strong> ekranından QR&apos;ı yeniden okutun.
-                    </div>
-                  </div>
-                )}
-                <div className="flex items-end gap-3">
-                  <input
-                    ref={mediaInputRef}
-                    type="file"
-                    className="hidden"
-                    accept="image/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx"
-                    onChange={(e) => {
-                      handleMediaPicked(e.target.files?.[0]);
-                      e.currentTarget.value = '';
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => mediaInputRef.current?.click()}
-                    disabled={mediaMut.isPending}
-                    title="Dosya gönder"
-                    className="h-12 w-12 rounded-[11px] flex items-center justify-center disabled:opacity-50"
-                    style={portalStyle({ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: GOLD })}
-                  >
-                    {mediaMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Paperclip size={15} />}
-                  </button>
-                  <div className="relative flex-1">
-                    {showEmojiPicker && (
-                      <div
-                        className="absolute bottom-[52px] left-0 z-20 w-[320px] max-w-[calc(100vw-48px)] rounded-[12px] border p-3 shadow-2xl"
-                        style={portalStyle({ background: '#1f1f1f', borderColor: 'rgba(255,255,255,0.12)' })}
-                      >
-                        <div className="mb-2 text-[11px] font-semibold" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>Sık kullanılanlar</div>
-                        <div className="grid grid-cols-8 gap-1">
-                          {QUICK_EMOJIS.map((emoji) => (
-                            <button
-                              key={emoji}
-                              type="button"
-                              onClick={() => insertEmoji(emoji)}
-                              className="h-8 rounded-md text-[20px] leading-none hover:bg-white/10"
-                              aria-label={`Emoji ${emoji}`}
-                            >
-                              {emoji}
-                            </button>
-                          ))}
-                        </div>
+                  {qrDurumBilindi && !qrConnected && (
+                    <div className="wm-note wm-note-kehribar mb-2 flex items-start gap-2 px-3 py-2">
+                      <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />
+                      <div className="text-[12px]">
+                        Bağlantı şu an kopuk. Gönderirken otomatik yeniden bağlanmayı deneyecek; olmazsa
+                        {' '}<strong>Ayarlar › Entegrasyonlar › WhatsApp</strong> ekranından QR&apos;ı yeniden okutun.
                       </div>
-                    )}
+                    </div>
+                  )}
+                  <div className="flex items-end gap-2.5">
+                    <input
+                      ref={mediaInputRef}
+                      type="file"
+                      className="hidden"
+                      accept="image/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx"
+                      onChange={(e) => {
+                        handleMediaPicked(e.target.files?.[0]);
+                        e.currentTarget.value = '';
+                      }}
+                    />
                     <button
                       type="button"
-                      onClick={() => setShowEmojiPicker((value) => !value)}
-                      title="Emoji"
-                      className="absolute left-2 top-2 h-7 w-7 rounded-md flex items-center justify-center"
-                      style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}
+                      onClick={() => mediaInputRef.current?.click()}
+                      disabled={mediaMut.isPending}
+                      title="Dosya gönder"
+                      className="wm-btn wm-btn-secondary wm-btn-icon wm-btn-lg"
                     >
-                      <Smile size={17} />
+                      {mediaMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Paperclip size={16} />}
                     </button>
-                  <textarea
-                    ref={composeRef}
-                    value={composeText}
-                    onChange={(e) => setComposeText(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSend();
-                      }
-                    }}
-                    placeholder="Mesaj yaz... (Enter = gönder, Shift+Enter = yeni satır)"
-                    rows={2}
-                    className="w-full pl-12 pr-4 py-3 rounded-[11px] text-[15px] outline-none resize-none"
-                    style={portalStyle({ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' })}
-                  />
+                    <div className="relative flex-1">
+                      {showEmojiPicker && (
+                        <div className="wm-popover absolute bottom-[54px] left-0 z-20 w-[320px] max-w-[calc(100vw-48px)] p-3">
+                          <div className="wm-label mb-2">Sık kullanılanlar</div>
+                          <div className="grid grid-cols-8 gap-1">
+                            {QUICK_EMOJIS.map((emoji) => (
+                              <button
+                                key={emoji}
+                                type="button"
+                                onClick={() => insertEmoji(emoji)}
+                                className="wm-emoji h-8 rounded-md text-[20px] leading-none"
+                                aria-label={`Emoji ${emoji}`}
+                              >
+                                {emoji}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setShowEmojiPicker((value) => !value)}
+                        title="Emoji"
+                        className="wm-emoji-toggle absolute left-2 top-2 flex h-7 w-7 items-center justify-center rounded-md"
+                      >
+                        <Smile size={17} />
+                      </button>
+                      <textarea
+                        ref={composeRef}
+                        value={composeText}
+                        onChange={(e) => setComposeText(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            handleSend();
+                          }
+                        }}
+                        placeholder="Mesaj yaz… (Enter = gönder, Shift+Enter = yeni satır)"
+                        rows={2}
+                        className="wm-input wm-textarea w-full resize-none py-2.5 pl-11 pr-3"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleSend}
+                      disabled={!composeText.trim() || sendMut.isPending}
+                      className="wm-btn wm-btn-primary wm-btn-lg"
+                    >
+                      {sendMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                      Gönder
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={handleSend}
-                    disabled={!composeText.trim() || sendMut.isPending}
-                    className="h-12 px-5 rounded-[11px] flex items-center gap-1.5 text-[14px] font-semibold"
-                    style={portalStyle({
-                      background: composeText.trim() ? '#25d366' : 'rgba(255,255,255,0.04)',
-                      color: composeText.trim() ? '#06301c' : 'rgba(250,250,249,0.35)',
-                      opacity: sendMut.isPending ? 0.6 : 1,
-                    })}
-                  >
-                    {sendMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-                    Gönder
-                  </button>
-                </div>
                 </>
               ) : (
-                /* QR baglantisi kapali. Meta'nin 24 saat penceresi ve sablon kavrami
-                   QR hattinda YOKTUR; tek engel baglantidir. Bu yuzden burada sablon
-                   yolu degil, gercek sebep ve cozum gosterilir. */
-                <div className="flex items-start gap-2 px-3 py-3 rounded-[10px]" style={portalStyle({ background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.22)' })}>
-                  <AlertCircle size={15} className="flex-shrink-0 mt-0.5" style={portalStyle({ color: '#fca5a5' })} />
-                  <div className="text-[12.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.82)' })}>
+                /* QR bağlantısı kapalı. Meta'nın 24 saat penceresi ve şablon kavramı QR hattında YOKTUR;
+                   tek engel bağlantıdır. Burada gerçek sebep ve çözüm gösterilir. */
+                <div className="wm-note wm-note-kirmizi flex items-start gap-2 px-3 py-3">
+                  <AlertCircle size={15} className="mt-0.5 flex-shrink-0" />
+                  <div className="text-[12.5px]">
                     <strong>WhatsApp bağlantısı kapalı.</strong> Telefon uzun süre çevrimdışı kalınca bağlantı düşebiliyor.
                     {' '}<strong>Ayarlar › Entegrasyonlar › WhatsApp</strong> ekranından QR&apos;ı telefonla yeniden okutun.
                     Bağlanır bağlanmaz mesaj kutusu bu konuşmada kendiliğinden açılır.
@@ -1009,27 +951,19 @@ export default function MesajlarPage() {
         )}
       </div>
 
-      {/* ŞABLON SEÇİCİ MODAL */}
+      {/* KİŞİ BİLGİSİ PANELİ */}
       {showProfilePanel && chatData && (
-        <aside
-          className="fixed bottom-4 right-4 top-4 z-40 flex w-[min(380px,calc(100vw-32px))] shrink-0 flex-col overflow-hidden rounded-2xl xl:static xl:h-auto xl:w-[360px] xl:min-w-[340px]"
-          style={portalStyle({
-            background: '#121212',
-            border: '1px solid rgba(255,255,255,0.08)',
-            boxShadow: '0 24px 80px rgba(0,0,0,0.45)',
-          })}
-        >
-          <div className="flex h-14 items-center gap-3 px-4" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.08)' })}>
+        <aside className="wm-panel fixed bottom-4 right-4 top-4 z-40 flex w-[min(380px,calc(100vw-32px))] shrink-0 flex-col overflow-hidden xl:static xl:h-auto xl:w-[360px] xl:min-w-[340px]">
+          <div className="wm-panel-head flex h-14 items-center gap-2 px-3">
             <button
               type="button"
               onClick={() => setShowProfilePanel(false)}
-              className="flex h-8 w-8 items-center justify-center rounded-md"
-              style={portalStyle({ color: 'rgba(250,250,249,0.72)' })}
+              className="wm-btn wm-btn-ghost wm-btn-icon"
               title="Kapat"
             >
-              <X size={18} />
+              <X size={17} />
             </button>
-            <div className="text-[15px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>Kişi bilgisi</div>
+            <div className="wm-panel-title">Kişi bilgisi</div>
           </div>
 
           <div className="flex-1 overflow-y-auto">
@@ -1038,62 +972,46 @@ export default function MesajlarPage() {
                 type="button"
                 onClick={() => chatData.taxpayer.avatarUrl && setShowAvatarPreview(true)}
                 className="mx-auto rounded-full"
-                style={portalStyle({ cursor: chatData.taxpayer.avatarUrl ? 'zoom-in' : 'default' })}
+                style={{ cursor: chatData.taxpayer.avatarUrl ? 'zoom-in' : 'default' }}
                 title={chatData.taxpayer.avatarUrl ? 'Profil fotoğrafını büyüt' : undefined}
               >
                 <WhatsAppAvatar
                   name={chatData.taxpayer.name}
                   url={chatData.taxpayer.avatarUrl}
                   active={isLivePresence(chatData.presence)}
-                  size={172}
+                  size={148}
                 />
               </button>
 
-              <div className="mt-5 text-[20px] font-semibold leading-tight" style={portalStyle({ color: '#fafaf9' })}>
-                {chatData.taxpayer.name}
-              </div>
+              <div className="wm-panel-name mt-4">{chatData.taxpayer.name}</div>
               {chatData.taxpayer.phone && (
-                <div className="mt-1 text-[14px]" style={portalStyle({ color: 'rgba(250,250,249,0.58)' })}>
-                  {chatData.taxpayer.phone}
-                </div>
+                <div className="wm-muted mt-1 text-[13px] tabular-nums">{chatData.taxpayer.phone}</div>
               )}
-              <div
-                className="mt-3 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px]"
-                style={portalStyle({
-                  background: qrConnected ? 'rgba(34,197,94,0.1)' : 'rgba(248,113,113,0.1)',
-                  color: qrConnected ? '#86efac' : '#fca5a5',
-                })}
-              >
-                {qrConnected ? <CheckCircle2 size={12} /> : <AlertCircle size={12} />}
-                {qrConnected ? 'QR bağlı' : 'Bağlantı kapalı'}
-              </div>
+              <div className="mt-3">{baglantiCipi}</div>
 
-              <div className="mt-5 grid grid-cols-3 gap-3">
+              <div className="mt-5 grid grid-cols-3 gap-2">
                 <button
                   type="button"
                   onClick={openWhatsAppFromHeader}
                   disabled={!chatData.taxpayer.phone}
-                  className="flex h-12 items-center justify-center gap-2 rounded-[10px] text-[12px] font-semibold disabled:opacity-45"
-                  style={portalStyle({ background: 'rgba(255,255,255,0.06)', color: '#fafaf9' })}
+                  className="wm-btn wm-btn-secondary h-11 justify-center"
                 >
-                  <Phone size={15} /> Ara
+                  <Phone size={14} /> Ara
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowProfilePanel(false)}
-                  className="flex h-12 items-center justify-center gap-2 rounded-[10px] text-[12px] font-semibold"
-                  style={portalStyle({ background: 'rgba(255,255,255,0.06)', color: '#fafaf9' })}
+                  className="wm-btn wm-btn-secondary h-11 justify-center"
                 >
-                  <MessageCircle size={15} /> Sohbet
+                  <MessageCircle size={14} /> Sohbet
                 </button>
                 <button
                   type="button"
                   onClick={handleDeleteConversation}
                   disabled={deleteConversationMut.isPending}
-                  className="flex h-12 items-center justify-center gap-2 rounded-[10px] text-[12px] font-semibold disabled:opacity-45"
-                  style={portalStyle({ background: 'rgba(248,113,113,0.08)', color: '#fca5a5' })}
+                  className="wm-btn wm-btn-danger h-11 justify-center"
                 >
-                  {deleteConversationMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={15} />}
+                  {deleteConversationMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
                   Sil
                 </button>
               </div>
@@ -1102,39 +1020,29 @@ export default function MesajlarPage() {
                 <button
                   type="button"
                   onClick={() => setShowLinkModal(true)}
-                  className="mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-[10px] text-[12px] font-semibold"
-                  style={portalStyle({ background: 'rgba(212,184,118,0.14)', border: '1px solid rgba(212,184,118,0.25)', color: GOLD })}
+                  className="wm-btn wm-btn-civit mt-3 h-11 w-full justify-center"
                 >
                   <Link2 size={14} /> Mükellefe bağla
                 </button>
               )}
             </div>
 
-            {/* Durum (WhatsApp about/hakkında) */}
+            {/* Durum (WhatsApp hakkında) */}
             {chatData.taxpayer.about && (
-              <div className="px-5 py-4" style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.08)' })}>
-                <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>
-                  Durum
-                </div>
-                <div className="text-[13.5px] leading-relaxed" style={portalStyle({ color: '#fafaf9' })}>
-                  {chatData.taxpayer.about}
-                </div>
+              <div className="wm-panel-section px-5 py-4">
+                <div className="wm-label mb-2">Durum</div>
+                <div className="wm-ink text-[13.5px] leading-relaxed">{chatData.taxpayer.about}</div>
                 {formatLastSeen(chatData.taxpayer.aboutSetAt) && (
-                  <div className="mt-1 text-[11px]" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>
-                    {formatLastSeen(chatData.taxpayer.aboutSetAt)}
-                  </div>
+                  <div className="wm-faint mt-1 text-[11px]">{formatLastSeen(chatData.taxpayer.aboutSetAt)}</div>
                 )}
               </div>
             )}
 
             {/* Çevrimiçi / son görülme */}
             {presenceText(chatData.presence) && (
-              <div className="px-5 py-3 flex items-center justify-between gap-3" style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.08)' })}>
-                <span className="text-[13px]" style={portalStyle({ color: 'rgba(250,250,249,0.56)' })}>Durum bilgisi</span>
-                <span
-                  className="text-[13px] font-medium"
-                  style={portalStyle({ color: isLivePresence(chatData.presence) ? '#86efac' : 'rgba(250,250,249,0.78)' })}
-                >
+              <div className="wm-panel-section flex items-center justify-between gap-3 px-5 py-3">
+                <span className="wm-muted text-[13px]">Durum bilgisi</span>
+                <span className={`text-[13px] font-medium ${isLivePresence(chatData.presence) ? 'wm-presence-live' : 'wm-ink'}`}>
                   {presenceText(chatData.presence)}
                 </span>
               </div>
@@ -1149,12 +1057,10 @@ export default function MesajlarPage() {
               const images = docs.filter((d) => isImageDoc(d));
               const files = docs.filter((d) => !isImageDoc(d));
               return (
-                <div className="px-5 py-4" style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.08)' })}>
+                <div className="wm-panel-section px-5 py-4">
                   <div className="mb-3 flex items-center justify-between">
-                    <span className="text-[11px] font-semibold uppercase tracking-wider" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>
-                      Medya, bağlantılar ve belgeler
-                    </span>
-                    <span className="text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>{docs.length}</span>
+                    <span className="wm-label">Medya, bağlantılar ve belgeler</span>
+                    <span className="wm-chip wm-chip-notr wm-chip-sm tabular-nums">{docs.length}</span>
                   </div>
                   {images.length > 0 && (
                     <div className="grid grid-cols-3 gap-1.5">
@@ -1164,8 +1070,7 @@ export default function MesajlarPage() {
                           href={d.url || '#'}
                           target="_blank"
                           rel="noreferrer"
-                          className="aspect-square overflow-hidden rounded-[8px]"
-                          style={portalStyle({ background: 'rgba(255,255,255,0.05)' })}
+                          className="wm-thumb aspect-square overflow-hidden rounded-[8px]"
                           title={d.title}
                         >
                           <img src={d.url || ''} alt={d.title} className="h-full w-full object-cover" />
@@ -1181,11 +1086,10 @@ export default function MesajlarPage() {
                           href={d.url || '#'}
                           target="_blank"
                           rel="noreferrer"
-                          className="flex items-center gap-2.5 rounded-[8px] px-2.5 py-2 text-[12.5px]"
-                          style={portalStyle({ background: 'rgba(255,255,255,0.04)', color: '#fafaf9' })}
+                          className="wm-file flex items-center gap-2.5 px-2.5 py-2 text-[12.5px]"
                           title={d.title}
                         >
-                          <Paperclip size={14} style={portalStyle({ color: GOLD, flexShrink: 0 })} />
+                          <Paperclip size={13} className="wm-file-icon flex-shrink-0" />
                           <span className="truncate">{d.title}</span>
                         </a>
                       ))}
@@ -1195,50 +1099,24 @@ export default function MesajlarPage() {
               );
             })()}
 
-            <div className="px-5 py-4" style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.08)' })}>
-              <div className="mb-3 text-[11px] font-semibold uppercase tracking-wider" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>
-                Kayıt bilgileri
-              </div>
-              <div className="space-y-3 text-[13px]">
-                <div className="flex items-center justify-between gap-3">
-                  <span style={portalStyle({ color: 'rgba(250,250,249,0.56)' })}>Telefon</span>
-                  <span className="text-right" style={portalStyle({ color: '#fafaf9' })}>{chatData.taxpayer.phone || '-'}</span>
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <span style={portalStyle({ color: 'rgba(250,250,249,0.56)' })}>Portal kaydi</span>
-                  <span className="text-right" style={portalStyle({ color: '#fafaf9' })}>
-                    {chatData.taxpayer.unknownContact ? 'Kayıtsız WhatsApp' : 'Mükellef kaydı'}
-                  </span>
-                </div>
+            <div className="wm-panel-section px-5 py-4">
+              <div className="wm-label mb-3">Kayıt bilgileri</div>
+              <div className="space-y-2.5 text-[13px]">
+                <div className="wm-kv"><span>Telefon</span><span className="tabular-nums">{chatData.taxpayer.phone || '-'}</span></div>
+                <div className="wm-kv"><span>Portal kaydı</span><span>{chatData.taxpayer.unknownContact ? 'Kayıtsız WhatsApp' : 'Mükellef kaydı'}</span></div>
                 {chatData.taxpayer.taxNumber && (
-                  <div className="flex items-center justify-between gap-3">
-                    <span style={portalStyle({ color: 'rgba(250,250,249,0.56)' })}>VKN/TCKN</span>
-                    <span className="text-right" style={portalStyle({ color: '#fafaf9' })}>{chatData.taxpayer.taxNumber}</span>
-                  </div>
+                  <div className="wm-kv"><span>VKN/TCKN</span><span className="tabular-nums">{chatData.taxpayer.taxNumber}</span></div>
                 )}
               </div>
             </div>
 
-            <div className="px-5 py-4" style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.08)' })}>
-              <div className="mb-3 text-[11px] font-semibold uppercase tracking-wider" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>
-                Konuşma
-              </div>
-              <div className="space-y-3 text-[13px]">
-                <div className="flex items-center justify-between gap-3">
-                  <span style={portalStyle({ color: 'rgba(250,250,249,0.56)' })}>Toplam mesaj</span>
-                  <span style={portalStyle({ color: '#fafaf9' })}>{selectedConversation?.totalMessages ?? chatData.messages.length}</span>
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <span style={portalStyle({ color: 'rgba(250,250,249,0.56)' })}>Son mesaj</span>
-                  <span className="text-right" style={portalStyle({ color: '#fafaf9' })}>
-                    {selectedConversation?.lastMessageAt ? fmtFullTime(selectedConversation.lastMessageAt) : '-'}
-                  </span>
-                </div>
+            <div className="wm-panel-section px-5 py-4">
+              <div className="wm-label mb-3">Konuşma</div>
+              <div className="space-y-2.5 text-[13px]">
+                <div className="wm-kv"><span>Toplam mesaj</span><span className="tabular-nums">{selectedConversation?.totalMessages ?? chatData.messages.length}</span></div>
+                <div className="wm-kv"><span>Son mesaj</span><span className="tabular-nums">{selectedConversation?.lastMessageAt ? fmtFullTime(selectedConversation.lastMessageAt) : '-'}</span></div>
                 {selectedConversation?.lastMessage && (
-                  <div
-                    className="rounded-[10px] px-3 py-2 text-left text-[12px]"
-                    style={portalStyle({ background: 'rgba(255,255,255,0.04)', color: 'rgba(250,250,249,0.74)' })}
-                  >
+                  <div className="wm-quote px-3 py-2 text-left text-[12px]">
                     {renderWhatsAppLogText(selectedConversation.lastMessage)}
                   </div>
                 )}
@@ -1250,15 +1128,13 @@ export default function MesajlarPage() {
 
       {showAvatarPreview && chatData?.taxpayer?.avatarUrl && (
         <div
-          className="fixed inset-0 z-[70] flex items-center justify-center p-6"
-          style={portalStyle({ background: 'rgba(0,0,0,0.82)', backdropFilter: 'blur(6px)' })}
+          className="wm-lightbox fixed inset-0 z-[70] flex items-center justify-center p-6"
           onClick={() => setShowAvatarPreview(false)}
         >
           <button
             type="button"
             onClick={() => setShowAvatarPreview(false)}
-            className="absolute right-5 top-5 flex h-10 w-10 items-center justify-center rounded-full"
-            style={portalStyle({ background: 'rgba(255,255,255,0.08)', color: '#fafaf9' })}
+            className="wm-lightbox-close absolute right-5 top-5 flex h-10 w-10 items-center justify-center rounded-full"
             title="Kapat"
           >
             <X size={22} />
@@ -1266,79 +1142,76 @@ export default function MesajlarPage() {
           <img
             src={chatData.taxpayer.avatarUrl}
             alt={chatData.taxpayer.name || 'WhatsApp profil'}
-            className="max-h-[82vh] max-w-[82vw] rounded-full object-cover"
-            style={portalStyle({ boxShadow: '0 28px 100px rgba(0,0,0,0.55)' })}
+            className="wm-lightbox-img max-h-[82vh] max-w-[82vw] rounded-full object-cover"
             onClick={(e) => e.stopPropagation()}
           />
         </div>
       )}
 
+      {/* YENİ KONUŞMA PENCERESİ */}
       {showStartModal && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={portalStyle({ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' })}
+          className="wm-overlay fixed inset-0 z-50 flex items-center justify-center p-4"
           onClick={() => setShowStartModal(false)}
         >
           <div
-            className="rounded-2xl p-5 w-full max-w-5xl"
-            style={portalStyle({ background: '#1c1813', border: '1px solid rgba(255,255,255,0.1)' })}
+            className="wm-dialog w-full max-w-5xl p-5"
+            role="dialog"
+            aria-label="Rehberden konuşma başlat"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <Users size={17} style={portalStyle({ color: GOLD })} />
-                <h3 className="text-[15px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>Rehberden Konuşma Başlat</h3>
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <span className="wm-head-icon"><Users size={17} /></span>
+                <div>
+                  <h3 className="wm-dialog-title">Rehberden Konuşma Başlat</h3>
+                  <p className="wm-muted text-[12px]">Mükellef seç, numarayı doğrula, ilk mesajı gönder.</p>
+                </div>
               </div>
-              <button onClick={() => setShowStartModal(false)} style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
-                <X size={18} />
+              <button type="button" onClick={() => setShowStartModal(false)} className="wm-btn wm-btn-ghost wm-btn-icon" title="Pencereyi kapat">
+                <X size={17} />
               </button>
             </div>
 
-            <div className="mb-4 grid grid-cols-2 gap-2 rounded-[12px] border p-1" style={portalStyle({ borderColor: 'rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.16)' })}>
+            <div className="wm-seg mb-4 grid grid-cols-2 gap-1">
               {[
                 { key: 'contacts', label: 'Rehber' },
-                { key: 'manual', label: 'Manuel Numara' },
+                { key: 'manual', label: 'Numara yaz' },
               ].map((mode) => (
                 <button
                   key={mode.key}
                   type="button"
                   onClick={() => setStartMode(mode.key as 'contacts' | 'manual')}
-                  className="h-9 rounded-[10px] text-[12px] font-semibold"
-                  style={portalStyle({
-                    background: startMode === mode.key ? 'rgba(212,184,118,0.16)' : 'transparent',
-                    color: startMode === mode.key ? GOLD : 'rgba(250,250,249,0.58)',
-                  })}
+                  data-active={startMode === mode.key ? 'true' : undefined}
+                  className="wm-seg-btn h-9"
                 >
                   {mode.label}
                 </button>
               ))}
             </div>
 
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
-              <div className="min-h-[360px] rounded-[12px] border p-3" style={portalStyle({ borderColor: 'rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.16)' })}>
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+              <div className="wm-subcard min-h-[360px] p-3">
                 <div className="relative mb-3">
-                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={portalStyle({ color: 'rgba(250,250,249,0.38)' })} />
+                  <Search size={14} className="wm-input-icon absolute left-3 top-1/2 -translate-y-1/2" />
                   <input
                     value={contactSearch}
                     onChange={(e) => {
                       setContactSearch(e.target.value);
                       setSelectedContactId(null);
                     }}
-                    placeholder="Rehberde ara..."
-                    className="w-full h-10 pl-9 pr-3 rounded-[10px] text-[12.5px] outline-none"
-                    style={portalStyle({ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' })}
+                    placeholder="Rehberde ara…"
+                    className="wm-input h-10 w-full pl-9 pr-3"
                   />
                 </div>
 
-                <div className="max-h-[310px] overflow-y-auto space-y-1">
+                <div className="max-h-[310px] space-y-1 overflow-y-auto">
                   {contactsLoading ? (
-                    <div className="py-10 text-center text-[12.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
-                      <Loader2 size={16} className="animate-spin mx-auto mb-2" /> Yükleniyor...
+                    <div className="wm-muted py-10 text-center text-[12.5px]">
+                      <Loader2 size={16} className="mx-auto mb-2 animate-spin" /> Yükleniyor...
                     </div>
                   ) : contacts.length === 0 ? (
-                    <div className="py-10 text-center text-[12.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
-                      Kayıt bulunamadı.
-                    </div>
+                    <div className="wm-muted py-10 text-center text-[12.5px]">Kayıt bulunamadı.</div>
                   ) : contacts.map((contact) => {
                     const active = contact.taxpayerId === selectedContactId;
                     const canSend = contact.phones.length > 0;
@@ -1348,23 +1221,16 @@ export default function MesajlarPage() {
                         type="button"
                         onClick={() => setSelectedContactId(contact.taxpayerId)}
                         disabled={!canSend}
-                        className="w-full rounded-[10px] px-3 py-2 text-left disabled:opacity-45"
-                        style={portalStyle({
-                          background: active ? 'rgba(212,184,118,0.1)' : 'rgba(255,255,255,0.03)',
-                          border: `1px solid ${active ? 'rgba(212,184,118,0.28)' : 'rgba(255,255,255,0.06)'}`,
-                        })}
+                        data-active={active ? 'true' : undefined}
+                        className="wm-pick w-full px-3 py-2 text-left disabled:opacity-45"
                       >
                         <div className="flex items-center justify-between gap-3">
                           <div className="min-w-0">
-                            <div className="truncate text-[13px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>{contact.taxpayerName}</div>
-                            <div className="mt-0.5 flex items-center gap-2 text-[11px]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
-                              <span className="truncate">{contact.primaryPhone || 'Telefon yok'}</span>
-                            </div>
+                            <div className="wm-pick-name truncate">{contact.taxpayerName}</div>
+                            <div className="wm-muted mt-0.5 text-[11.5px] tabular-nums">{contact.primaryPhone || 'Telefon yok'}</div>
                           </div>
                           {contact.hasConversation && (
-                            <span className="rounded-md px-2 py-1 text-[10px]" style={portalStyle({ background: 'rgba(34,197,94,0.09)', color: '#86efac' })}>
-                              Sohbet
-                            </span>
+                            <span className="wm-chip wm-chip-yesil wm-chip-sm">Sohbet var</span>
                           )}
                         </div>
                       </button>
@@ -1373,77 +1239,58 @@ export default function MesajlarPage() {
                 </div>
               </div>
 
-              <div className="rounded-[12px] border p-3" style={portalStyle({ borderColor: 'rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.025)' })}>
+              <div className="wm-subcard p-3">
                 {startMode === 'manual' ? (
                   <>
-                    <label className="block text-[11px] font-medium uppercase tracking-wider" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
-                      Telefon
-                    </label>
+                    <label className="wm-label block">Telefon</label>
                     <input
                       value={manualPhone}
                       onChange={(e) => setManualPhone(e.target.value)}
                       placeholder="905xxxxxxxxx"
-                      className="mt-1.5 w-full rounded-[10px] border bg-transparent px-3 py-2 text-[13px] outline-none"
-                      style={portalStyle({ borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' })}
+                      className="wm-input mt-1.5 h-10 w-full px-3"
                     />
-                    <label className="mt-3 block text-[11px] font-medium uppercase tracking-wider" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
-                      Kayıt adı
-                    </label>
+                    <label className="wm-label mt-3 block">Kayıt adı</label>
                     <input
                       value={manualName}
                       onChange={(e) => setManualName(e.target.value)}
-                      placeholder="Opsiyonel"
-                      className="mt-1.5 w-full rounded-[10px] border bg-transparent px-3 py-2 text-[13px] outline-none"
-                      style={portalStyle({ borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' })}
+                      placeholder="İsteğe bağlı"
+                      className="wm-input mt-1.5 h-10 w-full px-3"
                     />
                   </>
                 ) : (
                   <>
-                    <label className="block text-[11px] font-medium uppercase tracking-wider" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
-                      Telefon
-                    </label>
+                    <label className="wm-label block">Telefon</label>
                     <div className="mt-1.5 space-y-2">
                       {(selectedContact?.phones || []).length ? selectedContact!.phones.map((item) => (
                         <button
                           key={`${item.label}-${item.phone}`}
                           type="button"
                           onClick={() => setSelectedPhone(item.phone)}
-                          className="w-full rounded-[10px] border px-3 py-2 text-left"
-                          style={portalStyle({
-                            borderColor: selectedPhone === item.phone ? 'rgba(212,184,118,0.34)' : 'rgba(255,255,255,0.08)',
-                            background: selectedPhone === item.phone ? 'rgba(212,184,118,0.1)' : 'rgba(0,0,0,0.12)',
-                            color: '#fafaf9',
-                          })}
+                          data-active={selectedPhone === item.phone ? 'true' : undefined}
+                          className="wm-pick w-full px-3 py-2 text-left"
                         >
-                          <div className="text-[12px] font-semibold">{item.phone}</div>
-                          <div className="mt-0.5 text-[10.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.48)' })}>{item.label}</div>
+                          <div className="wm-pick-name tabular-nums">{item.phone}</div>
+                          <div className="wm-muted mt-0.5 text-[11px]">{item.label}</div>
                         </button>
                       )) : (
-                        <div className="rounded-[10px] border px-3 py-3 text-[12px]" style={portalStyle({ borderColor: 'rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.45)' })}>
-                          Telefon yok
-                        </div>
+                        <div className="wm-empty px-3 py-3 text-[12px]">Telefon yok</div>
                       )}
                     </div>
                   </>
                 )}
 
-                <label className="mt-3 block text-[11px] font-medium uppercase tracking-wider" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
-                  İlk mesaj
-                </label>
+                <label className="wm-label mt-3 block">İlk mesaj</label>
                 <textarea
                   value={startMessage}
                   onChange={(e) => setStartMessage(e.target.value)}
                   rows={5}
                   placeholder="Merhaba"
-                  className="mt-1.5 w-full resize-none rounded-[10px] border bg-transparent px-3 py-2 text-[13px] outline-none"
-                  style={portalStyle({ borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' })}
+                  className="wm-input mt-1.5 w-full resize-none px-3 py-2"
                 />
                 {qrStartAvailable ? (
-                  <div className="mt-2 text-[11px]" style={portalStyle({ color: 'rgba(134,239,172,0.82)' })}>
-                    QR bağlı — normal WhatsApp mesajı olarak gönderilecek.
-                  </div>
+                  <div className="wm-hint wm-hint-yesil mt-2 text-[11.5px]">Bağlantı açık — normal WhatsApp mesajı olarak gönderilecek.</div>
                 ) : (
-                  <div className="mt-2 text-[11px]" style={portalStyle({ color: '#fca5a5' })}>
+                  <div className="wm-hint wm-hint-kirmizi mt-2 text-[11.5px]">
                     WhatsApp bağlantısı kapalı. Ayarlar › Entegrasyonlar › WhatsApp ekranından QR&apos;ı yeniden okutun; bağlanınca buradan konuşma başlatabilirsiniz.
                   </div>
                 )}
@@ -1452,8 +1299,7 @@ export default function MesajlarPage() {
                   type="button"
                   onClick={() => startMut.mutate()}
                   disabled={(startMode === 'contacts' ? (!selectedContact || !selectedPhone) : !manualPhone.trim()) || !startMessage.trim() || !qrStartAvailable || startMut.isPending}
-                  className="mt-4 h-11 w-full rounded-[10px] flex items-center justify-center gap-1.5 text-[13px] font-semibold disabled:opacity-50"
-                  style={portalStyle({ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' })}
+                  className="wm-btn wm-btn-primary mt-4 h-11 w-full justify-center"
                 >
                   {startMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
                   {qrStartAvailable ? 'Mesajla Başlat' : 'Bağlantı bekleniyor'}
@@ -1464,37 +1310,40 @@ export default function MesajlarPage() {
         </div>
       )}
 
+      {/* KAYITSIZ KONUŞMAYI BAĞLA */}
       {showLinkModal && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={portalStyle({ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' })}
+          className="wm-overlay fixed inset-0 z-50 flex items-center justify-center p-4"
           onClick={() => setShowLinkModal(false)}
         >
           <div
-            className="rounded-2xl p-5 w-full max-w-2xl"
-            style={portalStyle({ background: '#1c1813', border: '1px solid rgba(255,255,255,0.1)' })}
+            className="wm-dialog w-full max-w-2xl p-5"
+            role="dialog"
+            aria-label="Kayıtsız konuşmayı bağla"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="mb-4 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Link2 size={17} style={portalStyle({ color: GOLD })} />
-                <h3 className="text-[15px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>Kayıtsız Konuşmayı Bağla</h3>
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <span className="wm-head-icon wm-head-icon-civit"><Link2 size={17} /></span>
+                <div>
+                  <h3 className="wm-dialog-title">Kayıtsız Konuşmayı Bağla</h3>
+                  <p className="wm-muted text-[12px]">Bu numaranın mesajları seçtiğin mükellefin kartına taşınır.</p>
+                </div>
               </div>
-              <button onClick={() => setShowLinkModal(false)} style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
-                <X size={18} />
+              <button type="button" onClick={() => setShowLinkModal(false)} className="wm-btn wm-btn-ghost wm-btn-icon" title="Pencereyi kapat">
+                <X size={17} />
               </button>
             </div>
             <div className="relative mb-3">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={portalStyle({ color: 'rgba(250,250,249,0.38)' })} />
+              <Search size={14} className="wm-input-icon absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 value={contactSearch}
                 onChange={(e) => setContactSearch(e.target.value)}
-                placeholder="Mükellef ara..."
-                className="w-full h-10 pl-9 pr-3 rounded-[10px] text-[12.5px] outline-none"
-                style={portalStyle({ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' })}
+                placeholder="Mükellef ara…"
+                className="wm-input h-10 w-full pl-9 pr-3"
               />
             </div>
-            <div className="max-h-[320px] overflow-y-auto space-y-1">
+            <div className="max-h-[320px] space-y-1 overflow-y-auto">
               {contacts.map((contact) => {
                 const active = selectedLinkContactId === contact.taxpayerId;
                 return (
@@ -1502,14 +1351,11 @@ export default function MesajlarPage() {
                     key={contact.taxpayerId}
                     type="button"
                     onClick={() => setSelectedLinkContactId(contact.taxpayerId)}
-                    className="w-full rounded-[10px] px-3 py-2 text-left"
-                    style={portalStyle({
-                      background: active ? 'rgba(212,184,118,0.1)' : 'rgba(255,255,255,0.03)',
-                      border: `1px solid ${active ? 'rgba(212,184,118,0.28)' : 'rgba(255,255,255,0.06)'}`,
-                    })}
+                    data-active={active ? 'true' : undefined}
+                    className="wm-pick w-full px-3 py-2 text-left"
                   >
-                    <div className="text-[13px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>{contact.taxpayerName}</div>
-                    <div className="mt-0.5 text-[11px]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>{contact.primaryPhone || 'Telefon yok'}</div>
+                    <div className="wm-pick-name">{contact.taxpayerName}</div>
+                    <div className="wm-muted mt-0.5 text-[11.5px] tabular-nums">{contact.primaryPhone || 'Telefon yok'}</div>
                   </button>
                 );
               })}
@@ -1518,8 +1364,7 @@ export default function MesajlarPage() {
               type="button"
               onClick={() => linkMut.mutate()}
               disabled={!selectedLinkContact || linkMut.isPending}
-              className="mt-4 h-11 w-full rounded-[10px] flex items-center justify-center gap-1.5 text-[13px] font-semibold disabled:opacity-50"
-              style={portalStyle({ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' })}
+              className="wm-btn wm-btn-primary wm-btn-civit-solid mt-4 h-11 w-full justify-center"
             >
               {linkMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Link2 size={14} />}
               Mükellefe Bağla
@@ -1527,7 +1372,6 @@ export default function MesajlarPage() {
           </div>
         </div>
       )}
-
     </div>
   );
 }

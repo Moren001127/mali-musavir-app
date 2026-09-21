@@ -1,0 +1,300 @@
+/* WhatsApp Mesajlar (/panel/mesajlar) — beyaz tema (D) yeniden tasarımı, 2026-09-21 (bilgi/BEYAZ-TEMA-TASARIM-DILI.md).
+   Renkler satır içi değil, bu dosyadaki değişkenlerden gelir: `.wm` bloğu koyu temanın (A) karşılıkları,
+   `html[data-theme='D'] .wm` bloğu beyaz temanın gerçek paydaları. Ölçü, yerleşim ve davranış iki temada aynıdır.
+   Beyazda: yeşil yalnız WhatsApp anlamı (simge kutusu, giden balon, gönder, okunmamış rozeti); çivit = birincil eylem. */
+
+.wm {
+  --wm-surface: rgba(255, 255, 255, 0.025);
+  --wm-surface-2: rgba(255, 255, 255, 0.04);
+  --wm-line: rgba(255, 255, 255, 0.07);
+  --wm-line-soft: rgba(255, 255, 255, 0.05);
+  --wm-ink: #fafaf9;
+  --wm-ink-2: rgba(250, 250, 249, 0.72);
+  --wm-muted: rgba(250, 250, 249, 0.52);
+  --wm-faint: rgba(250, 250, 249, 0.36);
+  --wm-hover: rgba(255, 255, 255, 0.035);
+  --wm-shadow: 0 12px 36px rgba(0, 0, 0, 0.25);
+  --wm-brand: #25d366;
+  --wm-brand-2: #1fb457;
+  --wm-brand-soft: rgba(34, 197, 94, 0.14);
+  --wm-brand-line: rgba(34, 197, 94, 0.3);
+  --wm-brand-ink: #86efac;
+  --wm-on-brand: #06301c;
+  --wm-civit: #d4b876;
+  --wm-civit-2: #b8a06f;
+  --wm-civit-soft: rgba(212, 184, 118, 0.12);
+  --wm-civit-line: rgba(212, 184, 118, 0.26);
+  --wm-civit-ink: #d4b876;
+  --wm-on-civit: #0f0d0b;
+  --wm-notr-soft: rgba(255, 255, 255, 0.06);
+  --wm-notr-line: rgba(255, 255, 255, 0.1);
+  --wm-notr-ink: rgba(250, 250, 249, 0.66);
+  --wm-kirmizi-soft: rgba(248, 113, 113, 0.1);
+  --wm-kirmizi-line: rgba(248, 113, 113, 0.22);
+  --wm-kirmizi-ink: #fca5a5;
+  --wm-kirmizi: #f87171;
+  --wm-kehribar-soft: rgba(251, 191, 36, 0.09);
+  --wm-kehribar-line: rgba(251, 191, 36, 0.24);
+  --wm-kehribar-ink: #fbbf24;
+  --wm-mavi-ink: #60a5fa;
+  --wm-input-bg: rgba(0, 0, 0, 0.2);
+  --wm-input-line: rgba(255, 255, 255, 0.08);
+  --wm-input-ink: #fafaf9;
+  --wm-placeholder: rgba(250, 250, 249, 0.42);
+  --wm-ring: rgba(212, 184, 118, 0.28);
+  --wm-sel-bg: rgba(212, 184, 118, 0.08);
+  --wm-sel-line: #d4b876;
+  --wm-avatar-bg: rgba(255, 255, 255, 0.05);
+  --wm-avatar-line: rgba(255, 255, 255, 0.08);
+  --wm-avatar-ink: rgba(250, 250, 249, 0.6);
+  --wm-avatar-ring: #1c1c1a;
+  --wm-chat-bg: #0b141a;
+  --wm-chat-dot: rgba(255, 255, 255, 0.022);
+  --wm-date-bg: rgba(255, 255, 255, 0.07);
+  --wm-date-ink: rgba(250, 250, 249, 0.62);
+  --wm-in-bg: #1f2c33;
+  --wm-in-line: rgba(255, 255, 255, 0.05);
+  --wm-out-bg: #114a3a;
+  --wm-out-line: rgba(37, 211, 102, 0.18);
+  --wm-sys-bg: #1a2228;
+  --wm-sys-line: rgba(255, 255, 255, 0.08);
+  --wm-bubble-ink: #e9edef;
+  --wm-bubble-time: rgba(233, 237, 239, 0.5);
+  --wm-doc-bg: rgba(255, 255, 255, 0.05);
+  --wm-doc-line: rgba(255, 255, 255, 0.12);
+  --wm-panel-bg: #121212;
+  --wm-dialog-bg: #1c1813;
+  --wm-overlay: rgba(0, 0, 0, 0.62);
+  --wm-empty-bg: rgba(255, 255, 255, 0.02);
+  --wm-empty-line: rgba(255, 255, 255, 0.1);
+  color: var(--wm-ink);
+}
+
+html[data-theme='D'] .wm {
+  --wm-surface: #fff;
+  --wm-surface-2: #f8fafc;
+  --wm-line: #e3e8ef;
+  --wm-line-soft: #eef2f6;
+  --wm-ink: #1e293b;
+  --wm-ink-2: #475569;
+  --wm-muted: #64748b;
+  --wm-faint: #94a3b8;
+  --wm-hover: #f8fafc;
+  --wm-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+  --wm-brand: #2f9e44;
+  --wm-brand-2: #51cf66;
+  --wm-brand-soft: #ebfbee;
+  --wm-brand-line: #c6efd0;
+  --wm-brand-ink: #2b8a3e;
+  --wm-on-brand: #fff;
+  --wm-civit: #4263eb;
+  --wm-civit-2: #5c7cfa;
+  --wm-civit-soft: #edf2ff;
+  --wm-civit-line: #dbe4ff;
+  --wm-civit-ink: #3b5bdb;
+  --wm-on-civit: #fff;
+  --wm-notr-soft: #f1f5f9;
+  --wm-notr-line: #e2e8f0;
+  --wm-notr-ink: #475569;
+  --wm-kirmizi-soft: #fff5f5;
+  --wm-kirmizi-line: #ffc9c9;
+  --wm-kirmizi-ink: #c92a2a;
+  --wm-kirmizi: #e03131;
+  --wm-kehribar-soft: #fff4e6;
+  --wm-kehribar-line: #ffd8a8;
+  --wm-kehribar-ink: #d9480f;
+  --wm-mavi-ink: #1971c2;
+  --wm-input-bg: #fff;
+  --wm-input-line: #dde3ea;
+  --wm-input-ink: #1e293b;
+  --wm-placeholder: #94a3b8;
+  --wm-ring: #dbe4ff;
+  --wm-sel-bg: #ebfbee;
+  --wm-sel-line: #2f9e44;
+  --wm-avatar-bg: #f1f5f9;
+  --wm-avatar-line: #e2e8f0;
+  --wm-avatar-ink: #475569;
+  --wm-avatar-ring: #fff;
+  --wm-chat-bg: #f6f8fb;
+  --wm-chat-dot: rgba(100, 116, 139, 0.14);
+  --wm-date-bg: #fff;
+  --wm-date-ink: #475569;
+  --wm-in-bg: #fff;
+  --wm-in-line: #e3e8ef;
+  --wm-out-bg: #ebfbee;
+  --wm-out-line: #c6efd0;
+  --wm-sys-bg: #f1f5f9;
+  --wm-sys-line: #e2e8f0;
+  --wm-bubble-ink: #1e293b;
+  --wm-bubble-time: #94a3b8;
+  --wm-doc-bg: #fff;
+  --wm-doc-line: #dbe2ea;
+  --wm-panel-bg: #fff;
+  --wm-dialog-bg: #fff;
+  --wm-overlay: rgba(15, 23, 42, 0.45);
+  --wm-empty-bg: #f8fafc;
+  --wm-empty-line: #dbe2ea;
+}
+
+/* Beyaz temada başlıklar da Inter (genel h1/h2 kuralı serif veriyor); koyu temada özgün serif kalır. */
+html[data-theme='D'] .wm :is(h1, h2, h3) { font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+
+/* ── Yüzeyler ─────────────────────────────────────────────────────────────── */
+.wm .wm-card { background: var(--wm-surface); border: 1px solid var(--wm-line); border-radius: 16px; box-shadow: var(--wm-shadow); }
+.wm .wm-list-head { border-bottom: 1px solid var(--wm-line-soft); }
+.wm .wm-list-search { border-bottom: 1px solid var(--wm-line-soft); }
+.wm .wm-head-icon {
+  display: grid; place-items: center; width: 36px; height: 36px; flex-shrink: 0; border-radius: 10px;
+  background: var(--wm-brand-soft); border: 1px solid var(--wm-brand-line); color: var(--wm-brand-ink);
+}
+.wm .wm-head-icon-civit { background: var(--wm-civit-soft); border-color: var(--wm-civit-line); color: var(--wm-civit-ink); }
+.wm .wm-title { font-size: 15px; font-weight: 650; letter-spacing: -0.01em; line-height: 1.2; color: var(--wm-ink); }
+.wm .wm-ink { color: var(--wm-ink); }
+.wm .wm-muted { color: var(--wm-muted); }
+.wm .wm-faint { color: var(--wm-faint); }
+.wm .wm-label { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--wm-muted); }
+
+/* ── Çipler ────────────────────────────────────────────────────────────────── */
+.wm .wm-chip {
+  display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 10px; border-radius: 999px;
+  font-size: 11px; font-weight: 650; line-height: 1; white-space: nowrap;
+  background: var(--wm-notr-soft); border: 1px solid var(--wm-notr-line); color: var(--wm-notr-ink);
+}
+.wm .wm-chip-sm { height: 21px; padding: 0 8px; font-size: 10.5px; }
+.wm .wm-chip-notr { background: var(--wm-notr-soft); border-color: var(--wm-notr-line); color: var(--wm-notr-ink); }
+.wm .wm-chip-yesil { background: var(--wm-brand-soft); border-color: var(--wm-brand-line); color: var(--wm-brand-ink); }
+.wm .wm-chip-kirmizi { background: var(--wm-kirmizi-soft); border-color: var(--wm-kirmizi-line); color: var(--wm-kirmizi-ink); }
+
+/* ── Düğmeler ──────────────────────────────────────────────────────────────── */
+.wm .wm-btn {
+  display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 14px; border-radius: 10px;
+  font-size: 13px; font-weight: 600; line-height: 1; white-space: nowrap; transition: background .15s, border-color .15s, filter .15s, color .15s;
+}
+.wm .wm-btn:disabled { opacity: .5; cursor: not-allowed; }
+.wm .wm-btn-sm { height: 32px; padding: 0 10px; font-size: 12.5px; }
+.wm .wm-btn-lg { height: 44px; padding: 0 18px; }
+.wm .wm-btn-icon { width: 36px; padding: 0; justify-content: center; }
+.wm .wm-btn-icon.wm-btn-lg { width: 44px; }
+.wm .wm-btn-secondary { background: var(--wm-input-bg); border: 1px solid var(--wm-input-line); color: var(--wm-ink-2); }
+.wm .wm-btn-secondary:hover:not(:disabled) { background: var(--wm-hover); }
+.wm .wm-btn-ghost { background: transparent; border: 1px solid transparent; color: var(--wm-muted); }
+.wm .wm-btn-ghost:hover { background: var(--wm-hover); color: var(--wm-ink); }
+.wm .wm-btn-primary { background: linear-gradient(135deg, var(--wm-brand), var(--wm-brand-2)); color: var(--wm-on-brand); box-shadow: 0 8px 16px -10px var(--wm-brand); }
+.wm .wm-btn-primary:hover:not(:disabled) { filter: brightness(1.05); }
+.wm .wm-btn-primary:disabled { background: var(--wm-notr-soft); color: var(--wm-faint); box-shadow: none; border: 1px solid var(--wm-notr-line); opacity: 1; }
+.wm .wm-btn-civit-solid { background: linear-gradient(135deg, var(--wm-civit), var(--wm-civit-2)); color: var(--wm-on-civit); box-shadow: 0 8px 16px -10px var(--wm-civit); }
+.wm .wm-btn-civit { background: var(--wm-civit-soft); border: 1px solid var(--wm-civit-line); color: var(--wm-civit-ink); }
+.wm .wm-btn-civit:hover:not(:disabled) { filter: brightness(.98); }
+.wm .wm-btn-danger { background: var(--wm-kirmizi-soft); border: 1px solid var(--wm-kirmizi-line); color: var(--wm-kirmizi-ink); }
+.wm .wm-btn-danger:hover:not(:disabled) { background: var(--wm-kirmizi); border-color: var(--wm-kirmizi); color: #fff; }
+
+/* ── Girdiler ──────────────────────────────────────────────────────────────── */
+.wm .wm-input {
+  border-radius: 10px; font-size: 13.5px; background: var(--wm-input-bg); border: 1px solid var(--wm-input-line); color: var(--wm-input-ink); outline: none;
+  transition: border-color .15s, box-shadow .15s;
+}
+.wm .wm-input::placeholder { color: var(--wm-placeholder); }
+.wm .wm-input:focus { border-color: var(--wm-civit); box-shadow: 0 0 0 3px var(--wm-ring); outline: none; }
+.wm .wm-input-icon { color: var(--wm-faint); pointer-events: none; }
+.wm .wm-textarea { line-height: 1.5; min-height: 44px; }
+
+/* ── Konuşma satırları (rehber liste kalıbı) ───────────────────────────────── */
+.wm .wm-row { border-bottom: 1px solid var(--wm-line-soft); border-left: 3px solid transparent; transition: background .12s; }
+.wm .wm-row:hover { background: var(--wm-hover); }
+.wm .wm-row[data-selected='true'] { background: var(--wm-sel-bg); border-left-color: var(--wm-sel-line); }
+.wm .wm-row-name { font-size: 13.5px; font-weight: 600; color: var(--wm-ink); }
+.wm .wm-row-time { font-size: 11.5px; color: var(--wm-faint); }
+.wm .wm-row-last { font-size: 12px; color: var(--wm-muted); }
+.wm .wm-row-last-unread { color: var(--wm-ink-2); font-weight: 500; }
+.wm .wm-row-tick { color: var(--wm-faint); }
+.wm .wm-unread {
+  display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px;
+  font-size: 11px; font-weight: 700; background: var(--wm-brand); color: #fff; flex-shrink: 0;
+}
+
+/* ── Avatar ────────────────────────────────────────────────────────────────── */
+.wm .wm-avatar {
+  display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; overflow: hidden; border-radius: 999px;
+  font-weight: 650; background: var(--wm-avatar-bg); border: 1px solid var(--wm-avatar-line); color: var(--wm-avatar-ink);
+}
+.wm .wm-avatar-active { background: var(--wm-brand-soft); border-color: var(--wm-brand-line); color: var(--wm-brand-ink); }
+.wm .wm-avatar-dot { position: absolute; border-radius: 50%; background: #25d366; border: 2px solid var(--wm-avatar-ring); }
+
+/* ── Boş durum ─────────────────────────────────────────────────────────────── */
+.wm .wm-empty { border: 1px dashed var(--wm-empty-line); border-radius: 14px; background: var(--wm-empty-bg); color: var(--wm-faint); }
+.wm .wm-empty-icon { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; background: var(--wm-brand-soft); color: var(--wm-brand-ink); }
+.wm .wm-empty-title { font-size: 15px; font-weight: 650; color: var(--wm-ink); }
+.wm .wm-empty-text { font-size: 13px; color: var(--wm-muted); }
+
+/* ── Sohbet başlığı ────────────────────────────────────────────────────────── */
+.wm .wm-chat-head { border-bottom: 1px solid var(--wm-line-soft); background: var(--wm-surface); }
+.wm .wm-chat-name { font-size: 15px; font-weight: 650; color: var(--wm-ink); }
+.wm .wm-chat-meta { font-size: 12px; color: var(--wm-muted); }
+.wm .wm-presence-live { color: var(--wm-brand-ink); font-weight: 600; }
+
+/* ── Mesaj alanı ───────────────────────────────────────────────────────────── */
+.wm .wm-chat { background-color: var(--wm-chat-bg); background-image: radial-gradient(var(--wm-chat-dot) 1px, transparent 1px); background-size: 18px 18px; }
+.wm .wm-date { padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; background: var(--wm-date-bg); border: 1px solid var(--wm-line); color: var(--wm-date-ink); }
+.wm .wm-bubble {
+  max-width: min(76%, 720px); padding: 9px 13px 7px; border-radius: 12px; font-size: 13.5px; line-height: 1.55; color: var(--wm-bubble-ink);
+  border: 1px solid transparent; box-shadow: 0 1px 1px rgba(15, 23, 42, 0.03);
+}
+.wm .wm-bubble-in { background: var(--wm-in-bg); border-color: var(--wm-in-line); border-top-left-radius: 4px; }
+.wm .wm-bubble-out { background: var(--wm-out-bg); border-color: var(--wm-out-line); border-top-right-radius: 4px; }
+.wm .wm-bubble-sys { background: var(--wm-sys-bg); border-color: var(--wm-sys-line); border-top-right-radius: 4px; }
+.wm .wm-bubble-hatali { border-color: var(--wm-kirmizi-line); }
+.wm .wm-bubble-tag { display: inline-flex; align-items: center; gap: 4px; margin-bottom: 3px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--wm-muted); }
+.wm .wm-bubble-meta { font-size: 11px; color: var(--wm-bubble-time); }
+.wm .wm-bubble-failed { font-size: 11px; font-weight: 600; color: var(--wm-kirmizi-ink); }
+.wm .wm-tick-read { color: var(--wm-mavi-ink); }
+.wm .wm-tick-delivered, .wm .wm-tick-sent, .wm .wm-tick-pending { color: var(--wm-bubble-time); }
+.wm .wm-tick-failed { color: var(--wm-kirmizi); }
+.wm .wm-doc { border-radius: 9px; background: var(--wm-doc-bg); border: 1px solid var(--wm-doc-line); }
+.wm .wm-doc-icon { display: grid; place-items: center; width: 28px; height: 28px; flex-shrink: 0; border-radius: 7px; background: var(--wm-civit-soft); color: var(--wm-civit-ink); }
+.wm .wm-doc-title { font-size: 12px; font-weight: 600; color: var(--wm-ink); }
+
+/* ── Yazı kutusu ───────────────────────────────────────────────────────────── */
+.wm .wm-compose { border-top: 1px solid var(--wm-line-soft); background: var(--wm-surface); }
+.wm .wm-emoji-toggle { color: var(--wm-faint); }
+.wm .wm-emoji-toggle:hover { color: var(--wm-ink-2); }
+.wm .wm-popover { border-radius: 12px; background: var(--wm-panel-bg); border: 1px solid var(--wm-line); box-shadow: 0 16px 40px rgba(15, 23, 42, 0.16); }
+.wm .wm-emoji:hover { background: var(--wm-hover); }
+.wm .wm-note { border-radius: 10px; font-size: 12px; color: var(--wm-ink-2); }
+.wm .wm-note strong { color: var(--wm-ink); }
+.wm .wm-note-kehribar { background: var(--wm-kehribar-soft); border: 1px solid var(--wm-kehribar-line); }
+.wm .wm-note-kehribar svg { color: var(--wm-kehribar-ink); }
+.wm .wm-note-kirmizi { background: var(--wm-kirmizi-soft); border: 1px solid var(--wm-kirmizi-line); }
+.wm .wm-note-kirmizi svg { color: var(--wm-kirmizi-ink); }
+
+/* ── Kişi bilgisi paneli ───────────────────────────────────────────────────── */
+.wm .wm-panel { border-radius: 16px; background: var(--wm-panel-bg); border: 1px solid var(--wm-line); box-shadow: var(--wm-shadow); }
+.wm .wm-panel-head { border-bottom: 1px solid var(--wm-line-soft); }
+.wm .wm-panel-title { font-size: 14px; font-weight: 650; color: var(--wm-ink); }
+.wm .wm-panel-name { font-size: 18px; font-weight: 700; line-height: 1.25; color: var(--wm-ink); }
+.wm .wm-panel-section { border-top: 1px solid var(--wm-line-soft); }
+.wm .wm-kv { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.wm .wm-kv > span:first-child { color: var(--wm-muted); }
+.wm .wm-kv > span:last-child { text-align: right; color: var(--wm-ink); font-weight: 500; }
+.wm .wm-quote { border-radius: 10px; background: var(--wm-surface-2); border: 1px solid var(--wm-line-soft); color: var(--wm-ink-2); }
+.wm .wm-thumb { background: var(--wm-surface-2); border: 1px solid var(--wm-line-soft); }
+.wm .wm-file { border-radius: 8px; background: var(--wm-surface-2); border: 1px solid var(--wm-line-soft); color: var(--wm-ink); }
+.wm .wm-file:hover { background: var(--wm-hover); }
+.wm .wm-file-icon { color: var(--wm-civit-ink); }
+.wm .wm-lightbox { background: rgba(0, 0, 0, 0.82); backdrop-filter: blur(6px); }
+.wm .wm-lightbox-close { background: rgba(255, 255, 255, 0.12); color: #fff; }
+.wm .wm-lightbox-img { box-shadow: 0 28px 100px rgba(0, 0, 0, 0.55); }
+
+/* ── Pencereler ────────────────────────────────────────────────────────────── */
+.wm .wm-overlay { background: var(--wm-overlay); backdrop-filter: blur(4px); }
+.wm .wm-dialog { border-radius: 16px; background: var(--wm-dialog-bg); border: 1px solid var(--wm-line); box-shadow: 0 24px 80px rgba(15, 23, 42, 0.25); }
+.wm .wm-dialog-title { font-size: 15px; font-weight: 650; color: var(--wm-ink); }
+.wm .wm-subcard { border-radius: 12px; background: var(--wm-surface-2); border: 1px solid var(--wm-line-soft); }
+.wm .wm-seg { padding: 3px; border-radius: 10px; background: var(--wm-notr-soft); border: 1px solid var(--wm-notr-line); }
+.wm .wm-seg-btn { border-radius: 8px; font-size: 12.5px; font-weight: 600; color: var(--wm-muted); transition: background .15s, color .15s; }
+.wm .wm-seg-btn[data-active='true'] { background: var(--wm-surface); color: var(--wm-civit-ink); box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12), 0 0 0 1px var(--wm-civit-line); }
+.wm .wm-pick { border-radius: 10px; background: var(--wm-surface); border: 1px solid var(--wm-line); transition: border-color .12s, background .12s; }
+.wm .wm-pick:hover:not(:disabled) { background: var(--wm-hover); }
+.wm .wm-pick[data-active='true'] { background: var(--wm-civit-soft); border-color: var(--wm-civit-line); }
+.wm .wm-pick-name { font-size: 13px; font-weight: 600; color: var(--wm-ink); }
+.wm .wm-hint-yesil { color: var(--wm-brand-ink); }
+.wm .wm-hint-kirmizi { color: var(--wm-kirmizi-ink); }

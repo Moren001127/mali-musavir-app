@@ -1,0 +1,226 @@
+/* İş Akışı (/panel/is-yuku) — beyaz tema (D) yeniden tasarımı, 2026-09-21 (bilgi/BEYAZ-TEMA-TASARIM-DILI.md).
+   Sayfa renkleri satır içi değil, bu dosyadaki değişkenlerden gelir: `.is-yuku` bloğu koyu temanın (A) karşılıkları,
+   `html[data-theme='D'] .is-yuku` bloğu beyaz temanın gerçek paydaları. Ölçü ve yerleşim iki temada aynıdır.
+   Aşama tonu `data-akis-asama` ile: evrak kehribar · yükleme deniz yeşili · işleme mavi · kontrol mor · beyanname çivit · tamam yeşil. */
+
+.is-yuku {
+  --ay-surface: rgba(255, 255, 255, 0.03);
+  --ay-surface-2: rgba(255, 255, 255, 0.05);
+  --ay-line: rgba(255, 255, 255, 0.08);
+  --ay-line-soft: rgba(255, 255, 255, 0.06);
+  --ay-ink: #fafaf9;
+  --ay-ink-2: rgba(250, 250, 249, 0.72);
+  --ay-muted: rgba(250, 250, 249, 0.52);
+  --ay-faint: rgba(250, 250, 249, 0.36);
+  --ay-accent: #d4b876;
+  --ay-accent-2: #b8a06f;
+  --ay-accent-soft: rgba(212, 184, 118, 0.12);
+  --ay-accent-line: rgba(212, 184, 118, 0.26);
+  --ay-accent-ink: #d4b876;
+  --ay-on-accent: #0f0d0b;
+  --ay-hover: rgba(255, 255, 255, 0.04);
+  --ay-shadow: 0 12px 36px rgba(0, 0, 0, 0.22);
+  --ay-shadow-soft: none;
+  --ay-input-bg: rgba(255, 255, 255, 0.03);
+  --ay-input-line: rgba(255, 255, 255, 0.1);
+  --ay-ring: rgba(212, 184, 118, 0.3);
+  --ay-notr-soft: rgba(255, 255, 255, 0.05);
+  --ay-notr-line: rgba(255, 255, 255, 0.09);
+  --ay-notr-ink: rgba(250, 250, 249, 0.66);
+  --ay-civit-soft: rgba(212, 184, 118, 0.12);
+  --ay-civit-line: rgba(212, 184, 118, 0.26);
+  --ay-civit-ink: #d4b876;
+  --ay-yesil: #22c55e;
+  --ay-yesil-soft: rgba(34, 197, 94, 0.1);
+  --ay-yesil-line: rgba(34, 197, 94, 0.24);
+  --ay-yesil-ink: #86efac;
+  --ay-kehribar-soft: rgba(251, 191, 36, 0.1);
+  --ay-kehribar-line: rgba(251, 191, 36, 0.26);
+  --ay-kehribar-ink: #fbbf24;
+  --ay-kirmizi: #ef4444;
+  --ay-kirmizi-soft: rgba(239, 68, 68, 0.1);
+  --ay-kirmizi-line: rgba(239, 68, 68, 0.26);
+  --ay-kirmizi-ink: #fca5a5;
+  --ay-bar-bg: rgba(255, 255, 255, 0.08);
+  --ay-empty-bg: rgba(34, 197, 94, 0.05);
+  --ay-empty-line: rgba(34, 197, 94, 0.22);
+  color: var(--ay-ink);
+}
+
+/* A teması aşama tonları (eski sayfanın renkleri) */
+.is-yuku [data-akis-asama='EVRAK_BEKLIYOR']     { --st-a: #94a3b8; --st-b: #cbd5e1; --st-soft: rgba(203, 213, 225, 0.12); --st-line: rgba(203, 213, 225, 0.3); --st-ink: #cbd5e1; }
+.is-yuku [data-akis-asama='YUKLEME_BEKLIYOR']   { --st-a: #14b8a6; --st-b: #2dd4bf; --st-soft: rgba(45, 212, 191, 0.14); --st-line: rgba(45, 212, 191, 0.32); --st-ink: #2dd4bf; }
+.is-yuku [data-akis-asama='ISLENMEYI_BEKLIYOR'] { --st-a: #3b82f6; --st-b: #60a5fa; --st-soft: rgba(96, 165, 250, 0.14); --st-line: rgba(96, 165, 250, 0.32); --st-ink: #60a5fa; }
+.is-yuku [data-akis-asama='KONTROL_BEKLIYOR']   { --st-a: #a855f7; --st-b: #c084fc; --st-soft: rgba(192, 132, 252, 0.14); --st-line: rgba(192, 132, 252, 0.32); --st-ink: #c084fc; }
+.is-yuku [data-akis-asama='BEYANNAME_BEKLIYOR'] { --st-a: #d4b876; --st-b: #e7cf95; --st-soft: rgba(212, 184, 118, 0.14); --st-line: rgba(212, 184, 118, 0.32); --st-ink: #e7cf95; }
+.is-yuku [data-akis-asama='TAMAM']              { --st-a: #22c55e; --st-b: #4ade80; --st-soft: rgba(74, 222, 128, 0.14); --st-line: rgba(74, 222, 128, 0.32); --st-ink: #4ade80; }
+
+html[data-theme='D'] .is-yuku {
+  --ay-surface: #fff;
+  --ay-surface-2: #f8fafc;
+  --ay-line: #e3e8ef;
+  --ay-line-soft: #eef2f6;
+  --ay-ink: #1e293b;
+  --ay-ink-2: #475569;
+  --ay-muted: #64748b;
+  --ay-faint: #94a3b8;
+  --ay-accent: #4263eb;
+  --ay-accent-2: #5c7cfa;
+  --ay-accent-soft: #edf2ff;
+  --ay-accent-line: #dbe4ff;
+  --ay-accent-ink: #3b5bdb;
+  --ay-on-accent: #fff;
+  --ay-hover: #f8fafc;
+  --ay-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+  --ay-shadow-soft: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --ay-input-bg: #fff;
+  --ay-input-line: #dde3ea;
+  --ay-ring: #dbe4ff;
+  --ay-notr-soft: #f1f5f9;
+  --ay-notr-line: #e2e8f0;
+  --ay-notr-ink: #475569;
+  --ay-civit-soft: #edf2ff;
+  --ay-civit-line: #dbe4ff;
+  --ay-civit-ink: #3b5bdb;
+  --ay-yesil: #2f9e44;
+  --ay-yesil-soft: #ebfbee;
+  --ay-yesil-line: #c6efd0;
+  --ay-yesil-ink: #2b8a3e;
+  --ay-kehribar-soft: #fff4e6;
+  --ay-kehribar-line: #ffd8a8;
+  --ay-kehribar-ink: #d9480f;
+  --ay-kirmizi: #e03131;
+  --ay-kirmizi-soft: #fff5f5;
+  --ay-kirmizi-line: #ffc9c9;
+  --ay-kirmizi-ink: #c92a2a;
+  --ay-bar-bg: #eef2f6;
+  --ay-empty-bg: #f8fafc;
+  --ay-empty-line: #dbe2ea;
+}
+
+/* D teması aşama tonları — gösterge paneli "Bu Ay İş Akışı" ile aynı aile */
+html[data-theme='D'] .is-yuku [data-akis-asama='EVRAK_BEKLIYOR']     { --st-a: #f08c00; --st-b: #f9a825; --st-soft: #fff4e6; --st-line: #ffd8a8; --st-ink: #d9480f; }
+html[data-theme='D'] .is-yuku [data-akis-asama='YUKLEME_BEKLIYOR']   { --st-a: #0ca678; --st-b: #20c997; --st-soft: #e6fcf5; --st-line: #c3fae8; --st-ink: #099268; }
+html[data-theme='D'] .is-yuku [data-akis-asama='ISLENMEYI_BEKLIYOR'] { --st-a: #1971c2; --st-b: #339af0; --st-soft: #e7f5ff; --st-line: #c5e3fb; --st-ink: #1971c2; }
+html[data-theme='D'] .is-yuku [data-akis-asama='KONTROL_BEKLIYOR']   { --st-a: #7048e8; --st-b: #9775fa; --st-soft: #f3f0ff; --st-line: #e5dbff; --st-ink: #6741d9; }
+html[data-theme='D'] .is-yuku [data-akis-asama='BEYANNAME_BEKLIYOR'] { --st-a: #4263eb; --st-b: #5c7cfa; --st-soft: #edf2ff; --st-line: #dbe4ff; --st-ink: #3b5bdb; }
+html[data-theme='D'] .is-yuku [data-akis-asama='TAMAM']              { --st-a: #2f9e44; --st-b: #51cf66; --st-soft: #ebfbee; --st-line: #c6efd0; --st-ink: #2b8a3e; }
+
+/* ── Sayfa başlığı ─────────────────────────────────────────────────────────── */
+.is-yuku .ay-head-icon {
+  display: grid; place-items: center; width: 36px; height: 36px; flex-shrink: 0;
+  border-radius: 10px; background: var(--ay-accent-soft); color: var(--ay-accent); border: 1px solid var(--ay-accent-line);
+}
+.is-yuku .ay-title { font-size: 22px; font-weight: 700; line-height: 1.15; letter-spacing: -0.01em; color: var(--ay-ink); }
+.is-yuku .ay-subtitle { margin-top: 3px; font-size: 13px; color: var(--ay-muted); }
+.is-yuku .ay-select {
+  height: 36px; padding: 0 30px 0 12px; border-radius: 10px; font-size: 13px; font-weight: 600;
+  background: var(--ay-input-bg); border: 1px solid var(--ay-input-line); color: var(--ay-ink);
+  appearance: none; -webkit-appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--ay-muted) 50%), linear-gradient(135deg, var(--ay-muted) 50%, transparent 50%);
+  background-position: calc(100% - 15px) 15px, calc(100% - 10px) 15px; background-size: 5px 5px; background-repeat: no-repeat;
+}
+.is-yuku .ay-select:focus-visible { outline: none; border-color: var(--ay-accent); box-shadow: 0 0 0 3px var(--ay-ring); }
+.is-yuku .ay-loading { color: var(--ay-muted); }
+
+/* ── Kart, başlık satırı ───────────────────────────────────────────────────── */
+.is-yuku .ay-card { background: var(--ay-surface); border: 1px solid var(--ay-line); border-radius: 16px; box-shadow: var(--ay-shadow); }
+.is-yuku .ay-card-head { display: flex; align-items: center; gap: 12px; padding: 12px 18px; border-bottom: 1px solid var(--ay-line-soft); }
+.is-yuku .ay-card-bar { width: 3px; height: 22px; border-radius: 2px; background: linear-gradient(180deg, var(--ay-accent), var(--ay-accent-2)); flex-shrink: 0; }
+.is-yuku .ay-card-title { font-size: 15px; font-weight: 650; color: var(--ay-ink); line-height: 1.2; }
+.is-yuku .ay-card-sub { margin-top: 2px; font-size: 11.5px; color: var(--ay-muted); }
+.is-yuku .ay-section-label { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ay-muted); }
+.is-yuku .ay-section-rule { background: var(--ay-line-soft); }
+.is-yuku .ay-eyebrow { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ay-accent-ink); }
+
+/* ── Çipler ────────────────────────────────────────────────────────────────── */
+.is-yuku .ay-chip {
+  display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 10px; border-radius: 999px;
+  font-size: 11px; font-weight: 650; line-height: 1; white-space: nowrap;
+  background: var(--ay-notr-soft); border: 1px solid var(--ay-notr-line); color: var(--ay-notr-ink);
+}
+.is-yuku .ay-chip-sm { height: 22px; padding: 0 8px; font-size: 10.5px; }
+.is-yuku .ay-chip-button { cursor: pointer; }
+.is-yuku .ay-chip-button:hover { background: var(--ay-notr-line); }
+.is-yuku .ay-chip-notr { background: var(--ay-notr-soft); border-color: var(--ay-notr-line); color: var(--ay-notr-ink); }
+.is-yuku .ay-chip-civit { background: var(--ay-civit-soft); border-color: var(--ay-civit-line); color: var(--ay-civit-ink); }
+.is-yuku .ay-chip-yesil { background: var(--ay-yesil-soft); border-color: var(--ay-yesil-line); color: var(--ay-yesil-ink); }
+.is-yuku .ay-chip-kehribar { background: var(--ay-kehribar-soft); border-color: var(--ay-kehribar-line); color: var(--ay-kehribar-ink); }
+.is-yuku .ay-chip-kirmizi { background: var(--ay-kirmizi-soft); border-color: var(--ay-kirmizi-line); color: var(--ay-kirmizi-ink); }
+.is-yuku .ay-chip-asama { background: var(--st-soft); border-color: var(--st-line); color: var(--st-ink); }
+
+/* ── Aşama kutucukları (gösterge paneli kalıbı b): beyaz kart + gradyan simge kutusu + koyu sayı + ton çubuğu ── */
+.is-yuku .ay-counter {
+  padding: 13px 14px 12px; border-radius: 14px; background: var(--ay-surface); border: 1px solid var(--ay-line);
+  box-shadow: var(--ay-shadow-soft); transition: border-color .15s, box-shadow .15s, transform .15s;
+}
+.is-yuku .ay-counter:hover { transform: translateY(-1px); border-color: color-mix(in srgb, var(--st-a) 45%, var(--ay-line)); box-shadow: 0 12px 24px -16px color-mix(in srgb, var(--st-a) 70%, transparent); }
+.is-yuku .ay-counter-icon {
+  display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; color: #fff;
+  background: linear-gradient(135deg, var(--st-a), var(--st-b)); box-shadow: 0 6px 14px -8px var(--st-a);
+}
+.is-yuku .ay-counter-pct { padding: 3px 8px; border-radius: 999px; font-size: 10.5px; font-weight: 700; background: var(--st-soft); color: var(--st-ink); }
+.is-yuku .ay-counter-num { font-size: 24px; font-weight: 750; letter-spacing: -0.02em; line-height: 1; color: var(--ay-ink); }
+.is-yuku .ay-counter-title { margin-top: 5px; font-size: 12.5px; font-weight: 600; color: var(--ay-ink-2); }
+.is-yuku .ay-counter-sub { margin-top: 1px; font-size: 10.5px; color: var(--ay-faint); }
+.is-yuku .ay-counter-bar { height: 5px; overflow: hidden; border-radius: 999px; background: var(--ay-bar-bg); }
+.is-yuku .ay-counter-bar > div { height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--st-a), var(--st-b)); transition: width .5s; }
+
+/* ── Şimdi yapılacak ───────────────────────────────────────────────────────── */
+.is-yuku .ay-hero { position: relative; padding: 18px 22px 20px; border-left: 4px solid var(--ay-accent); border-radius: 16px; }
+.is-yuku .ay-hero-name { font-size: 20px; font-weight: 700; line-height: 1.2; letter-spacing: -0.01em; color: var(--ay-ink); }
+.is-yuku .ay-vkn { font-size: 12px; color: var(--ay-faint); }
+.is-yuku .ay-btn {
+  display: inline-flex; align-items: center; gap: 7px; height: 38px; padding: 0 16px; border-radius: 10px;
+  font-size: 13px; font-weight: 600; line-height: 1; white-space: nowrap; transition: filter .15s, background .15s, border-color .15s;
+}
+.is-yuku .ay-btn-primary { background: linear-gradient(135deg, var(--ay-accent), var(--ay-accent-2)); color: var(--ay-on-accent); box-shadow: 0 8px 16px -10px var(--ay-accent); }
+.is-yuku .ay-btn-primary:hover { filter: brightness(1.05); }
+.is-yuku .ay-btn-secondary { background: var(--ay-input-bg); border: 1px solid var(--ay-input-line); color: var(--ay-ink-2); }
+.is-yuku .ay-btn-secondary:hover:not(:disabled) { background: var(--ay-hover); }
+.is-yuku .ay-btn-secondary:disabled { opacity: .5; cursor: not-allowed; }
+.is-yuku .ay-link { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; font-weight: 600; color: var(--ay-muted); }
+.is-yuku .ay-link:hover { color: var(--ay-accent-ink); }
+.is-yuku .ay-empty { border: 1px dashed var(--ay-empty-line); border-radius: 16px; background: var(--ay-empty-bg); color: var(--ay-faint); }
+.is-yuku .ay-empty-title { font-size: 18px; font-weight: 700; color: var(--ay-ink); }
+.is-yuku .ay-empty-text { font-size: 13px; color: var(--ay-muted); }
+.is-yuku .ay-empty-text strong { color: var(--ay-ink); font-weight: 650; }
+.is-yuku .ay-done { border-color: var(--ay-yesil-line); }
+.is-yuku .ay-done-icon { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; background: var(--ay-yesil-soft); color: var(--ay-yesil-ink); }
+
+/* ── Sıradakiler ───────────────────────────────────────────────────────────── */
+.is-yuku .ay-next { padding: 12px 14px; border-radius: 12px; background: var(--ay-surface); border: 1px solid var(--ay-line); box-shadow: var(--ay-shadow-soft); transition: border-color .15s, background .15s; }
+.is-yuku .ay-next:hover { border-color: var(--st-line); background: var(--ay-hover); }
+.is-yuku .ay-order { display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 7px; font-size: 11px; font-weight: 700; background: var(--ay-notr-soft); border: 1px solid var(--ay-notr-line); color: var(--ay-notr-ink); }
+.is-yuku .ay-next-name { font-size: 13.5px; font-weight: 600; color: var(--ay-ink); }
+.is-yuku .ay-next-sub { font-size: 12px; color: var(--ay-muted); }
+
+/* ── Aşama sütunları ───────────────────────────────────────────────────────── */
+.is-yuku .ay-col { min-height: 220px; border-radius: 14px; background: var(--ay-surface); border: 1px solid var(--ay-line); box-shadow: var(--ay-shadow-soft); overflow: hidden; }
+.is-yuku .ay-col-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--ay-line-soft); }
+.is-yuku .ay-col-icon { display: grid; place-items: center; width: 26px; height: 26px; flex-shrink: 0; border-radius: 8px; color: #fff; background: linear-gradient(135deg, var(--st-a), var(--st-b)); }
+.is-yuku .ay-col-title { flex: 1; min-width: 0; font-size: 12px; font-weight: 650; color: var(--ay-ink-2); }
+.is-yuku .ay-col-count { font-size: 18px; font-weight: 750; letter-spacing: -0.02em; color: var(--ay-ink); }
+.is-yuku .ay-col-item { padding: 8px 10px; border-radius: 9px; background: var(--ay-surface-2); border: 1px solid var(--ay-line-soft); transition: border-color .15s, background .15s; }
+.is-yuku .ay-col-item:hover { border-color: var(--st-line); background: var(--st-soft); }
+.is-yuku .ay-col-item-name { font-size: 12.5px; font-weight: 600; color: var(--ay-ink); }
+.is-yuku .ay-col-item-sub { font-size: 11px; color: var(--ay-muted); }
+.is-yuku .ay-col-item-late { color: var(--ay-kirmizi-ink); font-weight: 600; }
+.is-yuku .ay-col-empty { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ay-faint); border: 1px dashed var(--ay-empty-line); border-radius: 9px; }
+.is-yuku .ay-col-more { font-size: 11px; font-weight: 600; color: var(--st-ink); }
+
+/* ── Geç kalanlar ──────────────────────────────────────────────────────────── */
+.is-yuku .ay-late { border-color: var(--ay-kirmizi-line); }
+.is-yuku .ay-late .ay-card-head { background: var(--ay-kirmizi-soft); border-bottom-color: var(--ay-kirmizi-line); }
+.is-yuku .ay-late-icon { display: grid; place-items: center; width: 32px; height: 32px; flex-shrink: 0; border-radius: 9px; background: var(--ay-surface); border: 1px solid var(--ay-kirmizi-line); color: var(--ay-kirmizi); }
+.is-yuku .ay-rows > * + * { border-top: 1px solid var(--ay-line-soft); }
+.is-yuku .ay-row { padding: 10px 18px; transition: background .15s; }
+.is-yuku .ay-row:hover { background: var(--ay-hover); }
+.is-yuku .ay-row-flame { display: grid; place-items: center; width: 28px; height: 28px; flex-shrink: 0; border-radius: 8px; background: var(--ay-kirmizi-soft); color: var(--ay-kirmizi); }
+.is-yuku .ay-row-name { font-size: 13.5px; font-weight: 600; color: var(--ay-ink); }
+.is-yuku .ay-row-sub { font-size: 12px; color: var(--ay-muted); }
+.is-yuku .ay-row-arrow { color: var(--ay-faint); transition: color .15s, transform .15s; }
+.is-yuku .ay-row:hover .ay-row-arrow { color: var(--ay-accent-ink); transform: translateX(2px); }
+
+/* Beyaz temada başlıklar da Inter (genel h1/h2 kuralı serif veriyor); koyu temada özgün serif kalır. */
+html[data-theme='D'] .is-yuku :is(h1, h2, h3, .ay-hero-name, .ay-empty-title) { font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
