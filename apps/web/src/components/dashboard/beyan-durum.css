@@ -19,7 +19,7 @@
   --wait: #e4bc75;
   --err: #efa1b1;
   --left: #c6d1e2;
-  margin-top: 40px;
+  margin-top: 56px;
   padding: 16px 18px 18px;
   border: 1px solid var(--bd-edge);
   border-radius: 16px;
@@ -129,14 +129,15 @@ html[data-theme='D'] .bd {
   --wait: #d9480f;
   --err: #c92a2a;
   --left: #c6d1e2;
+  /* Panorama yan kartlarıyla (e-Defter kartı) aynı yıkama formülü: köşe ışıması + üstten alta açılan çivit yıkama */
   background:
-    radial-gradient(110% 80% at 100% 0%, rgba(50, 100, 237, 0.12), transparent 55%),
-    radial-gradient(80% 60% at 0% 100%, rgba(12, 166, 120, 0.07), transparent 55%),
-    linear-gradient(160deg, #e9eeff 0%, #f5f7ff 45%, #fff 100%);
+    radial-gradient(120% 90% at 100% 0%, rgba(50, 100, 237, 0.18), transparent 55%),
+    radial-gradient(90% 70% at 0% 100%, rgba(50, 100, 237, 0.11), transparent 55%),
+    linear-gradient(160deg, #e9eeff 0%, #f1f4ff 45%, #fff 100%);
 }
-html[data-theme='D'] .bd-table-wrap { border: 1px solid #d9e1f7; background: rgba(255, 255, 255, 0.72); box-shadow: 0 5px 18px rgba(49, 87, 140, 0.05); }
+html[data-theme='D'] .bd-table-wrap { border: 1px solid #d5ddfb; background: #fff; box-shadow: 0 5px 18px rgba(50, 100, 237, 0.08); }
 html[data-theme='D'] .bd { --bd-thead: #eef2fd; --bd-hover: #f1f4ff; }
-html[data-theme='D'] .bd-table tbody tr:nth-child(even):not(.bd-subhead) { background: rgba(255, 255, 255, 0.55); }
+html[data-theme='D'] .bd-table tbody tr:nth-child(even):not(.bd-subhead) { background: #fbfcff; }
 html[data-theme='D'] .bd-mode, html[data-theme='D'] .bd-period { background: #fff; border-color: #c4d6f7; }
 html[data-theme='D'] .bd-legend li[data-ton='wait']::before { background: #f59f00; }
 html[data-theme='D'] .bd-legend li[data-ton='err']::before { background: #e03131; }
