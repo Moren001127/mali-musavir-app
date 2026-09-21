@@ -1,36 +1,212 @@
-/* Bu modüle özgüdür. A teması, ölçüler, davranışlar ve durum renkleri korunur. */
-html[data-theme="D"] [data-module-review="fis"] {
-  --portal-ink: #2c3541;
-  --portal-secondary: #515d6d;
-  --portal-muted: #626d7c;
-  --portal-wash: #f8f9fb;
-  --portal-line: #d9dee7;
+/* Fiş Yazdırma — beyaz tema (D) ikinci tur boyaması (2026-09-21, bilgi/BEYAZ-TEMA-TASARIM-DILI.md §7).
+   Düzen aynı: başlık · "Faturalardan Çek" kartı · kapak bilgileri · sürükle-bırak alanı · OCR düğmesi · geçmiş çıktılar;
+   tarama / teyit / bitti aşamaları. TSX'e yalnız data-fis-* kancaları eklendi. Altın vurgular çivite, pastel/koyu kutular beyaz karta çekildi. */
+
+html[data-theme='D'] [data-module-review='fis'] {
+  --portal-ink: #1e293b; --portal-secondary: #475569; --portal-muted: #64748b; --portal-on-color: #fff;
+  --portal-surface: #fff; --portal-raised: #f8fafc; --portal-wash: #f8fafc; --portal-line: #e3e8ef;
+  --portal-shadow: rgba(15, 23, 42, .06); --portal-overlay: rgba(15, 23, 42, .45);
+  --portal-copper-ink: #3b5bdb; --portal-copper-surface: #4263eb; --portal-copper-wash: #edf2ff; --portal-copper-line: #dbe4ff;
+  --portal-amber-ink: #d9480f;  --portal-amber-surface: #f08c00;  --portal-amber-wash: #fff4e6;  --portal-amber-line: #ffd8a8;
+  --portal-blue-ink: #1971c2;   --portal-blue-surface: #1971c2;   --portal-blue-wash: #e7f5ff;   --portal-blue-line: #c5e3fb;
+  --portal-green-ink: #2b8a3e;  --portal-green-surface: #2f9e44;  --portal-green-wash: #ebfbee;  --portal-green-line: #c6efd0;
+  --portal-teal-ink: #099268;   --portal-teal-surface: #0ca678;   --portal-teal-wash: #e6fcf5;   --portal-teal-line: #c3fae8;
+  --portal-rose-ink: #c92a2a;   --portal-rose-surface: #e03131;   --portal-rose-wash: #fff5f5;   --portal-rose-line: #ffc9c9;
+  --portal-plum-ink: #6741d9;   --portal-plum-surface: #7048e8;   --portal-plum-wash: #f3f0ff;   --portal-plum-line: #e5dbff;
+  --portal-slate-ink: #475569;  --portal-slate-surface: #5c6b7f;  --portal-slate-wash: #f1f5f9;  --portal-slate-line: #e2e8f0;
+  color: var(--portal-ink);
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
 }
-html[data-theme="D"] [data-module-review="fis"] [data-review-heading] {
-  background: linear-gradient(115deg, #eee8f4, #f8fafc 75%) !important;
-  border-color: #d4cadd !important;
-  box-shadow: 0 3px 12px rgba(49, 39, 63, .06) !important;
+html[data-theme='D'] [data-module-review='fis'] :is(h1, h2, h3, p, button, span) { font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+
+/* ── Başlık ── */
+html[data-theme='D'] body [data-panel-main] [data-module-review='fis'] [data-review-heading]:has(h1) {
+  background: transparent !important; border: 0 !important; border-radius: 0; box-shadow: none !important; padding: 2px 0 6px !important; overflow: visible;
 }
-html[data-theme="D"] [data-module-review="fis"] [data-review-heading] :is(h1,h2,h3) { color: #513b63 !important; }
-html[data-theme="D"] [data-module-review="fis"] [data-review-heading] > .absolute { background: linear-gradient(90deg, #8b729e, #dcd0e5, #eef3f7) !important; }
-html[data-theme="D"] [data-module-review="fis"] table { background: #fff; box-shadow: 0 0 0 1px #b9b1c5; }
-html[data-theme="D"] [data-module-review="fis"] table thead th { background: #f0ecf5 !important; color: #51465f !important; border-bottom-color: #cbc2d5 !important; }
-html[data-theme="D"] [data-module-review="fis"] table tbody td { box-shadow: inset 0 -1px #e4e5ec; }
-html[data-theme="D"] [data-module-review="fis"] table tbody tr:nth-child(even) { background-color: #fafbfc; }
-html[data-theme="D"] [data-module-review="fis"] [data-review-counter] {
-  --review-tint: #ded2ec;
-  background: linear-gradient(115deg, var(--review-tint), #fff) !important;
-  border-color: #c5b7d2 !important;
-  box-shadow: 0 3px 10px rgba(49,39,63,.07) !important;
+html[data-theme='D'] body [data-panel-main] [data-module-review='fis'] [data-review-heading]:has(h1)::before { content: none !important; }
+html[data-theme='D'] [data-module-review='fis'] :is([data-fis-serit], [data-fis-etiket]) { display: none !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-ikon] { width: 36px !important; height: 36px !important; border-radius: 10px !important; background: #edf2ff !important; border: 1px solid #dbe4ff; box-shadow: none !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-ikon] svg { width: 18px; height: 18px; color: #4263eb !important; }
+html[data-theme='D'] body [data-panel-main] [data-module-review='fis'] [data-review-heading] h1 {
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif !important; font-size: 22px !important; font-weight: 700 !important;
+  letter-spacing: -0.01em !important; line-height: 1.15 !important; color: #1e293b !important;
 }
-html[data-theme="D"] [data-module-review="fis"] [data-review-counter]:nth-child(2) { --review-tint: #cde9e1; }
-html[data-theme="D"] [data-module-review="fis"] [data-review-counter]:nth-child(3) { --review-tint: #d5e4f6; }
-html[data-theme="D"] [data-module-review="fis"] [data-review-counter]:nth-child(4) { --review-tint: #efd5df; }
-html[data-theme="D"] [data-module-review="fis"] [data-review-counter]:nth-child(5) { --review-tint: #e9ddc5; }
-html[data-theme="D"] [data-module-review="fis"] [data-review-counter],
-html[data-theme="D"] [data-module-review="fis"] [data-review-counter] :is(div,span,p,svg) { color: #354254 !important; }
-html[data-theme="D"] [data-module-review="fis"] [data-review-counter][aria-pressed="true"] { border-color: #735785 !important; box-shadow: inset 0 0 0 1px #735785, 0 3px 10px rgba(49,39,63,.1) !important; }
-html[data-theme="D"] [data-module-review="fis"] [data-review-counter="blue"] { --review-tint: #cfe3f6; }
-html[data-theme="D"] [data-module-review="fis"] [data-review-counter="amber"] { --review-tint: #f3e3c5; }
-html[data-theme="D"] [data-module-review="fis"] [data-review-counter="Tarih Okundu"] { --review-tint: #cde9d5; }
-html[data-theme="D"] [data-module-review="fis"] [data-review-counter="Teyit Bekliyor"] { --review-tint: #f3e3c5; }
+html[data-theme='D'] body [data-panel-main] [data-module-review='fis'] [data-review-heading]:has(h1) p { color: #64748b !important; font-size: 13px; margin-top: 3px !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-arsiv-cip] { background: #f1f5f9 !important; border: 1px solid #e2e8f0 !important; color: #475569 !important; border-radius: 999px !important; padding: 0 12px !important; height: 32px; }
+
+/* ── "Faturalardan Çek" kartı ── */
+html[data-theme='D'] [data-module-review='fis'] [data-fis-cek-kart] { background: #fff !important; border-color: #e3e8ef !important; border-radius: 14px !important; box-shadow: 0 8px 24px rgba(15, 23, 42, .05); }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-cek-ikon] { background: linear-gradient(135deg, #4263eb, #5c7cfa) !important; border-radius: 10px !important; box-shadow: 0 6px 14px -8px #4263eb; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-cek-ikon] svg { color: #fff !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-cek-kart] p.text-sm { color: #1e293b !important; font-size: 14px; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-cek-kart] p.text-xs { color: #64748b !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-cek-dugme] {
+  height: 38px; border-radius: 10px !important; font-size: 13px !important; font-weight: 600 !important;
+  background: linear-gradient(135deg, #4263eb, #5c7cfa) !important; color: #fff !important; box-shadow: 0 8px 16px -10px #4263eb !important;
+}
+html[data-theme='D'] [data-module-review='fis'] [data-fis-cek-dugme]:hover { filter: brightness(1.05); }
+
+/* ── Kapak bilgileri kartı ── */
+html[data-theme='D'] [data-module-review='fis'] [data-fis-kapak] { background: #fff !important; border-color: #e3e8ef !important; border-radius: 14px !important; box-shadow: 0 8px 24px rgba(15, 23, 42, .05); }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-kapak] h3 { color: #1e293b !important; font-size: 15px; font-weight: 650; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-kapak] h3 > span.font-medium { color: #94a3b8 !important; font-weight: 500; font-size: 13px; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-kapak-ikon] { background: #edf2ff !important; border: 1px solid #dbe4ff; border-radius: 9px !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-kapak-ikon] svg { color: #4263eb !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-kapak] label { color: #64748b !important; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; margin-bottom: 6px; }
+html[data-theme='D'] [data-module-review='fis'] :is([data-fis-mukellef-sec], [data-fis-donem]) {
+  height: 38px; border-radius: 10px !important; background: #fff !important; border: 1px solid #dde3ea !important; color: #1e293b !important; font-size: 13px;
+}
+html[data-theme='D'] [data-module-review='fis'] [data-fis-mukellef-sec]:hover { border-color: #c5cfdb !important; filter: none !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-mukellef-sec] > span.flex-1 { color: #1e293b !important; font-weight: 500; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-mukellef-sec] > span.flex-1[style*='muted'] { color: #94a3b8 !important; font-weight: 400; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-mukellef-sec] svg { color: #94a3b8 !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-donem]:focus-visible { outline: none; border-color: #4263eb !important; box-shadow: 0 0 0 3px #dbe4ff; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-boyut] { height: 38px; border-radius: 10px !important; background: #fff !important; border: 1px solid #dde3ea !important; color: #475569 !important; font-weight: 600; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-boyut]:hover { background: #f8fafc !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-boyut='etkin'] { background: #edf2ff !important; border-color: #dbe4ff !important; color: #3b5bdb !important; box-shadow: inset 0 0 0 1px #dbe4ff; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-boyut] span { opacity: 1 !important; color: #94a3b8; font-weight: 500; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-boyut='etkin'] span { color: #5c7cfa; }
+
+/* ── Sürükle-bırak alanı: kesik çizgili nötr kutu; sürüklerken çivit ── */
+html[data-theme='D'] [data-module-review='fis'] [data-fis-yukleme] { background: #f8fafc !important; border-color: #dbe2ea !important; border-radius: 14px !important; padding-top: 40px !important; padding-bottom: 40px !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-yukleme]:hover { border-color: #b9c6d6 !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-yukleme='surukleniyor'] { background: #edf2ff !important; border-color: #4263eb !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-yukleme-ikon] { width: 52px; height: 52px; background: #fff !important; border-color: #dde3ea !important; border-radius: 14px !important; box-shadow: 0 8px 24px rgba(15, 23, 42, .06); }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-yukleme-ikon] svg { color: #4263eb !important; width: 24px; height: 24px; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-yukleme='surukleniyor'] [data-fis-yukleme-ikon] { background: linear-gradient(135deg, #4263eb, #5c7cfa) !important; border-color: transparent !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-yukleme='surukleniyor'] [data-fis-yukleme-ikon] svg { color: #fff !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-yukleme] p.font-bold { color: #1e293b !important; font-family: Inter, ui-sans-serif, system-ui, sans-serif !important; font-size: 14px; font-weight: 650; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-yukleme] p.text-xs { color: #64748b !important; font-size: 12.5px; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-yukleme] p.text-xs span { color: #3b5bdb !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-dosyalar] { background: #fff !important; border-color: #e3e8ef !important; border-radius: 14px; box-shadow: 0 8px 24px rgba(15, 23, 42, .05); }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-dosyalar] svg { color: #4263eb !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-dosyalar] .text-sm { color: #1e293b !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-dosyalar] button.text-xs { color: #c92a2a !important; font-weight: 600; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-dosyalar] .grid > div > div { background: #f8fafc !important; border-color: #e3e8ef !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-dosyalar] .grid svg { color: #94a3b8 !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-dosyalar] .grid p { color: #64748b !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-hata] { background: #fff5f5 !important; border-color: #ffc9c9 !important; color: #c92a2a !important; }
+
+/* ── Ana düğmeler: OCR / Word birincil çivit · Geri ikincil ── */
+html[data-theme='D'] [data-module-review='fis'] :is([data-fis-ocr], [data-fis-word]) {
+  border-radius: 10px !important; font-size: 13.5px !important; font-weight: 600 !important; font-family: Inter, ui-sans-serif, system-ui, sans-serif !important;
+  background: linear-gradient(135deg, #4263eb, #5c7cfa) !important; color: #fff !important; border-color: transparent !important; box-shadow: 0 8px 16px -10px #4263eb !important;
+}
+html[data-theme='D'] [data-module-review='fis'] :is([data-fis-ocr], [data-fis-word]):hover:not(:disabled) { filter: brightness(1.05); }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-ocr]:disabled { background: #eef2f6 !important; color: #94a3b8 !important; box-shadow: none !important; opacity: 1 !important; cursor: not-allowed; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-geri] { border-radius: 10px !important; background: #fff !important; border: 1px solid #dde3ea !important; color: #475569 !important; font-weight: 600; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-geri]:hover { background: #f8fafc !important; }
+
+/* ── Geçmiş Word çıktıları ── */
+html[data-theme='D'] [data-module-review='fis'] [data-fis-gecmis] { background: #fff !important; border-color: #e3e8ef !important; border-radius: 14px !important; box-shadow: 0 8px 24px rgba(15, 23, 42, .05); }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-gecmis] > button > div > svg { color: #94a3b8 !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-gecmis] > button .text-sm { color: #1e293b !important; font-size: 15px; font-weight: 650; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-gecmis] > button > span.text-xs { color: #3b5bdb !important; font-weight: 600; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-gecmis-sayi] { background: #f1f5f9 !important; border: 1px solid #e2e8f0; color: #475569 !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-gecmis] > button span.rounded-full[style*='green-wash'] { background: #ebfbee !important; color: #2b8a3e !important; border: 1px solid #c6efd0; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-gecmis] > button span.rounded-full[style*='wash, rgba(255,255,255'] { background: #f1f5f9 !important; color: #475569 !important; border: 1px solid #e2e8f0; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-gecmis] > div { border-top-color: #eef2f6 !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-cikti] { border-bottom-color: #eef2f6 !important; transition: background .12s; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-cikti]:hover { background: #f8fafc; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-cikti]:last-child { border-bottom: 0 !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-cikti-ikon] { background: #edf2ff !important; border: 1px solid #dbe4ff; border-radius: 10px !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-cikti-ikon] svg { color: #4263eb !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-cikti] p.text-sm { color: #1e293b !important; font-size: 13.5px; font-weight: 600; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-cikti] p.text-sm span { color: #94a3b8 !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-cikti] p.text-\[11px\] { color: #64748b !important; font-size: 12px; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-durum] { font-weight: 650; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-durum='DONE'] { background: #ebfbee !important; border-color: #c6efd0 !important; color: #2b8a3e !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-durum='REQUESTED'] { background: #fff4e6 !important; border-color: #ffd8a8 !important; color: #d9480f !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-durum='PRINTING'] { background: #e7f5ff !important; border-color: #c5e3fb !important; color: #1971c2 !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-durum='FAILED'] { background: #fff5f5 !important; border-color: #ffc9c9 !important; color: #c92a2a !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-durum='yok'] { background: #f1f5f9 !important; border-color: #e2e8f0 !important; color: #475569 !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-isaretle] { border-radius: 8px !important; font-weight: 600; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-isaretle='isaretle'] { background: #edf2ff !important; border-color: #dbe4ff !important; color: #3b5bdb !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-isaretle='geri'] { background: #fff !important; border-color: #dde3ea !important; color: #475569 !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-indir] { color: #475569 !important; border: 1px solid #dde3ea; background: #fff; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-indir]:hover { background: #f8fafc !important; color: #3b5bdb !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-sil] { color: #c92a2a !important; border: 1px solid #ffc9c9; background: #fff5f5; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-sil]:hover { background: #e03131 !important; color: #fff !important; border-color: #e03131; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-gecmis] .px-4.py-8 { color: #64748b !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-gecmis] .px-4.py-8 p.text-sm { color: #1e293b !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-gecmis] .px-4.py-8 svg { color: #cbd5e1 !important; }
+
+/* ── Tarama ekranı: beyaz kart, çivit halka ── */
+html[data-theme='D'] [data-module-review='fis'] [data-fis-tarama] { background: #fff !important; border-color: #e3e8ef !important; box-shadow: 0 8px 24px rgba(15, 23, 42, .05) !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-tarama] > div.absolute.h-1 { background: linear-gradient(90deg, #4263eb, #5c7cfa) !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-tarama] .animate-ping { background: #4263eb !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-tarama] .animate-spin { border-top-color: #4263eb !important; border-right-color: #dbe4ff !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-tarama] .absolute.lucide { color: #4263eb !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-tarama] p.text-lg { color: #1e293b !important; font-family: Inter, ui-sans-serif, system-ui, sans-serif !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-tarama] p.text-sm, html[data-theme='D'] [data-module-review='fis'] [data-fis-tarama] .text-xs { color: #64748b !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-tarama] .h-2 { background: #eef2f6 !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-tarama] .h-2 > div { background: linear-gradient(90deg, #4263eb, #5c7cfa) !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-tarama-sayac] { background: #f8fafc !important; border-color: #e3e8ef !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-tarama-sayac] p.text-2xl { color: #1e293b !important; font-family: Inter, ui-sans-serif, system-ui, sans-serif !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-tarama-sayac]:nth-child(2) p.text-2xl { color: #2b8a3e !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-tarama-sayac]:nth-child(3) p.text-2xl { color: #3b5bdb !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-tarama-sayac] p.text-\[10px\] { color: #64748b !important; font-size: 11px; }
+
+/* ── Teyit aşaması: özet sayaçları (b tipi), listeler, teyit kartları ── */
+html[data-theme='D'] [data-module-review='fis'] [data-review-counter] {
+  --t-a: #4263eb; --t-b: #5c7cfa;
+  background: #fff !important; border-color: #e3e8ef !important; border-radius: 14px !important; box-shadow: 0 1px 2px rgba(15, 23, 42, .04) !important; padding: 16px 18px 16px 20px !important;
+}
+html[data-theme='D'] [data-module-review='fis'] [data-review-counter='Tarih Okundu'] { --t-a: #2f9e44; --t-b: #51cf66; }
+html[data-theme='D'] [data-module-review='fis'] [data-review-counter='Teyit Bekliyor'] { --t-a: #f08c00; --t-b: #f9a825; }
+html[data-theme='D'] [data-module-review='fis'] [data-review-counter] > span.absolute { width: 4px !important; background: linear-gradient(180deg, var(--t-a), var(--t-b)) !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-review-counter] p.text-3xl { color: #1e293b !important; font-family: Inter, ui-sans-serif, system-ui, sans-serif !important; font-size: 26px; font-weight: 750; letter-spacing: -0.02em; }
+html[data-theme='D'] [data-module-review='fis'] [data-review-counter] p.text-xs { color: #64748b !important; font-size: 12.5px; font-weight: 600; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-onay-kart] { background: #fff !important; border: 1px solid #e3e8ef !important; border-radius: 14px; box-shadow: 0 8px 24px rgba(15, 23, 42, .05); }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-onay-kart].overflow-hidden { padding: 0; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-onay-kart] > div.px-4.py-3 { background: #f8fafc !important; border-bottom-color: #eef2f6 !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-onay-kart] p.uppercase { color: #475569 !important; font-size: 11px; letter-spacing: .06em !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-onay-kart] .flex.items-start { border-bottom-color: #eef2f6 !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-onay-kart] p.text-xs.truncate { color: #1e293b !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-onay-kart] p.font-bold, html[data-theme='D'] [data-module-review='fis'] [data-fis-onay-kart] h2 { color: #1e293b !important; font-family: Inter, ui-sans-serif, system-ui, sans-serif !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-onay-kart] p.text-sm { color: #64748b !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-onay-kart] .animate-spin { border-top-color: #4263eb !important; border-right-color: #5c7cfa !important; }
+html[data-theme='D'] [data-module-review='fis'] p.uppercase.tracking-widest { color: #475569 !important; letter-spacing: .06em !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-toplu] { height: 32px; border-radius: 8px !important; font-weight: 600 !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-toplu='donem'] { background: #edf2ff !important; color: #3b5bdb !important; border: 1px solid #dbe4ff; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-toplu='son'] { background: #fff !important; color: #475569 !important; border: 1px solid #dde3ea; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-teyit-kart] { background: #fff !important; border-color: #e3e8ef !important; box-shadow: 0 1px 2px rgba(15, 23, 42, .04) !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-teyit-kart='dolu'] { border-color: #2f9e44 !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-teyit-kart] p.text-xs { color: #475569 !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-teyit-kart] > div.w-full.flex { background: #f8fafc !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-teyit-kart] > div.w-full.flex svg { color: #cbd5e1 !important; }
+html[data-theme='D'] [data-module-review='fis'] [data-fis-teyit-kart] button.w-full { background: #f1f5f9 !important; color: #475569 !important; }
+html[data-theme='D'] [data-module-review='fis'] input.input-base { background: #fff; border: 1px solid #dde3ea; border-radius: 8px; color: #1e293b; }
+html[data-theme='D'] [data-module-review='fis'] input.input-base:focus-visible { outline: none; border-color: #4263eb; box-shadow: 0 0 0 3px #dbe4ff; }
+
+/* ── Pencereler (body'ye portal; kendi kancalarıyla) ── */
+html[data-theme='D'] [data-fis-cek-pencere] { background: rgba(15, 23, 42, .45) !important; }
+html[data-theme='D'] [data-fis-cek-pencere] > div { background: #fff !important; border: 1px solid #e3e8ef !important; box-shadow: 0 24px 60px rgba(15, 23, 42, .18) !important; color: #1e293b !important; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+html[data-theme='D'] [data-fis-cek-pencere] h3 { color: #1e293b !important; font-family: Inter, ui-sans-serif, system-ui, sans-serif !important; font-size: 17px; }
+html[data-theme='D'] [data-fis-cek-pencere] p, html[data-theme='D'] [data-fis-cek-pencere] label { color: #64748b !important; }
+html[data-theme='D'] [data-fis-cek-pencere] label { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+html[data-theme='D'] [data-fis-cek-pencere] :is(input, button.w-full) { background: #fff !important; border: 1px solid #dde3ea !important; color: #1e293b !important; border-radius: 10px !important; height: 38px; }
+html[data-theme='D'] [data-fis-cek-pencere] input:focus-visible { outline: none; border-color: #4263eb !important; box-shadow: 0 0 0 3px #dbe4ff; }
+html[data-theme='D'] [data-fis-cek-pencere] button.w-full > span { color: #1e293b !important; }
+html[data-theme='D'] [data-fis-cek-pencere] button.w-full svg { color: #94a3b8 !important; }
+html[data-theme='D'] [data-fis-cek-pencere] .h-1\.5 { background: #eef2f6 !important; }
+html[data-theme='D'] [data-fis-cek-pencere] .h-1\.5 > div { background: linear-gradient(90deg, #4263eb, #5c7cfa) !important; }
+html[data-theme='D'] [data-fis-pencere-iptal] { border-radius: 10px !important; background: #fff !important; border: 1px solid #dde3ea !important; color: #475569 !important; font-weight: 600; }
+html[data-theme='D'] [data-fis-pencere-cek] { border-radius: 10px !important; background: linear-gradient(135deg, #4263eb, #5c7cfa) !important; color: #fff !important; box-shadow: 0 8px 16px -10px #4263eb; }
+html[data-theme='D'] [data-fis-secici] { background: rgba(15, 23, 42, .45) !important; }
+html[data-theme='D'] [data-fis-secici] > div { background: #fff !important; border-color: #e3e8ef !important; box-shadow: 0 24px 60px rgba(15, 23, 42, .18) !important; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+html[data-theme='D'] [data-fis-secici] > div > div:first-child { background: #f8fafc !important; border-color: #eef2f6 !important; }
+html[data-theme='D'] [data-fis-secici] > div > div:first-child h3 { color: #1e293b !important; font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-size: 16px; }
+html[data-theme='D'] [data-fis-secici] > div > div:first-child p { color: #64748b !important; }
+html[data-theme='D'] [data-fis-secici] > div > div:first-child button { color: #64748b !important; background: #fff; border: 1px solid #dde3ea; }
+html[data-theme='D'] [data-fis-secici] > div > div:nth-child(2) { border-color: #eef2f6 !important; }
+html[data-theme='D'] [data-fis-secici] > div > div:nth-child(2) > div { background: #fff !important; border-color: #dde3ea !important; border-radius: 10px !important; }
+html[data-theme='D'] [data-fis-secici] > div > div:nth-child(2) > div:focus-within { border-color: #4263eb !important; box-shadow: 0 0 0 3px #dbe4ff; }
+html[data-theme='D'] [data-fis-secici] > div > div:nth-child(2) input { color: #1e293b !important; }
+html[data-theme='D'] [data-fis-secici] > div > div:nth-child(2) input:focus-visible { outline: none !important; box-shadow: none !important; }
+html[data-theme='D'] [data-fis-secici] > div > div:nth-child(2) svg { color: #94a3b8 !important; }
+html[data-theme='D'] [data-fis-secici] [data-fis-secici-satir] { color: #1e293b !important; }
+html[data-theme='D'] [data-fis-secici] [data-fis-secici-satir='pasif']:hover { background: #f8fafc !important; }
+html[data-theme='D'] [data-fis-secici] [data-fis-secici-satir='secili'] { background: #edf2ff !important; }
+html[data-theme='D'] [data-fis-secici] [data-fis-secici-satir] > div { background: #f1f5f9 !important; color: #475569 !important; }
+html[data-theme='D'] [data-fis-secici] [data-fis-secici-satir='secili'] > div { background: linear-gradient(135deg, #4263eb, #5c7cfa) !important; color: #fff !important; }

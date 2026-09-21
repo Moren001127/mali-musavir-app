@@ -4,7 +4,7 @@ import './module-white.css';
 import { Suspense, useCallback, useMemo } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useQueries, useQuery } from '@tanstack/react-query';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { ScanSearch } from 'lucide-react';
 import { boyutParamOku, sayfaParamOku, type SayfaBoyutu } from '@/components/ui/Sayfalama';
 import type { TaxpayerLite } from '@/components/ui/TaxpayerSelect';
 import { api } from '@/lib/api';
@@ -102,10 +102,14 @@ function GenelSorgularIcerik() {
 
   return (
     <div data-module-review="sorgu" className="mx-auto w-full max-w-[1280px]">
-      <PageHeader
-        title="Genel Sorgulamalar"
-        subtitle="Dijital Vergi Dairesi'nden mükellef başına yapılan sorguların sonuçları — vergi borcu, e-haciz, yoklama/denetim, POS, gelen e-arşiv."
-      />
+      {/* Sayfa başlığı — rehber kalıbı: yumuşak simge kutusu + başlık + tek satır açıklama (bant/altın etiket yok) */}
+      <div className="gs-head" data-gs-head>
+        <span className="gs-head-icon"><ScanSearch size={18} /></span>
+        <div className="min-w-0">
+          <h1 className="gs-title">Genel Sorgulamalar</h1>
+          <p className="gs-subtitle">Dijital Vergi Dairesi'nden mükellef başına yapılan sorguların sonuçları — vergi borcu, e-haciz, yoklama/denetim, POS, gelen e-arşiv.</p>
+        </div>
+      </div>
 
       <SuzgecBandi suzgec={suzgec} onSuzgec={suzgecYaz} mukellefler={mukellefler} buAy={buAyDegeri} />
 

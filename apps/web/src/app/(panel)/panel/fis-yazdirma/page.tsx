@@ -730,17 +730,17 @@ export default function FisYazdirmaPage() {
             'radial-gradient(120% 140% at 0% 0%, rgba(212,184,118,0.16), transparent 46%), radial-gradient(120% 140% at 100% 0%, rgba(139,118,73,0.12), transparent 48%), #0f0d0b',
         })}
       >
-        <div
+        <div data-fis-serit
           className="absolute inset-x-0 top-0 h-1"
           style={portalStyle({ background: 'linear-gradient(90deg, #8b7649, #b8a06f, #d4b876, #e7cf95, #d4b876, #b8a06f)' })}
         />
-        <div className="flex items-center gap-2.5 mb-3">
+        <div data-fis-etiket className="flex items-center gap-2.5 mb-3">
           <span className="w-[26px] h-px" style={portalStyle({ background: '#d4b876' })} />
           <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={portalStyle({ color: '#b8a06f' })}>Kontrol</span>
         </div>
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3.5">
-            <span
+            <span data-fis-ikon
               className="grid place-items-center rounded-xl flex-shrink-0"
               style={portalStyle({ width: 46, height: 46, background: 'linear-gradient(135deg, #d4b876, #b8a06f)', boxShadow: '0 8px 22px rgba(212,184,118,0.32)' })}
             >
@@ -754,7 +754,7 @@ export default function FisYazdirmaPage() {
             </div>
           </div>
           {outputs.length > 0 && (
-            <span
+            <span data-fis-arsiv-cip
               className="hidden sm:inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-semibold flex-shrink-0"
               style={portalStyle({ background: 'rgba(212,184,118,0.10)', border: '1px solid rgba(212,184,118,0.28)', color: '#d4b876' })}
             >
@@ -769,14 +769,14 @@ export default function FisYazdirmaPage() {
       {(stage === 'upload' || stage === 'error') && (
         <div className="space-y-4">
           {/* Faturalardan Çek butonu */}
-          <div
+          <div data-fis-cek-kart
             className="rounded-xl border p-4 flex flex-col sm:flex-row sm:items-center gap-3"
             style={portalStyle({
               background: 'linear-gradient(135deg, rgba(212,184,118,.085) 0%, rgba(212,184,118,.02) 100%)',
               borderColor: 'rgba(212,184,118,.22)',
             })}
           >
-            <span
+            <span data-fis-cek-ikon
               className="grid place-items-center rounded-xl flex-shrink-0"
               style={portalStyle({ width: 40, height: 40, background: 'rgba(212,184,118,0.13)' })}
             >
@@ -790,7 +790,7 @@ export default function FisYazdirmaPage() {
                 Mükellef ve dönem seçip daha önce MIHSAP'tan indirilmiş fişleri otomatik yükleyin.
               </p>
             </div>
-            <button
+            <button data-fis-cek-dugme
               type="button"
               onClick={() => setShowFetchModal(true)}
               className="px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 flex-shrink-0"
@@ -802,12 +802,12 @@ export default function FisYazdirmaPage() {
           </div>
 
           {/* Kapak bilgileri kartı */}
-          <div
+          <div data-fis-kapak
             className="rounded-xl border p-4"
             style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' })}
           >
             <h3 className="text-sm font-semibold mb-3 flex items-center gap-2.5" style={portalStyle({ color: '#fafaf9' })}>
-              <span className="grid place-items-center rounded-lg flex-shrink-0" style={portalStyle({ width: 30, height: 30, background: 'rgba(212,184,118,0.12)' })}>
+              <span data-fis-kapak-ikon className="grid place-items-center rounded-lg flex-shrink-0" style={portalStyle({ width: 30, height: 30, background: 'rgba(212,184,118,0.12)' })}>
                 <FileText size={16} style={portalStyle({ color: '#d4b876' })} />
               </span>
               Kapak Sayfası Bilgileri <span className="font-medium" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>(opsiyonel)</span>
@@ -817,7 +817,7 @@ export default function FisYazdirmaPage() {
                 <label className="block text-xs mb-1" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                   Mükellef
                 </label>
-                <button
+                <button data-fis-mukellef-sec
                   type="button"
                   onClick={() => setMukellefPickerOpen(true)}
                   className="w-full px-3 py-2 rounded-lg text-sm border outline-none flex items-center gap-2 text-left hover:brightness-110 transition"
@@ -842,7 +842,7 @@ export default function FisYazdirmaPage() {
                 <label className="block text-xs mb-1" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                   Dönem
                 </label>
-                <input
+                <input data-fis-donem
                   type="month"
                   value={donem}
                   onChange={(e) => setDonem(e.target.value)}
@@ -864,7 +864,7 @@ export default function FisYazdirmaPage() {
                     [8, 'Orta', '5,2 cm'],
                     [12, 'Küçük', '4,1 cm'],
                   ] as Array<[number, string, string]>).map(([n, ad, cm]) => (
-                    <button
+                    <button data-fis-boyut={pagesPerSheet === n ? 'etkin' : 'pasif'}
                       key={n}
                       type="button"
                       onClick={() => setPagesPerSheet(n as any)}
@@ -885,7 +885,7 @@ export default function FisYazdirmaPage() {
             </div>
           </div>
 
-          <div
+          <div data-fis-yukleme={dragging ? 'surukleniyor' : 'bekliyor'}
             onDrop={onDrop}
             onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
             onDragLeave={() => setDragging(false)}
@@ -898,7 +898,7 @@ export default function FisYazdirmaPage() {
                 : 'radial-gradient(60% 80% at 50% 0%, rgba(212,184,118,0.05), transparent 60%), rgba(255,255,255,0.015)',
             })}
           >
-            <div
+            <div data-fis-yukleme-ikon
               className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 border"
               style={portalStyle({
                 background: dragging ? '#d4b876' : 'linear-gradient(135deg, rgba(212,184,118,0.18), rgba(212,184,118,0.06))',
@@ -918,7 +918,7 @@ export default function FisYazdirmaPage() {
           </div>
 
           {files.length > 0 && (
-            <div className="card p-4">
+            <div data-fis-dosyalar className="card p-4">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <FileImage size={15} style={portalStyle({ color: '#d4b876' })} />
@@ -945,14 +945,14 @@ export default function FisYazdirmaPage() {
           )}
 
           {error && (
-            <div className="rounded-xl px-4 py-3 text-sm flex items-start gap-2"
+            <div data-fis-hata className="rounded-xl px-4 py-3 text-sm flex items-start gap-2"
               style={portalStyle({ background: 'rgba(244,63,94,0.1)', border: '1px solid rgba(244,63,94,0.28)', color: '#fb7185' })}>
               <AlertCircle size={16} className="flex-shrink-0 mt-0.5" />
               {error}
             </div>
           )}
 
-          <button
+          <button data-fis-ocr
             disabled={files.length === 0}
             onClick={handleScan}
             className="btn-primary w-full py-3 text-sm"
@@ -969,7 +969,7 @@ export default function FisYazdirmaPage() {
           </button>
 
           {/* Geçmiş Çıktılar */}
-          <div
+          <div data-fis-gecmis
             className="rounded-xl border mt-2"
             style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' })}
           >
@@ -983,7 +983,7 @@ export default function FisYazdirmaPage() {
                 <span className="text-sm font-semibold" style={portalStyle({ color: '#fafaf9' })}>
                   Geçmiş Word Çıktıları
                 </span>
-                <span
+                <span data-fis-gecmis-sayi
                   className="text-xs px-2 py-0.5 rounded-full font-semibold"
                   style={portalStyle({ background: 'rgba(184,160,111,.15)', color: '#b8a06f' })}
                 >
@@ -1039,13 +1039,13 @@ export default function FisYazdirmaPage() {
                       const isMarking = markingPrintId === o.id;
                       const isPrinted = o.printStatus === 'DONE';
                       return (
-                        <div
+                        <div data-fis-cikti
                           key={o.id}
                           className="px-4 py-3 flex flex-col gap-3 sm:flex-row sm:items-center"
                           style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.05)' })}
                         >
                           <div className="flex items-center gap-3 min-w-0 flex-1">
-                            <div
+                            <div data-fis-cikti-ikon
                               className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
                               style={portalStyle({ background: 'rgba(184,160,111,.12)' })}
                             >
@@ -1077,7 +1077,7 @@ export default function FisYazdirmaPage() {
                           </div>
 
                           <div className="flex flex-wrap items-center gap-2 sm:justify-end sm:flex-shrink-0">
-                            <span
+                            <span data-fis-durum={o.printStatus || 'yok'}
                               className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold"
                               style={portalStyle({ background: info.bg, borderColor: info.border, color: info.color })}
                               title={info.detail}
@@ -1090,7 +1090,7 @@ export default function FisYazdirmaPage() {
                                 </span>
                               )}
                             </span>
-                            <button
+                            <button data-fis-isaretle={isPrinted ? 'geri' : 'isaretle'}
                               onClick={() => setOutputPrinted(o, !isPrinted)}
                               disabled={isMarking}
                               className="h-8 px-3 rounded-lg inline-flex items-center gap-1.5 text-[11px] font-semibold transition-colors disabled:opacity-50"
@@ -1104,7 +1104,7 @@ export default function FisYazdirmaPage() {
                               {isMarking ? <Loader2 size={13} className="animate-spin" /> : isPrinted ? <X size={13} /> : <CheckCircle2 size={13} />}
                               {isPrinted ? 'Geri al' : 'İşaretle'}
                             </button>
-                            <button
+                            <button data-fis-indir
                               onClick={() => downloadOutput(o.id, o.filename)}
                               className="h-8 w-8 rounded-lg inline-flex items-center justify-center hover:bg-white/5 transition-colors"
                               title="İndir"
@@ -1112,7 +1112,7 @@ export default function FisYazdirmaPage() {
                             >
                               <Download size={15} />
                             </button>
-                            <button
+                            <button data-fis-sil
                               onClick={() => removeOutput(o.id)}
                               className="h-8 w-8 rounded-lg inline-flex items-center justify-center hover:bg-white/5 transition-colors"
                               title="Sil"
@@ -1134,7 +1134,7 @@ export default function FisYazdirmaPage() {
 
       {/* ── SCANNING — Animasyonlu Ekran (koyu imza kartı) ── */}
       {stage === 'scanning' && (
-        <div
+        <div data-fis-tarama
           className="relative overflow-hidden rounded-2xl border p-8 flex flex-col items-center gap-6"
           style={portalStyle({
             borderColor: 'rgba(212,184,118,0.2)',
@@ -1198,7 +1198,7 @@ export default function FisYazdirmaPage() {
               { label: 'Taranan',     value: simScanned,                                color: '#34d399'   },
               { label: 'Kalan',       value: Math.max(0, files.length - simScanned),   color: '#d4b876'   },
             ].map(({ label, value, color }) => (
-              <div
+              <div data-fis-tarama-sayac
                 key={label}
                 className="rounded-xl py-3 text-center border"
                 style={portalStyle({ background: 'rgba(255,255,255,.025)', borderColor: 'rgba(255,255,255,.06)' })}
@@ -1241,7 +1241,7 @@ export default function FisYazdirmaPage() {
             {/* SOL: Tarih Okundu */}
             {scanResult.detected.length > 0 && (
               <div className="lg:col-span-2">
-                <div className="card overflow-hidden">
+                <div data-fis-onay-kart className="card overflow-hidden">
                   <div className="px-4 py-3" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.05)', background: 'rgba(255,255,255,0.03)' })}>
                     <p className="text-xs font-bold uppercase tracking-widest" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                       Tarih Okundu ({scanResult.detected.length})
@@ -1310,7 +1310,7 @@ export default function FisYazdirmaPage() {
             {/* SAĞ: Teyit Gereken */}
             <div className={scanResult.detected.length > 0 ? 'lg:col-span-3' : 'lg:col-span-5'}>
               {scanResult.unread.length === 0 ? (
-                <div className="card flex flex-col items-center py-12 text-center">
+                <div data-fis-onay-kart className="card flex flex-col items-center py-12 text-center">
                   <CheckCircle2 size={40} style={portalStyle({ color: '#34d399' })} />
                   <p className="font-bold mt-3" style={portalStyle({ color: '#fafaf9', fontFamily: 'Plus Jakarta Sans, sans-serif' })}>
                     Tüm fişlerden tarih okundu!
@@ -1344,6 +1344,7 @@ export default function FisYazdirmaPage() {
                           return next;
                         });
                       }}
+                      data-fis-toplu="donem"
                       className="px-3 py-1.5 rounded-lg text-xs font-medium"
                       style={portalStyle({ background: 'rgba(184,160,111,.12)', color: '#b8a06f' })}
                     >
@@ -1364,6 +1365,7 @@ export default function FisYazdirmaPage() {
                           return next;
                         });
                       }}
+                      data-fis-toplu="son"
                       className="px-3 py-1.5 rounded-lg text-xs font-medium"
                       style={portalStyle({ background: 'rgba(255,255,255,0.05)', color: '#fafaf9' })}
                     >
@@ -1375,7 +1377,7 @@ export default function FisYazdirmaPage() {
                       const prev = idx > 0 ? scanResult.unread[idx - 1] : null;
                       const prevDate = prev ? allDates[prev.filename] : '';
                       return (
-                        <div
+                        <div data-fis-teyit-kart={allDates[u.filename] ? 'dolu' : 'bos'}
                           key={u.filename}
                           className="rounded-xl overflow-hidden"
                           style={portalStyle({
@@ -1424,10 +1426,10 @@ export default function FisYazdirmaPage() {
 
           {/* Alt Butonlar */}
           <div className="flex flex-wrap gap-3 pt-2">
-            <button onClick={reset} className="btn-secondary flex-shrink-0 px-6">
+            <button data-fis-geri onClick={reset} className="btn-secondary flex-shrink-0 px-6">
               Geri
             </button>
-            <button
+            <button data-fis-word
               onClick={handleGenerate}
               className="btn-primary flex-1 py-3"
               style={portalStyle({
@@ -1450,7 +1452,7 @@ export default function FisYazdirmaPage() {
 
       {/* ── GENERATING ── */}
       {stage === 'generating' && (
-        <div className="card flex flex-col items-center py-16 gap-5">
+        <div data-fis-onay-kart className="card flex flex-col items-center py-16 gap-5">
           <div
             className="w-16 h-16 rounded-full border-4 border-transparent animate-spin"
             style={portalStyle({ borderTopColor: '#d4b876', borderRightColor: '#d4b876' })}
@@ -1468,7 +1470,7 @@ export default function FisYazdirmaPage() {
 
       {/* ── DONE ── */}
       {stage === 'done' && (
-        <div className="card flex flex-col items-center py-16 gap-4 text-center">
+        <div data-fis-onay-kart className="card flex flex-col items-center py-16 gap-4 text-center">
           <div className="w-16 h-16 rounded-full flex items-center justify-center" style={portalStyle({ background: 'rgba(52,211,153,0.12)' })}>
             <CheckCircle2 size={36} style={portalStyle({ color: '#34d399' })} />
           </div>
@@ -1481,7 +1483,7 @@ export default function FisYazdirmaPage() {
             </p>
           </div>
           <div className="flex gap-3 mt-2">
-            <button
+            <button data-fis-word
               onClick={reset}
               className="btn-primary px-8"
               style={portalStyle({
@@ -1500,7 +1502,7 @@ export default function FisYazdirmaPage() {
 
       {/* ── FATURALARDAN ÇEK MODAL — Portal ile body'ye ── */}
       {showFetchModal && typeof document !== 'undefined' && createPortal(
-        <div
+        <div data-fis-cek-pencere
           className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
           style={portalStyle({
             background: 'rgba(0,0,0,.85)',
@@ -1608,7 +1610,7 @@ export default function FisYazdirmaPage() {
             )}
 
             <div className="flex gap-2 pt-2">
-              <button
+              <button data-fis-pencere-iptal
                 onClick={() => setShowFetchModal(false)}
                 disabled={fetchLoading}
                 className="flex-1 px-4 py-2 rounded-lg text-sm font-medium border"
@@ -1616,7 +1618,7 @@ export default function FisYazdirmaPage() {
               >
                 İptal
               </button>
-              <button
+              <button data-fis-pencere-cek
                 onClick={handleFetchFromInvoices}
                 disabled={fetchLoading || !fetchMukellefId || !fetchDonem}
                 className="flex-1 px-4 py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-50"
@@ -1642,7 +1644,7 @@ export default function FisYazdirmaPage() {
 
       {/* KAPAK MÜKELLEF PICKER MODAL (KDV Kontrol / Mihsap deseni) */}
       {mukellefPickerOpen && typeof document !== 'undefined' && createPortal(
-        <div
+        <div data-fis-secici
           className="fixed inset-0 z-[60] flex items-start justify-center p-4 pt-[8vh]"
           style={portalStyle({ background: 'rgba(0,0,0,.6)', backdropFilter: 'blur(6px)' })}
           onClick={() => setMukellefPickerOpen(false)}
@@ -1701,7 +1703,7 @@ export default function FisYazdirmaPage() {
                     const checked = mukellefName === t.name;
                     const initial = t.name.charAt(0).toUpperCase();
                     return (
-                      <button
+                      <button data-fis-secici-satir={checked ? 'secili' : 'pasif'}
                         key={t.id}
                         type="button"
                         onClick={() => {

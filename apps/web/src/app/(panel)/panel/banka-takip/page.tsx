@@ -192,7 +192,7 @@ export default function BankaTakipPage() {
   }, [data?.items, search, filterDurum]);
 
   return (
-    <div className="mx-auto max-w-7xl space-y-4 pb-12">
+    <div data-banka-takip className="mx-auto max-w-7xl space-y-4 pb-12">
         {/* HEADER */}
         <Header
           yil={yil}
@@ -209,7 +209,7 @@ export default function BankaTakipPage() {
         <StatusStrip ozet={ozet} active={filterDurum} onPick={setFilterDurum} />
 
         {/* SEARCH */}
-        <div className="flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2"
+        <div data-banka-arama className="flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2"
              style={portalStyle({ borderColor: LINE, background: CARD })}>
           <div className="relative flex-1 min-w-[260px]">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={portalStyle({ color: SUBTLE })} />
@@ -222,7 +222,7 @@ export default function BankaTakipPage() {
             />
           </div>
           {filterDurum !== 'tumu' && (
-            <button
+            <button data-banka-filtre-temiz
               onClick={() => setFilterDurum('tumu')}
               className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium"
               style={portalStyle({ borderColor: TONES.amber.bd, color: TONES.amber.fg, background: TONES.amber.bg })}
@@ -237,14 +237,14 @@ export default function BankaTakipPage() {
 
         {/* LIST */}
         {isLoading && (
-          <div className="rounded-xl border p-12 text-center" style={portalStyle({ borderColor: LINE, background: CARD })}>
+          <div data-banka-kutu="yukleniyor" className="rounded-xl border p-12 text-center" style={portalStyle({ borderColor: LINE, background: CARD })}>
             <Loader2 size={26} className="mx-auto animate-spin" style={portalStyle({ color: GOLD })} />
             <div className="mt-3 text-[13px]" style={portalStyle({ color: MUTED })}>Yükleniyor…</div>
           </div>
         )}
 
         {isError && (
-          <div className="rounded-xl border p-5 flex items-start gap-3"
+          <div data-banka-kutu="hata" className="rounded-xl border p-5 flex items-start gap-3"
                style={portalStyle({ borderColor: TONES.red.bd, background: TONES.red.bg })}>
             <AlertCircle size={18} style={portalStyle({ color: TONES.red.fg })} />
             <div>
@@ -255,7 +255,7 @@ export default function BankaTakipPage() {
         )}
 
         {!isLoading && !isError && filtered.length === 0 && (
-          <div className="rounded-xl border p-12 text-center" style={portalStyle({ borderColor: LINE, background: CARD })}>
+          <div data-banka-kutu="bos" className="rounded-xl border p-12 text-center" style={portalStyle({ borderColor: LINE, background: CARD })}>
             <Inbox size={28} className="mx-auto mb-3" style={portalStyle({ color: SUBTLE })} />
             <div className="font-semibold" style={portalStyle({ color: TEXT })}>
               {(data?.items.length || 0) === 0 ? 'Bilanço esasında mükellef yok' : 'Aramaya uygun sonuç yok'}
@@ -269,7 +269,7 @@ export default function BankaTakipPage() {
         )}
 
         {!isLoading && filtered.length > 0 && (
-          <div className="space-y-1.5">
+          <div data-banka-liste className="space-y-1.5">
             {filtered.map((item) => (
               <MukellefRow
                 key={item.taxpayer.id}
@@ -329,20 +329,23 @@ function Header({
   taskBusy: boolean;
 }) {
   return (
-    <div data-portal-page-header className="rounded-xl border p-5" style={portalStyle({ borderColor: LINE, background: CARD })}>
+    <div data-portal-page-header data-banka-bas className="rounded-xl border p-5" style={portalStyle({ borderColor: LINE, background: CARD })}>
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.18em]"
-               style={portalStyle({ color: GOLD })}>
-            <Landmark size={11} /> Banka Ekstre Takibi
+        <div className="min-w-0 flex-1 flex items-center gap-3">
+          <span data-banka-ikon className="grid h-9 w-9 flex-shrink-0 place-items-center rounded-[10px]"
+                style={portalStyle({ background: 'rgba(212,184,118,0.12)', border: '1px solid rgba(212,184,118,0.26)', color: GOLD })}>
+            <Landmark size={18} />
+          </span>
+          <div className="min-w-0">
+            <h1 className="text-[22px] font-semibold leading-tight"
+                style={portalStyle({ color: TEXT, fontFamily: 'Fraunces, serif' })}>
+              Banka Ekstre Takibi
+            </h1>
+            <p className="mt-1 text-[12.5px]" style={portalStyle({ color: MUTED })}>
+              <strong data-banka-donem className="font-semibold" style={portalStyle({ color: TEXT })}>{CEYREK_LABELS[ceyrek]} · {yil}</strong>
+              {' '}· Bilanço esasındaki mükellefler için 3 aylık banka ekstre kontrolü
+            </p>
           </div>
-          <h1 className="mt-1.5 text-[26px] font-semibold leading-tight"
-              style={portalStyle({ color: TEXT, fontFamily: 'Fraunces, serif' })}>
-            {CEYREK_LABELS[ceyrek]} · {yil}
-          </h1>
-          <p className="mt-1 text-[12.5px]" style={portalStyle({ color: MUTED })}>
-            Bilanço esasındaki mükellefler için 3 aylık banka ekstre kontrolü
-          </p>
         </div>
 
         <div className="flex flex-wrap items-end gap-2">
@@ -356,7 +359,7 @@ function Header({
               <option key={q} value={q}>{CEYREK_LABELS[q]}</option>
             ))}
           </SelectField>
-          <button
+          <button data-banka-gorev
             type="button"
             onClick={onCreateTasks}
             disabled={taskBusy}
@@ -370,7 +373,7 @@ function Header({
       </div>
 
       {/* Completion progress */}
-      <div className="mt-4 flex items-center gap-3">
+      <div data-banka-ilerleme className="mt-4 flex items-center gap-3">
         <div className="text-[11px] font-semibold uppercase tracking-wider" style={portalStyle({ color: MUTED })}>
           Dönem tamamlanma
         </div>
@@ -402,7 +405,7 @@ function SelectField({
   minWidth?: number;
 }) {
   return (
-    <div>
+    <div data-banka-secim>
       <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider" style={portalStyle({ color: MUTED })}>
         <Calendar size={10} className="inline mr-1" /> {label}
       </label>
@@ -439,12 +442,12 @@ function StatusStrip({
   ];
 
   return (
-    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+    <div data-banka-sayaclar className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
       {pills.map((p) => {
         const isActive = active === p.key;
         const t = TONES[p.tone];
         return (
-          <button data-portal-kpi data-banka-active={isActive || undefined}
+          <button data-portal-kpi data-banka-active={isActive || undefined} data-banka-sayac={p.tone}
             key={p.key}
             onClick={() => onPick(isActive ? 'tumu' : p.key)}
             className="flex items-center gap-3 rounded-xl border px-4 py-3 text-left transition"
@@ -515,7 +518,7 @@ function MukellefRow({
   else if (eksikGeldi > 0) statusBadge = { label: `${eksikGeldi} eksik`, tone: 'amber' };
 
   return (
-    <div
+    <div data-banka-satir data-banka-durum={statusBadge.tone}
       className="rounded-xl border overflow-hidden transition"
       style={portalStyle({
         borderColor: LINE,
@@ -547,7 +550,7 @@ function MukellefRow({
 
         <Badge label={statusBadge.label} tone={statusBadge.tone} />
 
-        <span
+        <span data-banka-hesaplar-ac
           onClick={(e) => { e.stopPropagation(); onManageHesaplar(); }}
           className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-md border px-2 text-[11px] font-medium"
           style={portalStyle({ borderColor: LINE, color: GOLD, background: SOFT })}
@@ -558,7 +561,7 @@ function MukellefRow({
 
       {/* EXPANDED CONTENT */}
       {expanded && (
-        <div className="border-t" style={portalStyle({ borderColor: LINE })}>
+        <div data-banka-acik className="border-t" style={portalStyle({ borderColor: LINE })}>
           {hicHesap ? (
             <div className="flex items-center gap-2 px-4 py-3 text-[12.5px]" style={portalStyle({ color: MUTED })}>
               <AlertCircle size={13} style={portalStyle({ color: TONES.amber.fg })} />
@@ -571,10 +574,10 @@ function MukellefRow({
           ) : (
             <>
               {/* Bulk actions */}
-              <div className="flex items-center gap-2 px-4 py-2.5"
+              <div data-banka-toplu className="flex items-center gap-2 px-4 py-2.5"
                    style={portalStyle({ background: 'rgba(255,255,255,0.015)', borderBottom: `1px solid ${LINE}` })}>
                 <span className="text-[11px]" style={portalStyle({ color: MUTED })}>Toplu işlem:</span>
-                <button
+                <button data-banka-toplu-dugme="geldi"
                   onClick={() => onBulk('geldi')}
                   disabled={isPending}
                   className="rounded-md border px-2 py-1 text-[11px] font-bold disabled:opacity-50"
@@ -582,7 +585,7 @@ function MukellefRow({
                 >
                   Hepsi geldi
                 </button>
-                <button
+                <button data-banka-toplu-dugme="islendi"
                   onClick={() => onBulk('islendi')}
                   disabled={isPending}
                   className="rounded-md border px-2 py-1 text-[11px] font-bold disabled:opacity-50"
@@ -612,7 +615,7 @@ function MukellefRow({
 function Badge({ label, tone }: { label: string; tone: keyof typeof TONES }) {
   const t = TONES[tone];
   return (
-    <span
+    <span data-banka-rozet={tone}
       className="rounded-md border px-2 py-1 text-[10.5px] font-bold uppercase tracking-wider"
       style={portalStyle({ borderColor: t.bd, color: t.fg, background: t.bg })}
     >
@@ -636,7 +639,7 @@ function HesapRow({
 }) {
   const bh = hesap.bankaHesap;
   return (
-    <div
+    <div data-banka-hesap
       className="grid grid-cols-[1fr_auto_auto] gap-3 items-center px-4 py-2.5 border-t"
       style={portalStyle({ borderColor: LINE })}
     >
@@ -697,7 +700,7 @@ function TogglePill({
 }) {
   const t = TONES[tone];
   return (
-    <button
+    <button data-banka-pill={tone} data-banka-secili={checked ? 'evet' : 'hayir'}
       onClick={onClick}
       disabled={disabled}
       title={hint || (tarih ? `${label}: ${new Date(tarih).toLocaleString('tr-TR')}` : label)}
@@ -767,7 +770,7 @@ function BankaHesapModal({
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+    <div data-banka-pencere className="fixed inset-0 z-50 flex items-center justify-center p-4"
          style={portalStyle({ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' })}
          onClick={onClose}>
       <div
@@ -809,7 +812,7 @@ function BankaHesapModal({
                       {h.iban || h.hesapNo || '—'}
                     </div>
                   </div>
-                  <button
+                  <button data-banka-hesap-sil
                     onClick={() => {
                       if (confirm(`"${h.bankaAdi}" hesabını silmek istiyor musun?`)) deleteMut.mutate(h.id);
                     }}
@@ -860,7 +863,7 @@ function BankaHesapModal({
               style={portalStyle({ borderColor: LINE, color: TEXT, background: SOFT })}
             />
           </div>
-          <button
+          <button data-banka-hesap-ekle={bankaAdi.trim() ? 'hazir' : 'bos'}
             onClick={() => createMut.mutate()}
             disabled={!bankaAdi.trim() || createMut.isPending}
             className="w-full py-2.5 rounded-lg text-sm font-bold disabled:opacity-50"

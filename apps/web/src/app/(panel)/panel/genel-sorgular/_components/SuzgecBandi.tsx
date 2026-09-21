@@ -39,7 +39,7 @@ export function SuzgecBandi({
   };
 
   return (
-    <div className="mb-3 rounded-2xl px-4 py-3" style={portalStyle(kartZemini(GOLD))}>
+    <div data-review-band className="mb-3 rounded-2xl px-4 py-3" style={portalStyle(kartZemini(GOLD))}>
       <div className="flex min-w-0 flex-wrap items-center gap-2">
         {/* Mükellef */}
         <div className="w-full sm:w-[280px]">
@@ -61,7 +61,7 @@ export function SuzgecBandi({
             const secili = suzgec.turler.includes(t);
             const renk = TUR_RENK[t];
             return (
-              <button
+              <button data-gs-tur={t}
                 key={t}
                 type="button"
                 aria-pressed={secili}
@@ -81,7 +81,7 @@ export function SuzgecBandi({
 
         {/* Dönem */}
         <div className="flex items-center gap-1.5">
-          <label
+          <label data-gs-donem={tumDonemler ? 'pasif' : 'etkin'}
             className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[11.5px] font-semibold"
             style={portalStyle({ border: `1px solid ${tumDonemler ? 'rgba(255,255,255,0.12)' : `${GOLD}66`}`, background: tumDonemler ? 'transparent' : `${GOLD}18`, color: tumDonemler ? IKINCIL : GOLD })}
             title="Dönem (ay)"
@@ -96,7 +96,7 @@ export function SuzgecBandi({
               style={portalStyle({ color: tumDonemler ? IKINCIL : METIN, fontSize: 12, width: 120 })}
             />
           </label>
-          <button
+          <button data-gs-tum
             type="button"
             aria-pressed={tumDonemler}
             onClick={() => onSuzgec({ ...suzgec, donem: tumDonemler ? buAy : '' })}
@@ -109,7 +109,7 @@ export function SuzgecBandi({
         </div>
 
         {suzgecVar && (
-          <button
+          <button data-gs-temizle
             type="button"
             onClick={() => onSuzgec({ mukellefId: '', turler: [], donem: buAy })}
             title="Süzgeçleri temizle"

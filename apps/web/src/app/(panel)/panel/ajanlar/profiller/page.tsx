@@ -1,5 +1,6 @@
 'use client';
 import '@/app/(panel)/panel/ajanlar/_components/operations-white.css';
+import './profiller-white.css';
 
 import { portalStyle } from '@/lib/portal-theme';
 
@@ -378,11 +379,11 @@ export default function ProfillerPage() {
   return (
     <div data-ops-page="profiller" className="flex max-w-[1680px] flex-col gap-5 xl:h-full xl:min-h-0">
       <section data-ops-header="true" className="relative shrink-0 overflow-hidden rounded-xl border border-white/[0.06] bg-[#0f0d0b]">
-        <div className="h-[3px] w-full" style={portalStyle({ background: 'linear-gradient(90deg,#8b7cf0,#a78bfa 35%,#6d5fd1 60%,#8b7cf0)' })} />
-        <div className="pointer-events-none absolute inset-0" style={portalStyle({ background: 'radial-gradient(420px 130px at 20% -70%, rgba(139,124,240,.16), transparent 70%)' })} />
+        <div data-pf-serit className="h-[3px] w-full" style={portalStyle({ background: 'linear-gradient(90deg,#8b7cf0,#a78bfa 35%,#6d5fd1 60%,#8b7cf0)' })} />
+        <div data-pf-parilti className="pointer-events-none absolute inset-0" style={portalStyle({ background: 'radial-gradient(420px 130px at 20% -70%, rgba(139,124,240,.16), transparent 70%)' })} />
         <div className="relative flex flex-wrap items-center justify-between gap-3 px-5 py-3">
           <div className="flex min-w-0 items-center gap-3">
-            <div
+            <div data-pf-ikon
               className="flex h-10 w-10 flex-none items-center justify-center rounded-xl"
               style={portalStyle({ background: 'linear-gradient(145deg,#8b7cf0,#6d5fd1)', boxShadow: '0 8px 22px -10px rgba(139,124,240,.55)' })}
             >
@@ -390,8 +391,8 @@ export default function ProfillerPage() {
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <span className="text-[9.5px] font-bold uppercase tracking-[.2em] text-[#b3a4ef]">Ajan</span>
-                <span className="h-3 w-px bg-white/15" />
+                <span data-pf-etiket className="text-[9.5px] font-bold uppercase tracking-[.2em] text-[#b3a4ef]">Ajan</span>
+                <span data-pf-ayrac className="h-3 w-px bg-white/15" />
                 <h1
                   className="truncate text-[21px] font-semibold leading-none text-[#fafaf9]"
                   style={portalStyle({ fontFamily: 'Fraunces, serif', letterSpacing: '-0.02em' })}
@@ -413,9 +414,9 @@ export default function ProfillerPage() {
       </section>
 
       <div className="grid gap-4 xl:min-h-0 xl:flex-1 xl:grid-cols-[386px_minmax(0,1fr)] xl:grid-rows-[minmax(0,1fr)]">
-        <aside className="flex flex-col overflow-hidden rounded-xl border border-white/[0.06] bg-white/[0.025] xl:min-h-0">
+        <aside data-pf-liste className="flex flex-col overflow-hidden rounded-xl border border-white/[0.06] bg-white/[0.025] xl:min-h-0">
           <div className="shrink-0 p-4 pb-2">
-            <label className="flex items-center gap-2 rounded-lg border border-white/[0.07] bg-black/20 px-3 py-2">
+            <label data-pf-arama className="flex items-center gap-2 rounded-lg border border-white/[0.07] bg-black/20 px-3 py-2">
               <Search size={16} className="text-white/35" />
               <input
                 value={search}
@@ -431,7 +432,7 @@ export default function ProfillerPage() {
               { key: 'configured', label: `Tanımlı (${configuredCount})` },
               { key: 'missing', label: `Eksik (${missingCount})` },
             ] as { key: ListFilter; label: string }[]).map((f) => (
-              <button
+              <button data-pf-suzgec={listFilter === f.key ? 'etkin' : 'pasif'}
                 key={f.key}
                 onClick={() => setListFilter(f.key)}
                 className="flex-1 rounded-lg border px-2 py-1.5 text-[11.5px] font-semibold transition"
@@ -460,7 +461,7 @@ export default function ProfillerPage() {
               const active = selected === name;
               const dotClass = !has ? 'border border-white/25' : score >= 70 ? 'bg-[#5cbf8a]' : 'bg-[#d4a85f]';
               return (
-                <button
+                <button data-pf-satir={active ? 'etkin' : 'pasif'} data-pf-tanimli={has ? 'evet' : 'hayir'}
                   key={t.id}
                   onClick={() => selectTaxpayer(name)}
                   className="group relative mb-1 grid w-full grid-cols-[14px_minmax(0,1fr)_auto] items-center gap-2.5 rounded-xl px-3 py-2.5 text-left transition"
@@ -470,7 +471,7 @@ export default function ProfillerPage() {
                   })}
                 >
                   {active && <span className="absolute left-0 top-2.5 bottom-2.5 w-[3px] rounded-full bg-[#8b7cf0]" />}
-                  <span className={`h-2.5 w-2.5 justify-self-center rounded-full ${dotClass}`} />
+                  <span data-pf-nokta={!has ? 'yok' : score >= 70 ? 'iyi' : 'orta'} className={`h-2.5 w-2.5 justify-self-center rounded-full ${dotClass}`} />
                   <span className="min-w-0">
                     <span className="block truncate text-[13.5px] font-semibold" style={portalStyle({ color: active ? '#d9cffb' : '#e5e7eb' })}>{name}</span>
                     <span className="mt-0.5 block truncate text-[11px] text-white/35">{meta}</span>
@@ -479,17 +480,17 @@ export default function ProfillerPage() {
                     {has ? (
                       <>
                         <span className="flex items-center gap-1.5">
-                          <span className="h-1 w-[46px] overflow-hidden rounded-full bg-white/10">
+                          <span data-pf-bar className="h-1 w-[46px] overflow-hidden rounded-full bg-white/10">
                             <span className="block h-full rounded-full" style={portalStyle({ width: `${score}%`, background: 'linear-gradient(90deg,#6d5fd1,#a78bfa)' })} />
                           </span>
                           <span className="w-8 text-right text-[10.5px] tabular-nums text-white/45">%{score}</span>
                         </span>
-                        <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold" style={portalStyle({ color: '#bcaef4', background: 'rgba(139,124,240,.13)', border: '1px solid rgba(139,124,240,.22)' })}>
+                        <span data-pf-cip="ozet" className="rounded-full px-2 py-0.5 text-[10px] font-semibold" style={portalStyle({ color: '#bcaef4', background: 'rgba(139,124,240,.13)', border: '1px solid rgba(139,124,240,.22)' })}>
                           {kod} kod · {kural} kural
                         </span>
                       </>
                     ) : (
-                      <span className="rounded-full border border-white/[0.07] bg-white/[0.04] px-2 py-0.5 text-[10px] font-semibold text-white/40">tanımsız</span>
+                      <span data-pf-cip="tanimsiz" className="rounded-full border border-white/[0.07] bg-white/[0.04] px-2 py-0.5 text-[10px] font-semibold text-white/40">tanımsız</span>
                     )}
                   </span>
                 </button>
@@ -501,7 +502,7 @@ export default function ProfillerPage() {
           </div>
         </aside>
 
-        <main className="flex flex-col overflow-hidden rounded-xl border border-white/[0.06] bg-white/[0.025] xl:min-h-0">
+        <main data-pf-ana className="flex flex-col overflow-hidden rounded-xl border border-white/[0.06] bg-white/[0.025] xl:min-h-0">
           {!selected ? (
             <EmptyState missingCount={missingCount} missing={missingTaxpayers} onPick={selectTaxpayer} />
           ) : (
@@ -573,13 +574,13 @@ function ProfileForm({
 
   return (
     <div className="flex w-full flex-1 flex-col min-h-0">
-      <div className="shrink-0 rounded-t-xl border-b border-white/[0.06] px-5 py-4" style={portalStyle({ background: 'rgba(255,255,255,0.015)' })}>
+      <div data-pf-form-bas className="shrink-0 rounded-t-xl border-b border-white/[0.06] px-5 py-4" style={portalStyle({ background: 'rgba(255,255,255,0.015)' })}>
         <div className="flex items-start justify-between gap-4">
           <div className="flex min-w-0 items-center gap-3.5">
             <ScoreRing value={score} />
             <div className="min-w-0">
               <div className="text-[10.5px] font-semibold uppercase tracking-[.16em] text-white/35">Mükellef</div>
-              <div className="truncate text-[19px] font-semibold leading-tight text-[#d9cffb]">{selected}</div>
+              <div data-pf-ad className="truncate text-[19px] font-semibold leading-tight text-[#d9cffb]">{selected}</div>
               <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[12px]">
                 <span className="inline-flex items-center gap-1.5 text-white/50">
                   <FileText size={13} className="text-white/30" /> {profile.sektor || 'Sektör yok'}
@@ -596,7 +597,7 @@ function ProfileForm({
             </div>
           </div>
           <div className="flex flex-none items-center gap-2">
-            <button
+            <button data-pf-dugme="kopyala"
               onClick={onCopy}
               title="Profili başka mükellefe kopyala"
               className="inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-[13px] font-semibold"
@@ -605,7 +606,7 @@ function ProfileForm({
               <Copy size={15} /> <span className="hidden sm:inline">Kopyala</span>
             </button>
             {has && (
-              <button
+              <button data-pf-dugme="sil"
                 onClick={onDelete}
                 title="Profili sil"
                 className="inline-flex h-9 items-center gap-2 rounded-lg border border-red-400/20 bg-red-500/10 px-3 text-[13px] font-semibold text-red-300"
@@ -613,7 +614,7 @@ function ProfileForm({
                 <Trash2 size={15} /> <span className="hidden sm:inline">Sil</span>
               </button>
             )}
-            <button
+            <button data-pf-dugme="kaydet"
               onClick={onSave}
               disabled={saving}
               className="inline-flex h-9 items-center gap-2 rounded-lg px-4 text-[13px] font-bold text-[#0b0a14] disabled:opacity-50"
@@ -624,9 +625,9 @@ function ProfileForm({
           </div>
         </div>
 
-        <div className="mt-4 flex flex-wrap gap-2">
+        <div data-pf-sekmeler className="mt-4 flex flex-wrap gap-2">
           {(Object.keys(tabLabels) as ProfileTab[]).map((key) => (
-            <button
+            <button data-pf-sekme={tab === key ? 'etkin' : 'pasif'}
               key={key}
               onClick={() => setTab(key)}
               className="inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-sm font-semibold transition"
@@ -771,7 +772,7 @@ function RuleShelf() {
   return (
     <div className="grid gap-3 lg:grid-cols-4">
       {rules.map((rule) => (
-        <div key={rule.title} className="rounded-xl border border-white/[0.06] bg-black/15 p-4">
+        <div data-pf-raf key={rule.title} className="rounded-xl border border-white/[0.06] bg-black/15 p-4">
           <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-[#c4b5fd]">
             {rule.icon}
             {rule.title}
@@ -889,9 +890,9 @@ function ScoreRing({ value }: { value: number }) {
 function EmptyState({ missingCount, missing, onPick }: { missingCount: number; missing: string[]; onPick: (name: string) => void }) {
   const top = missing.slice(0, 5);
   return (
-    <div className="flex min-h-[60vh] w-full flex-1 items-center justify-center p-10">
+    <div data-pf-bos className="flex min-h-[60vh] w-full flex-1 items-center justify-center p-10">
       <div className="w-full max-w-[520px] text-center">
-        <div
+        <div data-pf-bos-ikon
           className="mx-auto mb-5 flex h-[70px] w-[70px] items-center justify-center rounded-[20px] border border-[#8b7cf0]/25"
           style={portalStyle({ background: 'linear-gradient(145deg, rgba(139,124,240,.2), rgba(139,124,240,.05))' })}
         >
@@ -909,10 +910,10 @@ function EmptyState({ missingCount, missing, onPick }: { missingCount: number; m
           )}
         </p>
         {top.length > 0 && (
-          <div className="mt-5 flex flex-col gap-1.5 rounded-2xl border border-white/[0.06] bg-black/20 p-3 text-left">
+          <div data-pf-hizli className="mt-5 flex flex-col gap-1.5 rounded-2xl border border-white/[0.06] bg-black/20 p-3 text-left">
             <div className="mb-1 px-1 text-[11px] font-bold uppercase tracking-[.1em] text-[#d4a85f]">En çok eksikler — hızlı başla</div>
             {top.map((name) => (
-              <button
+              <button data-pf-hizli-satir
                 key={name}
                 onClick={() => onPick(name)}
                 className="flex items-center justify-between gap-3 rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-2.5 text-left transition hover:border-[#8b7cf0]/35"
@@ -959,7 +960,7 @@ function CopyModal({
 }) {
   if (typeof document === 'undefined') return null;
   return createPortal(
-    <div
+    <div data-pf-pencere
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={portalStyle({ background: 'rgba(5,5,8,.66)', backdropFilter: 'blur(2px)' })}
       onClick={onClose}
@@ -1003,7 +1004,7 @@ function CopyModal({
               const sel = targets.has(name);
               const has = configured(name);
               return (
-                <button
+                <button data-pf-hedef={sel ? 'secili' : 'pasif'}
                   key={name}
                   onClick={() => onToggle(name)}
                   className="flex items-center gap-3 rounded-xl border px-3 py-2.5 text-left text-[13px] transition"
@@ -1033,10 +1034,10 @@ function CopyModal({
             <b className="text-[#c4b5fd]">{targets.size}</b> mükellef seçili
           </span>
           <div className="flex items-center gap-2">
-            <button onClick={onClose} className="inline-flex h-10 items-center rounded-lg border border-white/[0.08] bg-white/[0.03] px-4 text-[13px] font-semibold text-white/65">
+            <button data-pf-dugme="vazgec" onClick={onClose} className="inline-flex h-10 items-center rounded-lg border border-white/[0.08] bg-white/[0.03] px-4 text-[13px] font-semibold text-white/65">
               Vazgeç
             </button>
-            <button
+            <button data-pf-dugme="kopyala-onay"
               onClick={onConfirm}
               disabled={busy || targets.size === 0}
               className="inline-flex h-10 items-center gap-2 rounded-lg border px-4 text-[13px] font-bold text-[#0b0a14] disabled:opacity-40"
@@ -1066,7 +1067,7 @@ function Panel({
   const gridClass = columns === 1 ? 'grid-cols-1' : columns === 2 ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1 lg:grid-cols-3';
   return (
     <section data-ops-card="true" className="rounded-xl border border-white/[0.06] bg-black/10">
-      <div className="flex items-center gap-2 border-b border-white/[0.06] px-4 py-3 text-sm font-semibold uppercase tracking-[.12em] text-[#b3a4ef]">
+      <div data-pf-panel-bas className="flex items-center gap-2 border-b border-white/[0.06] px-4 py-3 text-sm font-semibold uppercase tracking-[.12em] text-[#b3a4ef]">
         {icon}
         {title}
       </div>
@@ -1101,20 +1102,20 @@ function KeywordEditor({
   };
 
   return (
-    <div className={`rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 ${className}`}>
+    <div data-pf-editor="kelime" className={`rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 ${className}`}>
       <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="text-[11px] font-semibold uppercase tracking-[.12em] text-white/35">{label}</div>
           <p className="mt-1 text-xs text-white/40">Bu kelimeler yakalanınca risk talimatları devreye girer.</p>
         </div>
-        <span className="rounded-full bg-amber-400/10 px-2.5 py-1 text-xs font-semibold text-amber-200">
+        <span data-pf-sayi className="rounded-full bg-amber-400/10 px-2.5 py-1 text-xs font-semibold text-amber-200">
           {keywords.length} kelime
         </span>
       </div>
 
       <div className="mb-3 flex flex-wrap gap-2">
         {keywords.map((keyword, index) => (
-          <span
+          <span data-pf-kelime
             key={`${keyword}-${index}`}
             className="inline-flex min-h-9 items-center gap-2 rounded-full border border-amber-300/20 bg-amber-400/10 px-3 text-sm font-semibold text-amber-100"
           >
@@ -1144,7 +1145,7 @@ function KeywordEditor({
           placeholder="Yeni anahtar kelime"
           className="h-10 min-w-0 flex-1 rounded-lg border border-white/[0.07] bg-white/[0.035] px-3 text-sm text-[#e5e7eb] outline-none placeholder:text-white/24 focus:border-[#8b7cf0]/45"
         />
-        <button
+        <button data-pf-ekle
           type="button"
           onClick={() => addKeyword(draft)}
           className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-emerald-400/25 bg-emerald-500/15 px-3 text-sm font-semibold text-emerald-200"
@@ -1156,7 +1157,7 @@ function KeywordEditor({
       {suggestions.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-2">
           {suggestions.map((suggestion) => (
-            <button
+            <button data-pf-oneri
               type="button"
               key={suggestion}
               onClick={() => addKeyword(suggestion)}
@@ -1216,7 +1217,7 @@ function RuleListEditor({
   };
 
   return (
-    <div className={`rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 ${className}`}>
+    <div data-pf-editor="kural" className={`rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 ${className}`}>
       <div className="mb-3 flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <div className="flex items-center gap-2 text-sm font-semibold text-[#c4b5fd]">
@@ -1225,7 +1226,7 @@ function RuleListEditor({
           </div>
           {description && <p className="mt-1 max-w-3xl text-xs leading-5 text-white/42">{description}</p>}
         </div>
-        <span className="w-fit rounded-full bg-emerald-400/10 px-2.5 py-1 text-xs font-semibold text-emerald-200">
+        <span data-pf-sayi className="w-fit rounded-full bg-emerald-400/10 px-2.5 py-1 text-xs font-semibold text-emerald-200">
           {lines.length} kayıt
         </span>
       </div>
@@ -1233,7 +1234,7 @@ function RuleListEditor({
       {templates.length > 0 && (
         <div className="mb-3 flex flex-wrap gap-2">
           {templates.map((template) => (
-            <button
+            <button data-pf-sablon
               type="button"
               key={template}
               onClick={() => addLine(template)}
@@ -1248,7 +1249,7 @@ function RuleListEditor({
 
       <div className="space-y-2">
         {lines.map((line, index) => (
-          <div key={`${line}-${index}`} className="rounded-lg border border-white/[0.06] bg-black/20 p-3">
+          <div data-pf-kural key={`${line}-${index}`} className="rounded-lg border border-white/[0.06] bg-black/20 p-3">
             <div className="mb-2 flex items-center justify-between gap-2">
               <span className="text-xs font-semibold uppercase tracking-[.1em] text-white/32">
                 {lineLabel} {index + 1}
@@ -1281,7 +1282,7 @@ function RuleListEditor({
         )}
       </div>
 
-      <div className="mt-3 rounded-lg border border-white/[0.06] bg-black/15 p-3">
+      <div data-pf-yeni className="mt-3 rounded-lg border border-white/[0.06] bg-black/15 p-3">
         <div className="mb-2 text-xs font-semibold uppercase tracking-[.1em] text-white/32">Yeni {lineLabel}</div>
         <textarea
           value={draft}
@@ -1291,7 +1292,7 @@ function RuleListEditor({
           className="w-full rounded-lg border border-white/[0.07] bg-white/[0.035] px-3 py-2 text-sm leading-6 text-[#e5e7eb] outline-none placeholder:text-white/24 focus:border-[#8b7cf0]/45"
         />
         <div className="mt-2 flex justify-end">
-          <button
+          <button data-pf-ekle
             type="button"
             onClick={() => addLine(draft)}
             className="inline-flex h-10 items-center gap-2 rounded-lg border border-emerald-400/25 bg-emerald-500/15 px-3 text-sm font-semibold text-emerald-200"
@@ -1337,7 +1338,7 @@ function FirmRuleEditor({
   };
 
   return (
-    <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+    <div data-pf-editor="firma" className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
       <div className="mb-3 flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <div className="flex items-center gap-2 text-sm font-semibold text-[#c4b5fd]">
@@ -1348,7 +1349,7 @@ function FirmRuleEditor({
             Firma adı eşleşirse bu talimat genel firma hafızasından önce uygulanır.
           </p>
         </div>
-        <span className="w-fit rounded-full bg-emerald-400/10 px-2.5 py-1 text-xs font-semibold text-emerald-200">
+        <span data-pf-sayi className="w-fit rounded-full bg-emerald-400/10 px-2.5 py-1 text-xs font-semibold text-emerald-200">
           {rules.length} firma kuralı
         </span>
       </div>
@@ -1368,7 +1369,7 @@ function FirmRuleEditor({
 
       <div className="space-y-2">
         {rules.map((rule, index) => (
-          <div key={`${rule.firm}-${rule.instruction}-${index}`} className="rounded-lg border border-white/[0.06] bg-black/20 p-3">
+          <div data-pf-kural key={`${rule.firm}-${rule.instruction}-${index}`} className="rounded-lg border border-white/[0.06] bg-black/20 p-3">
             <div className="mb-2 flex items-center justify-between gap-2">
               <span className="text-xs font-semibold uppercase tracking-[.1em] text-white/32">Firma Kuralı {index + 1}</span>
               <div className="flex items-center gap-1">
@@ -1403,7 +1404,7 @@ function FirmRuleEditor({
         )}
       </div>
 
-      <div className="mt-3 rounded-lg border border-white/[0.06] bg-black/15 p-3">
+      <div data-pf-yeni className="mt-3 rounded-lg border border-white/[0.06] bg-black/15 p-3">
         <div className="mb-2 text-xs font-semibold uppercase tracking-[.1em] text-white/32">Yeni Firma Kuralı</div>
         <div className="grid gap-2 lg:grid-cols-[260px_minmax(0,1fr)]">
           <Input label="Firma" value={draftFirm} onChange={setDraftFirm} placeholder="Firma adı" />
@@ -1416,7 +1417,7 @@ function FirmRuleEditor({
           />
         </div>
         <div className="mt-2 flex justify-end">
-          <button
+          <button data-pf-ekle
             type="button"
             onClick={() => commit({ firm: draftFirm, instruction: draftInstruction })}
             className="inline-flex h-10 items-center gap-2 rounded-lg border border-emerald-400/25 bg-emerald-500/15 px-3 text-sm font-semibold text-emerald-200"
@@ -1447,7 +1448,7 @@ function IconButton({
       ? 'border-red-400/20 text-red-300 hover:bg-red-500/10'
       : 'border-white/[0.07] text-white/45 hover:bg-white/[0.06] hover:text-white/70';
   return (
-    <button
+    <button data-pf-ikon-dugme={tone}
       type="button"
       title={label}
       aria-label={label}
@@ -1474,10 +1475,10 @@ function KdvBlock({
   basePlaceholder: string;
 }) {
   return (
-    <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
+    <div data-pf-kdv className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
       <div className="mb-3 flex items-center justify-between gap-3">
         <h3 className="text-sm font-semibold text-[#c4b5fd]">{title}</h3>
-        <span className="rounded-full bg-white/[0.04] px-2 py-0.5 text-[11px] text-white/40">
+        <span data-pf-sayi className="rounded-full bg-white/[0.04] px-2 py-0.5 text-[11px] text-white/40">
           {countFilledKdv(values)} / 5 dolu
         </span>
       </div>
@@ -1494,7 +1495,7 @@ function KdvBlock({
 
 function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
   return (
-    <button
+    <button data-pf-anahtar={checked ? 'acik' : 'kapali'}
       type="button"
       onClick={() => onChange(!checked)}
       className="flex min-h-[58px] items-center justify-between gap-3 rounded-lg border border-white/[0.07] bg-white/[0.025] px-3 py-2 text-left"
@@ -1525,7 +1526,7 @@ function Input({
   placeholder?: string;
 }) {
   return (
-    <label className="block min-w-0">
+    <label data-pf-alan className="block min-w-0">
       <div className="mb-1 text-[11px] font-semibold uppercase tracking-[.08em] text-white/32">{label}</div>
       <input
         type="text"
@@ -1554,7 +1555,7 @@ function Textarea({
   className?: string;
 }) {
   return (
-    <label className={`block min-w-0 ${className}`}>
+    <label data-pf-alan className={`block min-w-0 ${className}`}>
       {label && <div className="mb-1 text-[11px] font-semibold uppercase tracking-[.08em] text-white/32">{label}</div>}
       <textarea
         value={value}
@@ -1579,7 +1580,7 @@ function Select({
   options: Array<{ value: string; label: string }>;
 }) {
   return (
-    <label className="block min-w-0">
+    <label data-pf-alan className="block min-w-0">
       <div className="mb-1 text-[11px] font-semibold uppercase tracking-[.08em] text-white/32">{label}</div>
       <select
         value={value}

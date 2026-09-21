@@ -124,7 +124,7 @@ export function SonucGrubu(p: SonucGrubuProps) {
   const earsiv = p.tur === 'GELEN_EARSIV';
 
   return (
-    <section data-review-table className="mb-4 overflow-hidden rounded-xl" style={portalStyle({ border: `1px solid ${KENAR_NOTR}`, background: 'rgba(255,255,255,0.02)' })}>
+    <section data-review-table data-sorgu-tur={p.tur} className="mb-4 overflow-hidden rounded-xl" style={portalStyle({ border: `1px solid ${KENAR_NOTR}`, background: 'rgba(255,255,255,0.02)' })}>
       {/* Grup bandı */}
       <div data-review-heading className="flex flex-wrap items-center gap-2.5 px-3 py-2.5" style={portalStyle({ background: GRUP_ZEMIN, borderBottom: GRUP_CIZGI, borderLeft: `4px solid ${renk}` })}>
         <span className="text-[12px] font-extrabold uppercase" style={portalStyle({ color: GOLD, letterSpacing: '.16em' })}>
@@ -188,7 +188,7 @@ export function SonucGrubu(p: SonucGrubuProps) {
                   const acikMi = acik === s.id;
                   return (
                     <Fragment key={s.id}>
-                      <tr
+                      <tr data-acik={acikMi ? 'true' : undefined}
                         onClick={() => setAcik(acikMi ? null : s.id)}
                         className="cursor-pointer transition-colors hover:bg-white/[0.03]"
                         style={portalStyle({ background: acikMi ? 'rgba(212,184,118,0.05)' : 'transparent', boxShadow: acikMi ? `inset 3px 0 0 ${GOLD}` : undefined })}
@@ -229,7 +229,7 @@ function Detay({ sonuc }: { sonuc: SorguSonucu }) {
   const veri = sonuc.veri && typeof sonuc.veri === 'object' ? sonuc.veri : {};
   const girdiler = Object.entries(veri);
   return (
-    <div className="px-4 py-3" style={portalStyle({ borderLeft: `3px solid ${GOLD}55` })}>
+    <div data-gs-detay className="px-4 py-3" style={portalStyle({ borderLeft: `3px solid ${GOLD}55` })}>
       <div className="mb-2 flex flex-wrap items-center gap-1.5">
         {sonuc.whatsappGonderildiMi ? (
           <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-[2px] text-[10.5px] font-medium leading-4" style={portalStyle({ background: 'rgba(37,211,102,0.10)', border: '1px solid rgba(37,211,102,0.35)', color: '#5fd38a' })} title="Sonuç mükellefe WhatsApp ile iletildi">

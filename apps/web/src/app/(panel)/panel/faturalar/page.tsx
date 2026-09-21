@@ -466,17 +466,17 @@ ${isPdf
             'radial-gradient(120% 140% at 0% 0%, rgba(212,184,118,0.16), transparent 46%), radial-gradient(120% 140% at 100% 0%, rgba(139,118,73,0.12), transparent 48%), #0f0d0b',
         })}
       >
-        <div
+        <div data-fx-serit
           className="absolute inset-x-0 top-0 h-1"
           style={portalStyle({ background: 'linear-gradient(90deg, #8b7649, #b8a06f, #d4b876, #e7cf95, #d4b876, #b8a06f)' })}
         />
-        <div className="flex items-center gap-2.5 mb-3">
+        <div data-fx-etiket className="flex items-center gap-2.5 mb-3">
           <span className="w-[26px] h-px" style={portalStyle({ background: '#d4b876' })} />
           <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={portalStyle({ color: '#b8a06f' })}>Belge Yönetimi</span>
         </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
           <div className="flex items-center gap-3.5">
-            <span
+            <span data-fx-ikon
               className="grid place-items-center rounded-xl flex-shrink-0"
               style={portalStyle({ width: 46, height: 46, background: 'linear-gradient(135deg, #d4b876, #b8a06f)', boxShadow: '0 8px 22px rgba(212,184,118,0.32)' })}
             >
@@ -493,7 +493,7 @@ ${isPdf
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2 flex-wrap justify-end ml-auto flex-shrink-0">
+          <div data-fx-bas-sag className="flex items-center gap-2 flex-wrap justify-end ml-auto flex-shrink-0">
             <DriveControls
               status={driveStatus}
               activeJob={activeDriveJob}
@@ -510,9 +510,9 @@ ${isPdf
       </div>
 
       {/* Tek satır araç çubuğu — Mükellef · Dönem · Çekme (eski büyük seçim kartı yerine) */}
-      <div className="flex items-center gap-2 flex-wrap rounded-[14px] p-2.5" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' })}>
+      <div data-fx-arac className="flex items-center gap-2 flex-wrap rounded-[14px] p-2.5" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' })}>
         {/* Mükellef picker */}
-        <button
+        <button data-fx-mukellef-sec
           type="button"
           onClick={() => setMukellefPickerOpen(true)}
           className="flex-1 min-w-[220px] flex items-center gap-2 px-3 h-[38px] rounded-[10px] text-[13px] text-left hover:brightness-110 transition"
@@ -539,7 +539,7 @@ ${isPdf
         </button>
 
         {/* Yıl */}
-        <div className="flex items-center gap-1.5 px-2.5 h-[38px] rounded-[10px]" style={portalStyle({ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' })}>
+        <div data-fx-girdi className="flex items-center gap-1.5 px-2.5 h-[38px] rounded-[10px]" style={portalStyle({ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' })}>
           <Calendar size={13} style={portalStyle({ color: 'rgba(250,250,249,0.45)' })} />
           <select
             value={year}
@@ -554,7 +554,7 @@ ${isPdf
         </div>
 
         {/* Ay */}
-        <div className="flex items-center px-2.5 h-[38px] rounded-[10px]" style={portalStyle({ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' })}>
+        <div data-fx-girdi className="flex items-center px-2.5 h-[38px] rounded-[10px]" style={portalStyle({ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' })}>
           <select
             value={month}
             onChange={(e) => setMonth(e.target.value)}
@@ -570,7 +570,7 @@ ${isPdf
         <span className="w-px h-6 mx-0.5 hidden md:block" style={portalStyle({ background: 'rgba(255,255,255,0.08)' })} />
 
         {/* Çekme butonları */}
-        <button
+        <button data-fx-cek="alis"
           disabled={!selectedMukellef || fetchMut.isPending || !!activeJob || bulkProgress?.running}
           onClick={() => handleFetch('ALIS', false)}
           className="inline-flex items-center gap-1.5 h-[38px] px-3 rounded-[10px] text-[12.5px] font-bold disabled:opacity-60 disabled:cursor-not-allowed transition-all"
@@ -581,7 +581,7 @@ ${isPdf
         >
           <Download size={13} /> Alış Çek
         </button>
-        <button
+        <button data-fx-cek="satis"
           disabled={!selectedMukellef || fetchMut.isPending || !!activeJob || bulkProgress?.running}
           onClick={() => handleFetch('SATIS', false)}
           className="inline-flex items-center gap-1.5 h-[38px] px-3 rounded-[10px] text-[12.5px] font-bold disabled:opacity-60 disabled:cursor-not-allowed transition-all"
@@ -592,7 +592,7 @@ ${isPdf
         >
           <Download size={13} /> Satış Çek
         </button>
-        <button
+        <button data-fx-cek="hepsi"
           disabled={!selectedMukellef || fetchMut.isPending || !!activeJob || bulkProgress?.running}
           onClick={() => handleFetch(undefined, false)}
           className="inline-flex items-center gap-1.5 h-[38px] px-3.5 rounded-[10px] text-[12.5px] font-bold disabled:opacity-60 disabled:cursor-not-allowed transition-all"
@@ -608,7 +608,7 @@ ${isPdf
             ? 'Çekiliyor…'
             : 'Hepsini Çek'}
         </button>
-        <button
+        <button data-fx-cek="yenile"
           disabled={!selectedMukellef || fetchMut.isPending || !!activeJob || bulkProgress?.running}
           onClick={() => handleFetch(tab === 'all' ? undefined : tab, true)}
           className="inline-flex items-center justify-center w-[38px] h-[38px] rounded-[10px] disabled:opacity-60 disabled:cursor-not-allowed transition-all"
@@ -620,7 +620,7 @@ ${isPdf
       </div>
 
       {/* İnce özet şeridi — eski 4 dev sayaç kutusu yerine */}
-      <div className="flex items-stretch flex-wrap rounded-[12px] overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' })}>
+      <div data-fx-sayaclar className="flex items-stretch flex-wrap rounded-[12px] overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' })}>
         {[
           { label: 'Toplam Fatura', value: invoices.length, sub: '', icon: Receipt },
           { label: 'Alış Faturası', value: alisInvoices.length, sub: `₺${totalAlis.toLocaleString('tr-TR', { maximumFractionDigits: 0 })}`, icon: FileText },
@@ -629,7 +629,7 @@ ${isPdf
         ].map(({ label, value, sub, icon: Icon }, idx) => (
           <div
             key={label}
-            data-portal-soft-counter
+            data-portal-soft-counter data-fx-sayac={idx}
             className="flex-1 min-w-[160px] flex items-center gap-2.5 px-4 py-2.5"
             style={portalStyle({ '--counter-tone': ['#69468c','#315ca2','#19774c','#087b78'][idx], ...(idx > 0 ? { borderLeft: '1px solid rgba(255,255,255,0.04)' } : {}) } as CSSProperties)}
           >
@@ -651,7 +651,7 @@ ${isPdf
 
       {/* Toplu (tüm mükellefler) çekim progress */}
       {bulkProgress && (
-        <div
+        <div data-fx-ilerleme={bulkProgress.running ? 'suruyor' : 'bitti'}
           className="rounded-2xl p-4 border"
           style={portalStyle({
             background: bulkProgress.running ? 'rgba(212,184,118,.08)' : 'rgba(34,197,94,.08)',
@@ -707,7 +707,7 @@ ${isPdf
 
       {/* Aktif Job progress */}
       {activeJob && (
-        <div
+        <div data-fx-ilerleme="suruyor"
           className="rounded-2xl p-4 border flex items-center gap-3"
           style={portalStyle({
             background: 'rgba(212,184,118,.08)',
@@ -728,11 +728,11 @@ ${isPdf
 
       {/* Fatura listesi — mükellef seçili olmasa bile tüm mükelleflerin o ay toplam faturası */}
       {donem && (
-        <div
+        <div data-fx-liste
           className="rounded-2xl border overflow-hidden"
           style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' })}
         >
-          <div
+          <div data-fx-liste-bas
             className="px-5 py-4 flex items-center justify-between flex-wrap gap-2"
             style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.05)' })}
           >
@@ -744,12 +744,12 @@ ${isPdf
             </div>
             <div className="flex items-center gap-3 flex-wrap">
               {/* Tab filtreleri */}
-              <div className="flex gap-1">
+              <div data-fx-sekmeler className="flex gap-1">
                 {(['all', 'ALIS', 'SATIS'] as const).map((t) => {
                   const count = t === 'all' ? invoices.length : invoices.filter(i => i.faturaTuru.includes(t)).length;
                   const active = tab === t;
                   return (
-                    <button
+                    <button data-fx-sekme={active ? 'etkin' : 'pasif'}
                       key={t}
                       onClick={() => setTab(t)}
                       className="px-3.5 py-1.5 rounded-[8px] text-[11.5px] font-semibold transition-all"
@@ -766,7 +766,7 @@ ${isPdf
               </div>
               {/* Toplu yazdırma — SADECE fatura (e-Fatura/e-Arşiv). Fiş ve Z raporu HARİÇ */}
               <div className="flex gap-1.5" title="Toplu yazdırma — fiş ve Z raporu otomatik hariç tutulur">
-                <button
+                <button data-fx-yazdir="alis"
                   onClick={() => handleBulkPrint('ALIS')}
                   disabled={printing !== 'idle' || !donem}
                   className="px-3 py-1.5 rounded-[8px] text-[11.5px] font-semibold inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
@@ -780,7 +780,7 @@ ${isPdf
                   {printing === 'ALIS' ? <Loader2 size={12} className="animate-spin" /> : <Printer size={12} />}
                   Toplu Alış Yazdır
                 </button>
-                <button
+                <button data-fx-yazdir="satis"
                   onClick={() => handleBulkPrint('SATIS')}
                   disabled={printing !== 'idle' || !donem}
                   className="px-3 py-1.5 rounded-[8px] text-[11.5px] font-semibold inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
@@ -803,7 +803,7 @@ ${isPdf
               <span className="text-sm">Yükleniyor...</span>
             </div>
           ) : filteredInvoices.length === 0 ? (
-            <div className="py-12 text-center">
+            <div data-fx-bos className="py-12 text-center">
               <div className="w-14 h-14 mx-auto mb-3 rounded-2xl flex items-center justify-center" style={portalStyle({ background: 'rgba(255,255,255,0.05)' })}>
                 <Receipt size={24} style={portalStyle({ color: 'rgba(250,250,249,0.35)' })} />
               </div>
@@ -859,7 +859,7 @@ ${isPdf
 
       {/* MÜKELLEF PICKER MODAL (KDV Kontrol / Mihsap / Fiş Yazdırma deseni) */}
       {mukellefPickerOpen && typeof document !== 'undefined' && createPortal(
-        <div
+        <div data-fx-secici
           className="fixed inset-0 z-[60] flex items-start justify-center p-4 pt-[8vh]"
           style={portalStyle({ background: 'rgba(0,0,0,.6)', backdropFilter: 'blur(6px)' })}
           onClick={() => setMukellefPickerOpen(false)}
@@ -910,7 +910,7 @@ ${isPdf
             </div>
             <div className="flex-1 overflow-y-auto p-2">
               {/* Tümünü Seç satırı */}
-              <button
+              <button data-fx-secici-tumu={selectedMukellef === ALL_SENTINEL ? 'secili' : 'pasif'}
                 type="button"
                 onClick={() => { setSelectedMukellef(ALL_SENTINEL); setMukellefPickerOpen(false); setSearch(''); }}
                 className="w-full flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg text-left transition-colors mb-1"
@@ -938,7 +938,7 @@ ${isPdf
                   const initial = name.charAt(0).toUpperCase();
                   const disabled = false; // 2026-09-15: Mihsap ID'siz mükellef de seçilir (FM Arşivim kaynağı)
                   return (
-                    <button
+                    <button data-fx-secici-satir={checked ? 'secili' : 'pasif'}
                       key={t.id}
                       type="button"
                       disabled={disabled}
@@ -1126,7 +1126,7 @@ function InvoiceRow({
   // S3'e arşivlenmiş veya MIHSAP'ın CDN linki varsa önizle
   const canPreview = !!invoice.storageKey || !!invoice.mihsapFileLink;
   return (
-    <tr
+    <tr data-fx-satir
       className="cursor-pointer transition-colors"
       style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.03)' })}
       onClick={() => canPreview && onPreview(invoice)}
@@ -1154,7 +1154,7 @@ function InvoiceRow({
           )}
         </div>
       </td>
-      <td className="px-5 py-3 text-[12px] font-semibold" style={portalStyle({ fontFamily: 'JetBrains Mono, monospace', color: '#d4b876' })}>{invoice.faturaNo}</td>
+      <td data-fx-no className="px-5 py-3 text-[12px] font-semibold" style={portalStyle({ fontFamily: 'JetBrains Mono, monospace', color: '#d4b876' })}>{invoice.faturaNo}</td>
       <td className="px-5 py-3">
         <div className="truncate max-w-[240px] text-[13px] font-medium" style={portalStyle({ color: '#fafaf9' })}>
           {invoice.firmaUnvan || '—'}
@@ -1168,13 +1168,13 @@ function InvoiceRow({
       <td className="px-5 py-3 text-[12px] tabular-nums" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>
         {date.toLocaleDateString('tr-TR')}
       </td>
-      <td className="px-5 py-3 text-right text-[13px] tabular-nums font-bold" style={portalStyle({ fontFamily: 'JetBrains Mono, monospace', color: '#d4b876' })}>
+      <td data-fx-tutar className="px-5 py-3 text-right text-[13px] tabular-nums font-bold" style={portalStyle({ fontFamily: 'JetBrains Mono, monospace', color: '#d4b876' })}>
         ₺{invoice.toplamTutar.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
       </td>
       <td className="px-5 py-3 text-center">
         {canPreview ? (
           <div className="inline-flex items-center gap-1.5">
-            <button
+            <button data-fx-satir-dugme="ac"
               onClick={(e) => {
                 e.stopPropagation();
                 onPreview(invoice);
@@ -1185,7 +1185,7 @@ function InvoiceRow({
             >
               <FileText size={12} /> Aç
             </button>
-            <button
+            <button data-fx-satir-dugme="yazdir"
               onClick={(e) => {
                 e.stopPropagation();
                 onPrint(invoice.id, invoice.faturaNo);
