@@ -20,6 +20,17 @@ fs.mkdirSync(CIKIS, { recursive: true });
   const menu = pg.locator('[data-moren-sidebar]').first();
   await menu.screenshot({ path: path.join(CIKIS, 'menu.png') });
   await pg.screenshot({ path: path.join(CIKIS, 'panel-tam.png') });
+  // Beyanname görünümü grafiği (gösterge paneli)
+  const grafik = pg.locator('.ofis-beyan').first();
+  if (await grafik.count()) {
+    await grafik.scrollIntoViewIfNeeded();
+    await pg.waitForTimeout(500);
+    await grafik.screenshot({ path: path.join(CIKIS, 'beyan-grafigi.png') });
+    const ilkSutun = grafik.locator('.ofis-beyan__column, .ofis-beyan__row').first();
+    if (await ilkSutun.count()) await ilkSutun.hover();
+    await pg.waitForTimeout(300);
+    await grafik.screenshot({ path: path.join(CIKIS, 'beyan-grafigi-balon.png') });
+  }
   const genislik = await menu.evaluate((e) => e.getBoundingClientRect().width);
   // Kesilen (…) madde adları: scrollWidth > clientWidth
   const kesilen = await pg.$$eval('[data-moren-sidebar-label]', (els) => els.filter((e) => e.scrollWidth > e.clientWidth + 1).map((e) => e.textContent));

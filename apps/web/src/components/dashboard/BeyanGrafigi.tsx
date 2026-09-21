@@ -11,7 +11,7 @@ const PARTS = [
   { key: 'onaylanan', label: 'Onaylanan', color: '#299c78' },
   { key: 'bekleyen', label: 'Onay bekleyen', color: '#dfac49' },
   { key: 'hatali', label: 'Hatalı', color: '#d46b85' },
-  { key: 'kalan', label: 'Kalan', color: '#bbc9dc' },
+  { key: 'kalan', label: 'Kalan', color: '#cfd9e5' },
   { key: 'muaf', label: 'Muaf', color: '#c5ceda' },
 ] as const;
 
@@ -62,7 +62,7 @@ export function BeyanGrafigi({ rows, loading, error }: {
         </div>
       ) : (
         <div className="ofis-beyan__plot">
-          <div className="ofis-beyan__scale" aria-hidden="true">{[4,3,2,1,0].map((n,i)=><span key={n} style={{ top: `${9.677 + i * 20.1615}%` }}>{step*n}</span>)}</div>
+          <div className="ofis-beyan__scale" aria-hidden="true">{[4,3,2,1,0].map((n,i)=><span key={n} style={{ top: `${10.345 + i * 21.5517}%` }}>{step*n}</span>)}</div>
           <div className="ofis-beyan__scroll" tabIndex={0} role="region" aria-label="Beyanname sütunları; diğer türler için yatay kaydırın">
             <div className="ofis-beyan__columns" style={{ '--beyan-columns': visible.length } as CSSProperties}>
               {visible.map((row, index) => {
@@ -80,20 +80,10 @@ export function BeyanGrafigi({ rows, loading, error }: {
                     onFocus={() => setFocused(key)} onBlur={() => setFocused(null)}
                     onKeyDown={event => { if (event.key === 'Escape') { setHovered(null); setFocused(null); } }}>
                     <span className="ofis-beyan__drawing">
-                      <svg viewBox="0 0 80 124" preserveAspectRatio="none" aria-hidden="true">
+                      <svg viewBox="0 0 80 116" preserveAspectRatio="none" aria-hidden="true">
                         <defs>
-                          <clipPath id={clip}><path d={`M 20 112 V ${112 - height + Math.min(3, height)} Q 20 ${112 - height} 25 ${112 - height} H 55 Q 60 ${112 - height} 60 ${112 - height + Math.min(3, height)} V 112 Z`} /></clipPath>
-                          {PARTS.map(part => <linearGradient key={part.key} id={`${clip}-${part.key}`} x1="0" y1="0" x2="1" y2="1">
-                            <stop offset="0" stopColor={part.color} />
-                            <stop offset=".45" stopColor={part.color} />
-                            <stop offset="1" stopColor={part.color} stopOpacity=".78" />
-                          </linearGradient>)}
-                          <linearGradient id={`${clip}-reflection`} x1="0" y1="0" x2="1" y2="0">
-                            <stop offset="0" stopColor="#fff" stopOpacity=".24" />
-                            <stop offset=".3" stopColor="#fff" stopOpacity=".07" />
-                            <stop offset=".65" stopColor="#fff" stopOpacity="0" />
-                            <stop offset="1" stopColor="#173855" stopOpacity=".08" />
-                          </linearGradient>
+                          {/* Üst köşeleri yumuşatılmış sütun maskesi; dolgu düz renk (parıltı/yansıma yok — 2026-09-21) */}
+                          <clipPath id={clip}><path d={`M 14 112 V ${112 - height + Math.min(4, height)} Q 14 ${112 - height} 18 ${112 - height} H 62 Q 66 ${112 - height} 66 ${112 - height + Math.min(4, height)} V 112 Z`} /></clipPath>
                         </defs>
                         <g clipPath={`url(#${clip})`}>
                           {PARTS.map(part => {
@@ -103,15 +93,13 @@ export function BeyanGrafigi({ rows, loading, error }: {
                             used += segmentHeight;
                             if (segmentHeight > 0) previousHeight = segmentHeight;
                             return <g key={part.key}>
-                              <rect x="20" y={112 - used} width="40" height={segmentHeight} fill={`url(#${clip}-${part.key})`} />
-                              {separator && <line x1="20" x2="60" y1={boundary} y2={boundary} stroke="#fff" strokeOpacity="0.55" strokeWidth="0.7" vectorEffect="non-scaling-stroke" />}
+                              <rect x="14" y={112 - used} width="52" height={segmentHeight} fill={part.color} />
+                              {separator && <line x1="14" x2="66" y1={boundary} y2={boundary} stroke="#fff" strokeOpacity="0.9" strokeWidth="1" vectorEffect="non-scaling-stroke" />}
                             </g>;
                           })}
-                          <rect x="20" y={112 - height} width="40" height={height} fill={`url(#${clip}-reflection)`} />
-                          <path d={`M 20.5 112 V ${112 - height + Math.min(3, height)} Q 20.5 ${112 - height + .2} 25 ${112 - height + .2} H 55 Q 59.5 ${112 - height + .2} 59.5 ${112 - height + Math.min(3, height)} V 112`} fill="none" stroke="#fff" strokeOpacity=".4" strokeWidth=".7" vectorEffect="non-scaling-stroke" />
                         </g>
                       </svg>
-                      <strong className="ofis-beyan__total" style={{ bottom: `${(12 + height) / 124 * 100}%` }}>{row.toplam.toLocaleString('tr-TR')}</strong>
+                      <strong className="ofis-beyan__total" style={{ bottom: `${(4 + height) / 116 * 100}%` }}>{row.toplam.toLocaleString('tr-TR')}</strong>
                     </span>
                     <span className="ofis-beyan__name">{label}</span>
                   </button>

@@ -579,7 +579,16 @@ async function isle(req, res) {
   // Gösterge paneli üst alanı: "Bugünün İş Listesi" (/bugun) + "Başvuru Sayıları" (/gundem) — görsel doğrulama verisi
   if (yol === '/bugun') return jsonGonder(res, 200, BUGUN_SAHTE());
   if (yol === '/gundem') return jsonGonder(res, 200, GUNDEM_SAHTE());
-  if (yol === '/agent/stats' || yol === '/agent/status' || yol === '/moren-ai/brifing' || yol.startsWith('/beyanname-takip/ozet')) return jsonGonder(res, 200, {});
+  // Beyanname görünümü grafiği için gerçekçi özet (canlıdaki oranlar: KDV1 33/65, KDV2 3/3, Damga 0/1, MUHSGK 19/33)
+  if (yol.startsWith('/beyanname-takip/ozet')) return jsonGonder(res, 200, { donem: '2026-09', donemTuru: 'VERILME', rows: [
+    { beyanTipi: 'KDV1', toplam: 65, onaylanan: 33, bekleyen: 4, hatali: 1, muaf: 0, kalan: 27, vergiDonem: '2026-08', yuzde: 51 },
+    { beyanTipi: 'KDV2', toplam: 3, onaylanan: 3, bekleyen: 0, hatali: 0, muaf: 0, kalan: 0, vergiDonem: '2026-08', yuzde: 100 },
+    { beyanTipi: 'DAMGA', toplam: 1, onaylanan: 0, bekleyen: 0, hatali: 0, muaf: 0, kalan: 1, vergiDonem: '2026-08', yuzde: 0 },
+    { beyanTipi: 'MUHSGK', toplam: 33, onaylanan: 19, bekleyen: 2, hatali: 0, muaf: 0, kalan: 12, vergiDonem: '2026-08', yuzde: 58 },
+    { beyanTipi: 'BILDIRGE', toplam: 39, onaylanan: 11, bekleyen: 0, hatali: 0, muaf: 0, kalan: 28, vergiDonem: '2026-08', yuzde: 28 },
+    { beyanTipi: 'GGECICI', toplam: 0, onaylanan: 0, bekleyen: 0, hatali: 0, muaf: 0, kalan: 0, vergiDonem: '2026-08', yuzde: 0 },
+  ] });
+  if (yol === '/agent/stats' || yol === '/agent/status' || yol === '/moren-ai/brifing') return jsonGonder(res, 200, {});
   if (yol === '/taxpayers') return jsonGonder(res, 200, [...MUKELLEFLER, ...edefterMukellefler(), ...ekipMukellefler()]);
 
   // ── Ekip istekleri ──
