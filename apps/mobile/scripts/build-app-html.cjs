@@ -7,7 +7,8 @@
  *
  * Dönüşüm (başka HİÇBİR şey değişmez; tasarım birebir kalsın — Muzaffer Bey kararı 2026-07-27):
  *   1) </head> öncesine tam ekran stili: telefon çerçevesi/başlık gizli, .phone = viewport, köşe yuvarlaması yok.
- *   2) <img src="moren-logo-gold.png"> → base64 gömülü (WebView asset yanında dosya çözemiyor).
+ *   2) <img src="../assets/moren-logo-ink.png"> → base64 gömülü (WebView asset yanında dosya çözemiyor). Beyaz tema (2026-09-21): koyu füme logo;
+ *      önizleme sunucusunda design/ sayfası ../assets/ yoluyla aynı dosyayı gösterir.
  *   3) design/ek/*.html (ek paket blokları: MOREN_EK.render / navEkle) </body> öncesine ada göre sıralı gömülür.
  *   4) <style id="fontlar"> içindeki url(fonts/*.woff2) → design/fonts/*.woff2 base64 gömülü (WebView ağ yokken de aynı yazı tipi;
  *      asset yanındaki dosyayı çözemediği için gömme şart). Blok Google <link>'ten SONRA durur → yerel dosya her durumda kazanır.
@@ -19,16 +20,17 @@ const path = require('path');
 
 const KOK = path.resolve(__dirname, '..');
 const KAYNAK = path.join(KOK, 'design', 'mobil-app-onizleme.html');
-const LOGO = path.join(KOK, 'assets', 'moren-logo-gold.png');
+const LOGO = path.join(KOK, 'assets', 'moren-logo-ink.png'); // beyaz tema: koyu füme logo (apps/web/public/brand/moren-logo-ink.png kopyası)
+const LOGO_SRC = 'src="../assets/moren-logo-ink.png"'; // kaynaktaki <img src> eşleşmesi
 const CIKTI = path.join(KOK, 'assets', 'app.html');
 const EK_KLASOR = path.join(KOK, 'design', 'ek'); // paket blokları (<script>/<style>), ada göre sıralı gömülür
 const FONT_KLASOR = path.join(KOK, 'design', 'fonts'); // yerel woff2 dosyaları (<style id="fontlar"> url(fonts/…) → base64)
 
 const TAM_EKRAN_STIL =
-  '<style>html,body{padding:0!important;margin:0!important;background:#080706!important;min-height:100vh}' +
+  '<style>html,body{padding:0!important;margin:0!important;background:#f6f8fb!important;min-height:100vh}' +
   '.board-head,.cap{display:none!important}.stage{gap:0!important;padding:0!important}' +
   'body{align-items:stretch!important;padding:0!important}' +
-  '.phone{width:100vw!important;height:100vh!important;max-width:100vw!important;border-radius:0!important;padding:0!important;box-shadow:none!important;background:#080706!important}' +
+  '.phone{width:100vw!important;height:100vh!important;max-width:100vw!important;border-radius:0!important;padding:0!important;box-shadow:none!important;background:#f6f8fb!important}' +
   '.screen{border-radius:0!important}@media(max-width:440px){.phone{transform:none!important}}</style></head>';
 
 function uret() {
@@ -37,9 +39,9 @@ function uret() {
   if (html.split('</head>').length !== 2) throw new Error('Kaynakta tam bir </head> bekleniyor');
   html = html.replace('</head>', TAM_EKRAN_STIL);
   const logoB64 = fs.readFileSync(LOGO).toString('base64');
-  const logoSayisi = html.split('src="moren-logo-gold.png"').length - 1;
-  if (!logoSayisi) throw new Error('Kaynakta moren-logo-gold.png görseli yok');
-  html = html.split('src="moren-logo-gold.png"').join(`src="data:image/png;base64,${logoB64}"`);
+  const logoSayisi = html.split(LOGO_SRC).length - 1;
+  if (!logoSayisi) throw new Error('Kaynakta moren-logo-ink.png görseli yok (' + LOGO_SRC + ')');
+  html = html.split(LOGO_SRC).join(`src="data:image/png;base64,${logoB64}"`);
   const ekler = fs.existsSync(EK_KLASOR) ? fs.readdirSync(EK_KLASOR).filter((f) => f.endsWith('.html')).sort() : [];
   if (ekler.length) {
     if (html.split('</body>').length !== 2) throw new Error('Kaynakta tam bir </body> bekleniyor');
