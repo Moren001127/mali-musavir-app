@@ -70,6 +70,8 @@ export function MukellefListesi(p: MukellefListesiProps) {
             tetik={({ ref, ac, acik }) => (
               <button
                 ref={ref}
+                data-ao-pill
+                data-aktif={suzgecAktif || undefined}
                 type="button"
                 onClick={ac}
                 aria-expanded={acik}
@@ -102,6 +104,7 @@ export function MukellefListesi(p: MukellefListesiProps) {
             )}
           </AcilirMenu>
           <button
+            data-ao-pill
             type="button"
             onClick={() => onSiralama(siralama === 'ad' ? 'tutar' : 'ad')}
             title={siralama === 'ad' ? 'Ada göre sıralı — tutara göre sırala' : 'Tutara göre sıralı (büyükten küçüğe) — ada göre sırala'}
@@ -154,6 +157,8 @@ function Satir({ r, secili, onSec, kanallar }: { r: OdemeListesi; secili: boolea
   const g = gonderimOzeti(r);
   const eksik = iletisimEksigi(r, kanallar);
   const yazi = mukellefGonderimYazisi(g);
+  /** Beyaz tema renk kancası: gonderildi · hata · kismi · yok */
+  const durumKanca = g.durum === 'gonderildi' ? 'gonderildi' : g.durum === 'hata' ? 'hata' : g.kismi ? 'kismi' : 'yok';
   const durum =
     g.durum === 'gonderildi'
       ? { ikon: <Check size={12} />, renk: ALTIN_SOLUK, yazi, title: `Tüm kalemler gönderildi${g.sentAt ? ' · son ' + tarihSaat(g.sentAt) : ''}${g.test ? ' (test alıcısına)' : ''}` }
@@ -177,7 +182,7 @@ function Satir({ r, secili, onSec, kanallar }: { r: OdemeListesi; secili: boolea
         </span>
         {eksik && (
           // İkon değil YAZI (Muzaffer Bey 2026-09-14: "ünlem işareti var, o niye?"): "e-posta yok" / "telefon yok"
-          <span title={eksik.metin} className="flex-shrink-0 whitespace-nowrap text-[10.5px]" style={portalStyle({ color: eksik.kritik ? KIRMIZI_YUMUSAK : IKINCIL })}>
+          <span title={eksik.metin} data-ao-eksik={eksik.kritik ? 'kritik' : 'notr'} className="flex-shrink-0 whitespace-nowrap text-[10.5px]" style={portalStyle({ color: eksik.kritik ? KIRMIZI_YUMUSAK : IKINCIL })}>
             {eksik.kisa}
           </span>
         )}
@@ -185,7 +190,7 @@ function Satir({ r, secili, onSec, kanallar }: { r: OdemeListesi; secili: boolea
       <div className="mt-0.5 flex min-w-0 items-center gap-2 text-[11.5px]">
         <span className="tabular-nums font-semibold" style={portalStyle({ color: METIN })}>{trMoney(r.toplam)}</span>
         <span style={portalStyle({ color: SONUK })}>· {r.satirlar.length} kalem</span>
-        <span className="ml-auto inline-flex flex-shrink-0 items-center gap-1 whitespace-nowrap text-[10.5px] tabular-nums" style={portalStyle({ color: durum.renk })} title={durum.title} data-testid="mukellef-gonderim">
+        <span className="ml-auto inline-flex flex-shrink-0 items-center gap-1 whitespace-nowrap text-[10.5px] tabular-nums" style={portalStyle({ color: durum.renk })} title={durum.title} data-testid="mukellef-gonderim" data-ao-durum={durumKanca}>
           {durum.ikon}
           {durum.yazi}
         </span>

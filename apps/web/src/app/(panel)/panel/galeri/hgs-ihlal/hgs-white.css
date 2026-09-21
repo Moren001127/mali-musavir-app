@@ -1,0 +1,210 @@
+/* HGS İhlal Sorgulama — yalnız beyaz tema (D); yerleşim, uçlar ve A teması (camgöbeği/gece mavisi) aynen korunur.
+   İkinci tur (2026-09-21, bilgi/BEYAZ-TEMA-TASARIM-DILI.md §7): bant/gradyan başlık kalktı; sayaçlar rehber (b) tipi
+   (beyaz kart + gradyan simge kutusu + koyu sayı + ton çubuğu); birincil çivit / ikincil beyaz / tehlikeli yumuşak kırmızı;
+   plaka rozeti mavi yumuşak; tablo ve pencereler rehber tonlarında; JetBrains Mono → Inter (tabular rakam).
+   Yöntem: satır içi portalStyle() renkleri modül kökünde yeniden tanımlanan --portal-* paydalarıyla eşlenir
+   (camgöbeği → mavi, gül → kırmızı, kehribar, yeşil); kalan parçalar data-hgs-* kancalarıyla boyanır. */
+
+html[data-theme='D'] [data-hgs-root] {
+  color-scheme: light;
+  color: #1e293b;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  --portal-ink: #1e293b;
+  --portal-secondary: #475569;
+  --portal-muted: #64748b;
+  --portal-on-color: #fff;
+  --portal-surface: #fff;
+  --portal-raised: #f1f5f9;
+  --portal-wash: #fff;
+  --portal-line: #e3e8ef;
+  --portal-shadow: rgba(15, 23, 42, 0.06);
+  --portal-overlay: rgba(15, 23, 42, 0.45);
+  --portal-slate-ink: #475569; --portal-slate-surface: #5c6b7f; --portal-slate-wash: #f1f5f9; --portal-slate-line: #e2e8f0;
+  --portal-teal-ink: #1971c2; --portal-teal-surface: #1971c2; --portal-teal-wash: #e7f5ff; --portal-teal-line: #c5e3fb;
+  --portal-green-ink: #2b8a3e; --portal-green-surface: #2f9e44; --portal-green-wash: #ebfbee; --portal-green-line: #c6efd0;
+  --portal-blue-ink: #1971c2; --portal-blue-surface: #1971c2; --portal-blue-wash: #e7f5ff; --portal-blue-line: #c5e3fb;
+  --portal-plum-ink: #6741d9; --portal-plum-surface: #7048e8; --portal-plum-wash: #f3f0ff; --portal-plum-line: #e5dbff;
+  --portal-rose-ink: #c92a2a; --portal-rose-surface: #e03131; --portal-rose-wash: #fff5f5; --portal-rose-line: #ffc9c9;
+  --portal-copper-ink: #d9480f; --portal-copper-surface: #f08c00; --portal-copper-wash: #fff4e6; --portal-copper-line: #ffd8a8;
+  --portal-amber-ink: #b45309; --portal-amber-surface: #f59f00; --portal-amber-wash: #fffbeb; --portal-amber-line: #fde68a;
+}
+html[data-theme='D'] [data-hgs-root] :is(h1, h2, h3, h4) { font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+html[data-theme='D'] [data-hgs-root] :is(input, select, textarea) { color-scheme: light !important; }
+html[data-theme='D'] [data-hgs-root] :is(td, input, [data-hgs-plaka], [data-hgs-kpi] > div:last-child, li span) { font-family: Inter, ui-sans-serif, system-ui, sans-serif !important; font-variant-numeric: tabular-nums; }
+html[data-theme='D'] [data-hgs-bar] { display: none; }
+
+/* ── Sayfa başlığı ────────────────────────────────────────────────────────── */
+html[data-theme='D'] [data-hgs-head] {
+  overflow: visible;
+  padding: 2px 4px !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0;
+  box-shadow: none !important;
+}
+html[data-theme='D'] [data-hgs-head] > a { color: #64748b !important; }
+html[data-theme='D'] [data-hgs-head] > a:hover { color: #3b5bdb !important; }
+html[data-theme='D'] [data-hgs-head] h1 {
+  gap: 12px;
+  font-size: 22px !important;
+  font-weight: 700 !important;
+  line-height: 1.15 !important;
+  letter-spacing: -0.01em;
+  color: #1e293b !important;
+}
+html[data-theme='D'] [data-hgs-icon] {
+  width: 36px !important;
+  height: 36px !important;
+  border-radius: 10px;
+  background: #edf2ff !important;
+  border: 1px solid #dbe4ff;
+  box-shadow: none !important;
+}
+html[data-theme='D'] [data-hgs-icon] svg { width: 18px; height: 18px; color: #4263eb !important; }
+html[data-theme='D'] [data-hgs-aciklama] { margin-top: 4px; padding-left: 48px; font-size: 13px !important; color: #64748b !important; }
+
+/* ── Düğmeler ─────────────────────────────────────────────────────────────── */
+html[data-theme='D'] [data-hgs-root] [data-hgs-btn='primary'] {
+  background: linear-gradient(135deg, #4263eb, #5c7cfa) !important;
+  border: 1px solid transparent !important;
+  color: #fff !important;
+  font-weight: 600 !important;
+  box-shadow: 0 8px 16px -10px #4263eb;
+}
+html[data-theme='D'] [data-hgs-root] [data-hgs-btn='primary'] svg { color: #fff !important; }
+html[data-theme='D'] [data-hgs-root] [data-hgs-btn='primary']:hover:not(:disabled) { filter: brightness(1.06); }
+html[data-theme='D'] [data-hgs-root] [data-hgs-btn='secondary'] {
+  background: #fff !important;
+  border: 1px solid #dde3ea !important;
+  color: #475569 !important;
+  font-weight: 600 !important;
+}
+html[data-theme='D'] [data-hgs-root] [data-hgs-btn='secondary']:hover:not(:disabled) { background: #f8fafc !important; border-color: #cbd5e1 !important; color: #1e293b !important; }
+html[data-theme='D'] [data-hgs-root] [data-hgs-btn='danger'] {
+  background: #fff5f5 !important;
+  border: 1px solid #ffc9c9 !important;
+  color: #c92a2a !important;
+  font-weight: 600 !important;
+}
+html[data-theme='D'] [data-hgs-root] [data-hgs-btn='danger']:hover:not(:disabled) { background: #e03131 !important; border-color: #e03131 !important; color: #fff !important; }
+
+/* ── Özet sayaçları: rehber (b) tipi ──────────────────────────────────────── */
+html[data-theme='D'] [data-hgs-kpi] {
+  --k1: #4263eb; --k2: #5c7cfa;
+  position: relative;
+  overflow: hidden;
+  padding: 14px 16px 18px !important;
+  background: #fff !important;
+  border: 1px solid #e6ebf1 !important;
+  border-radius: 14px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+html[data-theme='D'] [data-hgs-kpi][data-ton='mavi'] { --k1: #1971c2; --k2: #339af0; }
+html[data-theme='D'] [data-hgs-kpi][data-ton='yesil'] { --k1: #2f9e44; --k2: #51cf66; }
+html[data-theme='D'] [data-hgs-kpi][data-ton='kehribar'] { --k1: #f08c00; --k2: #f9a825; }
+html[data-theme='D'] [data-hgs-kpi][data-ton='kirmizi'] { --k1: #e03131; --k2: #ff6b6b; }
+html[data-theme='D'] [data-hgs-kpi]:hover { border-color: color-mix(in srgb, var(--k1) 45%, #e6ebf1) !important; box-shadow: 0 12px 24px -16px color-mix(in srgb, var(--k1) 70%, transparent); }
+html[data-theme='D'] [data-hgs-kpi]::after {
+  content: '';
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 0;
+  height: 4px;
+  border-radius: 4px 4px 0 0;
+  background: linear-gradient(90deg, var(--k1), var(--k2));
+}
+html[data-theme='D'] [data-hgs-kpi] > div:first-child > span:first-child { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; color: #64748b !important; }
+html[data-theme='D'] [data-hgs-kpi] > div:first-child > span:last-child {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--k1), var(--k2)) !important;
+  border-color: transparent !important;
+  box-shadow: 0 6px 14px -8px var(--k1);
+}
+html[data-theme='D'] [data-hgs-kpi] > div:first-child > span:last-child svg { width: 16px; height: 16px; color: #fff !important; }
+html[data-theme='D'] [data-hgs-kpi] > div:last-child { margin-top: 8px; font-size: 24px; font-weight: 750; letter-spacing: -0.02em; color: #1e293b !important; }
+
+/* ── Kartlar ──────────────────────────────────────────────────────────────── */
+html[data-theme='D'] [data-hgs-card] {
+  background: #fff !important;
+  border: 1px solid #e3e8ef !important;
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+}
+html[data-theme='D'] [data-hgs-bot] { background: #edf2ff !important; border-color: #dbe4ff !important; }
+html[data-theme='D'] [data-hgs-bot] svg { color: #4263eb !important; }
+html[data-theme='D'] [data-hgs-chip='on'] { background: #ebfbee !important; border: 1px solid #c6efd0; color: #2b8a3e !important; font-size: 10.5px; }
+html[data-theme='D'] [data-hgs-chip='on'] > span { background: #2f9e44 !important; }
+html[data-theme='D'] [data-hgs-chip='off'] { background: #f1f5f9 !important; border: 1px solid #e2e8f0; color: #64748b !important; font-size: 10.5px; }
+html[data-theme='D'] [data-hgs-chip='off'] > span { background: #94a3b8 !important; }
+html[data-theme='D'] [data-hgs-root] textarea,
+html[data-theme='D'] [data-hgs-root] input {
+  background: #fff !important;
+  border: 1px solid #dde3ea !important;
+  border-radius: 10px;
+  color: #1e293b !important;
+}
+html[data-theme='D'] [data-hgs-root] :is(input, textarea):focus-visible { outline: none !important; border-color: #4263eb !important; box-shadow: 0 0 0 3px #dbe4ff !important; }
+html[data-theme='D'] [data-hgs-root] :is(input, textarea)::placeholder { color: #94a3b8 !important; }
+html[data-theme='D'] [data-hgs-root] input.pl-9 { padding-left: 2.25rem !important; }
+html[data-theme='D'] [data-hgs-sayac] { background: #edf2ff !important; border: 1px solid #dbe4ff; color: #3b5bdb !important; }
+
+/* ── Araç listesi tablosu ─────────────────────────────────────────────────── */
+html[data-theme='D'] [data-hgs-liste] > div:first-child { border-bottom-color: #eef2f6 !important; }
+html[data-theme='D'] [data-hgs-liste] > div:first-child svg { color: #94a3b8 !important; }
+html[data-theme='D'] [data-hgs-liste] > div:first-child h2 svg { color: #4263eb !important; }
+html[data-theme='D'] [data-hgs-root] [data-hgs-liste] table { border: 0 !important; }
+html[data-theme='D'] [data-hgs-root] [data-hgs-liste] table thead { background: #f8fafc !important; }
+html[data-theme='D'] [data-hgs-root] [data-hgs-liste] table thead th {
+  background: #f8fafc !important;
+  border-bottom: 1px solid #e3e8ef;
+  color: #475569 !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.06em !important;
+}
+html[data-theme='D'] [data-hgs-root] [data-hgs-liste] table tbody tr[data-hgs-satir] { border-top-color: #eef2f6 !important; }
+html[data-theme='D'] [data-hgs-root] [data-hgs-liste] table tbody tr[data-hgs-satir]:hover { background: #f4f7fb !important; }
+html[data-theme='D'] [data-hgs-root] [data-hgs-liste] table tbody td { border-bottom: 0 !important; }
+html[data-theme='D'] [data-hgs-root] [data-hgs-ihlal='var'] { color: #c92a2a !important; }
+html[data-theme='D'] [data-hgs-root] [data-hgs-ihlal='yok'] { color: #94a3b8 !important; }
+html[data-theme='D'] [data-hgs-plaka] {
+  background: #e7f5ff !important;
+  border: 1px solid #c5e3fb !important;
+  color: #1971c2 !important;
+  letter-spacing: 0.04em;
+  font-weight: 700;
+}
+html[data-theme='D'] [data-hgs-root] [data-hgs-sil] { color: #c92a2a !important; }
+html[data-theme='D'] [data-hgs-root] [data-hgs-sil]:hover { background: #fff5f5 !important; }
+html[data-theme='D'] [data-hgs-root] [data-hgs-liste] button[data-hgs-btn] { font-size: 11.5px; }
+/* Satır içi "Sorgula": her satırda dolu çivit ağır kaçar → yumuşak çivit; dolu birincil yalnız kart eylemlerinde */
+html[data-theme='D'] [data-hgs-root] [data-hgs-liste] tr button[data-hgs-btn='primary'] { background: #edf2ff !important; border-color: #dbe4ff !important; color: #3b5bdb !important; box-shadow: none; }
+html[data-theme='D'] [data-hgs-root] [data-hgs-liste] tr button[data-hgs-btn='primary'] svg { color: #3b5bdb !important; }
+html[data-theme='D'] [data-hgs-root] [data-hgs-liste] tr button[data-hgs-btn='primary']:hover:not(:disabled) { filter: none; background: #dbe4ff !important; }
+
+/* Bilgilendirme kutusu */
+html[data-theme='D'] [data-hgs-bilgi] { background: #f8fafc !important; border-color: #e3e8ef !important; color: #475569 !important; }
+html[data-theme='D'] [data-hgs-bilgi] > span:first-child { background: #edf2ff !important; color: #3b5bdb !important; font-weight: 700; }
+html[data-theme='D'] [data-hgs-bilgi] strong { color: #3b5bdb !important; }
+
+/* ── Pencereler (Araç Ekle · Sorgu Sonucu) ────────────────────────────────── */
+html[data-theme='D'] [data-hgs-pencere] {
+  background: #fff !important;
+  border: 1px solid #e3e8ef !important;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.25);
+}
+html[data-theme='D'] [data-hgs-pencere] > div { border-color: #eef2f6 !important; }
+html[data-theme='D'] [data-hgs-pencere] h3 { font-size: 16px; color: #1e293b !important; }
+html[data-theme='D'] [data-hgs-pencere] h4 { color: #1e293b !important; }
+html[data-theme='D'] [data-hgs-etiket] { color: #64748b !important; font-size: 11px; letter-spacing: 0.06em; }
+html[data-theme='D'] [data-hgs-kgm] { background: #edf2ff !important; border: 1px solid #dbe4ff !important; }
+html[data-theme='D'] [data-hgs-kgm]:hover { background: #e2eaff !important; }
+html[data-theme='D'] [data-hgs-kgm] svg { color: #4263eb !important; }
+html[data-theme='D'] [data-hgs-ic-kart] { background: #f8fafc !important; border: 1px solid #e3e8ef !important; }
+html[data-theme='D'] [data-hgs-ic-kart] > div:first-child { border-bottom-color: #e3e8ef !important; }
+html[data-theme='D'] [data-hgs-ic-kart] ul > li + li { border-top-color: #eef2f6 !important; }
+html[data-theme='D'] [data-hgs-ic-kart] input,
+html[data-theme='D'] [data-hgs-ic-kart] textarea { background: #fff !important; }

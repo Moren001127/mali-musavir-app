@@ -241,10 +241,10 @@ export default function TahsilatView({
       </div>
 
       {/* LİSTE */}
-      <div className="rounded-xl" style={portalStyle({ background: KART, border: `1px solid ${CIZGI}` })}>
+      <div data-ck-liste className="rounded-xl" style={portalStyle({ background: KART, border: `1px solid ${CIZGI}` })}>
         <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
           <span className="flex items-baseline gap-2">
-            <span className="text-[12.5px]" style={portalStyle({ color: METIN })}>
+            <span data-ck-liste-baslik className="text-[12.5px]" style={portalStyle({ color: METIN })}>
               {kuyruk === 'hepsi' ? 'Tüm mükellefler' :
                kuyruk === 'riskli' ? 'Elle görüşülmesi gerekenler' :
                kuyruk === 'ulasilamiyor' ? 'Ulaşılamayanlar' :
@@ -382,7 +382,7 @@ export default function TahsilatView({
 
                 {/* TOPLAM — süzgeçten geçen satırların toplamı; hangi kümeye
                     baktığınızın karşılığı aşağıda dursun. */}
-                <tr style={portalStyle({ borderTop: `1px solid ${CIZGI}`, background: 'rgba(255,255,255,0.022)' })}>
+                <tr data-ck-toplam style={portalStyle({ borderTop: `1px solid ${CIZGI}`, background: 'rgba(255,255,255,0.022)' })}>
                   <td className="px-4 py-3 text-[11.5px] uppercase tracking-wider" style={portalStyle({ color: SOLUK })}>
                     Toplam · {gosterilen.length} mükellef
                   </td>
@@ -416,6 +416,7 @@ function Eylem({
 }: { ikon: React.ReactNode; baslik: string; onClick: () => void; renk?: string; pasif?: boolean }) {
   return (
     <button
+      data-ck-eylem
       title={baslik}
       onClick={onClick}
       disabled={pasif}

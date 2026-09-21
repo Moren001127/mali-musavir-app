@@ -83,7 +83,7 @@ function ViewHeader({ icon: Icon, title, subtitle, actions }: {
   // Portal dili: gradyan zemin + köşede radial parıltı. Dört görünüm de bu
   // başlığı kullandığı için tek değişiklik hepsini birden dönüştürür.
   return (
-    <header data-portal-page-header
+    <header data-ck-althead
       className="relative overflow-hidden rounded-2xl px-5 py-4"
       style={portalStyle({
         background: 'linear-gradient(140deg, rgba(230,200,120,0.08), rgba(255,255,255,0.01) 58%)',
@@ -91,12 +91,14 @@ function ViewHeader({ icon: Icon, title, subtitle, actions }: {
       })}
     >
       <span
+        data-ck-glow
         className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full opacity-[0.22]"
         style={portalStyle({ background: `radial-gradient(circle, ${GOLD}, transparent 66%)` })}
       />
       <div className="relative flex items-start justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3.5 min-w-0">
           <span
+            data-ck-icon
             className="grid h-10 w-10 shrink-0 place-items-center rounded-xl"
             style={portalStyle({
               background: `linear-gradient(140deg, ${GOLD}2e, rgba(255,255,255,0.01) 65%)`,
@@ -129,7 +131,7 @@ function KpiCard({ label, value, color = '#087f78', accent = false, suffix = '�
   // artık gelir yeşil / gider kırmızı kendi tonuyla parlıyor.
   const vurguRenk = color || '#087f78';
   return (
-    <div data-portal-kpi
+    <div data-ck-kpi
       className="relative overflow-hidden rounded-2xl px-4 py-3.5"
       style={
         portalStyle({ ...({ '--kpi-tone': portalStyle({ color: vurguRenk }).color } as CSSProperties), ...(accent
@@ -142,6 +144,7 @@ function KpiCard({ label, value, color = '#087f78', accent = false, suffix = '�
       }
     >
       <span
+        data-ck-glow
         className="pointer-events-none absolute -right-6 -top-8 h-24 w-24 rounded-full opacity-[0.16]"
         style={portalStyle({ background: `radial-gradient(circle, ${vurguRenk}, transparent 68%)` })}
       />
@@ -167,7 +170,7 @@ function LoadingPanel({ label = 'Hesaplanıyor...' }: { label?: string }) {
 
 function EmptyState({ label }: { label: string }) {
   return (
-    <div className="rounded-2xl px-5 py-12 text-center text-[14px]" style={portalStyle({ ...cardline, color: SOFT })}>
+    <div data-ck-kart className="rounded-2xl px-5 py-12 text-center text-[14px]" style={portalStyle({ ...cardline, color: SOFT })}>
       {label}
     </div>
   );
@@ -217,7 +220,7 @@ export function IstatistikView() {
           </div>
 
           {/* BAR CHART */}
-          <div className="mt-6 rounded-2xl px-5 sm:px-6 py-5" style={portalStyle(cardline)}>
+          <div data-ck-kart className="mt-6 rounded-2xl px-5 sm:px-6 py-5" style={portalStyle(cardline)}>
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div className="text-[14px] font-semibold" style={portalStyle({ color: TEXT })}>Son 12 ay · tahakkuk / tahsilat</div>
               <div className="flex items-center gap-4 text-[12px]" style={portalStyle({ color: '#a1a1aa' })}>
@@ -241,7 +244,7 @@ export function IstatistikView() {
           {/* İKİ KOLON */}
           <div className="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-3">
             {/* Ödeme yöntemi dağılımı */}
-            <div className="rounded-2xl px-5 sm:px-6 py-5" style={portalStyle(cardline)}>
+            <div data-ck-kart className="rounded-2xl px-5 sm:px-6 py-5" style={portalStyle(cardline)}>
               <div className="text-[14px] font-semibold" style={portalStyle({ color: TEXT })}>Tahsilat · ödeme yöntemi dağılımı</div>
               {odeme.length === 0 ? (
                 <div className="mt-5 text-[13px]" style={portalStyle({ color: SOFT })}>Tahsilat kaydı yok.</div>
@@ -266,7 +269,7 @@ export function IstatistikView() {
             </div>
 
             {/* En borçlu mükellefler */}
-            <div className="rounded-2xl px-5 sm:px-6 py-5" style={portalStyle(cardline)}>
+            <div data-ck-kart className="rounded-2xl px-5 sm:px-6 py-5" style={portalStyle(cardline)}>
               <div className="flex items-center justify-between">
                 <div className="text-[14px] font-semibold" style={portalStyle({ color: TEXT })}>En borçlu mükellefler</div>
                 <div className="text-[12px]" style={portalStyle({ color: SOFT })}>{kpi.borcluMukellefAdet} borçlu · {fmt(kpi.toplamAktifBorc)} ₺</div>

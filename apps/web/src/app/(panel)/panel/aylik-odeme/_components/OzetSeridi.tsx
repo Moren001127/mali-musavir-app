@@ -19,18 +19,18 @@ export function OzetSeridi({ ozet, aktif, onSec, yeniKalem }: { ozet?: OdemeOzet
   const yeni = ozet ? (typeof ozet.yeniKalemToplam === 'number' ? ozet.yeniKalemToplam : yeniKalem) : undefined;
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-x-1 gap-y-1.5" role="group" aria-label="Ay özeti">
-      <Hap ikon={<Users size={12} />} secili={aktif === 'tumu'} onClick={() => onSec('tumu')} title="Tüm mükellefleri göster" sayi={ozet?.mukellef} yukleniyor={yukleniyor} ton="#305ea2">
+      <Hap kanca="mukellef" ikon={<Users size={12} />} secili={aktif === 'tumu'} onClick={() => onSec('tumu')} title="Tüm mükellefleri göster" sayi={ozet?.mukellef} yukleniyor={yukleniyor} ton="#305ea2">
         mükellef
       </Hap>
       {/* Vergi/SGK/Geçici/Yıllık tutarları kaldırıldı (Muzaffer Bey 2026-09-14: "bunlara ne gerek var") */}
       <Ayrac />
-      <Hap ikon={<CheckCircle2 size={12} />} secili={aktif === 'gonderildi'} onClick={() => onSec(aktif === 'gonderildi' ? 'tumu' : 'gonderildi')} title="Cetveli gönderilmiş mükellefler" sayi={ozet?.gonderilen} yukleniyor={yukleniyor} ton="#227744">
+      <Hap kanca="gonderildi" ikon={<CheckCircle2 size={12} />} secili={aktif === 'gonderildi'} onClick={() => onSec(aktif === 'gonderildi' ? 'tumu' : 'gonderildi')} title="Cetveli gönderilmiş mükellefler" sayi={ozet?.gonderilen} yukleniyor={yukleniyor} ton="#227744">
         gönderildi
       </Hap>
-      <Hap ikon={<Clock size={12} />} secili={aktif === 'bekliyor'} onClick={() => onSec(aktif === 'bekliyor' ? 'tumu' : 'bekliyor')} title="Henüz gönderilmemiş mükellefler" sayi={ozet?.bekleyen} yukleniyor={yukleniyor} ton="#75509c">
+      <Hap kanca="bekliyor" ikon={<Clock size={12} />} secili={aktif === 'bekliyor'} onClick={() => onSec(aktif === 'bekliyor' ? 'tumu' : 'bekliyor')} title="Henüz gönderilmemiş mükellefler" sayi={ozet?.bekleyen} yukleniyor={yukleniyor} ton="#75509c">
         bekliyor
       </Hap>
-      <Hap ikon={<AlertTriangle size={12} />} secili={aktif === 'hata'} onClick={() => onSec(aktif === 'hata' ? 'tumu' : 'hata')} title="Gönderimi hata veren mükellefler" sayi={ozet?.hatali} yukleniyor={yukleniyor} renk={KIRMIZI_YUMUSAK}>
+      <Hap kanca="hata" ikon={<AlertTriangle size={12} />} secili={aktif === 'hata'} onClick={() => onSec(aktif === 'hata' ? 'tumu' : 'hata')} title="Gönderimi hata veren mükellefler" sayi={ozet?.hatali} yukleniyor={yukleniyor} renk={KIRMIZI_YUMUSAK}>
         hata
       </Hap>
       {(yukleniyor || typeof yeni === 'number') && (
@@ -57,17 +57,17 @@ export function OzetSeridi({ ozet, aktif, onSec, yeniKalem }: { ozet?: OdemeOzet
 }
 
 function Ayrac() {
-  return <span className="mx-0.5 h-4 w-px flex-shrink-0" style={portalStyle({ background: KENAR_NOTR })} aria-hidden="true" />;
+  return <span data-ao-ayrac className="mx-0.5 h-4 w-px flex-shrink-0" style={portalStyle({ background: KENAR_NOTR })} aria-hidden="true" />;
 }
 function Nokta() {
   return <span aria-hidden="true" style={portalStyle({ color: 'rgba(250,250,249,0.3)' })}>·</span>;
 }
 
 /** Tıklanabilir sayaç hapı — seçili: ince altın kenar (dolgu YOK); sayı > 0: nötr; hata: yumuşak kırmızı yazı; 0: soluk. */
-function Hap({ ikon, children, sayi, secili, onClick, title, yukleniyor, renk = GOLD, ton = renk }: { ikon: ReactNode; children: ReactNode; sayi?: number; secili: boolean; onClick: () => void; title: string; yukleniyor: boolean; renk?: string; ton?: string }) {
+function Hap({ ikon, children, sayi, secili, onClick, title, yukleniyor, renk = GOLD, ton = renk, kanca }: { ikon: ReactNode; children: ReactNode; sayi?: number; secili: boolean; onClick: () => void; title: string; yukleniyor: boolean; renk?: string; ton?: string; kanca?: string }) {
   const var_ = (sayi ?? 0) > 0;
   return (
-    <button data-aylik-counter
+    <button data-aylik-counter data-ao-hap={kanca} data-bos={var_ ? undefined : 'true'}
       type="button"
       onClick={onClick}
       aria-pressed={secili}

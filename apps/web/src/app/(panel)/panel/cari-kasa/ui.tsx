@@ -120,7 +120,7 @@ export function SayacKutusu({
 }) {
   const tiklanabilir = Boolean(onClick);
   return (
-    <button data-portal-kpi data-cari-active={aktif || undefined}
+    <button data-ck-sayac data-cari-active={aktif || undefined}
       onClick={onClick}
       disabled={!tiklanabilir}
       className="relative overflow-hidden rounded-2xl px-4 py-3.5 text-left transition disabled:cursor-default"
@@ -134,6 +134,7 @@ export function SayacKutusu({
       })}
     >
       <span
+        data-ck-glow
         className="pointer-events-none absolute -right-6 -top-8 h-24 w-24 rounded-full opacity-[0.16]"
         style={portalStyle({ background: `radial-gradient(circle, ${renk}, transparent 68%)` })}
       />

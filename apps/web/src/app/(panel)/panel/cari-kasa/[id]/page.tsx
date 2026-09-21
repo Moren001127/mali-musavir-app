@@ -99,10 +99,10 @@ export default function CariKasaPage() {
   });
 
   return (
-    <div className="p-6 space-y-4" style={portalStyle({ fontFamily: SANS })}>
-      <div data-portal-page-header className="flex flex-wrap items-center justify-between gap-4 p-5">
+    <div data-ck-root className="p-6 space-y-4" style={portalStyle({ fontFamily: SANS })}>
+      <div data-ck-head className="flex flex-wrap items-center justify-between gap-4 p-5">
         <div>
-          <div className="text-[10.5px] font-bold uppercase tracking-[.14em] mb-1" style={portalStyle({ color: 'rgba(212,184,118,0.7)' })}>
+          <div data-ck-eyebrow className="text-[10.5px] font-bold uppercase tracking-[.14em] mb-1" style={portalStyle({ color: 'rgba(212,184,118,0.7)' })}>
             Finansal Takip · Cari
           </div>
           <h1 className="font-semibold" style={portalStyle({ fontFamily: SANS, fontSize: 30, color: '#fafaf9', letterSpacing: 0 })}>
@@ -115,6 +115,7 @@ export default function CariKasaPage() {
         {taxpayerId && (
           <button
             onClick={() => setTahsilatModal(true)}
+            data-ck-btn="primary"
             className="px-4 py-2 rounded-[9px] text-[12.5px] font-bold inline-flex items-center gap-2"
             style={portalStyle({ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b', boxShadow: '0 2px 10px rgba(212,184,118,0.35)' })}
           >
@@ -251,7 +252,7 @@ function SummaryCard({ label, value, text, color, icon: Icon, highlight, big }: 
   big?: boolean;
 }) {
   return (
-    <div data-portal-kpi className="rounded-2xl p-4 border" style={portalStyle({ ...({ '--kpi-tone': portalStyle({ color: color || '#305ea2' }).color } as React.CSSProperties), background: highlight ? 'rgba(156,70,86,0.08)' : 'rgba(255,255,255,0.02)', borderColor: highlight ? 'rgba(156,70,86,0.3)' : 'rgba(255,255,255,0.05)' })}>
+    <div data-ck-kpi className="rounded-2xl p-4 border" style={portalStyle({ ...({ '--kpi-tone': portalStyle({ color: color || '#305ea2' }).color } as React.CSSProperties), background: highlight ? 'rgba(156,70,86,0.08)' : 'rgba(255,255,255,0.02)', borderColor: highlight ? 'rgba(156,70,86,0.3)' : 'rgba(255,255,255,0.05)' })}>
       <div className="flex items-center gap-2 mb-2">
         {Icon && <Icon size={13} style={portalStyle({ color: color || 'rgba(250,250,249,0.5)' })} />}
         <div className="text-[10.5px] font-bold uppercase tracking-[.12em]" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>{label}</div>

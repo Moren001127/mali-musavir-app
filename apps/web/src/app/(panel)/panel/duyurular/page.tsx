@@ -1,4 +1,5 @@
 'use client';
+import './duyurular-white.css';
 import { portalStyle } from '@/lib/portal-theme';
 
 
@@ -455,30 +456,30 @@ export default function DuyurularPage() {
   const clearHistory = () => { setHistory([]); persist(HISTORY_KEY, []); };
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden px-5 py-3 text-white" style={portalStyle({ fontFamily: SANS })}>
+    <div data-dy-root className="flex h-full min-h-0 flex-col overflow-hidden px-5 py-3 text-white" style={portalStyle({ fontFamily: SANS })}>
       {/* Planlanan duyuru zamanı geldiğinde uyarı bandı */}
       {dueItem && (
-        <div className="mb-2 flex shrink-0 flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-2.5"
+        <div data-dy-uyari className="mb-2 flex shrink-0 flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-2.5"
           style={portalStyle({ borderColor: 'rgba(217,160,108,0.5)', background: 'rgba(217,160,108,0.14)' })}>
           <div className="flex items-center gap-2.5 text-[13px]" style={portalStyle({ color: '#f0d3ac' })}>
             <Clock size={16} /> Planlanan duyurunun zamanı geldi: <strong>{dueItem.baslik}</strong> · {dueItem.adet} alıcı
           </div>
           <div className="flex gap-2">
-            <button onClick={() => runScheduled(dueItem)} className="rounded-md px-3 py-1.5 text-[12.5px] font-semibold" style={portalStyle({ background: COPPER, color: '#241a10' })}>Şimdi gönder</button>
-            <button onClick={() => removeScheduled(dueItem.id)} className="rounded-md border px-3 py-1.5 text-[12.5px] font-semibold" style={portalStyle({ borderColor: BORDER, color: MUTED })}>İptal et</button>
+            <button onClick={() => runScheduled(dueItem)} data-dy-btn="primary" className="rounded-md px-3 py-1.5 text-[12.5px] font-semibold" style={portalStyle({ background: COPPER, color: '#241a10' })}>Şimdi gönder</button>
+            <button onClick={() => removeScheduled(dueItem.id)} data-dy-btn="secondary" className="rounded-md border px-3 py-1.5 text-[12.5px] font-semibold" style={portalStyle({ borderColor: BORDER, color: MUTED })}>İptal et</button>
           </div>
         </div>
       )}
 
-      {/* BAŞLIK — kompakt, imza şeridi */}
-      <header data-portal-page-header className="relative mb-3 shrink-0 overflow-hidden rounded-2xl border px-5 py-3" style={portalStyle({
+      {/* BAŞLIK — koyu temada (A) kompakt imza şeridi; beyaz temada (D) duyurular-white.css sade sayfa başlığına çevirir */}
+      <header data-dy-head className="relative mb-3 shrink-0 overflow-hidden rounded-2xl border px-5 py-3" style={portalStyle({
         borderColor: LINE,
         background: 'radial-gradient(120% 230% at 0% 0%, rgba(217,160,108,0.16), transparent 52%), #0f0d0b',
       })}>
-        <div className="absolute inset-x-0 top-0 h-[3px]" style={portalStyle({ background: 'linear-gradient(90deg, #d9a06c, #e8b84b, #d4b876, #f472b6, #a855f7, #60a5fa, #34d399)' })} />
+        <div data-dy-bar className="absolute inset-x-0 top-0 h-[3px]" style={portalStyle({ background: 'linear-gradient(90deg, #d9a06c, #e8b84b, #d4b876, #f472b6, #a855f7, #60a5fa, #34d399)' })} />
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <span className="grid h-10 w-10 place-items-center rounded-xl" style={portalStyle({ background: 'linear-gradient(135deg, #d9a06c, #e8b84b)', boxShadow: '0 6px 16px rgba(217,160,108,0.32)' })}>
+            <span data-dy-icon className="grid h-10 w-10 place-items-center rounded-xl" style={portalStyle({ background: 'linear-gradient(135deg, #d9a06c, #e8b84b)', boxShadow: '0 6px 16px rgba(217,160,108,0.32)' })}>
               <Megaphone size={20} style={portalStyle({ color: '#241a10' })} />
             </span>
             <div>
@@ -492,7 +493,7 @@ export default function DuyurularPage() {
             <ActionButton icon={<Save size={16} />} label="Kaydet" onClick={save} tone="gold" />
             <ActionButton icon={<Bot size={16} />} label={agentPreviewing ? '…' : 'Agent'} onClick={previewAgentSend} disabled={agentPreviewing || sending} tone="dark" />
             <ActionButton icon={<Send size={16} />} label={sending ? '…' : 'Gönder'} onClick={sendPortalMessage} disabled={sending} tone="blue" />
-            <a href={whatsappUrl} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-[#1f8f55] px-3.5 text-[12.5px] font-semibold text-white transition hover:bg-[#25a563]">
+            <a href={whatsappUrl} target="_blank" rel="noreferrer" data-dy-btn="whatsapp" className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-[#1f8f55] px-3.5 text-[12.5px] font-semibold text-white transition hover:bg-[#25a563]">
               <MessageCircle size={16} /> WhatsApp
             </a>
           </div>
@@ -501,7 +502,7 @@ export default function DuyurularPage() {
 
       <div className="grid min-h-0 flex-1 gap-5 xl:grid-cols-[minmax(540px,1fr)_440px]">
         {/* SOL — orijinal afiş, büyük ve ferah */}
-        <section className="flex min-h-0 flex-col items-center justify-center gap-3 overflow-hidden rounded-2xl border p-6" style={portalStyle({ borderColor: BORDER, background: '#0c0b09' })}>
+        <section data-dy-afis className="flex min-h-0 flex-col items-center justify-center gap-3 overflow-hidden rounded-2xl border p-6" style={portalStyle({ borderColor: BORDER, background: '#0c0b09' })}>
           <AnnouncementPreview draft={draft} exportRef={previewRef} />
           <div className="flex items-center gap-2 text-[11.5px]" style={portalStyle({ color: SOFT })}>
             <span className="h-1.5 w-1.5 rounded-full" style={portalStyle({ background: '#4ade80' })} /> İndirilen JPEG birebir bu görünür · 1080 × 1080
@@ -510,7 +511,7 @@ export default function DuyurularPage() {
 
         {/* SAĞ — sekmeli kontroller */}
         <aside className="flex min-h-0 flex-col">
-          <div className="mb-3 grid shrink-0 grid-cols-4 gap-1 rounded-xl border p-1" style={portalStyle({ borderColor: LINE, background: 'rgba(255,255,255,0.03)' })}>
+          <div data-dy-sekmeler className="mb-3 grid shrink-0 grid-cols-4 gap-1 rounded-xl border p-1" style={portalStyle({ borderColor: LINE, background: 'rgba(255,255,255,0.03)' })}>
             <Tab on={tab === 'duzenle'} onClick={() => setTab('duzenle')} icon={<Edit3 size={14} />} label="Düzenle" />
             <Tab on={tab === 'hazir'} onClick={() => setTab('hazir')} icon={<LibraryBig size={14} />} label="Hazır" />
             <Tab on={tab === 'gonderim'} onClick={() => setTab('gonderim')} icon={<Send size={14} />} label="Gönderim" />
@@ -527,7 +528,7 @@ export default function DuyurularPage() {
                       <span className="mb-2 block text-[12.5px] font-semibold uppercase tracking-[.08em]" style={portalStyle({ color: MUTED })}>Duyuru No</span>
                       <div className="flex gap-1.5">
                         <input value={draft.no} onChange={(e) => update('no', e.target.value)} className="h-10 w-full rounded-lg border px-3.5 text-[14px] font-semibold outline-none transition focus:border-[#d7c28b]" style={portalStyle({ borderColor: BORDER, background: 'rgba(0,0,0,0.22)', color: TEXT })} />
-                        <button title="Sıradaki numara" onClick={() => update('no', nextDuyuruNo(items, history))} className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border" style={portalStyle({ borderColor: BORDER, color: COPPER, background: 'rgba(217,160,108,0.1)' })}>#</button>
+                        <button title="Sıradaki numara" data-dy-btn="secondary" onClick={() => update('no', nextDuyuruNo(items, history))} className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border" style={portalStyle({ borderColor: BORDER, color: COPPER, background: 'rgba(217,160,108,0.1)' })}>#</button>
                       </div>
                     </div>
                   </div>
@@ -537,21 +538,21 @@ export default function DuyurularPage() {
                 </Panel>
 
                 {/* AI Asistan — İçerik metnini yazar/düzenler */}
-                <div className="overflow-hidden rounded-[10px] border" style={portalStyle({ borderColor: 'rgba(168,85,247,0.3)', background: 'rgba(168,85,247,0.06)' })}>
+                <div data-dy-ai className="overflow-hidden rounded-[10px] border" style={portalStyle({ borderColor: 'rgba(168,85,247,0.3)', background: 'rgba(168,85,247,0.06)' })}>
                   <div className="flex items-center gap-1.5 border-b px-4 py-3 text-[14px] font-semibold" style={portalStyle({ borderColor: 'rgba(168,85,247,0.2)', color: '#c4a3f0' })}>
                     <Sparkles size={15} /> AI Asistan {aiBusy && <Loader2 size={13} className="animate-spin" />}
                   </div>
                   <div className="space-y-2.5 p-4">
                     <div className="flex flex-wrap gap-1.5">
                       {([['Kısalt', 'daha kısa ve öz yap'], ['Resmileştir', 'daha resmi ve kurumsal yap'], ['Kibarlaştır', 'daha kibar ve nazik yap'], ['Dili düzelt', 'yazım ve dil bilgisi hatalarını düzelt']] as const).map(([lbl, ins]) => (
-                        <button key={lbl} type="button" disabled={aiBusy} onClick={() => aiImproveDuyuru(ins)} className="rounded-md border px-2.5 py-1 text-[12px] font-medium transition-colors disabled:opacity-50" style={portalStyle({ borderColor: 'rgba(168,85,247,0.3)', color: '#c4a3f0', background: 'rgba(168,85,247,0.08)' })}>{lbl}</button>
+                        <button key={lbl} type="button" data-dy-ai-cip disabled={aiBusy} onClick={() => aiImproveDuyuru(ins)} className="rounded-md border px-2.5 py-1 text-[12px] font-medium transition-colors disabled:opacity-50" style={portalStyle({ borderColor: 'rgba(168,85,247,0.3)', color: '#c4a3f0', background: 'rgba(168,85,247,0.08)' })}>{lbl}</button>
                       ))}
                     </div>
                     <div className="flex gap-1.5">
                       <input value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') aiGenerateDuyuru(); }}
                         placeholder="Sıfırdan yaz: ne anlatsın? (ör. ofis bayram tatili duyurusu)"
                         className="flex-1 rounded-lg border px-3 py-2 text-[13px] outline-none transition focus:border-[#a855f7]" style={portalStyle({ borderColor: BORDER, background: 'rgba(0,0,0,0.22)', color: TEXT })} />
-                      <button type="button" disabled={aiBusy} onClick={aiGenerateDuyuru} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[13px] font-semibold disabled:opacity-50" style={portalStyle({ background: 'linear-gradient(135deg,#a855f7,#7c3aed)', color: '#fff' })}>
+                      <button type="button" data-dy-btn="ai" disabled={aiBusy} onClick={aiGenerateDuyuru} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[13px] font-semibold disabled:opacity-50" style={portalStyle({ background: 'linear-gradient(135deg,#a855f7,#7c3aed)', color: '#fff' })}>
                         <Wand2 size={14} /> Yaz
                       </button>
                     </div>
@@ -576,17 +577,17 @@ export default function DuyurularPage() {
                   recipients={recipients}
                 />
                 <Panel title="Gönder">
-                  <div className="rounded-lg border px-4 py-3" style={portalStyle({ borderColor: BORDER, background: 'rgba(255,255,255,0.045)' })}>
+                  <div data-dy-gonder className="rounded-lg border px-4 py-3" style={portalStyle({ borderColor: BORDER, background: 'rgba(255,255,255,0.045)' })}>
                     <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#1f8f55]/20 text-[#4ade80]"><Users size={18} /></div>
+                      <div data-dy-gonder-ikon className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#1f8f55]/20 text-[#4ade80]"><Users size={18} /></div>
                       <div>
                         <div className="text-[20px] font-semibold tabular-nums" style={portalStyle({ color: TEXT })}>{recipients.length}</div>
                         <div className="text-[13px] font-medium" style={portalStyle({ color: MUTED })}>{groupLabel} · alıcı</div>
                       </div>
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2">
-                      <button onClick={sendPortalMessage} disabled={sending} className="inline-flex items-center gap-1.5 rounded-md bg-[#2563eb] px-3.5 py-2 text-[13px] font-semibold text-white disabled:opacity-60"><Send size={15} /> {sending ? 'Gönderiliyor…' : 'Şimdi gönder'}</button>
-                      <a href={whatsappUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-md bg-[#1f8f55] px-3.5 py-2 text-[13px] font-semibold text-white"><MessageCircle size={15} /> WhatsApp'ta aç</a>
+                      <button onClick={sendPortalMessage} disabled={sending} data-dy-btn="mavi" className="inline-flex items-center gap-1.5 rounded-md bg-[#2563eb] px-3.5 py-2 text-[13px] font-semibold text-white disabled:opacity-60"><Send size={15} /> {sending ? 'Gönderiliyor…' : 'Şimdi gönder'}</button>
+                      <a href={whatsappUrl} target="_blank" rel="noreferrer" data-dy-btn="whatsapp" className="inline-flex items-center gap-1.5 rounded-md bg-[#1f8f55] px-3.5 py-2 text-[13px] font-semibold text-white"><MessageCircle size={15} /> WhatsApp'ta aç</a>
                     </div>
                   </div>
                 </Panel>
@@ -603,13 +604,13 @@ export default function DuyurularPage() {
                     {items.length === 0 ? (
                       <div className="rounded-lg border border-dashed p-4 text-center text-[14px] font-medium" style={portalStyle({ borderColor: BORDER, color: MUTED })}>Henüz kayıt yok.</div>
                     ) : items.map((item) => (
-                      <div key={item.id} className="flex items-center gap-3 rounded-lg border p-3" style={portalStyle({ borderColor: BORDER, background: 'rgba(255,255,255,0.035)' })}>
+                      <div key={item.id} data-dy-kayit className="flex items-center gap-3 rounded-lg border p-3" style={portalStyle({ borderColor: BORDER, background: 'rgba(255,255,255,0.035)' })}>
                         <button onClick={() => { setDraft(item); setTab('duzenle'); }} className="min-w-0 flex-1 text-left">
                           <div className="truncate text-[14px] font-semibold" style={portalStyle({ color: TEXT })}>{item.baslik}</div>
                           <div className="text-[12.5px] font-medium" style={portalStyle({ color: MUTED })}>{item.tarih} · Duyuru No {item.no || '—'}</div>
                         </button>
-                        <button onClick={() => { setDraft(item); setTab('duzenle'); }} className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-2 text-[12.5px] font-semibold" style={portalStyle({ color: GOLD, background: 'rgba(215,194,139,0.10)' })}><Edit3 size={14} /> Düzenle</button>
-                        <button onClick={() => removeItem(item.id, items, setItems, draft, setDraft)} className="rounded-md p-2 text-[#ff7777] hover:bg-[#2a1513]"><Trash2 size={16} /></button>
+                        <button onClick={() => { setDraft(item); setTab('duzenle'); }} data-dy-btn="secondary" className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-2 text-[12.5px] font-semibold" style={portalStyle({ color: GOLD, background: 'rgba(215,194,139,0.10)' })}><Edit3 size={14} /> Düzenle</button>
+                        <button onClick={() => removeItem(item.id, items, setItems, draft, setDraft)} data-dy-sil className="rounded-md p-2 text-[#ff7777] hover:bg-[#2a1513]"><Trash2 size={16} /></button>
                       </div>
                     ))}
                   </div>
@@ -625,7 +626,7 @@ export default function DuyurularPage() {
 
 function Tab({ on, onClick, icon, label, badge }: { on: boolean; onClick: () => void; icon: ReactNode; label: string; badge?: number }) {
   return (
-    <button onClick={onClick} className="relative inline-flex items-center justify-center gap-1.5 rounded-lg py-2 text-[12.5px] font-semibold transition-colors"
+    <button onClick={onClick} data-dy-sekme data-on={on || undefined} className="relative inline-flex items-center justify-center gap-1.5 rounded-lg py-2 text-[12.5px] font-semibold transition-colors"
       style={portalStyle(on ? { background: 'rgba(217,160,108,0.16)', color: COPPER } : { color: MUTED })}>
       {icon}{label}
       {badge ? <span className="absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full px-1 text-[10px] font-bold" style={portalStyle({ background: COPPER, color: '#241a10' })}>{badge}</span> : null}
@@ -635,13 +636,13 @@ function Tab({ on, onClick, icon, label, badge }: { on: boolean; onClick: () => 
 
 function GenelKutuphane({ onLoad }: { onLoad: (p: GenelPreset) => void }) {
   return (
-    <div className="rounded-[10px] border" style={portalStyle({ borderColor: LINE, background: 'rgba(255,255,255,0.045)' })}>
+    <div data-dy-panel className="rounded-[10px] border" style={portalStyle({ borderColor: LINE, background: 'rgba(255,255,255,0.045)' })}>
       <div className="flex items-center gap-2 border-b px-4 py-3 text-[14px] font-semibold" style={portalStyle({ borderColor: LINE, color: TEXT })}>
         <LibraryBig size={16} style={portalStyle({ color: '#a855f7' })} /> Genel Duyuru Kütüphanesi
       </div>
       <div className="grid grid-cols-1 gap-2 p-4">
         {GENEL_PRESETS.map((p) => (
-          <button key={p.key} onClick={() => onLoad(p)} className="flex items-center justify-between gap-2 rounded-lg border p-2.5 text-left transition-colors hover:brightness-110"
+          <button key={p.key} data-dy-preset onClick={() => onLoad(p)} className="flex items-center justify-between gap-2 rounded-lg border p-2.5 text-left transition-colors hover:brightness-110"
             style={portalStyle({ borderColor: LINE, borderLeft: `3px solid ${p.color}`, background: `${p.color}10` })}>
             <span className="flex items-center gap-2 text-[13px] font-semibold" style={portalStyle({ color: TEXT })}>
               <span className="h-2 w-2 rounded-full" style={portalStyle({ background: p.color })} /> {p.label}
@@ -674,7 +675,7 @@ function RecipientCard({ group, setGroup, taxpayers, selectedIds, setSelectedIds
         {RECIPIENT_GROUPS.map((g) => {
           const on = group === g.key;
           return (
-            <button key={g.key} onClick={() => setGroup(g.key)} className="rounded-full px-2.5 py-1 text-[12px] font-semibold transition-colors"
+            <button key={g.key} data-dy-cip data-on={on || undefined} onClick={() => setGroup(g.key)} className="rounded-full px-2.5 py-1 text-[12px] font-semibold transition-colors"
               style={portalStyle(on ? { background: 'rgba(217,160,108,0.18)', color: COPPER, border: '1px solid rgba(217,160,108,0.5)' } : { background: 'transparent', color: MUTED, border: `1px solid ${LINE}` })}>
               {g.label}{g.key !== 'manual' ? ` ${count(g.key)}` : ''}
             </button>
@@ -692,7 +693,7 @@ function RecipientCard({ group, setGroup, taxpayers, selectedIds, setSelectedIds
             {filtered.map((t) => {
               const on = selectedIds.has(t.id);
               return (
-                <button key={t.id} onClick={() => toggle(t.id)} className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[13px] transition-colors" style={portalStyle({ background: on ? 'rgba(217,160,108,0.12)' : 'transparent', color: on ? COPPER : MUTED })}>
+                <button key={t.id} data-dy-secenek data-on={on || undefined} onClick={() => toggle(t.id)} className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[13px] transition-colors" style={portalStyle({ background: on ? 'rgba(217,160,108,0.12)' : 'transparent', color: on ? COPPER : MUTED })}>
                   <span className="grid h-4 w-4 shrink-0 place-items-center rounded border" style={portalStyle({ borderColor: on ? COPPER : BORDER, background: on ? COPPER : 'transparent' })}>{on && <CheckCheck size={11} style={portalStyle({ color: '#241a10' })} />}</span>
                   <span className="truncate">{taxpayerName(t)}</span>
                 </button>
@@ -703,7 +704,7 @@ function RecipientCard({ group, setGroup, taxpayers, selectedIds, setSelectedIds
         </div>
       )}
 
-      <div className="mt-3 flex items-center gap-2 rounded-lg border px-3 py-2 text-[12.5px]" style={portalStyle({ borderColor: LINE, background: 'rgba(255,255,255,0.03)', color: MUTED })}>
+      <div data-dy-bilgi className="mt-3 flex items-center gap-2 rounded-lg border px-3 py-2 text-[12.5px]" style={portalStyle({ borderColor: LINE, background: 'rgba(255,255,255,0.03)', color: MUTED })}>
         <SlidersHorizontal size={14} style={portalStyle({ color: COPPER })} /> Seçili: <strong style={portalStyle({ color: TEXT })}>{recipients.length}</strong> telefonlu mükellef
       </div>
     </Panel>
@@ -722,7 +723,7 @@ function ScheduleCard({ onSchedule }: { onSchedule: (whenIso: string) => void })
           <span className="mb-1.5 block text-[12px] font-semibold uppercase tracking-[.08em]" style={portalStyle({ color: MUTED })}>Tarih & saat</span>
           <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} className="h-10 w-full rounded-lg border px-3 text-[13.5px] font-semibold outline-none focus:border-[#d9a06c]" style={portalStyle({ borderColor: BORDER, background: 'rgba(0,0,0,0.22)', color: TEXT })} />
         </div>
-        <button onClick={() => onSchedule(when)} className="inline-flex h-10 items-center gap-1.5 rounded-lg px-4 text-[13px] font-semibold" style={portalStyle({ background: 'rgba(217,160,108,0.18)', color: COPPER, border: '1px solid rgba(217,160,108,0.5)' })}>
+        <button onClick={() => onSchedule(when)} data-dy-btn="secondary" className="inline-flex h-10 items-center gap-1.5 rounded-lg px-4 text-[13px] font-semibold" style={portalStyle({ background: 'rgba(217,160,108,0.18)', color: COPPER, border: '1px solid rgba(217,160,108,0.5)' })}>
           <CalendarPlus size={15} /> Planla
         </button>
       </div>
@@ -740,7 +741,7 @@ function ScheduledList({ items, onRun, onRemove }: { items: Scheduled[]; onRun: 
           {items.map((s) => {
             const due = new Date(s.when).getTime() <= Date.now();
             return (
-              <div key={s.id} className="rounded-lg border p-3" style={portalStyle({ borderColor: due ? 'rgba(217,160,108,0.5)' : BORDER, background: due ? 'rgba(217,160,108,0.10)' : 'rgba(255,255,255,0.035)' })}>
+              <div key={s.id} data-dy-planli data-due={due || undefined} className="rounded-lg border p-3" style={portalStyle({ borderColor: due ? 'rgba(217,160,108,0.5)' : BORDER, background: due ? 'rgba(217,160,108,0.10)' : 'rgba(255,255,255,0.035)' })}>
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <div className="truncate text-[13.5px] font-semibold" style={portalStyle({ color: TEXT })}>{s.baslik}</div>
@@ -748,9 +749,9 @@ function ScheduledList({ items, onRun, onRemove }: { items: Scheduled[]; onRun: 
                       <CalendarClock size={12} /> {new Date(s.when).toLocaleString('tr-TR')} · {s.grup} · {s.adet} alıcı
                     </div>
                   </div>
-                  <button onClick={() => onRemove(s.id)} className="shrink-0 rounded-md p-1.5 text-[#ff7777] hover:bg-[#2a1513]"><X size={15} /></button>
+                  <button onClick={() => onRemove(s.id)} data-dy-sil className="shrink-0 rounded-md p-1.5 text-[#ff7777] hover:bg-[#2a1513]"><X size={15} /></button>
                 </div>
-                <button onClick={() => onRun(s)} className="mt-2 inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12.5px] font-semibold" style={portalStyle({ background: due ? COPPER : 'rgba(255,255,255,0.06)', color: due ? '#241a10' : MUTED, border: `1px solid ${due ? COPPER : BORDER}` })}>
+                <button onClick={() => onRun(s)} data-dy-btn={due ? 'primary' : 'secondary'} className="mt-2 inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12.5px] font-semibold" style={portalStyle({ background: due ? COPPER : 'rgba(255,255,255,0.06)', color: due ? '#241a10' : MUTED, border: `1px solid ${due ? COPPER : BORDER}` })}>
                   <Send size={13} /> {due ? 'Zamanı geldi — gönder' : 'Şimdi gönder'}
                 </button>
               </div>
@@ -764,7 +765,7 @@ function ScheduledList({ items, onRun, onRemove }: { items: Scheduled[]; onRun: 
 
 function HistoryCard({ history, onClear }: { history: SentRecord[]; onClear: () => void }) {
   return (
-    <div className="rounded-[10px] border" style={portalStyle({ borderColor: LINE, background: 'rgba(255,255,255,0.045)' })}>
+    <div data-dy-panel className="rounded-[10px] border" style={portalStyle({ borderColor: LINE, background: 'rgba(255,255,255,0.045)' })}>
       <div className="flex items-center justify-between border-b px-4 py-3" style={portalStyle({ borderColor: LINE })}>
         <div className="flex items-center gap-2 text-[14px] font-semibold" style={portalStyle({ color: TEXT })}><History size={16} style={portalStyle({ color: '#60a5fa' })} /> Gönderim Geçmişi</div>
         {history.length > 0 && <button onClick={onClear} className="text-[12px] font-medium" style={portalStyle({ color: SOFT })}>Temizle</button>}
@@ -775,7 +776,7 @@ function HistoryCard({ history, onClear }: { history: SentRecord[]; onClear: () 
         ) : (
           <div className="space-y-2">
             {history.map((h) => (
-              <div key={h.id} className="rounded-lg border p-2.5" style={portalStyle({ borderColor: LINE, background: 'rgba(255,255,255,0.03)' })}>
+              <div key={h.id} data-dy-gecmis className="rounded-lg border p-2.5" style={portalStyle({ borderColor: LINE, background: 'rgba(255,255,255,0.03)' })}>
                 <div className="truncate text-[13px] font-semibold" style={portalStyle({ color: TEXT })}>{h.baslik}</div>
                 <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11.5px]" style={portalStyle({ color: MUTED })}>
                   <span>{new Date(h.at).toLocaleString('tr-TR')}</span><span>·</span>
@@ -803,7 +804,7 @@ function VergiTakvimi({ takvim, onTakvim, onLoad }: {
   const current = months.find((m) => m.value === sel) ?? months[2] ?? months[0];
 
   return (
-    <div className="rounded-[10px] border" style={portalStyle({ borderColor: 'rgba(217,160,108,0.32)', background: 'linear-gradient(135deg, rgba(217,160,108,0.10), rgba(232,184,75,0.04) 60%, rgba(255,255,255,0.03))' })}>
+    <div data-dy-panel data-dy-takvim className="rounded-[10px] border" style={portalStyle({ borderColor: 'rgba(217,160,108,0.32)', background: 'linear-gradient(135deg, rgba(217,160,108,0.10), rgba(232,184,75,0.04) 60%, rgba(255,255,255,0.03))' })}>
       <div className="flex items-center gap-2 border-b px-4 py-3 text-[14px] font-semibold" style={portalStyle({ borderColor: LINE, color: TEXT })}>
         <CalendarClock size={16} style={portalStyle({ color: COPPER })} /> Vergi Takvimi · Son Ödeme
       </div>
@@ -819,13 +820,13 @@ function VergiTakvimi({ takvim, onTakvim, onLoad }: {
             const gun = takvim[p.key] ?? p.gun;
             const { numeric } = computeDeadline(gun, current.year, current.month0);
             return (
-              <div key={p.key} className="rounded-lg border p-2.5" style={portalStyle({ borderColor: LINE, borderLeft: `3px solid ${p.color}`, background: `${p.color}10` })}>
+              <div key={p.key} data-dy-preset className="rounded-lg border p-2.5" style={portalStyle({ borderColor: LINE, borderLeft: `3px solid ${p.color}`, background: `${p.color}10` })}>
                 <div className="flex items-center justify-between gap-2">
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5 text-[13.5px] font-semibold" style={portalStyle({ color: TEXT })}><span className="h-2 w-2 shrink-0 rounded-full" style={portalStyle({ background: p.color })} />{p.kisa}</div>
                     <div className="mt-0.5 truncate text-[11.5px]" style={portalStyle({ color: SOFT })}>{p.label}</div>
                   </div>
-                  <button onClick={() => onLoad(p, current.year, current.month0)} className="shrink-0 rounded-md px-3 py-1.5 text-[12.5px] font-semibold transition-colors" style={portalStyle({ background: `${p.color}22`, color: p.color, border: `1px solid ${p.color}55` })}>Yükle</button>
+                  <button onClick={() => onLoad(p, current.year, current.month0)} data-dy-yukle className="shrink-0 rounded-md px-3 py-1.5 text-[12.5px] font-semibold transition-colors" style={portalStyle({ background: `${p.color}22`, color: p.color, border: `1px solid ${p.color}55` })}>Yükle</button>
                 </div>
                 <div className="mt-2 flex items-center justify-between gap-2 text-[12px]">
                   <span style={portalStyle({ color: MUTED })}>Son ödeme: <strong className="tabular-nums" style={portalStyle({ color: TEXT })}>{numeric}</strong></span>
@@ -884,6 +885,7 @@ function AnnouncementCanvas({ draft, exportRef, scale = 1 }: { draft: Duyuru; ex
   return (
       <div
         ref={exportRef}
+        data-duyuru-canvas
         className="relative h-[1080px] w-[1080px] origin-top-left overflow-hidden"
         style={portalStyle({
           transform: scale === 1 ? undefined : `scale(${scale})`,
@@ -1004,7 +1006,7 @@ function ActionButton({ icon, label, onClick, disabled, tone }: { icon: ReactNod
       : tone === 'blue' ? { background: '#2563eb', color: '#fff' }
         : { background: 'rgba(255,255,255,0.065)', color: TEXT, border: `1px solid ${BORDER}` };
   return (
-    <button onClick={onClick} disabled={disabled} className="inline-flex h-9 items-center justify-center gap-2 rounded-md px-3.5 text-[12.5px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-60" style={portalStyle(styles)}>
+    <button onClick={onClick} disabled={disabled} data-dy-btn={tone === 'gold' ? 'primary' : tone === 'blue' ? 'mavi' : 'secondary'} className="inline-flex h-9 items-center justify-center gap-2 rounded-md px-3.5 text-[12.5px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-60" style={portalStyle(styles)}>
       {icon}{label}
     </button>
   );
@@ -1022,7 +1024,7 @@ function Contact({ icon, label, value }: { icon: ReactNode; label: string; value
 
 function Panel({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="rounded-[10px] border" style={portalStyle({ borderColor: BORDER, background: 'rgba(255,255,255,0.045)' })}>
+    <div data-dy-panel className="rounded-[10px] border" style={portalStyle({ borderColor: BORDER, background: 'rgba(255,255,255,0.045)' })}>
       <div className="border-b px-4 py-3 text-[14px] font-semibold" style={portalStyle({ borderColor: BORDER, color: TEXT })}>{title}</div>
       <div className="space-y-3 p-4">{children}</div>
     </div>
@@ -1044,7 +1046,7 @@ function Field({ label, value, onChange, textarea, rows = 3 }: { label: string; 
 
 function TypeControls({ draft, onChange }: { draft: Duyuru; onChange: <K extends keyof Duyuru>(key: K, value: Duyuru[K]) => void }) {
   return (
-    <div className="rounded-lg border p-3" style={portalStyle({ borderColor: BORDER, background: 'rgba(255,255,255,0.035)' })}>
+    <div data-dy-yazi className="rounded-lg border p-3" style={portalStyle({ borderColor: BORDER, background: 'rgba(255,255,255,0.035)' })}>
       <div className="mb-2 text-[12.5px] font-semibold" style={portalStyle({ color: TEXT })}>Yazı Ayarları</div>
       <div className="grid grid-cols-2 gap-2.5">
         <NumberControl label="Başlık Punto" min={34} max={78} value={draft.baslikPunto} onChange={(value) => onChange('baslikPunto', value)} />

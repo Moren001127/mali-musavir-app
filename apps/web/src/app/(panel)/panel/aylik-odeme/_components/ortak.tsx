@@ -41,7 +41,7 @@ export const GRUP_BOSLUK = 18;
 /** Nötr ince çip (taksit, kanal, sayı) */
 export function Cip({ children, title, className = '', style }: { children: ReactNode; title?: string; className?: string; style?: CSSProperties }) {
   return (
-    <span title={title} className={`inline-flex flex-shrink-0 items-center gap-1 whitespace-nowrap rounded-md px-1.5 py-[2px] text-[10.5px] font-medium leading-4 ${className}`} style={portalStyle({ ...CIP_NOTR, ...style })}>
+    <span data-ao-chip title={title} className={`inline-flex flex-shrink-0 items-center gap-1 whitespace-nowrap rounded-md px-1.5 py-[2px] text-[10.5px] font-medium leading-4 ${className}`} style={portalStyle({ ...CIP_NOTR, ...style })}>
       {children}
     </span>
   );
@@ -52,6 +52,7 @@ export function AltinDugme({ children, onClick, disabled, yukleniyor, title, cla
   return (
     <button
       ref={refDis}
+      data-ao-btn="primary"
       type="button"
       onClick={onClick}
       disabled={disabled || yukleniyor}
@@ -70,6 +71,8 @@ export function GriDugme({ children, onClick, disabled, yukleniyor, title, class
   return (
     <button
       ref={refDis}
+      data-ao-btn="secondary"
+      data-aktif={aktif || undefined}
       type="button"
       onClick={onClick}
       disabled={disabled || yukleniyor}
@@ -92,6 +95,7 @@ export function GriDugme({ children, onClick, disabled, yukleniyor, title, class
 export function Anahtar({ acik, onDegis, title, disabled }: { acik: boolean; onDegis: (v: boolean) => void; title?: string; disabled?: boolean }) {
   return (
     <button
+      data-ao-switch
       type="button"
       role="switch"
       aria-checked={acik}
@@ -110,7 +114,7 @@ export function Anahtar({ acik, onDegis, title, disabled }: { acik: boolean; onD
 /** Küçük bölüm başlığı (kart içinde) */
 export function KartBaslik({ ikon, children, sag }: { ikon?: ReactNode; children: ReactNode; sag?: ReactNode }) {
   return (
-    <div className="flex items-center gap-2">
+    <div data-ao-card-title className="flex items-center gap-2">
       {ikon && <span style={portalStyle({ color: ALTIN_SOLUK })}>{ikon}</span>}
       <span className="text-[11px] font-bold uppercase tracking-[.14em]" style={portalStyle({ color: ALTIN_SOLUK })}>{children}</span>
       {sag && <span className="ml-auto">{sag}</span>}

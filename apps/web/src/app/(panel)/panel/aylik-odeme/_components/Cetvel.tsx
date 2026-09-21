@@ -152,7 +152,7 @@ export function Cetvel({ r, ozet, gonderilenKanal, ornekGonderiliyor, pdfIniyor,
                     <tr key={`${grup.key}-${i}`} className="transition-colors hover:bg-white/[0.03]">
                       <td style={portalStyle({ ...HUCRE, borderLeft: 'none', minWidth: 0 })}>
                         <div className="flex min-w-0 items-center gap-1.5">
-                          <span className="min-w-0 truncate text-[13px] font-medium leading-5" style={portalStyle({ color: METIN })} title={odemeAdi(s)}>
+                          <span data-ao-odeme className="min-w-0 truncate text-[13px] font-medium leading-5" style={portalStyle({ color: METIN })} title={odemeAdi(s)}>
                             {odemeAdi(s)}
                           </span>
                           {s.taksit && <Cip title={`${s.taksit} taksit`}>{s.taksit} taksit</Cip>}
@@ -166,7 +166,7 @@ export function Cetvel({ r, ozet, gonderilenKanal, ornekGonderiliyor, pdfIniyor,
                       <td style={portalStyle({ ...HUCRE, whiteSpace: 'nowrap', color: 'rgba(250,250,249,0.78)', fontSize: 12.5 })}>{donemAdi(s.donem)}</td>
                       <td style={portalStyle({ ...HUCRE, whiteSpace: 'nowrap' })}>
                         <div className="leading-tight">
-                          <div className="text-[12.5px] tabular-nums" style={portalStyle({ color: vade.renk || 'rgba(250,250,249,0.88)' })}>
+                          <div data-ao-vade={vade.gun !== null && vade.gun <= 0 ? 'gecti' : vade.etiket ? 'yakin' : undefined} className="text-[12.5px] tabular-nums" style={portalStyle({ color: vade.renk || 'rgba(250,250,249,0.88)' })}>
                             {tarihAdi(s.sonGun)}
                             {vade.etiket && <span className="ml-1.5 text-[10.5px] font-medium">({vade.etiket})</span>}
                           </div>

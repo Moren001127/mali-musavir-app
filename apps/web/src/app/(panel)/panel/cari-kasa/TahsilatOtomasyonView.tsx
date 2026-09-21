@@ -96,6 +96,7 @@ export default function TahsilatOtomasyonView() {
     <div className="space-y-5">
       {/* Güvenlik bandı — en üstte, tartışmasız */}
       <div
+        data-ck-guvenlik
         className="flex items-start gap-3 rounded-xl px-4 py-3.5"
         style={portalStyle({ background: `${YESIL}0d`, border: `1px solid ${YESIL}33` })}
       >
@@ -118,6 +119,7 @@ export default function TahsilatOtomasyonView() {
       {/* Kuyruklar */}
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Kutu
+          ton="mavi"
           ikon={<Send size={14} />}
           renk={MAVI}
           etiket="Bugün gidecekti"
@@ -125,6 +127,7 @@ export default function TahsilatOtomasyonView() {
           alt={o.yarinaKalan > 0 ? `${o.yarinaKalan} kişi yarına kalırdı` : 'Günlük tavan aşılmıyor'}
         />
         <Kutu
+          ton="kirmizi"
           ikon={<Eye size={14} />}
           renk={KIRMIZI}
           etiket="Onayınızı bekler"
@@ -132,6 +135,7 @@ export default function TahsilatOtomasyonView() {
           alt="60 gün — görüşme çağrısı"
         />
         <Kutu
+          ton="kehribar"
           ikon={<PhoneCall size={14} />}
           renk={TURUNCU}
           etiket="Elle görüşülmeli"
@@ -139,6 +143,7 @@ export default function TahsilatOtomasyonView() {
           alt="90 gün — bot susar"
         />
         <Kutu
+          ton="kursuni"
           ikon={<Ban size={14} />}
           renk={SOLUK}
           etiket="Atlanan"
@@ -148,7 +153,7 @@ export default function TahsilatOtomasyonView() {
       </div>
 
       {/* Kademe merdiveni — sistemin mantığı tek bakışta */}
-      <div className="rounded-xl p-4" style={portalStyle({ background: KART, border: `1px solid ${CIZGI}` })}>
+      <div data-ck-kart data-ck-kademe className="rounded-xl p-4" style={portalStyle({ background: KART, border: `1px solid ${CIZGI}` })}>
         <div className="mb-3 text-[12px] font-medium" style={portalStyle({ color: METIN })}>
           Kademe merdiveni
         </div>
@@ -228,10 +233,10 @@ export default function TahsilatOtomasyonView() {
 }
 
 function Kutu({
-  ikon, renk, etiket, sayi, alt,
-}: { ikon: React.ReactNode; renk: string; etiket: string; sayi: number; alt: string }) {
+  ikon, renk, etiket, sayi, alt, ton,
+}: { ikon: React.ReactNode; renk: string; etiket: string; sayi: number; alt: string; ton?: 'mavi' | 'kirmizi' | 'kehribar' | 'kursuni' }) {
   return (
-    <div className="rounded-xl px-4 py-3.5" style={portalStyle({ background: KART, border: `1px solid ${CIZGI}` })}>
+    <div data-ck-kutu data-ton={ton} className="rounded-xl px-4 py-3.5" style={portalStyle({ background: KART, border: `1px solid ${CIZGI}` })}>
       <div className="flex items-center gap-1.5 text-[10.5px] uppercase tracking-[0.12em]" style={portalStyle({ color: SOLUK })}>
         <span style={portalStyle({ color: renk })}>{ikon}</span> {etiket}
       </div>
@@ -258,7 +263,7 @@ function Liste({
 }) {
   if (!kayitlar.length) {
     return (
-      <div className="rounded-xl p-4" style={portalStyle({ background: KART, border: `1px solid ${CIZGI}` })}>
+      <div data-ck-kart className="rounded-xl p-4" style={portalStyle({ background: KART, border: `1px solid ${CIZGI}` })}>
         <div className="text-[12.5px]" style={portalStyle({ color: METIN })}>{baslik}</div>
         <div className="mt-2 text-[11.5px]" style={portalStyle({ color: SOLUK })}>Bu grupta kimse yok.</div>
       </div>
@@ -266,7 +271,7 @@ function Liste({
   }
 
   return (
-    <div className="rounded-xl p-4" style={portalStyle({ background: KART, border: `1px solid ${CIZGI}` })}>
+    <div data-ck-kart className="rounded-xl p-4" style={portalStyle({ background: KART, border: `1px solid ${CIZGI}` })}>
       <div className="mb-0.5 flex items-center gap-2">
         <span className="h-1.5 w-1.5 rounded-full" style={portalStyle({ background: renk })} />
         <span className="text-[12.5px]" style={portalStyle({ color: METIN })}>{baslik}</span>
@@ -279,7 +284,7 @@ function Liste({
           const b = k.kademe ? KADEME_BILGI[k.kademe] : null;
           const secili = acik === k.taxpayerId;
           return (
-            <div key={k.taxpayerId} className="rounded-lg" style={portalStyle({ border: `1px solid ${CIZGI}` })}>
+            <div key={k.taxpayerId} data-ck-satir-kart data-acik={secili || undefined} className="rounded-lg" style={portalStyle({ border: `1px solid ${CIZGI}` })}>
               <button
                 onClick={() => setAcik(secili ? null : k.taxpayerId)}
                 className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left"

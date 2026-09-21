@@ -32,7 +32,7 @@ export default function MukellefErisimPage() {
 
   if (me && !isAdmin) {
     return (
-      <div className="mx-auto max-w-3xl py-20 text-center">
+      <div data-inceleme="mukellef-erisim" data-me-kapali className="mx-auto max-w-3xl py-20 text-center">
         <ShieldOff size={32} style={portalStyle({ color: '#f87171', margin: '0 auto 12px' })} />
         <p className="text-[15px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>Bu sayfa yalnız yöneticilere açık</p>
         <p className="text-[13px] mt-1" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>Mükellef portal erişimini yalnız ADMIN rolü yönetebilir.</p>
@@ -42,10 +42,11 @@ export default function MukellefErisimPage() {
 
   return (
     <div data-inceleme="mukellef-erisim" className="mx-auto max-w-4xl space-y-5 pb-12">
-      <header data-inceleme-baslik className="relative overflow-hidden rounded-2xl border p-5" style={portalStyle({ borderColor: 'rgba(255,255,255,0.08)', background: 'radial-gradient(120% 140% at 0% 0%, rgba(212,184,118,0.16), transparent 45%), #0f0d0b' })}>
-        <div className="absolute inset-x-0 top-0 h-1" style={portalStyle({ background: `linear-gradient(90deg, ${GOLD}, #b8863a)` })} />
+      {/* Başlık — koyu temada (A) kart + altın şerit; beyaz temada (D) beyaz-inceleme.css sade sayfa başlığına çevirir */}
+      <header data-me-head className="relative overflow-hidden rounded-2xl border p-5" style={portalStyle({ borderColor: 'rgba(255,255,255,0.08)', background: 'radial-gradient(120% 140% at 0% 0%, rgba(212,184,118,0.16), transparent 45%), #0f0d0b' })}>
+        <div data-me-bar className="absolute inset-x-0 top-0 h-1" style={portalStyle({ background: `linear-gradient(90deg, ${GOLD}, #b8863a)` })} />
         <div className="flex items-center gap-2.5">
-          <span className="grid h-10 w-10 place-items-center rounded-xl" style={portalStyle({ background: `linear-gradient(135deg, ${GOLD}, #8b7649)` })}>
+          <span data-me-icon className="grid h-10 w-10 place-items-center rounded-xl" style={portalStyle({ background: `linear-gradient(135deg, ${GOLD}, #8b7649)` })}>
             <UserRound size={20} style={portalStyle({ color: '#1a1410' })} />
           </span>
           <div>
@@ -55,7 +56,7 @@ export default function MukellefErisimPage() {
         </div>
       </header>
 
-      <div className="relative">
+      <div data-me-search className="relative">
         <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })} />
         <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Mükellef ara…"
           className="w-full pl-10 pr-3 py-2.5 text-[13.5px] rounded-xl outline-none"
@@ -105,7 +106,7 @@ function ErisimSatiri({ taxpayer, open, onToggle }: { taxpayer: Taxpayer; open: 
       <button type="button" onClick={onToggle} className="flex w-full items-center justify-between p-3.5 text-left">
         <div className="flex items-center gap-2.5 min-w-0">
           <span className="text-[14px] font-semibold truncate" style={portalStyle({ color: '#fafaf9' })}>{tpName(taxpayer)}</span>
-          {open && enabled && <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-md" style={portalStyle({ background: 'rgba(74,222,128,0.14)', color: '#4ade80' })}><ShieldCheck size={11} /> Açık</span>}
+          {open && enabled && <span data-me-chip="acik" className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-md" style={portalStyle({ background: 'rgba(74,222,128,0.14)', color: '#4ade80' })}><ShieldCheck size={11} /> Açık</span>}
         </div>
         <ChevronDown size={16} style={portalStyle({ color: 'rgba(250,250,249,0.4)', transform: open ? 'rotate(180deg)' : 'none' })} />
       </button>
@@ -117,7 +118,7 @@ function ErisimSatiri({ taxpayer, open, onToggle }: { taxpayer: Taxpayer; open: 
           ) : (
             <>
               <p className="text-[12.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>
-                Durum: <b style={portalStyle({ color: enabled ? '#4ade80' : '#fbbf24' })}>{enabled ? 'Açık' : 'Kapalı'}</b>
+                Durum: <b data-me-durum={enabled ? 'acik' : 'kapali'} style={portalStyle({ color: enabled ? '#4ade80' : '#fbbf24' })}>{enabled ? 'Açık' : 'Kapalı'}</b>
                 {status?.portalEmail ? <> · E-posta: <span style={portalStyle({ color: '#fafaf9' })}>{status.portalEmail}</span></> : null}
                 {status?.hasPassword ? ' · Şifre belirli' : ' · Şifre yok'}
               </p>
@@ -137,7 +138,7 @@ function ErisimSatiri({ taxpayer, open, onToggle }: { taxpayer: Taxpayer; open: 
               </div>
 
               <div className="flex flex-wrap gap-2">
-                <button type="button" disabled={saveMut.isPending}
+                <button type="button" data-me-btn="primary" disabled={saveMut.isPending}
                   onClick={() => saveMut.mutate({ enabled: true, portalEmail: portalEmail || undefined, password: password || undefined })}
                   className="inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-[13px] font-semibold disabled:opacity-40"
                   style={portalStyle({ background: `linear-gradient(135deg, ${GOLD}, #8b7649)`, color: '#0f0d0b' })}>
@@ -145,7 +146,7 @@ function ErisimSatiri({ taxpayer, open, onToggle }: { taxpayer: Taxpayer; open: 
                   {enabled ? 'Güncelle' : 'Erişimi Aç'}
                 </button>
                 {enabled && (
-                  <button type="button" disabled={saveMut.isPending}
+                  <button type="button" data-me-btn="danger" disabled={saveMut.isPending}
                     onClick={() => saveMut.mutate({ enabled: false })}
                     className="inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-[13px] font-semibold disabled:opacity-40"
                     style={portalStyle({ background: 'rgba(248,113,113,0.12)', border: '1px solid rgba(248,113,113,0.33)', color: '#f87171' })}>

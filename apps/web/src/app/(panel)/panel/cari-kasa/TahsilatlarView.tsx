@@ -156,10 +156,10 @@ export default function TahsilatlarView() {
 
   return (
     <div className="mt-6">
-      <div className="overflow-hidden rounded-2xl" style={portalStyle({ background: KART, border: `1px solid ${CIZGI}` })}>
+      <div data-ck-liste className="overflow-hidden rounded-2xl" style={portalStyle({ background: KART, border: `1px solid ${CIZGI}` })}>
         {/* ARAÇ ÇUBUĞU */}
         <div className="flex flex-wrap items-center gap-2.5 px-4 py-3" style={portalStyle({ borderBottom: `1px solid ${CIZGI}` })}>
-          <span className="text-[13px] font-semibold" style={portalStyle({ color: METIN })}>Tahsilatlar</span>
+          <span data-ck-liste-baslik className="text-[13px] font-semibold" style={portalStyle({ color: METIN })}>Tahsilatlar</span>
 
           <select
             value={donem}
@@ -187,6 +187,7 @@ export default function TahsilatlarView() {
             <button
               onClick={excelIndir}
               disabled={gosterilen.length === 0}
+              data-ck-btn="secondary"
               className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12.5px] font-medium transition hover:brightness-125 disabled:opacity-40"
               style={portalStyle({ border: `1px solid ${CIZGI}`, background: 'rgba(255,255,255,0.02)', color: '#d4d4d8' })}
             >
@@ -258,7 +259,7 @@ export default function TahsilatlarView() {
                   </tr>
                 ))}
 
-                <tr style={portalStyle({ borderTop: `1px solid ${CIZGI}`, background: 'rgba(255,255,255,0.022)' })}>
+                <tr data-ck-toplam style={portalStyle({ borderTop: `1px solid ${CIZGI}`, background: 'rgba(255,255,255,0.022)' })}>
                   <td className="px-4 py-3 text-[11.5px] uppercase tracking-wider" colSpan={2} style={portalStyle({ color: SOLUK })}>
                     Toplam · {gosterilen.length} tahsilat
                   </td>

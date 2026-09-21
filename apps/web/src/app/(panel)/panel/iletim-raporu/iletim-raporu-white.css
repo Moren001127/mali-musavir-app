@@ -1,0 +1,154 @@
+/* İletim Raporu — yalnız beyaz tema (D); A teması ve Hattat düzeni (süzgeç + Excel + düz günlük tablosu) aynen korunur.
+   İkinci tur (2026-09-21, bilgi/BEYAZ-TEMA-TASARIM-DILI.md §7): başlık bandı/altın etiket kalktı; süzgeç kartı, düğmeler,
+   girdiler ve tablo rehber tonlarında. Kanal rozetleri (WhatsApp yeşil · Mail mavi · Hata kırmızı) dolu kalır (Hattat,
+   Muzaffer Bey beğendi) — yalnız tonlar rehber ailesine çekildi.
+   Yöntem: satır içi portalStyle() renkleri modül kökünde yeniden tanımlanan --portal-* paydalarıyla eşlenir;
+   kalan parçalar data-ir-* (ve ortak düğmelerdeki data-ao-btn) kancalarıyla boyanır. */
+
+html[data-theme='D'] [data-ir-root] {
+  color-scheme: light;
+  color: #1e293b;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  --portal-ink: #1e293b;
+  --portal-secondary: #475569;
+  --portal-muted: #64748b;
+  --portal-on-color: #fff;
+  --portal-surface: #fff;
+  --portal-raised: #f1f5f9;
+  --portal-wash: #fff;
+  --portal-line: #e3e8ef;
+  --portal-shadow: rgba(15, 23, 42, 0.06);
+  --portal-overlay: rgba(15, 23, 42, 0.45);
+  --portal-slate-ink: #475569; --portal-slate-surface: #5c6b7f; --portal-slate-wash: #f1f5f9; --portal-slate-line: #e2e8f0;
+  --portal-teal-ink: #099268; --portal-teal-surface: #0ca678; --portal-teal-wash: #e6fcf5; --portal-teal-line: #c3fae8;
+  --portal-green-ink: #2b8a3e; --portal-green-surface: #2f9e44; --portal-green-wash: #ebfbee; --portal-green-line: #c6efd0;
+  --portal-blue-ink: #1971c2; --portal-blue-surface: #1971c2; --portal-blue-wash: #e7f5ff; --portal-blue-line: #c5e3fb;
+  --portal-plum-ink: #6741d9; --portal-plum-surface: #7048e8; --portal-plum-wash: #f3f0ff; --portal-plum-line: #e5dbff;
+  --portal-rose-ink: #c92a2a; --portal-rose-surface: #e03131; --portal-rose-wash: #fff5f5; --portal-rose-line: #ffc9c9;
+  --portal-copper-ink: #3b5bdb; --portal-copper-surface: #4263eb; --portal-copper-wash: #edf2ff; --portal-copper-line: #dbe4ff;
+  --portal-amber-ink: #b45309; --portal-amber-surface: #f59f00; --portal-amber-wash: #fffbeb; --portal-amber-line: #fde68a;
+}
+html[data-theme='D'] [data-ir-root] :is(h1, h2, h3) { font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+html[data-theme='D'] [data-ir-root] :is(input, select, textarea) { color-scheme: light !important; }
+
+/* ── Sayfa başlığı ────────────────────────────────────────────────────────── */
+html[data-theme='D'] [data-ir-head] {
+  overflow: visible;
+  padding: 2px 4px 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0;
+  box-shadow: none !important;
+}
+html[data-theme='D'] [data-ir-bar],
+html[data-theme='D'] [data-ir-eyebrow] { display: none; }
+html[data-theme='D'] [data-ir-head] > div { row-gap: 4px; }
+html[data-theme='D'] [data-ir-head] > div > div:first-child { gap: 12px; }
+html[data-theme='D'] [data-ir-icon] {
+  width: 36px !important;
+  height: 36px !important;
+  border-radius: 10px;
+  background: #edf2ff !important;
+  border: 1px solid #dbe4ff;
+  box-shadow: none !important;
+}
+html[data-theme='D'] [data-ir-icon] svg { width: 18px; height: 18px; color: #4263eb !important; }
+html[data-theme='D'] [data-ir-head] h1 {
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif !important;
+  font-size: 22px !important;
+  font-weight: 700 !important;
+  line-height: 1.15 !important;
+  letter-spacing: -0.01em !important;
+  color: #1e293b !important;
+}
+/* Açıklama sağ sütundan başlığın altına iner (simge 36px + 12px boşluk hizası) */
+html[data-theme='D'] [data-ir-aciklama] {
+  flex-basis: 100%;
+  max-width: none;
+  padding-left: 48px;
+  margin-top: -4px;
+  font-size: 13px !important;
+  color: #64748b !important;
+}
+
+/* ── Kartlar, alanlar, girdiler ───────────────────────────────────────────── */
+html[data-theme='D'] [data-ir-card] {
+  background: #fff !important;
+  border: 1px solid #e3e8ef !important;
+  border-radius: 14px !important;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+}
+html[data-theme='D'] [data-ir-alan] > span { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; color: #64748b !important; }
+html[data-theme='D'] [data-ir-root] :is(select, input[type='search'], input[type='month']) {
+  background: #fff !important;
+  border: 1px solid #dde3ea !important;
+  color: #1e293b !important;
+}
+html[data-theme='D'] [data-ir-root] [aria-label='Dönem'] { background: #fff !important; border: 1px solid #dde3ea !important; }
+html[data-theme='D'] [data-ir-root] [aria-label='Dönem'] input[type='month'] { border: 0 !important; }
+html[data-theme='D'] [data-ir-root] [aria-label='Dönem'] button { color: #475569 !important; }
+html[data-theme='D'] [data-ir-root] [aria-label='Dönem'] button:hover { background: #f8fafc; color: #1e293b !important; }
+html[data-theme='D'] [data-ir-root] [data-ir-alan] > button { background: #fff !important; border: 1px solid #dde3ea !important; color: #1e293b !important; }
+html[data-theme='D'] [data-ir-root] :is(input, select, [data-ir-alan] > button):focus-visible { outline: none !important; border-color: #4263eb !important; box-shadow: 0 0 0 3px #dbe4ff !important; }
+html[data-theme='D'] [data-ir-root] input::placeholder { color: #94a3b8 !important; }
+
+/* ── Düğmeler ─────────────────────────────────────────────────────────────── */
+html[data-theme='D'] [data-ir-root] [data-ir-btn='primary'] {
+  background: #edf2ff !important;
+  border: 1px solid #dbe4ff !important;
+  color: #3b5bdb !important;
+  font-weight: 600 !important;
+}
+html[data-theme='D'] [data-ir-root] [data-ir-btn='primary'][data-degisiklik='true'] {
+  background: linear-gradient(135deg, #4263eb, #5c7cfa) !important;
+  border-color: transparent !important;
+  color: #fff !important;
+  box-shadow: 0 8px 16px -10px #4263eb;
+}
+html[data-theme='D'] [data-ir-root] [data-ir-btn='primary']:hover { filter: brightness(1.04); }
+html[data-theme='D'] [data-ir-root] [data-ao-btn='secondary'] {
+  background: #fff !important;
+  border: 1px solid #dde3ea !important;
+  color: #475569 !important;
+  font-weight: 600 !important;
+}
+html[data-theme='D'] [data-ir-root] [data-ao-btn='secondary']:hover:not(:disabled) { background: #f8fafc !important; border-color: #cbd5e1 !important; color: #1e293b !important; }
+html[data-theme='D'] [data-ir-root] button.underline { color: #3b5bdb !important; }
+
+/* ── Tablo kartı ──────────────────────────────────────────────────────────── */
+html[data-theme='D'] [data-ir-tablo-baslik] {
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: 0;
+  text-transform: none;
+  color: #1e293b !important;
+}
+html[data-theme='D'] [data-ir-root] [data-ir-tablo-kabugu] {
+  background: #fff !important;
+  border: 1px solid #e3e8ef !important;
+  border-radius: 12px;
+}
+html[data-theme='D'] [data-ir-root] [data-ir-tablo-kabugu] table thead tr { background: #f8fafc !important; }
+html[data-theme='D'] [data-ir-root] [data-ir-tablo-kabugu] table thead th {
+  background: #f8fafc !important;
+  border-color: #eef2f6 !important;
+  border-bottom-color: #e3e8ef !important;
+  color: #475569 !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.06em !important;
+}
+html[data-theme='D'] [data-ir-root] [data-ir-tablo-kabugu] table thead th button:hover { background: #f1f5f9; }
+html[data-theme='D'] [data-ir-root] [data-ir-tablo-kabugu] table tbody td { border-color: #eef2f6 !important; border-bottom: 1px solid #eef2f6 !important; }
+html[data-theme='D'] [data-ir-root] [data-ir-tablo-kabugu] table tbody tr:last-child td { border-bottom: 0 !important; }
+html[data-theme='D'] [data-ir-root] [data-ir-tablo-kabugu] table tbody tr:nth-child(even):not(:hover) { background-color: #fbfcfd !important; }
+html[data-theme='D'] [data-ir-root] [data-ir-tablo-kabugu] table tbody tr[data-ir-satir]:hover { background-color: #f4f7fb !important; }
+html[data-theme='D'] [data-ir-root] [data-ir-tablo-kabugu] table tbody td:nth-child(1) span { color: #475569 !important; }
+html[data-theme='D'] [data-ir-root] [data-ir-tablo-kabugu] table tbody td:nth-child(3) span { color: #64748b !important; }
+
+/* Kanal/durum rozetleri: dolu, rehber tonları */
+html[data-theme='D'] [data-ir-root] [data-ir-rozet] { color: #fff !important; border-radius: 6px; font-weight: 700; }
+html[data-theme='D'] [data-ir-root] [data-ir-rozet='whatsapp'] { background: #2f9e44 !important; }
+html[data-theme='D'] [data-ir-root] [data-ir-rozet='mail'] { background: #1971c2 !important; }
+html[data-theme='D'] [data-ir-root] [data-ir-rozet='hata'] { background: #e03131 !important; }
+html[data-theme='D'] [data-ir-root] [data-ir-rozet='notr'] { background: #f1f5f9 !important; border: 1px solid #e2e8f0; color: #475569 !important; }

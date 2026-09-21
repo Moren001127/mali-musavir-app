@@ -1,4 +1,5 @@
 'use client';
+import './iletim-raporu-white.css';
 import { portalStyle } from '@/lib/portal-theme';
 
 
@@ -124,9 +125,9 @@ export default function IletimRaporuPage() {
   const son = sonSayfa(yanit);
 
   return (
-    <div className="mx-auto max-w-6xl space-y-3 pb-12">
-      {/* Başlık — küçük kahraman kart; altın yalnız burada */}
-      <header data-portal-page-header
+    <div data-ir-root className="mx-auto max-w-6xl space-y-3 pb-12">
+      {/* Başlık — koyu temada (A) küçük kahraman kart; beyaz temada (D) iletim-raporu-white.css sade sayfa başlığına çevirir */}
+      <header data-ir-head
         className="relative overflow-hidden rounded-[18px] border px-5 py-3.5"
         style={portalStyle({
           background: 'radial-gradient(120% 140% at 0% 0%, rgba(212,184,118,0.16), transparent 46%), radial-gradient(120% 140% at 100% 0%, rgba(139,118,73,0.12), transparent 48%), #0f0d0b',
@@ -134,14 +135,14 @@ export default function IletimRaporuPage() {
           boxShadow: '0 16px 42px rgba(0,0,0,0.28)',
         })}
       >
-        <div className="absolute inset-x-0 top-0 h-1" style={portalStyle({ background: 'linear-gradient(90deg, #8b7649, #b8a06f, #d4b876, #e7cf95, #d4b876, #b8a06f)' })} />
+        <div data-ir-bar className="absolute inset-x-0 top-0 h-1" style={portalStyle({ background: 'linear-gradient(90deg, #8b7649, #b8a06f, #d4b876, #e7cf95, #d4b876, #b8a06f)' })} />
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
-            <span className="grid shrink-0 place-items-center rounded-xl" style={portalStyle({ width: 40, height: 40, background: `linear-gradient(135deg, ${GOLD}, ${GOLD_SOFT})`, boxShadow: '0 8px 22px rgba(212,184,118,0.30)' })}>
+            <span data-ir-icon className="grid shrink-0 place-items-center rounded-xl" style={portalStyle({ width: 40, height: 40, background: `linear-gradient(135deg, ${GOLD}, ${GOLD_SOFT})`, boxShadow: '0 8px 22px rgba(212,184,118,0.30)' })}>
               <ClipboardList size={21} style={portalStyle({ color: '#1a1410' })} />
             </span>
             <div className="min-w-0">
-              <div className="mb-0.5 flex items-center gap-2">
+              <div data-ir-eyebrow className="mb-0.5 flex items-center gap-2">
                 <span className="h-px w-[18px]" style={portalStyle({ background: GOLD })} />
                 <span className="text-[10px] font-bold uppercase tracking-[.18em]" style={portalStyle({ color: GOLD_SOFT })}>Ofis</span>
               </div>
@@ -150,14 +151,14 @@ export default function IletimRaporuPage() {
               </h1>
             </div>
           </div>
-          <p className="max-w-[460px] text-[12.5px] leading-5" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
+          <p data-ir-aciklama className="max-w-[460px] text-[12.5px] leading-5" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
             Mükellefe gönderilen her belgenin günlüğü — tarih sıralı, belge belge. Beyanname, SGK, e-Tebligat, Ödeme Listesi, Cari Kasa ve portal mesajları.
           </p>
         </div>
       </header>
 
       {/* Süzgeç çubuğu — Filtrele'ye basınca uygulanır */}
-      <section className="p-3" style={portalStyle(KART)} data-testid="suzgec-cubugu">
+      <section data-ir-card className="p-3" style={portalStyle(KART)} data-testid="suzgec-cubugu">
         <form
           className="flex flex-wrap items-end gap-2.5"
           onSubmit={(e) => {
@@ -215,6 +216,8 @@ export default function IletimRaporuPage() {
           <div className="flex items-center gap-2">
             <button
               type="submit"
+              data-ir-btn="primary"
+              data-degisiklik={degisiklikVar || undefined}
               title={degisiklikVar ? 'Seçilen süzgeçleri uygula' : 'Süzgeçler uygulanmış durumda'}
               className="inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-[10px] px-3.5 text-[12.5px] font-bold transition-[transform,background-color] hover:-translate-y-px"
               style={portalStyle(degisiklikVar
@@ -258,9 +261,9 @@ export default function IletimRaporuPage() {
       </div>
 
       {/* Tablo kartı */}
-      <section className="p-3" style={portalStyle(KART)}>
+      <section data-ir-card className="p-3" style={portalStyle(KART)}>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-[11px] font-bold uppercase tracking-[.14em]" style={portalStyle({ color: 'rgba(250,250,249,0.62)' })}>İletim Raporları</h2>
+          <h2 data-ir-tablo-baslik className="text-[11px] font-bold uppercase tracking-[.14em]" style={portalStyle({ color: 'rgba(250,250,249,0.62)' })}>İletim Raporları</h2>
           <div className="flex flex-wrap items-center gap-2">
             <label className="inline-flex items-center gap-1.5 text-[11.5px]" style={portalStyle({ color: IKINCIL })}>
               Kayıt
@@ -294,7 +297,7 @@ export default function IletimRaporuPage() {
           </div>
         </div>
 
-        <div className="overflow-x-auto rounded-xl" style={portalStyle({ border: `1px solid ${KENAR_NOTR}`, background: 'rgba(255,255,255,0.02)', opacity: gunlukQ.isFetching && !gunlukQ.isLoading ? 0.7 : 1, transition: 'opacity .15s' })}>
+        <div data-ir-tablo-kabugu className="overflow-x-auto rounded-xl" style={portalStyle({ border: `1px solid ${KENAR_NOTR}`, background: 'rgba(255,255,255,0.02)', opacity: gunlukQ.isFetching && !gunlukQ.isLoading ? 0.7 : 1, transition: 'opacity .15s' })}>
           <table className="w-full" style={portalStyle({ borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: 880 })} data-testid="iletim-tablosu">
             <colgroup>
               <col style={portalStyle({ width: 168 })} />
@@ -350,7 +353,7 @@ export default function IletimRaporuPage() {
                 </tr>
               ) : (
                 satirlar.map((s) => (
-                  <tr key={s.id} data-durum={s.durum} data-kanal={s.kanal} className="transition-colors hover:bg-white/[0.03]">
+                  <tr key={s.id} data-durum={s.durum} data-kanal={s.kanal} data-ir-satir className="transition-colors hover:bg-white/[0.03]">
                     <td style={portalStyle({ ...HUCRE, whiteSpace: 'nowrap' })}>
                       <span className="text-[12.5px] tabular-nums" style={portalStyle({ color: METIN })}>{tarihSaatSaniye(s.tarih)}</span>
                     </td>
@@ -396,7 +399,7 @@ export default function IletimRaporuPage() {
 /** Süzgeç alanı: küçük başlık + denetim (label DEĞİL: Dönem alanında üç denetim var, başlığa tıklayınca ilki tetiklenmesin) */
 function Alan({ etiket, children, className = '' }: { etiket: string; children: ReactNode; className?: string }) {
   return (
-    <div className={`flex flex-col gap-1 ${className}`}>
+    <div data-ir-alan className={`flex flex-col gap-1 ${className}`}>
       <span className="text-[10.5px] font-semibold uppercase tracking-[.08em]" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>{etiket}</span>
       {children}
     </div>
@@ -413,9 +416,9 @@ function Secim({ value, onChange, children, ariaLabel }: { value: string; onChan
 }
 
 /** Dolu, küçük rozet — yalnız kanal (yeşil/mavi), hata (kırmızı) ve test/bekliyor (gri) */
-function Rozet({ children, renk, title }: { children: ReactNode; renk: string; title?: string }) {
+function Rozet({ children, renk, title, kanca }: { children: ReactNode; renk: string; title?: string; kanca: string }) {
   return (
-    <span title={title} className="inline-flex items-center whitespace-nowrap rounded-md px-2 py-[2px] text-[10.5px] font-bold leading-4" style={portalStyle({ background: renk, color: '#fff' })}>
+    <span title={title} data-ir-rozet={kanca} className="inline-flex items-center whitespace-nowrap rounded-md px-2 py-[2px] text-[10.5px] font-bold leading-4" style={portalStyle({ background: renk, color: '#fff' })}>
       {children}
     </span>
   );
@@ -425,10 +428,10 @@ function DurumHucresi({ s }: { s: GunlukSatiri }) {
   const ipucu = durumIpucu(s);
   return (
     <div className="flex flex-wrap items-center gap-1" title={ipucu}>
-      <Rozet renk={s.kanal === 'Mail' ? MAIL_MAVI : WHATSAPP_YESIL}>{s.kanal}</Rozet>
-      {s.durum === 'İletilemedi' && <Rozet renk={HATA_KIRMIZI} title={ipucu}>Hata</Rozet>}
-      {s.durum === 'Test' && <Rozet renk="rgba(255,255,255,0.16)" title={ipucu}>Test</Rozet>}
-      {s.durum === 'Bekliyor' && <Rozet renk="rgba(255,255,255,0.16)" title={ipucu}>Bekliyor</Rozet>}
+      <Rozet kanca={s.kanal === 'Mail' ? 'mail' : 'whatsapp'} renk={s.kanal === 'Mail' ? MAIL_MAVI : WHATSAPP_YESIL}>{s.kanal}</Rozet>
+      {s.durum === 'İletilemedi' && <Rozet kanca="hata" renk={HATA_KIRMIZI} title={ipucu}>Hata</Rozet>}
+      {s.durum === 'Test' && <Rozet kanca="notr" renk="rgba(255,255,255,0.16)" title={ipucu}>Test</Rozet>}
+      {s.durum === 'Bekliyor' && <Rozet kanca="notr" renk="rgba(255,255,255,0.16)" title={ipucu}>Bekliyor</Rozet>}
     </div>
   );
 }

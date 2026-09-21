@@ -154,8 +154,8 @@ export default function CariKasaPage() {
   ];
 
   return (
-    <div className="min-h-screen px-4 sm:px-6 py-6" style={portalStyle({ fontFamily: SANS, background: BG })}>
-      <div className="mx-auto max-w-[1180px] rounded-[20px] p-5 sm:p-7" style={portalStyle({ background: PANEL, border: '1px solid rgba(255,255,255,0.07)' })}>
+    <div data-ck-root data-ck-detay className="min-h-screen px-4 sm:px-6 py-6" style={portalStyle({ fontFamily: SANS, background: BG })}>
+      <div data-ck-panel className="mx-auto max-w-[1180px] rounded-[20px] p-5 sm:p-7" style={portalStyle({ background: PANEL, border: '1px solid rgba(255,255,255,0.07)' })}>
 
         {/* ===== HEADER ===== */}
         <div className="flex items-start justify-between gap-4">
@@ -163,6 +163,7 @@ export default function CariKasaPage() {
             <button
               onClick={() => setTaxpayerId('')}
               title="Listeye dön"
+              data-ck-btn="secondary"
               className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl transition"
               style={portalStyle({ border: '1px solid rgba(255,255,255,0.10)', background: 'rgba(255,255,255,0.02)', color: '#a1a1aa' })}
             >
@@ -170,6 +171,7 @@ export default function CariKasaPage() {
             </button>
             <div className="min-w-0">
               <span
+                data-ck-chip
                 className="inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold tracking-wide"
                 style={portalStyle({ background: 'rgba(230,200,120,0.12)', color: GOLD, border: '1px solid rgba(230,200,120,0.20)' })}
               >
@@ -184,6 +186,7 @@ export default function CariKasaPage() {
           <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={() => setTahsilatModal(true)}
+              data-ck-btn="primary"
               className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13.5px] font-semibold"
               style={portalStyle({ background: 'linear-gradient(135deg,#ecd589,#d4b876)', color: '#000' })}
             >
@@ -191,6 +194,7 @@ export default function CariKasaPage() {
             </button>
             <button
               onClick={() => setTab('defter')}
+              data-ck-btn="secondary"
               className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13.5px] font-medium transition"
               style={portalStyle({ border: '1px solid rgba(255,255,255,0.10)', background: 'rgba(255,255,255,0.02)', color: '#d4d4d8' })}
             >
@@ -208,12 +212,14 @@ export default function CariKasaPage() {
         </div>
 
         {/* ===== SEKMELER ===== */}
-        <nav className="mt-7 flex items-center gap-7 text-[14.5px]" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.07)' })}>
+        <nav data-ck-alt-sekmeler className="mt-7 flex items-center gap-7 text-[14.5px]" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.07)' })}>
           {tabs.map(([t, label]) => {
             const active = tab === t;
             return (
               <button
                 key={t}
+                data-ck-alt-sekme
+                data-on={active || undefined}
                 onClick={() => setTab(t)}
                 className="relative -mb-px pb-3 transition"
                 style={portalStyle({
@@ -300,7 +306,7 @@ function MetricCard({ label, value, text, valueColor, debt }: {
   debt?: boolean;
 }) {
   return (
-    <div data-portal-kpi
+    <div data-ck-kpi data-ck-kpi-kucuk
       className="relative overflow-hidden rounded-xl px-3.5 py-2.5"
       style={portalStyle({
         ...({ '--kpi-tone': portalStyle({ color: valueColor || (debt ? DEBT : '#305ea2') }).color } as React.CSSProperties),
@@ -312,6 +318,7 @@ function MetricCard({ label, value, text, valueColor, debt }: {
     >
       {debt && (
         <span
+          data-ck-glow
           className="pointer-events-none absolute -right-6 -top-8 h-20 w-20 rounded-full opacity-20"
           style={portalStyle({ background: `radial-gradient(circle, ${DEBT}, transparent 68%)` })}
         />
@@ -336,11 +343,12 @@ function HizmetlerView({ hizmetler, onYeni, onEdit, onDelete }: {
   onDelete: (id: string) => void;
 }) {
   return (
-    <div className="overflow-hidden rounded-2xl" style={portalStyle({ border: `1px solid ${CARD_BORDER}` })}>
+    <div data-ck-kart className="overflow-hidden rounded-2xl" style={portalStyle({ border: `1px solid ${CARD_BORDER}` })}>
       <div className="px-5 py-3.5 flex items-center justify-between" style={portalStyle({ borderBottom: `1px solid ${ROW_SEP}` })}>
         <h3 className="text-[14.5px] font-semibold" style={portalStyle({ color: '#fff' })}>Tanımlı Hizmetler ({hizmetler.length})</h3>
         <button
           onClick={onYeni}
+          data-ck-btn="primary"
           className="inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-[13px] font-semibold"
           style={portalStyle({ background: 'linear-gradient(135deg,#ecd589,#d4b876)', color: '#000' })}
         >
@@ -366,6 +374,7 @@ function HizmetlerView({ hizmetler, onYeni, onEdit, onDelete }: {
             <button
               onClick={() => onEdit(h)}
               title="Düzenle"
+              data-ck-eylem
               className="opacity-55 transition group-hover:opacity-100 p-2 rounded-lg"
               style={portalStyle({ background: 'rgba(255,255,255,0.02)', color: '#a1a1aa' })}
             >
@@ -374,6 +383,7 @@ function HizmetlerView({ hizmetler, onYeni, onEdit, onDelete }: {
             <button
               onClick={() => onDelete(h.id)}
               title="Sil"
+              data-ck-sil
               className="opacity-55 transition group-hover:opacity-100 p-2 rounded-lg"
               style={portalStyle({ color: DEBT })}
             >
@@ -515,9 +525,10 @@ function EkstreView({ taxpayerId, taxpayers, onTahsilat, onHizmet }: {
     tip === 'TAHAKKUK' ? 'Hizmet' : tip === 'TAHSILAT' ? 'Tahsilat' : tip === 'IADE' ? 'İade' : 'Düzeltme';
 
   return (
-    <div className="overflow-hidden rounded-2xl" style={portalStyle({ background: PANEL, border: `1px solid ${CARD_BORDER}` })}>
+    <div data-ck-kart className="overflow-hidden rounded-2xl" style={portalStyle({ background: PANEL, border: `1px solid ${CARD_BORDER}` })}>
       {/* ARAÇ ÇUBUĞU */}
       <div
+        data-ck-arac
         className="flex flex-wrap items-end gap-2.5 px-4 py-3"
         style={portalStyle({ borderBottom: `1px solid ${CARD_BORDER}`, background: 'rgba(255,255,255,0.015)' })}
       >
@@ -532,6 +543,8 @@ function EkstreView({ taxpayerId, taxpayers, onTahsilat, onHizmet }: {
 
         <button
           onClick={() => setSifirSonrasi((v) => !v)}
+          data-ck-btn="secondary"
+          data-on={sifirSonrasi || undefined}
           className="rounded-lg px-3 py-2 text-[12.5px] font-medium transition"
           style={portalStyle(sifirSonrasi
             ? { background: `${GOLD}1f`, color: GOLD, border: `1px solid ${GOLD}4d` }
@@ -542,20 +555,20 @@ function EkstreView({ taxpayerId, taxpayers, onTahsilat, onHizmet }: {
         </button>
 
         <span className="ml-auto flex flex-wrap items-center gap-2">
-          <button onClick={acPdf} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12.5px] font-medium transition hover:brightness-125" style={portalStyle(dugme)}>
+          <button onClick={acPdf} data-ck-btn="secondary" className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12.5px] font-medium transition hover:brightness-125" style={portalStyle(dugme)}>
             <FileText className="h-3.5 w-3.5" /> PDF
           </button>
-          <button onClick={indirXlsx} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12.5px] font-medium transition hover:brightness-125" style={portalStyle(dugme)}>
+          <button onClick={indirXlsx} data-ck-btn="secondary" className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12.5px] font-medium transition hover:brightness-125" style={portalStyle(dugme)}>
             <Download className="h-3.5 w-3.5" /> Excel
           </button>
-          <button onClick={whatsappGonder} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12.5px] font-medium transition hover:brightness-125" style={portalStyle({ ...dugme, color: '#6ee29c', borderColor: 'rgba(90,209,138,0.28)' })}>
+          <button onClick={whatsappGonder} data-ck-btn="whatsapp-soft" className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12.5px] font-medium transition hover:brightness-125" style={portalStyle({ ...dugme, color: '#6ee29c', borderColor: 'rgba(90,209,138,0.28)' })}>
             <MessageCircle className="h-3.5 w-3.5" /> WhatsApp
           </button>
-          <span className="mx-1 h-5 w-px" style={portalStyle({ background: CARD_BORDER })} />
-          <button onClick={onHizmet} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12.5px] font-medium transition hover:brightness-125" style={portalStyle(dugme)}>
+          <span data-ck-ayrac className="mx-1 h-5 w-px" style={portalStyle({ background: CARD_BORDER })} />
+          <button onClick={onHizmet} data-ck-btn="secondary" className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12.5px] font-medium transition hover:brightness-125" style={portalStyle(dugme)}>
             <Plus className="h-3.5 w-3.5" /> Hizmet
           </button>
-          <button onClick={onTahsilat} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12.5px] font-semibold" style={portalStyle({ background: 'linear-gradient(135deg,#ecd589,#d4b876)', color: '#000' })}>
+          <button onClick={onTahsilat} data-ck-btn="primary" className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12.5px] font-semibold" style={portalStyle({ background: 'linear-gradient(135deg,#ecd589,#d4b876)', color: '#000' })}>
             <Plus className="h-3.5 w-3.5" /> Tahsilat
           </button>
         </span>
@@ -564,15 +577,17 @@ function EkstreView({ taxpayerId, taxpayers, onTahsilat, onHizmet }: {
       {/* SEÇİM ŞERİDİ — yalnız seçim varken */}
       {secili.size > 0 && (
         <div
+          data-ck-secim
           className="flex items-center justify-between gap-3 px-4 py-2"
           style={portalStyle({ borderBottom: `1px solid ${CARD_BORDER}`, background: `${DEBT}0f` })}
         >
           <span className="text-[12.5px]" style={portalStyle({ color: TEXT })}>{secili.size} hareket seçildi</span>
           <span className="flex items-center gap-2">
-            <button onClick={() => setSecili(new Set())} className="rounded-lg px-3 py-1.5 text-[12px]" style={portalStyle(dugme)}>Vazgeç</button>
+            <button onClick={() => setSecili(new Set())} data-ck-btn="secondary" className="rounded-lg px-3 py-1.5 text-[12px]" style={portalStyle(dugme)}>Vazgeç</button>
             <button
               onClick={() => sil([...secili])}
               disabled={siliniyor}
+              data-ck-btn="danger"
               className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-semibold disabled:opacity-50"
               style={portalStyle({ background: `${DEBT}22`, color: DEBT, border: `1px solid ${DEBT}55` })}
             >
@@ -614,7 +629,7 @@ function EkstreView({ taxpayerId, taxpayers, onTahsilat, onHizmet }: {
               </thead>
               <tbody>
                 {!sifirSonrasi && (
-                  <tr style={portalStyle({ background: 'rgba(255,255,255,0.022)' })}>
+                  <tr data-ck-acilis style={portalStyle({ background: 'rgba(255,255,255,0.022)' })}>
                     <td className="px-3 py-2.5" />
                     <td className="px-3 py-2.5 font-semibold" colSpan={6} style={portalStyle({ color: TEXT })}>Açılış bakiyesi</td>
                     <td className="px-3 py-2.5 text-right font-semibold tabular-nums" style={portalStyle({ color: TEXT })}>
@@ -640,6 +655,8 @@ function EkstreView({ taxpayerId, taxpayers, onTahsilat, onHizmet }: {
                     return (
                       <tr
                         key={s.id}
+                        data-ck-hareket
+                        data-secili={secilidir || undefined}
                         className="group"
                         style={portalStyle({ borderTop: `1px solid ${ROW_SEP}`, background: secilidir ? 'rgba(255,255,255,0.03)' : undefined })}
                       >
@@ -686,6 +703,7 @@ function EkstreView({ taxpayerId, taxpayers, onTahsilat, onHizmet }: {
                             onClick={() => sil([s.id])}
                             disabled={siliniyor}
                             title="Bu hareketi sil"
+                            data-ck-sil
                             className="rounded-md p-1 opacity-60 transition hover:opacity-100 disabled:opacity-30"
                             style={portalStyle({ color: DEBT })}
                           >
@@ -701,6 +719,7 @@ function EkstreView({ taxpayerId, taxpayers, onTahsilat, onHizmet }: {
           </div>
 
           <div
+            data-ck-altbilgi
             className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
             style={portalStyle({ borderTop: `1px solid ${CARD_BORDER}`, background: 'rgba(255,255,255,0.015)' })}
           >
@@ -731,6 +750,8 @@ function ToplamRozet({ etiket, tutar, renk, vurgu }: {
 }) {
   return (
     <span
+      data-ck-toplam-rozet
+      data-vurgu={vurgu || undefined}
       className="inline-flex items-baseline gap-2 rounded-lg px-3 py-1.5"
       style={portalStyle({
         background: vurgu ? `${renk}1a` : 'rgba(255,255,255,0.025)',
@@ -767,6 +788,7 @@ function ModalShell({ etiket, baslik, etiketRengi, onClose, children, footer }: 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center px-4 py-8" style={portalStyle({ background: 'rgba(0,0,0,0.6)' })} onClick={onClose}>
       <div
+        data-ck-pencere
         className="w-full max-w-[520px] rounded-[20px]"
         style={portalStyle({ background: PANEL, border: '1px solid rgba(230,200,120,0.18)', boxShadow: '0 24px 60px -12px rgba(0,0,0,0.7)' })}
         onClick={(e) => e.stopPropagation()}
@@ -778,6 +800,7 @@ function ModalShell({ etiket, baslik, etiketRengi, onClose, children, footer }: 
           </div>
           <button
             onClick={onClose}
+            data-ck-btn="secondary"
             className="grid h-9 w-9 shrink-0 place-items-center rounded-xl transition"
             style={portalStyle({ border: '1px solid rgba(255,255,255,0.10)', background: 'rgba(255,255,255,0.02)', color: '#a1a1aa' })}
           >
@@ -794,7 +817,7 @@ function ModalShell({ etiket, baslik, etiketRengi, onClose, children, footer }: 
 function Field({ label, children, full }: { label: string; children: React.ReactNode; full?: boolean }) {
   return (
     <div className={full ? 'col-span-2' : ''}>
-      <label style={portalStyle(lblStyle)}>{label}</label>
+      <label data-ck-etiket style={portalStyle(lblStyle)}>{label}</label>
       <div className="mt-1.5">{children}</div>
     </div>
   );
@@ -845,8 +868,8 @@ function HizmetModal({ taxpayerId, hizmet, onClose, onSaved }: { taxpayerId: str
       onClose={onClose}
       footer={
         <>
-          <button onClick={onClose} className="rounded-xl px-5 py-2.5 text-[13.5px] font-medium transition" style={portalStyle({ border: '1px solid rgba(255,255,255,0.10)', background: 'rgba(255,255,255,0.02)', color: '#d4d4d8' })}>Vazgeç</button>
-          <button onClick={save} disabled={saving} className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-[13.5px] font-semibold disabled:opacity-50" style={portalStyle({ background: 'linear-gradient(135deg,#ecd589,#d4b876)', color: '#000' })}>
+          <button onClick={onClose} data-ck-btn="secondary" className="rounded-xl px-5 py-2.5 text-[13.5px] font-medium transition" style={portalStyle({ border: '1px solid rgba(255,255,255,0.10)', background: 'rgba(255,255,255,0.02)', color: '#d4d4d8' })}>Vazgeç</button>
+          <button onClick={save} disabled={saving} data-ck-btn="primary" className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-[13.5px] font-semibold disabled:opacity-50" style={portalStyle({ background: 'linear-gradient(135deg,#ecd589,#d4b876)', color: '#000' })}>
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <HandCoins className="h-4 w-4" />} {hizmet ? 'Güncelle' : 'Kaydet'}
           </button>
         </>
@@ -931,15 +954,15 @@ function TahsilatModal({ taxpayerId, mukellefAd, taxNumber, acikBakiye, onClose,
       onClose={onClose}
       footer={
         <>
-          <button onClick={onClose} className="rounded-xl px-5 py-2.5 text-[13.5px] font-medium transition" style={portalStyle({ border: '1px solid rgba(255,255,255,0.10)', background: 'rgba(255,255,255,0.02)', color: '#d4d4d8' })}>Vazgeç</button>
-          <button onClick={save} disabled={saving} className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-[13.5px] font-semibold disabled:opacity-50" style={portalStyle({ background: 'linear-gradient(135deg,#ecd589,#d4b876)', color: '#000' })}>
+          <button onClick={onClose} data-ck-btn="secondary" className="rounded-xl px-5 py-2.5 text-[13.5px] font-medium transition" style={portalStyle({ border: '1px solid rgba(255,255,255,0.10)', background: 'rgba(255,255,255,0.02)', color: '#d4d4d8' })}>Vazgeç</button>
+          <button onClick={save} disabled={saving} data-ck-btn="primary" className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-[13.5px] font-semibold disabled:opacity-50" style={portalStyle({ background: 'linear-gradient(135deg,#ecd589,#d4b876)', color: '#000' })}>
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <HandCoins className="h-4 w-4" />} Kaydet
           </button>
         </>
       }
     >
       {/* Mükellef satırı */}
-      <div className="mx-7 rounded-xl px-4 py-3" style={portalStyle({ background: CARD_BG, border: `1px solid ${CARD_BORDER}` })}>
+      <div data-ck-ic-kart className="mx-7 rounded-xl px-4 py-3" style={portalStyle({ background: CARD_BG, border: `1px solid ${CARD_BORDER}` })}>
         <div className="flex items-center gap-2 flex-wrap text-[13px]">
           <span className="font-semibold" style={portalStyle({ color: '#fff' })}>{mukellefAd || 'Mükellef'}</span>
           {taxNumber && (<><span style={portalStyle({ color: '#52525b' })}>·</span><span className="tabular-nums" style={portalStyle({ color: MUTED })}>VKN {taxNumber}</span></>)}
@@ -980,7 +1003,7 @@ function TahsilatModal({ taxpayerId, mukellefAd, taxNumber, acikBakiye, onClose,
               ))}
             </select>
             {accounts.length === 0 && (
-              <p className="mt-1.5 text-[12px]" style={portalStyle({ color: '#e6c878' })}>
+              <p data-ck-uyari-metin className="mt-1.5 text-[12px]" style={portalStyle({ color: '#e6c878' })}>
                 Tahsilata açık hesap yok. Kişisel Bütçe &gt; Hesaplar ekranından hesabın
                 &quot;cari tahsilatta görünsün&quot; anahtarını açın.
               </p>
@@ -992,7 +1015,7 @@ function TahsilatModal({ taxpayerId, mukellefAd, taxNumber, acikBakiye, onClose,
         </div>
 
         {/* Bilgi şeridi: kalan bakiye */}
-        <div className="mt-5 flex items-center justify-between rounded-xl px-4 py-3" style={portalStyle({ background: 'rgba(230,200,120,0.06)', border: '1px solid rgba(230,200,120,0.15)' })}>
+        <div data-ck-bilgi className="mt-5 flex items-center justify-between rounded-xl px-4 py-3" style={portalStyle({ background: 'rgba(230,200,120,0.06)', border: '1px solid rgba(230,200,120,0.15)' })}>
           <span className="text-[13px]" style={portalStyle({ color: '#a1a1aa' })}>Bu tahsilat sonrası kalan bakiye</span>
           <span className="text-[16px] font-bold tabular-nums" style={portalStyle({ color: GOLD })}>{fmt(kalanBakiye)} ₺</span>
         </div>

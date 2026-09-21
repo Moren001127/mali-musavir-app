@@ -236,9 +236,9 @@ export default function AylikOdemePage() {
   const topluMesgul = sending !== null || listeQ.isLoading;
 
   return (
-    <div className="mx-auto max-w-6xl space-y-3 pb-12">
-      {/* Başlık */}
-      <header data-portal-page-header
+    <div data-ao-root className="mx-auto max-w-6xl space-y-3 pb-12">
+      {/* Başlık — beyaz temada (D) bant/altın etiket yok: aylik-odeme/beyaz.css [data-ao-head] */}
+      <header data-ao-head
         className="relative overflow-hidden rounded-[18px] border px-5 py-4"
         style={portalStyle({
           background: 'radial-gradient(120% 140% at 0% 0%, rgba(212,184,118,0.16), transparent 46%), radial-gradient(120% 140% at 100% 0%, rgba(139,118,73,0.12), transparent 48%), #0f0d0b',
@@ -246,14 +246,14 @@ export default function AylikOdemePage() {
           boxShadow: '0 16px 42px rgba(0,0,0,0.28)',
         })}
       >
-        <div className="absolute inset-x-0 top-0 h-1" style={portalStyle({ background: 'linear-gradient(90deg, #8b7649, #b8a06f, #d4b876, #e7cf95, #d4b876, #b8a06f)' })} />
-        <div className="mb-3 flex items-center gap-2.5">
+        <div data-ao-bar className="absolute inset-x-0 top-0 h-1" style={portalStyle({ background: 'linear-gradient(90deg, #8b7649, #b8a06f, #d4b876, #e7cf95, #d4b876, #b8a06f)' })} />
+        <div data-ao-eyebrow className="mb-3 flex items-center gap-2.5">
           <span className="h-px w-[26px]" style={portalStyle({ background: GOLD })} />
           <span className="text-[10px] font-bold uppercase tracking-[.18em]" style={portalStyle({ color: GOLD_SOFT })}>Vergi & Beyanname</span>
         </div>
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex min-w-0 items-center gap-3.5">
-            <span className="grid shrink-0 place-items-center rounded-xl" style={portalStyle({ width: 46, height: 46, background: `linear-gradient(135deg, ${GOLD}, ${GOLD_SOFT})`, boxShadow: '0 8px 22px rgba(212,184,118,0.30)' })}>
+            <span data-ao-icon className="grid shrink-0 place-items-center rounded-xl" style={portalStyle({ width: 46, height: 46, background: `linear-gradient(135deg, ${GOLD}, ${GOLD_SOFT})`, boxShadow: '0 8px 22px rgba(212,184,118,0.30)' })}>
               <Wallet size={24} style={portalStyle({ color: '#1a1410' })} />
             </span>
             <div className="min-w-0">
@@ -299,6 +299,7 @@ export default function AylikOdemePage() {
 
             <Link
               href="/panel/iletim-raporu"
+              data-ao-btn="secondary"
               title="Gönderim sonuçları — İletim Raporu"
               className="inline-flex h-9 flex-shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[10px] px-3 text-[12.5px] font-semibold transition hover:-translate-y-px"
               style={portalStyle({ background: 'rgba(255,255,255,0.03)', border: `1px solid ${KENAR_NOTR}`, color: 'rgba(250,250,249,0.78)' })}
@@ -322,6 +323,7 @@ export default function AylikOdemePage() {
                 tetik={({ ref, ac, acik }) => (
                   <button
                     ref={ref}
+                    data-ao-split
                     type="button"
                     onClick={ac}
                     disabled={topluMesgul}
@@ -426,9 +428,9 @@ export default function AylikOdemePage() {
         />
         <div className="min-w-0 space-y-4">
           {listeQ.isLoading ? (
-            <div className="p-8 text-[13px]" style={portalStyle({ ...KART, color: IKINCIL })}>Yükleniyor…</div>
+            <div data-ao-card className="p-8 text-[13px]" style={portalStyle({ ...KART, color: IKINCIL })}>Yükleniyor…</div>
           ) : listeQ.isError ? (
-            <div className="p-8 text-[13px]" style={portalStyle({ ...KART, color: IKINCIL })}>
+            <div data-ao-card className="p-8 text-[13px]" style={portalStyle({ ...KART, color: IKINCIL })}>
               Liste alınamadı.{' '}
               <button type="button" onClick={yenile} className="font-semibold hover:underline" style={portalStyle({ color: METIN })}>Yeniden dene</button>
             </div>
@@ -445,7 +447,7 @@ export default function AylikOdemePage() {
               onYazdir={yazdir}
             />
           ) : (
-            <div className="flex flex-col items-center gap-2 p-10 text-center text-[13px]" style={portalStyle({ ...KART, color: IKINCIL })}>
+            <div data-ao-card className="flex flex-col items-center gap-2 p-10 text-center text-[13px]" style={portalStyle({ ...KART, color: IKINCIL })}>
               <Inbox size={22} style={portalStyle({ color: 'rgba(250,250,249,0.3)' })} />
               {rows.length === 0
                 ? `${ayAdi(month)} için tahakkuk verisi bulunamadı. Tahakkuklar gece otomasyonuyla çekildikçe burada listelenir.`

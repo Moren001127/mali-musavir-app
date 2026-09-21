@@ -328,10 +328,10 @@ export function CariTahsilatWorkspace({ onSelect }: { onSelect: (id: string) => 
   ];
 
   return (
-    <div className="min-h-screen" style={portalStyle({ background: BG, fontFamily: SANS, color: TEXT })}>
-      <div className="mx-auto max-w-[1240px] px-6 sm:px-10 py-8">
-        {/* ===== BAŞLIK — portal dili: gradyan zemin + radial parıltı ===== */}
-        <header data-portal-page-header
+    <div data-ck-root className="min-h-screen" style={portalStyle({ background: BG, fontFamily: SANS, color: TEXT })}>
+      <div data-ck-govde className="mx-auto max-w-[1240px] px-6 sm:px-10 py-8">
+        {/* ===== BAŞLIK — koyu temada (A) gradyan zemin + radial parıltı; beyaz temada (D) cari-white.css sade sayfa başlığı ===== */}
+        <header data-ck-head
           className="relative overflow-hidden rounded-2xl px-5 py-4"
           style={portalStyle({
             background: 'linear-gradient(140deg, rgba(230,200,120,0.09), rgba(255,255,255,0.01) 58%)',
@@ -339,12 +339,14 @@ export function CariTahsilatWorkspace({ onSelect }: { onSelect: (id: string) => 
           })}
         >
           <span
+            data-ck-glow
             className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full opacity-25"
             style={portalStyle({ background: `radial-gradient(circle, ${GOLD}, transparent 66%)` })}
           />
           <div className="relative flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-center gap-3.5 min-w-0">
             <span
+              data-ck-icon
               className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl"
               style={portalStyle({
                 background: `linear-gradient(140deg, ${GOLD}2e, rgba(255,255,255,0.01) 65%)`,
@@ -367,6 +369,7 @@ export function CariTahsilatWorkspace({ onSelect }: { onSelect: (id: string) => 
           <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={previewReminder}
+              data-ck-btn="secondary"
               className="hidden sm:inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13.5px] font-medium transition"
               style={portalStyle({ border: `1px solid rgba(255,255,255,0.10)`, background: 'rgba(255,255,255,0.02)', color: TEXT })}
               title="WhatsApp önizle"
@@ -376,6 +379,7 @@ export function CariTahsilatWorkspace({ onSelect }: { onSelect: (id: string) => 
             <button
               onClick={sendReminder}
               disabled={sending}
+              data-ck-btn="whatsapp"
               className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13.5px] font-semibold transition disabled:opacity-50"
               style={portalStyle({ border: `1px solid rgba(90,209,138,0.28)`, background: 'rgba(90,209,138,0.10)', color: OK })}
               title="WhatsApp gönder"
@@ -384,6 +388,7 @@ export function CariTahsilatWorkspace({ onSelect }: { onSelect: (id: string) => 
             </button>
             <button
               onClick={indirExcelToplu}
+              data-ck-btn="secondary"
               className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13.5px] font-medium transition"
               style={portalStyle({ border: `1px solid rgba(255,255,255,0.10)`, background: 'rgba(255,255,255,0.02)', color: TEXT })}
             >
@@ -391,6 +396,7 @@ export function CariTahsilatWorkspace({ onSelect }: { onSelect: (id: string) => 
             </button>
             <button
               onClick={refreshAll}
+              data-ck-btn="secondary"
               className="grid h-10 w-10 place-items-center rounded-xl transition"
               style={portalStyle({ border: `1px solid rgba(255,255,255,0.10)`, background: 'rgba(255,255,255,0.02)', color: SOFT })}
               title="Yenile"
@@ -403,6 +409,7 @@ export function CariTahsilatWorkspace({ onSelect }: { onSelect: (id: string) => 
 
         {/* ===== SEKMELER — kapsül şerit, aktif sekme gradyan dolgulu ===== */}
         <nav
+          data-ck-sekmeler
           className="mt-5 flex flex-wrap gap-1 rounded-xl p-1"
           style={portalStyle({ background: 'rgba(0,0,0,0.28)', border: `1px solid ${CARD_BORDER}` })}
         >
@@ -411,6 +418,8 @@ export function CariTahsilatWorkspace({ onSelect }: { onSelect: (id: string) => 
             return (
               <button
                 key={key}
+                data-ck-sekme
+                data-on={active || undefined}
                 onClick={() => setView(key)}
                 className="relative rounded-lg px-3.5 py-[7px] text-[13px] font-medium transition-all duration-150"
                 style={portalStyle({
@@ -728,6 +737,7 @@ function QuickTahsilatModal({ row, onClose, onSaved }: { row: WorkspaceRow; onCl
   return (
     <div className="fixed inset-0 z-50 grid place-items-center px-4 py-8" style={portalStyle({ background: 'rgba(0,0,0,0.6)' })} onClick={onClose}>
       <div
+        data-ck-pencere
         className="w-full max-w-[520px] rounded-[20px]"
         style={portalStyle({ background: PANEL, border: `1px solid rgba(230,200,120,0.18)`, boxShadow: '0 24px 60px -12px rgba(0,0,0,0.7)' })}
         onClick={(e) => e.stopPropagation()}
@@ -738,13 +748,13 @@ function QuickTahsilatModal({ row, onClose, onSaved }: { row: WorkspaceRow; onCl
             <div className="text-[11px] font-semibold uppercase tracking-wider" style={portalStyle({ color: GOLD })}>Tahsilat</div>
             <h1 className="mt-1 text-[24px] font-bold tracking-tight leading-none" style={portalStyle({ color: '#fff' })}>Tahsilat Al</h1>
           </div>
-          <button onClick={onClose} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl transition" style={portalStyle({ border: `1px solid rgba(255,255,255,0.10)`, background: 'rgba(255,255,255,0.02)', color: SOFT })}>
+          <button onClick={onClose} data-ck-btn="secondary" className="grid h-9 w-9 shrink-0 place-items-center rounded-xl transition" style={portalStyle({ border: `1px solid rgba(255,255,255,0.10)`, background: 'rgba(255,255,255,0.02)', color: SOFT })}>
             <X size={18} strokeWidth={1.7} />
           </button>
         </div>
 
         {/* Mükellef satırı */}
-        <div className="mx-7 rounded-xl px-4 py-3" style={portalStyle({ border: `1px solid ${CARD_BORDER}`, background: CARD_BG })}>
+        <div data-ck-ic-kart className="mx-7 rounded-xl px-4 py-3" style={portalStyle({ border: `1px solid ${CARD_BORDER}`, background: CARD_BG })}>
           <div className="flex items-center gap-2 flex-wrap text-[13px]">
             <span className="font-semibold" style={portalStyle({ color: '#fff' })}>{row.ad}</span>
             <span style={portalStyle({ color: '#52525b' })}>·</span>
@@ -791,7 +801,7 @@ function QuickTahsilatModal({ row, onClose, onSaved }: { row: WorkspaceRow; onCl
                 ))}
               </select>
               {accounts.length === 0 && (
-                <p className="mt-1.5 text-[12px]" style={portalStyle({ color: '#e6c878' })}>
+                <p data-ck-uyari-metin className="mt-1.5 text-[12px]" style={portalStyle({ color: '#e6c878' })}>
                   Tahsilata açık hesap yok. Kişisel Bütçe &gt; Hesaplar ekranından hesabın
                   &quot;cari tahsilatta görünsün&quot; anahtarını açın.
                 </p>
@@ -811,7 +821,7 @@ function QuickTahsilatModal({ row, onClose, onSaved }: { row: WorkspaceRow; onCl
           </div>
 
           {/* Bilgi şeridi: kalan bakiye */}
-          <div className="mt-5 flex items-center justify-between rounded-xl px-4 py-3" style={portalStyle({ background: 'rgba(230,200,120,0.06)', border: `1px solid rgba(230,200,120,0.15)` })}>
+          <div data-ck-bilgi className="mt-5 flex items-center justify-between rounded-xl px-4 py-3" style={portalStyle({ background: 'rgba(230,200,120,0.06)', border: `1px solid rgba(230,200,120,0.15)` })}>
             <span className="text-[13px]" style={portalStyle({ color: '#a1a1aa' })}>Bu tahsilat sonrası kalan bakiye</span>
             <span className="text-[16px] font-bold" style={portalStyle({ color: GOLD, fontVariantNumeric: 'tabular-nums' })}>{fmt(kalanBakiye)} ₺</span>
           </div>
@@ -819,10 +829,10 @@ function QuickTahsilatModal({ row, onClose, onSaved }: { row: WorkspaceRow; onCl
 
         {/* Alt butonlar */}
         <div className="flex items-center justify-end gap-3 px-7 pt-4 pb-6">
-          <button onClick={onClose} className="rounded-xl px-5 py-2.5 text-[13.5px] font-medium transition" style={portalStyle({ border: `1px solid rgba(255,255,255,0.10)`, background: 'rgba(255,255,255,0.02)', color: TEXT })}>
+          <button onClick={onClose} data-ck-btn="secondary" className="rounded-xl px-5 py-2.5 text-[13.5px] font-medium transition" style={portalStyle({ border: `1px solid rgba(255,255,255,0.10)`, background: 'rgba(255,255,255,0.02)', color: TEXT })}>
             Vazgeç
           </button>
-          <button onClick={save} disabled={saving} className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-[13.5px] font-semibold transition disabled:opacity-50" style={portalStyle({ background: 'linear-gradient(135deg,#ecd589,#d4b876)', color: '#000' })}>
+          <button onClick={save} disabled={saving} data-ck-btn="primary" className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-[13.5px] font-semibold transition disabled:opacity-50" style={portalStyle({ background: 'linear-gradient(135deg,#ecd589,#d4b876)', color: '#000' })}>
             {saving ? <Loader2 size={16} className="animate-spin" /> : <HandCoins size={16} strokeWidth={1.7} />} Kaydet
           </button>
         </div>
@@ -834,7 +844,7 @@ function QuickTahsilatModal({ row, onClose, onSaved }: { row: WorkspaceRow; onCl
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="block text-[11px] font-medium uppercase" style={portalStyle({ letterSpacing: '.04em', color: '#7c7c84' })}>{label}</label>
+      <label data-ck-etiket className="block text-[11px] font-medium uppercase" style={portalStyle({ letterSpacing: '.04em', color: '#7c7c84' })}>{label}</label>
       <div className="mt-1.5">{children}</div>
     </div>
   );

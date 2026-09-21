@@ -68,6 +68,7 @@ export function EksiklerPaneli({ eksikler, onSgkYok, sgkYokIsleniyor }: { eksikl
                       <span className="flex justify-end">
                         {sgk ? (
                           <button
+                            data-ao-btn="warn"
                             type="button"
                             disabled={isleniyor}
                             onClick={() => onSgkYok(e)}

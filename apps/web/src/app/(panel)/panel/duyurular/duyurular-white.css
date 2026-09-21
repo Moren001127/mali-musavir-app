@@ -1,0 +1,199 @@
+/* Duyurular — yalnız beyaz tema (D); yerleşim (sol afiş + sağ sekmeli denetimler), uçlar ve A teması aynen korunur.
+   İkinci tur (2026-09-21, bilgi/BEYAZ-TEMA-TASARIM-DILI.md §7): gökkuşağı şerit + bakır simge kalktı; sade sayfa başlığı,
+   beyaz paneller, kapsül sekme grubu, çivit birincil (Kaydet) · mavi Gönder · yeşil WhatsApp · mor AI; girdiler rehber.
+   AFİŞ (JPEG şablonu) DOKUNULMAZ: [data-duyuru-canvas] içinde paydalar özgün lacivert/kâğıt değerlerine sabitlenir —
+   beyaz temada afişin lacivert şeridi ve beyaz yazıları eskisi gibi (özgün şablon) çıkar; dışa aktarılan JPEG de aynı.
+   Yöntem: satır içi portalStyle() renkleri modül kökünde yeniden tanımlanan --portal-* paydalarıyla eşlenir
+   (altın/bakır → çivit, mor, mavi, yeşil, kırmızı); kalan parçalar data-dy-* kancalarıyla boyanır. */
+
+html[data-theme='D'] [data-dy-root] {
+  color-scheme: light;
+  color: #1e293b;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif !important;
+  --portal-ink: #1e293b;
+  --portal-secondary: #475569;
+  --portal-muted: #64748b;
+  --portal-on-color: #fff;
+  --portal-surface: #fff;
+  --portal-raised: #f1f5f9;
+  --portal-wash: #fff;
+  --portal-line: #e3e8ef;
+  --portal-shadow: rgba(15, 23, 42, 0.06);
+  --portal-overlay: rgba(15, 23, 42, 0.45);
+  --portal-slate-ink: #475569; --portal-slate-surface: #5c6b7f; --portal-slate-wash: #f1f5f9; --portal-slate-line: #e2e8f0;
+  --portal-teal-ink: #099268; --portal-teal-surface: #0ca678; --portal-teal-wash: #e6fcf5; --portal-teal-line: #c3fae8;
+  --portal-green-ink: #2b8a3e; --portal-green-surface: #2f9e44; --portal-green-wash: #ebfbee; --portal-green-line: #c6efd0;
+  --portal-blue-ink: #1971c2; --portal-blue-surface: #1971c2; --portal-blue-wash: #e7f5ff; --portal-blue-line: #c5e3fb;
+  --portal-plum-ink: #6741d9; --portal-plum-surface: #7048e8; --portal-plum-wash: #f3f0ff; --portal-plum-line: #e5dbff;
+  --portal-rose-ink: #c92a2a; --portal-rose-surface: #e03131; --portal-rose-wash: #fff5f5; --portal-rose-line: #ffc9c9;
+  --portal-copper-ink: #3b5bdb; --portal-copper-surface: #4263eb; --portal-copper-wash: #edf2ff; --portal-copper-line: #dbe4ff;
+  --portal-amber-ink: #3b5bdb; --portal-amber-surface: #4263eb; --portal-amber-wash: #edf2ff; --portal-amber-line: #dbe4ff;
+}
+html[data-theme='D'] [data-dy-root] :is(input, select, textarea) { color-scheme: light !important; }
+
+/* ── AFİŞ ŞABLONU: özgün renkler (lacivert #0d1238 · kâğıt #f7f4eb · beyaz yazı) ─────────────── */
+html[data-theme='D'] [data-dy-root] [data-duyuru-canvas] {
+  --portal-ink: #fff;
+  --portal-secondary: rgba(255, 255, 255, 0.55);
+  --portal-muted: rgba(255, 255, 255, 0.55);
+  --portal-line: rgba(255, 255, 255, 0.2);
+  --portal-wash: rgba(255, 255, 255, 0.1);
+  --portal-raised: rgba(255, 255, 255, 0.4);
+  --portal-surface: #f7f4eb;
+  --portal-blue-ink: #0d1238;
+  --portal-blue-surface: #0d1238;
+  --portal-blue-wash: #0d1238;
+  --portal-blue-line: #0d1238;
+  font-family: Manrope, Inter, system-ui, sans-serif !important;
+}
+html[data-theme='D'] [data-dy-root] [data-duyuru-canvas] [class*='bg-[rgba(13,18,56'] { background-color: rgba(13, 18, 56, 0.18) !important; }
+html[data-theme='D'] [data-dy-root] [data-duyuru-canvas] main p { color: #1f2545 !important; }
+
+/* ── Sayfa başlığı ────────────────────────────────────────────────────────── */
+html[data-theme='D'] [data-dy-head] {
+  overflow: visible;
+  padding: 2px 4px 6px !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0;
+  box-shadow: none !important;
+}
+html[data-theme='D'] [data-dy-bar] { display: none; }
+html[data-theme='D'] [data-dy-icon] {
+  width: 36px !important;
+  height: 36px !important;
+  border-radius: 10px;
+  background: #edf2ff !important;
+  border: 1px solid #dbe4ff;
+  box-shadow: none !important;
+}
+html[data-theme='D'] [data-dy-icon] svg { width: 18px; height: 18px; color: #4263eb !important; }
+html[data-theme='D'] [data-dy-head] h1 {
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif !important;
+  font-size: 22px !important;
+  font-weight: 700 !important;
+  line-height: 1.15 !important;
+  letter-spacing: -0.01em;
+  color: #1e293b !important;
+}
+html[data-theme='D'] [data-dy-head] h1 + p { margin-top: 3px; font-size: 13px !important; color: #64748b !important; }
+
+/* ── Düğmeler ─────────────────────────────────────────────────────────────── */
+html[data-theme='D'] [data-dy-root] [data-dy-btn] { border-radius: 10px !important; font-weight: 600 !important; }
+html[data-theme='D'] [data-dy-root] [data-dy-btn='primary'] {
+  background: linear-gradient(135deg, #4263eb, #5c7cfa) !important;
+  border: 1px solid transparent !important;
+  color: #fff !important;
+  box-shadow: 0 8px 16px -10px #4263eb;
+}
+html[data-theme='D'] [data-dy-root] [data-dy-btn='mavi'] {
+  background: linear-gradient(135deg, #1971c2, #339af0) !important;
+  border: 1px solid transparent !important;
+  color: #fff !important;
+  box-shadow: 0 8px 16px -10px #1971c2;
+}
+html[data-theme='D'] [data-dy-root] [data-dy-btn='whatsapp'] {
+  background: linear-gradient(135deg, #2f9e44, #51cf66) !important;
+  border: 1px solid transparent !important;
+  color: #fff !important;
+  box-shadow: 0 8px 16px -10px #2f9e44;
+}
+html[data-theme='D'] [data-dy-root] [data-dy-btn='ai'] {
+  background: linear-gradient(135deg, #7048e8, #9775fa) !important;
+  border: 1px solid transparent !important;
+  color: #fff !important;
+  box-shadow: 0 8px 16px -10px #7048e8;
+}
+html[data-theme='D'] [data-dy-root] :is([data-dy-btn='primary'], [data-dy-btn='mavi'], [data-dy-btn='whatsapp'], [data-dy-btn='ai']) svg { color: #fff !important; }
+html[data-theme='D'] [data-dy-root] :is([data-dy-btn='primary'], [data-dy-btn='mavi'], [data-dy-btn='whatsapp'], [data-dy-btn='ai']):hover:not(:disabled) { filter: brightness(1.06); }
+html[data-theme='D'] [data-dy-root] [data-dy-btn='secondary'] {
+  background: #fff !important;
+  border: 1px solid #dde3ea !important;
+  color: #475569 !important;
+}
+html[data-theme='D'] [data-dy-root] [data-dy-btn='secondary']:hover:not(:disabled) { background: #f8fafc !important; border-color: #cbd5e1 !important; color: #1e293b !important; }
+html[data-theme='D'] [data-dy-root] [data-dy-sil] { color: #c92a2a !important; }
+html[data-theme='D'] [data-dy-root] [data-dy-sil]:hover { background: #fff5f5 !important; }
+
+/* ── Uyarı bandı (planlanan duyurunun zamanı geldi) ───────────────────────── */
+html[data-theme='D'] [data-dy-uyari] { background: #fff4e6 !important; border-color: #ffd8a8 !important; }
+html[data-theme='D'] [data-dy-uyari] > div:first-child { color: #7c2d12 !important; }
+
+/* ── Afiş kabı ────────────────────────────────────────────────────────────── */
+html[data-theme='D'] [data-dy-afis] { background: #f1f5f9 !important; border-color: #e3e8ef !important; }
+html[data-theme='D'] [data-dy-afis] > div:last-child { color: #64748b !important; }
+html[data-theme='D'] [data-dy-afis] > div:last-child > span { background: #2f9e44 !important; }
+
+/* ── Sekmeler (kapsül grup) ───────────────────────────────────────────────── */
+html[data-theme='D'] [data-dy-sekmeler] { background: #f1f5f9 !important; border-color: #e2e8f0 !important; border-radius: 12px; }
+html[data-theme='D'] [data-dy-sekme] { color: #475569 !important; }
+html[data-theme='D'] [data-dy-sekme]:hover { color: #1e293b !important; }
+html[data-theme='D'] [data-dy-sekme][data-on='true'] {
+  background: #fff !important;
+  color: #3b5bdb !important;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12), 0 0 0 1px #dbe4ff;
+}
+html[data-theme='D'] [data-dy-sekme] > span { background: #4263eb !important; color: #fff !important; }
+
+/* ── Paneller ─────────────────────────────────────────────────────────────── */
+html[data-theme='D'] [data-dy-panel] {
+  background: #fff !important;
+  border: 1px solid #e3e8ef !important;
+  border-radius: 14px !important;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+}
+html[data-theme='D'] [data-dy-panel] > div:first-child { border-bottom-color: #eef2f6 !important; color: #1e293b !important; font-weight: 650; }
+html[data-theme='D'] [data-dy-panel] > div:first-child button { color: #64748b !important; }
+html[data-theme='D'] [data-dy-panel] > div:first-child button:hover { color: #3b5bdb !important; }
+html[data-theme='D'] [data-dy-root] :is([data-dy-panel], [data-dy-ai]) span.uppercase { font-size: 11px !important; font-weight: 700; letter-spacing: 0.06em !important; color: #64748b !important; }
+html[data-theme='D'] [data-dy-yazi] { background: #f8fafc !important; border-color: #e3e8ef !important; }
+html[data-theme='D'] [data-dy-yazi] > div:first-child { color: #1e293b !important; }
+
+/* Girdiler */
+html[data-theme='D'] [data-dy-root] :is(input, textarea, select):not([data-duyuru-canvas] *) {
+  background: #fff !important;
+  border: 1px solid #dde3ea !important;
+  color: #1e293b !important;
+  font-weight: 500 !important;
+}
+html[data-theme='D'] [data-dy-root] :is(input, textarea, select):focus-visible { outline: none !important; border-color: #4263eb !important; box-shadow: 0 0 0 3px #dbe4ff !important; }
+html[data-theme='D'] [data-dy-root] :is(input, textarea)::placeholder { color: #94a3b8 !important; }
+html[data-theme='D'] [data-dy-root] .border-dashed { border-color: #dbe2ea !important; background: #f8fafc; color: #64748b !important; }
+
+/* AI Asistan kutusu (mor) */
+html[data-theme='D'] [data-dy-ai] { background: #fff !important; border-color: #e5dbff !important; border-radius: 14px; }
+html[data-theme='D'] [data-dy-ai] > div:first-child { border-bottom-color: #efe9ff !important; color: #6741d9 !important; background: #f9f7ff; }
+html[data-theme='D'] [data-dy-ai-cip] { background: #f3f0ff !important; border-color: #e5dbff !important; color: #6741d9 !important; border-radius: 999px; }
+html[data-theme='D'] [data-dy-ai-cip]:hover:not(:disabled) { background: #e5dbff !important; }
+html[data-theme='D'] [data-dy-ai] > div:last-child > div:last-child { color: #64748b !important; }
+
+/* Hazır duyurular: yalnız nokta + sol çizgi renkli, zemin beyaz */
+html[data-theme='D'] [data-dy-preset] {
+  background: #fff !important;
+  border-top-color: #e3e8ef !important;
+  border-right-color: #e3e8ef !important;
+  border-bottom-color: #e3e8ef !important;
+}
+html[data-theme='D'] button[data-dy-preset]:hover { filter: none; background: #f8fafc !important; }
+html[data-theme='D'] [data-dy-yukle] { background: #fff !important; border: 1px solid #dde3ea !important; }
+html[data-theme='D'] [data-dy-yukle]:hover { background: #f8fafc !important; }
+
+/* Alıcılar */
+html[data-theme='D'] [data-dy-cip] { background: #fff !important; border: 1px solid #dde3ea !important; color: #475569 !important; }
+html[data-theme='D'] [data-dy-cip]:hover { background: #f8fafc !important; }
+html[data-theme='D'] [data-dy-cip][data-on='true'] { background: #edf2ff !important; border-color: #dbe4ff !important; color: #3b5bdb !important; }
+html[data-theme='D'] [data-dy-secenek] { color: #334155 !important; }
+html[data-theme='D'] [data-dy-secenek]:hover { background: #f8fafc !important; }
+html[data-theme='D'] [data-dy-secenek] > span:first-child { border-color: #cbd5e1 !important; }
+html[data-theme='D'] [data-dy-secenek][data-on='true'] { background: #edf2ff !important; color: #3b5bdb !important; }
+html[data-theme='D'] [data-dy-secenek][data-on='true'] > span:first-child { background: #4263eb !important; border-color: #4263eb !important; }
+html[data-theme='D'] [data-dy-secenek][data-on='true'] > span:first-child svg { color: #fff !important; }
+html[data-theme='D'] [data-dy-bilgi] { background: #f8fafc !important; border-color: #e3e8ef !important; color: #475569 !important; }
+html[data-theme='D'] [data-dy-bilgi] svg { color: #4263eb !important; }
+html[data-theme='D'] [data-dy-gonder] { background: #f8fafc !important; border-color: #e3e8ef !important; }
+html[data-theme='D'] [data-dy-gonder-ikon] { background: #edf2ff !important; color: #4263eb !important; }
+
+/* Planlanmış / geçmiş / kayıtlı kartları */
+html[data-theme='D'] :is([data-dy-planli], [data-dy-gecmis], [data-dy-kayit]) { background: #fff !important; border-color: #e3e8ef !important; }
+html[data-theme='D'] [data-dy-planli][data-due='true'] { background: #fff4e6 !important; border-color: #ffd8a8 !important; }
+html[data-theme='D'] :is([data-dy-gecmis], [data-dy-kayit]):hover { background: #f8fafc !important; }
