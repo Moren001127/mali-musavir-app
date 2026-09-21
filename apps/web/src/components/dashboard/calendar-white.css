@@ -325,22 +325,25 @@ html[data-theme='D'] [data-calendar-empty] { border-radius: 12px; background: #f
 html[data-theme='D'] [data-calendar-empty] p { color: #64748b !important; }
 
 /* ── 2026-09-21 Kalan güne göre renk kademesi (Muzaffer Bey: "günlerin yaklaşmasına göre renklendir, sırıtmasın")
-   bugün/yarın kırmızı · 2–3 gün kehribar · 4–7 gün çivit · 8+ gün yeşil · geçmiş gri. Yumuşak zemin + koyu yazı.
+   bugün/yarın kırmızı · 2–3 gün turuncu · 4–5 gün kehribar · 6–7 gün deniz yeşili · 8+ gün yeşil · geçmiş gri. Yumuşak zemin + koyu yazı.
    Gün kutusunda üst çizgi, tarih ve "N son" rozeti; satırda kalan gün rozeti. Tür rengi (sol çizgi + simge) değişmez. */
 html[data-theme='D'] [data-calendar-day][data-calendar-urgency='past'] { --calendar-day-ink: #64748b; --calendar-day-edge: #e2e8f0; --calendar-day-accent: #cbd5e1; }
 html[data-theme='D'] [data-calendar-day][data-calendar-urgency='immediate'] { --calendar-day-ink: #c92a2a; --calendar-day-edge: #ffc9c9; --calendar-day-accent: #e03131; }
-html[data-theme='D'] [data-calendar-day][data-calendar-urgency='soon'] { --calendar-day-ink: #d9480f; --calendar-day-edge: #ffd8a8; --calendar-day-accent: #f08c00; }
-html[data-theme='D'] [data-calendar-day][data-calendar-urgency='week'] { --calendar-day-ink: #3b5bdb; --calendar-day-edge: #dbe4ff; --calendar-day-accent: #4263eb; }
+html[data-theme='D'] [data-calendar-day][data-calendar-urgency='soon'] { --calendar-day-ink: #d9480f; --calendar-day-edge: #ffd8a8; --calendar-day-accent: #e8590c; }
+html[data-theme='D'] [data-calendar-day][data-calendar-urgency='near'] { --calendar-day-ink: #b45309; --calendar-day-edge: #fde68a; --calendar-day-accent: #f59f00; }
+html[data-theme='D'] [data-calendar-day][data-calendar-urgency='week'] { --calendar-day-ink: #099268; --calendar-day-edge: #c3fae8; --calendar-day-accent: #0ca678; }
 html[data-theme='D'] [data-calendar-day][data-calendar-urgency='planned'] { --calendar-day-ink: #2b8a3e; --calendar-day-edge: #c6efd0; --calendar-day-accent: #2f9e44; }
 html[data-theme='D'] [data-calendar-day][data-calendar-urgency='past'] [data-calendar-day-badge='deadline'] { background: #f1f5f9 !important; border-color: #e2e8f0 !important; color: #64748b !important; }
 html[data-theme='D'] [data-calendar-day][data-calendar-urgency='immediate'] [data-calendar-day-badge='deadline'] { background: #fff5f5 !important; border-color: #ffc9c9 !important; color: #c92a2a !important; }
 html[data-theme='D'] [data-calendar-day][data-calendar-urgency='soon'] [data-calendar-day-badge='deadline'] { background: #fff4e6 !important; border-color: #ffd8a8 !important; color: #d9480f !important; }
-html[data-theme='D'] [data-calendar-day][data-calendar-urgency='week'] [data-calendar-day-badge='deadline'] { background: #edf2ff !important; border-color: #dbe4ff !important; color: #3b5bdb !important; }
+html[data-theme='D'] [data-calendar-day][data-calendar-urgency='near'] [data-calendar-day-badge='deadline'] { background: #fffbeb !important; border-color: #fde68a !important; color: #b45309 !important; }
+html[data-theme='D'] [data-calendar-day][data-calendar-urgency='week'] [data-calendar-day-badge='deadline'] { background: #e6fcf5 !important; border-color: #c3fae8 !important; color: #099268 !important; }
 html[data-theme='D'] [data-calendar-day][data-calendar-urgency='planned'] [data-calendar-day-badge='deadline'] { background: #ebfbee !important; border-color: #c6efd0 !important; color: #2b8a3e !important; }
 html[data-theme='D'] [data-calendar-row][data-calendar-urgency='past'] [data-calendar-remaining] { background: #f1f5f9 !important; border-color: #e2e8f0 !important; color: #64748b !important; }
 html[data-theme='D'] [data-calendar-row][data-calendar-urgency='immediate'] [data-calendar-remaining] { background: #fff5f5 !important; border-color: #ffc9c9 !important; color: #c92a2a !important; }
 html[data-theme='D'] [data-calendar-row][data-calendar-urgency='soon'] [data-calendar-remaining] { background: #fff4e6 !important; border-color: #ffd8a8 !important; color: #d9480f !important; }
-html[data-theme='D'] [data-calendar-row][data-calendar-urgency='week'] [data-calendar-remaining] { background: #edf2ff !important; border-color: #dbe4ff !important; color: #3b5bdb !important; }
+html[data-theme='D'] [data-calendar-row][data-calendar-urgency='near'] [data-calendar-remaining] { background: #fffbeb !important; border-color: #fde68a !important; color: #b45309 !important; }
+html[data-theme='D'] [data-calendar-row][data-calendar-urgency='week'] [data-calendar-remaining] { background: #e6fcf5 !important; border-color: #c3fae8 !important; color: #099268 !important; }
 html[data-theme='D'] [data-calendar-row][data-calendar-urgency='planned'] [data-calendar-remaining] { background: #ebfbee !important; border-color: #c6efd0 !important; color: #2b8a3e !important; }
 /* Bugün kutusu dolu çivit kalır; bugüne son tarih düşerse rozet beyaz */
 html[data-theme='D'] [data-calendar-day][data-calendar-today='true'][data-calendar-urgency] [data-calendar-day-badge='deadline'] { background: rgba(255, 255, 255, 0.18) !important; border-color: rgba(255, 255, 255, 0.32) !important; color: #fff !important; }

@@ -105,6 +105,17 @@ function deadlinesForDate(date: Date): Omit<DeadlineRow, 'date' | 'gunFark'>[] {
   return out;
 }
 
+/** Kalan güne göre 6 kademe (beyaz tema renkleri calendar-white.css'te): geçmiş gri · 0–1 kırmızı · 2–3 turuncu ·
+ *  4–5 kehribar · 6–7 deniz yeşili · 8+ yeşil. (Muzaffer Bey 2026-09-21: "yaklaştıkça renk geçişi olsun".) */
+function aciliyetKademesi(gunFark: number): 'past' | 'immediate' | 'soon' | 'near' | 'week' | 'planned' {
+  if (gunFark < 0) return 'past';
+  if (gunFark <= 1) return 'immediate';
+  if (gunFark <= 3) return 'soon';
+  if (gunFark <= 5) return 'near';
+  if (gunFark <= 7) return 'week';
+  return 'planned';
+}
+
 function urgencyTone(gunFark: number) {
   if (gunFark < 0) return { accent: '#64748b', bg: 'rgba(148,163,184,0.035)', border: 'rgba(148,163,184,0.18)', pillBg: 'rgba(148,163,184,0.08)', pillBorder: 'rgba(148,163,184,0.22)', pillText: '#cbd5e1', label: `${Math.abs(gunFark)} gün geçti` };
   if (gunFark === 0) return { accent: '#fb7185', bg: 'rgba(245,166,184,0.085)', border: 'rgba(245,166,184,0.50)', pillBg: 'rgba(245,166,184,0.15)', pillBorder: 'rgba(245,166,184,0.56)', pillText: '#ffc4cf', label: 'Bugün' };
@@ -304,7 +315,7 @@ function CalendarDayTile({ day }: { day: ReturnType<typeof buildCalendarDays>[nu
   return (
     <div
       data-calendar-day={hasDeadline ? (day.gunFark <= 3 ? 'urgent' : 'deadline') : hasTask ? 'task' : 'quiet'}
-      data-calendar-urgency={hasDeadline ? (day.gunFark < 0 ? 'past' : day.gunFark <= 1 ? 'immediate' : day.gunFark <= 3 ? 'soon' : day.gunFark <= 7 ? 'week' : 'planned') : undefined}
+      data-calendar-urgency={hasDeadline ? aciliyetKademesi(day.gunFark) : undefined}
       data-calendar-today={day.gunFark === 0 ? 'true' : undefined}
       className="min-h-[76px] rounded-xl p-2.5 transition-all"
       title={titleParts.join('\n')}
@@ -354,7 +365,7 @@ function DeadlineRowItem({ row, dayTasks }: { row: DeadlineRow; dayTasks: string
     <div
       data-calendar-row
       data-calendar-kind={row.title.startsWith('KDV') ? 'vat' : row.title.includes('MUHSGK') ? 'payroll' : row.title.startsWith('e-Defter') ? 'ledger' : /Gelir|Kurumlar|Geçici/.test(row.title) ? 'income' : row.title.startsWith('Damga') ? 'stamp' : 'tourism'}
-      data-calendar-urgency={row.gunFark < 0 ? 'past' : row.gunFark <= 1 ? 'immediate' : row.gunFark <= 3 ? 'soon' : row.gunFark <= 7 ? 'week' : 'planned'}
+      data-calendar-urgency={aciliyetKademesi(row.gunFark)}
       className="rounded-xl flex items-center gap-3 pl-1 pr-3 py-2 transition-all hover:translate-x-[2px] relative"
       style={portalStyle({
         background: tone.bg,
