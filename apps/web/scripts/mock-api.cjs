@@ -26,15 +26,32 @@ const { edefterUclari, edefterMukellefler } = require('./mock-edefter.cjs');
 const { ekipUclari, ekipMukellefler } = require('./mock-ekip.cjs');
 // Modül eklentileri (2026-09-21): scripts/mock/*.cjs — her dosya `uclar(yol, yontem, q, govde, jsonGonder, res)` dışa aktarır,
 // eşleşmezse false döner. Paralel çalışan tasarım ajanları bu dosyaya dokunmadan kendi sahte verisini ekler.
-const EKLENTILER = (() => {
+// Her istekte dizin taranır; dosya değişmişse yeniden yüklenir (sunucuyu yeniden başlatmadan yeni sahte veri).
+const EKLENTI_ONBELLEK = new Map(); // dosya → { mtime, uclar }
+function eklentileriYukle() {
   const fs = require('fs');
   const path = require('path');
   const dizin = path.join(__dirname, 'mock');
   if (!fs.existsSync(dizin)) return [];
-  return fs.readdirSync(dizin).filter((f) => f.endsWith('.cjs')).sort().map((f) => {
-    try { const m = require(path.join(dizin, f)); return typeof m.uclar === 'function' ? m.uclar : null; } catch (e) { console.warn(`[mock] eklenti yüklenemedi: ${f}: ${e.message}`); return null; }
-  }).filter(Boolean);
-})();
+  const sonuc = [];
+  for (const f of fs.readdirSync(dizin).filter((x) => x.endsWith('.cjs')).sort()) {
+    const tam = path.join(dizin, f);
+    let mtime = 0;
+    try { mtime = fs.statSync(tam).mtimeMs; } catch { continue; }
+    const onceki = EKLENTI_ONBELLEK.get(f);
+    if (!onceki || onceki.mtime !== mtime) {
+      try {
+        delete require.cache[require.resolve(tam)];
+        const m = require(tam);
+        EKLENTI_ONBELLEK.set(f, { mtime, uclar: typeof m.uclar === 'function' ? m.uclar : null });
+        console.log(`[mock] eklenti yüklendi: ${f}`);
+      } catch (e) { console.warn(`[mock] eklenti yüklenemedi: ${f}: ${e.message}`); EKLENTI_ONBELLEK.set(f, { mtime, uclar: null }); }
+    }
+    const kayit = EKLENTI_ONBELLEK.get(f);
+    if (kayit && kayit.uclar) sonuc.push(kayit.uclar);
+  }
+  return sonuc;
+}
 
 const PORT = Number(process.env.PORT || 3001);
 const ON_EK = '/api/v1';
@@ -1025,7 +1042,7 @@ async function isle(req, res) {
   }
 
   // ── Modül eklentileri (scripts/mock/*.cjs) — yerleşik uçlardan sonra, 404'ten önce ──
-  for (const uclar of EKLENTILER) {
+  for (const uclar of eklentileriYukle()) {
     if (uclar(yol, yontem, q, govde, jsonGonder, res) !== false) return;
   }
 
