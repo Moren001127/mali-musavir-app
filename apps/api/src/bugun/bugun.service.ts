@@ -44,7 +44,7 @@ export type BugunKonu = {
   detay?: BugunDetay[];   // açılır ayrıntı
   taxpayerId?: string;    // tekil satır bir mükellefe aitse
   sira: number;           // bölüm içi öncelik (küçük üstte)
-  sayac?: { okunmamis: number; yeni: number; mukellef: number; suresiIcinde: number }; // e-Tebligat: gösterge paneli sayaç kartı (2026-09-21) — okunmamış = mükellef GİB'de açmadı; suresiIcinde = tebliğ tarihi gelmemiş
+  sayac?: { okunmamis: number; yeni: number; mukellef: number; suresiIcinde: number }; // e-Tebligat: gösterge paneli sayaç kartı (2026-09-21) — okunmamis = portalda görüntülenmemiş (viewedAt boş); suresiIcinde = tebliğ tarihi gelmemiş
 };
 
 export type BugunAy = {
@@ -262,16 +262,14 @@ export class BugunService {
       }),
 
       // ---- e-TEBLİGAT → BUGÜN
-      // "Okunmamış" = GİB e-Tebligat sisteminde MÜKELLEFİN henüz açmadığı tebligat (raw.mukellefOkumaZamani boş);
-      // gece sorgusu mevcut kayıtların okuma zamanını da tazeler. Portalda PDF'in açılıp açılmaması (viewedAt) sayılmaz
-      // (Muzaffer Bey 2026-09-21: "toplam gelen değil, okunmamış tebligat sayısı olsun"). Tebliğ tarihi geçmemiş olanlar
-      // (5 günlük süre içinde) ayrıca sayılır: en acil olanlar.
+      // "Görüntülenmemiş" = gece sorgusuyla çekilmiş ama portalda henüz açılmamış tebligat (viewedAt boş) —
+      // e-Tebligat Kontrol modülündeki "Görüntülenmemiş" süzgeciyle AYNI tanım (Muzaffer Bey 2026-09-21, ikinci
+      // düzeltme: GİB'deki mükellef okuma zamanı DEĞİL). Tebliğ tarihi gelmemiş olanlar ayrıca sayılır.
       guvenli('tebligat', async () => {
         const rows: any[] = await p.$queryRaw`
           select "taxpayerId", "createdAt", "receivedAt"
           from portal_documents
-          where "tenantId" = ${tenantId} and "belgeTuru" = 'E_TEBLIGAT'
-            and nullif(trim(coalesce(raw->>'mukellefOkumaZamani', '')), '') is null
+          where "tenantId" = ${tenantId} and "belgeTuru" = 'E_TEBLIGAT' and "viewedAt" is null
           order by "createdAt" desc
           limit 5000`;
         if (!rows.length) return;
@@ -280,11 +278,11 @@ export class BugunService {
         const perTp = new Map<string, { n: number; yeni: number }>();
         for (const r of rows) { const k = r.taxpayerId || '?'; const c = perTp.get(k) || { n: 0, yeni: 0 }; c.n++; if (new Date(r.createdAt) >= dun) c.yeni++; perTp.set(k, c); }
         const detay: BugunDetay[] = [...perTp.entries()].sort((a, b) => b[1].yeni - a[1].yeni || b[1].n - a[1].n).slice(0, 12)
-          .map(([tp, c]) => ({ id: tp, metin: adById.get(tp) || '—', alt: c.yeni ? `${c.yeni} yeni · ${c.n} okunmamış` : `${c.n} okunmamış`, sayi: c.n, href: `/panel/mukellefler/${tp}`, taxpayerId: tp !== '?' ? tp : undefined }));
+          .map(([tp, c]) => ({ id: tp, metin: adById.get(tp) || '—', alt: c.yeni ? `${c.yeni} yeni · ${c.n} görüntülenmemiş` : `${c.n} görüntülenmemiş`, sayi: c.n, href: `/panel/mukellefler/${tp}`, taxpayerId: tp !== '?' ? tp : undefined }));
         konular.push({
           id: 'tb', bolum: 'bugun', kaynak: 'e-Tebligat',
-          baslik: yeni.length ? `${yeni.length} yeni e-Tebligat geldi` : `${rows.length} okunmamış e-Tebligat`,
-          aciklama: `${perTp.size} mükellef · mükellef henüz okumadı${suresiIcinde ? ` · ${suresiIcinde} tebliğ süresi içinde` : ''} · ${detay.slice(0, 3).map((d) => kisaAd(d.metin)).join(' · ')}`,
+          baslik: yeni.length ? `${yeni.length} yeni e-Tebligat geldi` : `${rows.length} görüntülenmemiş e-Tebligat`,
+          aciklama: `${perTp.size} mükellef · toplam ${rows.length} görüntülenmemiş${suresiIcinde ? ` · ${suresiIcinde} tebliğ süresi içinde` : ''} · ${detay.slice(0, 3).map((d) => kisaAd(d.metin)).join(' · ')}`,
           sayi: rows.length, vurgu: yeni.length || suresiIcinde ? 'kritik' : 'uyari', href: '/panel/ajanlar/tebligat', detay, sira: 5,
           sayac: { okunmamis: rows.length, yeni: yeni.length, mukellef: perTp.size, suresiIcinde },
         });

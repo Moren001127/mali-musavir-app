@@ -15,17 +15,18 @@ type TopbarTaxpayer = {
   lastName?: string | null;
   companyName?: string | null;
   taxNumber?: string | null;
+  type?: string | null; // GERCEK_KISI | TUZEL_KISI
 };
 
 function taxpayerLabel(t: TopbarTaxpayer): string {
-  return (t.companyName || [t.firstName, t.lastName].filter(Boolean).join(' ') || t.taxNumber || 'Mükellef').trim();
+  return (t.companyName || [t.firstName, t.lastName].filter(Boolean).join(' ') || 'Mükellef').trim();
 }
 
-function taxpayerInitials(t: TopbarTaxpayer): string {
-  const name = taxpayerLabel(t);
-  const parts = name.split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toLocaleUpperCase('tr-TR');
-  return name.slice(0, 2).toLocaleUpperCase('tr-TR');
+/** Hattat listesindeki gibi ad + (ŞAHIS)/(FİRMA); baş harf simgesi ve TC/VKN yok (Muzaffer Bey, 2026-09-21). */
+function taxpayerKindLabel(t: TopbarTaxpayer): string {
+  if (t.type === 'TUZEL_KISI') return 'FİRMA';
+  if (t.type === 'GERCEK_KISI') return 'ŞAHIS';
+  return t.companyName ? 'FİRMA' : 'ŞAHIS';
 }
 
 function TopbarTaxpayerPicker({ taxpayers }: { taxpayers: TopbarTaxpayer[] }) {
@@ -132,13 +133,7 @@ function TopbarTaxpayerPicker({ taxpayers }: { taxpayers: TopbarTaxpayer[] }) {
               }}
               className="flex w-full items-center gap-2 rounded-[9px] px-3 py-2.5 text-left transition hover:bg-white/[0.055]"
             >
-              <span className="flex h-8 w-8 items-center justify-center rounded-[8px]" style={ownedThemeStyle({ background: 'rgba(212,184,118,0.12)', color: '#d4b876' })}>
-                <Users size={15} />
-              </span>
-              <span>
-                <span className="block text-[13px] font-black" style={ownedThemeStyle({ color: '#ecd6a4' })}>Mükellef Listesi</span>
-                <span className="block text-[11px] font-semibold" style={ownedThemeStyle({ color: 'rgba(245,245,244,0.42)' })}>Tüm listeye git</span>
-              </span>
+              <span className="text-[13px] font-medium" style={ownedThemeStyle({ color: '#ecd6a4' })}>Mükellef Listesi</span>
             </button>
 
             {filtered.map((taxpayer) => {
@@ -148,20 +143,12 @@ function TopbarTaxpayerPicker({ taxpayers }: { taxpayers: TopbarTaxpayer[] }) {
                   key={taxpayer.id}
                   type="button"
                   onClick={() => openTaxpayer(taxpayer.id)}
-                  className="mt-1 flex w-full min-w-0 items-center gap-2 rounded-[9px] px-3 py-2.5 text-left transition hover:bg-white/[0.055]"
+                  className="flex w-full min-w-0 items-center rounded-[6px] px-3 py-2 text-left transition hover:bg-white/[0.055]"
                   style={ownedThemeStyle({ background: active ? 'rgba(79,134,201,0.14)' : 'transparent', color: '#f5f5f4' })}
                 >
-                  <span
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-[11px] font-black"
-                    style={ownedThemeStyle({ background: active ? 'rgba(79,134,201,0.24)' : 'rgba(255,255,255,0.055)', color: active ? '#9cc8ff' : 'rgba(245,245,244,0.74)' })}
-                  >
-                    {taxpayerInitials(taxpayer)}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[13px] font-black">{taxpayerLabel(taxpayer)}</span>
-                    <span className="mt-0.5 block truncate text-[11px] font-semibold" style={ownedThemeStyle({ color: 'rgba(245,245,244,0.42)' })}>
-                      {taxpayer.taxNumber || 'VKN/TCKN yok'}
-                    </span>
+                  <span className="min-w-0 flex-1 truncate text-[13px] font-normal leading-5">
+                    {taxpayerLabel(taxpayer)}
+                    <span className="ml-1.5 text-[11px]" style={ownedThemeStyle({ color: 'rgba(245,245,244,0.5)' })}>({taxpayerKindLabel(taxpayer)})</span>
                   </span>
                 </button>
               );

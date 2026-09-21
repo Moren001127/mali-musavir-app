@@ -1952,7 +1952,7 @@ export default function DashboardPage() {
           }
           accent="champagne"
         />
-        {/* e-Tebligat — gece sorgusuyla gelen, okunmamış tebligatlar (Muzaffer Bey, 2026-09-21) */}
+        {/* e-Tebligat — gece sorgusuyla gelen, portalda GÖRÜNTÜLENMEMİŞ tebligatlar (viewedAt boş; e-Tebligat Kontrol'deki süzgeçle aynı) */}
         <StatCard
           title="E-Tebligat"
           value={tebligat.okunmamis}
@@ -1960,12 +1960,12 @@ export default function DashboardPage() {
           href="/panel/ajanlar/tebligat"
           sub={
             tebligat.okunmamis === 0
-              ? 'Mükelleflerin okumadığı tebligat yok'
+              ? 'Görüntülenmemiş tebligat yok'
               : tebligat.yeni > 0
                 ? `Bu gece ${tebligat.yeni} yeni · ${tebligat.mukellef} mükellef`
                 : (tebligat.suresiIcinde ?? 0) > 0
                   ? `${tebligat.suresiIcinde} tebliğ süresi içinde · ${tebligat.mukellef} mükellef`
-                  : `${tebligat.mukellef} mükellef henüz okumadı`
+                  : `${tebligat.mukellef} mükellefte görüntülenmemiş`
           }
           trend={tebligat.yeni > 0 ? `${tebligat.yeni} yeni` : undefined}
           trendKind={tebligat.yeni > 0 ? 'down' : 'flat'}
