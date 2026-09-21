@@ -1,7 +1,7 @@
 'use client';
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowRight, Bell, Bookmark, CalendarDays, FileCheck, FileText, Receipt, Timer, X } from 'lucide-react';
+import { Bell, Bookmark, CalendarDays, FileCheck, FileText, Receipt, Timer, X } from 'lucide-react';
 import { api } from '@/lib/api';
 import './mali-takvim.css';
 
@@ -120,6 +120,21 @@ function gorevleriGuneGoreAyir(tasks: TaskItem[]): Map<string, string[]> {
 
 type Gun = { n: number; date: Date; key: string; gunFark: number; sonTarihler: SonTarih[]; notlar: string[] };
 
+const KISA_AD: Record<string, string> = {
+  "KDV2 Tevkifat Beyannamesi (2 No'lu KDV)": 'KDV2 Tevkifat',
+  'Muhtasar ve Prim Hizmet Beyannamesi (MUHSGK)': 'MUHSGK',
+  'Damga Vergisi Beyannamesi': 'Damga Vergisi',
+  'Konaklama Vergisi Beyannamesi': 'Konaklama Vergisi',
+  'KDV Beyannamesi (KDV1)': 'KDV1',
+  'Turizm Payı Beyannamesi': 'Turizm Payı',
+  'e-Defter Berat Yükleme (Aylık Tercih)': 'e-Defter Berat (Aylık)',
+  'e-Defter Berat Yükleme (Geçici Vergi Dönemi)': 'e-Defter Berat (Geçici)',
+  'Geçici Vergi Beyannamesi': 'Geçici Vergi',
+  'Yıllık Gelir Vergisi Beyannamesi': 'Yıllık Gelir Vergisi',
+  'Yıllık Kurumlar Vergisi Beyannamesi': 'Yıllık Kurumlar Vergisi',
+};
+const kisa = (t: string) => KISA_AD[t] || t;
+
 export function MaliTakvim() {
   const bugun = useMemo(() => {
     const t = new Date();
@@ -130,6 +145,7 @@ export function MaliTakvim() {
   const ay = bugun.getMonth();
   const gunSayisi = new Date(yil, ay + 1, 0).getDate();
   const ilkGunKaydirma = (new Date(yil, ay, 1).getDay() + 6) % 7; // Pazartesi = 0
+  const sonBosluk = (7 - ((ilkGunKaydirma + gunSayisi) % 7)) % 7;
 
   const { data: tasksData } = useQuery<{ items: TaskItem[] } | TaskItem[]>({
     queryKey: ['takvim-gorevler'],
@@ -150,204 +166,114 @@ export function MaliTakvim() {
 
   const [seciliGun, setSeciliGun] = useState<number | null>(null);
   const kalanGunler = gunler.filter((g) => g.gunFark >= 0 && g.sonTarihler.length > 0);
-  const gruplar = seciliGun == null ? kalanGunler : gunler.filter((g) => g.n === seciliGun && (g.sonTarihler.length > 0 || g.notlar.length > 0));
   const kalanSonTarih = kalanGunler.reduce((t, g) => t + g.sonTarihler.length, 0);
-  const yakin = kalanGunler.filter((g) => g.gunFark <= 3).reduce((t, g) => t + g.sonTarihler.length, 0);
   const notSayisi = gunler.filter((g) => g.gunFark >= 0).reduce((t, g) => t + g.notlar.length, 0);
-  const secili = seciliGun != null ? gunler.find((g) => g.n === seciliGun) : undefined;
-
-  // Sol sütun: sıradaki son tarih, ay özeti ve gelecek ayın ilk son tarihleri (ızgaranın altı boş kalmasın)
   const siradaki = kalanGunler[0];
-  const ayToplam = gunler.reduce((t, g) => t + g.sonTarihler.length, 0);
-  const gecen = ayToplam - kalanSonTarih;
-  const enYogun = gunler.reduce<Gun | undefined>((en, g) => (g.sonTarihler.length > (en?.sonTarihler.length || 0) ? g : en), undefined);
-  const gelecekAy = useMemo(() => {
-    const ilk = new Date(yil, ay + 1, 1);
-    const son = new Date(yil, ay + 2, 0).getDate();
-    const out: Array<{ date: Date; title: string; kind: SonTarih['kind']; icon: any }> = [];
-    for (let d = 1; d <= son && out.length < 3; d++) {
-      const date = new Date(ilk.getFullYear(), ilk.getMonth(), d);
-      for (const st of gununSonTarihleri(date)) {
-        if (out.length < 3) out.push({ date, title: st.title, kind: st.kind, icon: st.icon });
-      }
-    }
-    return { ayAdi: AYLAR[ilk.getMonth()], liste: out };
-  }, [yil, ay]);
+  const secili = seciliGun != null ? gunler.find((g) => g.n === seciliGun) : undefined;
 
   return (
     <section className="mt" data-calendar aria-label="Bu ay mali takvim">
-      <header className="mt-band">
-        <span className="mt-band-icon" aria-hidden="true"><CalendarDays size={17} /></span>
-        <div className="mt-band-text">
+      <header className="mt-head">
+        <span className="mt-icon" aria-hidden="true"><CalendarDays size={17} /></span>
+        <div className="mt-heading">
           <p>MALİ TAKVİM</p>
-          <h3>Bu Ay Mali Takvim</h3>
+          <h3>{AYLAR[ay]} {yil}</h3>
         </div>
-        <span className="mt-note" title={KURAL_NOTU}>{kalanSonTarih} son tarih kaldı{yakin > 0 ? ` · ${yakin} yakın` : ''}{notSayisi > 0 ? ` · ${notSayisi} not` : ''}</span>
-        <div className="mt-band-chips">
-          <span className="mt-chip"><CalendarDays size={12} aria-hidden="true" /> {AYLAR[ay]} {yil}</span>
+        <div className="mt-ozet" title={KURAL_NOTU}>
+          {siradaki ? (
+            <button type="button" className="mt-ozet-next" data-urgency={aciliyet(siradaki.gunFark)} onClick={() => setSeciliGun((s) => (s === siradaki.n ? null : siradaki.n))} title="Günü göster">
+              <Timer size={13} aria-hidden="true" />
+              <span><b>{kalanEtiket(siradaki.gunFark)}</b> · {siradaki.n} {AYLAR[ay]} · {kisa(siradaki.sonTarihler[0].title)}{siradaki.sonTarihler.length > 1 ? ` +${siradaki.sonTarihler.length - 1}` : ''}</span>
+            </button>
+          ) : (
+            <span className="mt-ozet-item">Bu ay kalan son tarih yok</span>
+          )}
+          <span className="mt-ozet-item"><b>{kalanSonTarih}</b> son tarih kaldı</span>
+          {notSayisi > 0 && <span className="mt-ozet-item"><b>{notSayisi}</b> not</span>}
         </div>
       </header>
 
-      <div className="mt-body">
-        {/* Sol: ay ızgarası */}
-        <aside className="mt-side">
-        <div className="mt-grid" aria-label={`${AYLAR[ay]} ${yil} takvimi`}>
-          <div className="mt-grid-head">
-            <span className="mt-grid-month">{AYLAR[ay]} <em>{yil}</em></span>
-            <span className="mt-grid-today">Bugün · {bugun.getDate()} {AYLAR[ay]}</span>
+      <div className="mt-weekdays" aria-hidden="true">
+        {GUNLER.map((g, i) => <span key={g} data-weekend={i >= 5 ? 'true' : undefined}>{g}</span>)}
+      </div>
+      <div className="mt-month" role="grid" aria-label={`${AYLAR[ay]} ${yil} takvimi`}>
+        {Array.from({ length: ilkGunKaydirma }, (_, i) => <span key={`b${i}`} className="mt-cell mt-cell-blank" aria-hidden="true" />)}
+        {gunler.map((g) => {
+          const varIcerik = g.sonTarihler.length > 0 || g.notlar.length > 0;
+          const haftaSonu = g.date.getDay() === 0 || g.date.getDay() === 6;
+          const cipler = [
+            ...g.sonTarihler.map((st) => ({ tur: st.kind as string, metin: kisa(st.title), tam: st.title })),
+            ...g.notlar.map((n) => ({ tur: 'note', metin: n, tam: `Not: ${n}` })),
+          ];
+          const gorunen = cipler.slice(0, 3);
+          const fazla = cipler.length - gorunen.length;
+          const Etiket: any = varIcerik ? 'button' : 'div';
+          return (
+            <Etiket
+              key={g.key}
+              className="mt-cell"
+              role="gridcell"
+              data-today={g.gunFark === 0 ? 'true' : undefined}
+              data-past={g.gunFark < 0 ? 'true' : undefined}
+              data-weekend={haftaSonu ? 'true' : undefined}
+              data-has={varIcerik ? 'true' : undefined}
+              data-selected={seciliGun === g.n ? 'true' : undefined}
+              data-urgency={g.sonTarihler.length > 0 ? aciliyet(g.gunFark) : undefined}
+              {...(varIcerik ? { type: 'button', onClick: () => setSeciliGun((s) => (s === g.n ? null : g.n)), title: cipler.map((c) => c.tam).join(String.fromCharCode(10)) } : {})}
+            >
+              <span className="mt-cell-top">
+                <b className="mt-cell-num">{g.n}</b>
+                {g.sonTarihler.length > 0 && g.gunFark >= 0 && <em className="mt-cell-left">{kalanEtiket(g.gunFark)}</em>}
+              </span>
+              {gorunen.length > 0 && (
+                <span className="mt-chips">
+                  {gorunen.map((c, i) => <i key={i} className="mt-chipx" data-kind={c.tur}><span>{c.metin}</span></i>)}
+                  {fazla > 0 && <i className="mt-chipx" data-kind="more">+{fazla}</i>}
+                </span>
+              )}
+            </Etiket>
+          );
+        })}
+        {Array.from({ length: sonBosluk }, (_, i) => <span key={`e${i}`} className="mt-cell mt-cell-blank" aria-hidden="true" />)}
+      </div>
+
+      <div className="mt-foot">
+        <ul className="mt-legend" aria-label="Renk açıklaması">
+          <li><i data-kind="vat" /> KDV</li>
+          <li><i data-kind="payroll" /> Muhtasar / SGK</li>
+          <li><i data-kind="stamp" /> Damga</li>
+          <li><i data-kind="tourism" /> Konaklama / Turizm</li>
+          <li><i data-kind="ledger" /> e-Defter</li>
+          <li><i data-kind="income" /> Gelir / Kurumlar / Geçici</li>
+          <li><i data-kind="note" /> Not</li>
+        </ul>
+      </div>
+
+      {secili && (
+        <div className="mt-detail" data-urgency={secili.sonTarihler.length > 0 ? aciliyet(secili.gunFark) : 'note'}>
+          <div className="mt-detail-head">
+            <span className="mt-detail-date"><b>{secili.n} {AYLAR[ay]}</b> · {GUN_UZUN[secili.date.getDay()]}{secili.sonTarihler.length > 0 ? <em> · {kalanEtiket(secili.gunFark)}</em> : null}</span>
+            <button type="button" className="mt-detail-close" onClick={() => setSeciliGun(null)} aria-label="Kapat"><X size={13} /> Kapat</button>
           </div>
-          <div className="mt-progress" title={`Ayın ${bugun.getDate()}. günü · ${gunSayisi - bugun.getDate()} gün kaldı`} aria-hidden="true">
-            <i style={{ width: `${Math.round((bugun.getDate() / gunSayisi) * 100)}%` }} />
-          </div>
-          <div className="mt-weekdays" aria-hidden="true">
-            {GUNLER.map((g) => <span key={g}>{g}</span>)}
-          </div>
-          <div className="mt-days">
-            {Array.from({ length: ilkGunKaydirma }, (_, i) => <span key={`b${i}`} className="mt-day-blank" aria-hidden="true" />)}
-            {gunler.map((g) => {
-              const varSonTarih = g.sonTarihler.length > 0;
-              const varNot = g.notlar.length > 0;
-              const tiklanir = g.gunFark >= 0 && (varSonTarih || varNot);
-              const ipucu = [...g.sonTarihler.map((s) => s.title), ...g.notlar.map((n) => `Not: ${n}`)].join('\n');
+          <ul className="mt-detail-list">
+            {secili.sonTarihler.map((st, i) => {
+              const Icon = st.icon;
               return (
-                <button
-                  key={g.key}
-                  type="button"
-                  className="mt-day"
-                  data-urgency={varSonTarih ? aciliyet(g.gunFark) : undefined}
-                  data-today={g.gunFark === 0 ? 'true' : undefined}
-                  data-past={g.gunFark < 0 ? 'true' : undefined}
-                  data-deadline={varSonTarih ? 'true' : undefined}
-                  data-note={varNot ? 'true' : undefined}
-                  data-selected={seciliGun === g.n ? 'true' : undefined}
-                  disabled={!tiklanir}
-                  title={ipucu || undefined}
-                  aria-label={`${g.n} ${AYLAR[ay]}${ipucu ? ` — ${ipucu.replace(/\n/g, ', ')}` : ''}`}
-                  onClick={() => setSeciliGun((s) => (s === g.n ? null : g.n))}
-                >
-                  <span className="mt-day-num">{g.n}</span>
-                  <span className="mt-day-marks" aria-hidden="true">
-                    {g.sonTarihler.slice(0, 3).map((_, i) => <i key={i} className="mt-day-mark" data-kind="deadline" />)}
-                    {varNot && <i className="mt-day-mark" data-kind="note" />}
-                  </span>
-                </button>
+                <li key={i} data-kind={st.kind}>
+                  <span className="mt-detail-icon" aria-hidden="true"><Icon size={14} /></span>
+                  <span className="mt-detail-text"><b>{st.title}</b><small>{st.subtitle}</small></span>
+                </li>
               );
             })}
-          </div>
-          <div className="mt-legend" aria-hidden="true">
-            <span><i data-kind="today" /> Bugün</span>
-            <span><i data-kind="deadline" /> Son tarih</span>
-            <span><i data-kind="note" /> Not</span>
-            <span><i data-kind="past" /> Geçti</span>
-          </div>
+            {secili.notlar.map((n, i) => (
+              <li key={`n${i}`} data-kind="note">
+                <span className="mt-detail-icon" aria-hidden="true"><Bookmark size={14} /></span>
+                <span className="mt-detail-text"><b>{n}</b><small>Görevler &amp; Notlar'dan hatırlatma</small></span>
+              </li>
+            ))}
+          </ul>
         </div>
-
-        {/* Sıradaki son tarih */}
-        {siradaki ? (
-          <button type="button" className="mt-next" data-urgency={aciliyet(siradaki.gunFark)} onClick={() => setSeciliGun((s) => (s === siradaki.n ? null : siradaki.n))} title="Zaman çizgisinde yalnız bu günü göster">
-            <span className="mt-next-label"><Timer size={13} /> Sıradaki son tarih</span>
-            <span className="mt-next-row">
-              <b className="mt-next-days">{kalanEtiket(siradaki.gunFark)}</b>
-              <span className="mt-next-date">{siradaki.n} {AYLAR[ay]} · {GUN_UZUN[siradaki.date.getDay()]}</span>
-            </span>
-            <span className="mt-next-titles">
-              {siradaki.sonTarihler.slice(0, 3).map((st, i) => <span key={i}>{st.title}</span>)}
-              {siradaki.sonTarihler.length > 3 && <span>+{siradaki.sonTarihler.length - 3} son tarih daha</span>}
-            </span>
-          </button>
-        ) : (
-          <div className="mt-next" data-urgency="past">
-            <span className="mt-next-label"><Timer size={13} /> Sıradaki son tarih</span>
-            <span className="mt-next-row"><b className="mt-next-days">—</b><span className="mt-next-date">Bu ay kalan son tarih yok</span></span>
-          </div>
-        )}
-
-        {/* Ay özeti + gelecek ayın ilk son tarihleri (tek kart) */}
-        <div className="mt-ozet">
-          <span className="mt-ozet-label">{AYLAR[ay]} özeti</span>
-          <dl className="mt-stats">
-            <div><dt>Toplam</dt><dd>{ayToplam} <small>son tarih</small></dd></div>
-            <div><dt>Geçti · Kaldı</dt><dd>{gecen} · <b>{kalanSonTarih}</b></dd></div>
-            <div><dt>En yoğun gün</dt><dd>{enYogun ? <>{enYogun.n} {AYLAR[ay]} <small>({enYogun.sonTarihler.length})</small></> : '—'}</dd></div>
-            <div><dt>Notlar</dt><dd>{notSayisi} <small>hatırlatma</small></dd></div>
-          </dl>
-        {gelecekAy.liste.length > 0 && (
-          <div className="mt-upcoming">
-            <span className="mt-upcoming-label"><ArrowRight size={13} /> {gelecekAy.ayAdi} başı</span>
-            <ul>
-              {gelecekAy.liste.map((u, i) => {
-                const Icon = u.icon;
-                return (
-                  <li key={i} data-kind={u.kind}>
-                    <span className="mt-upcoming-icon" aria-hidden="true"><Icon size={13} /></span>
-                    <span className="mt-upcoming-text"><b>{u.date.getDate()} {gelecekAy.ayAdi}</b> · {u.title}</span>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        )}
-        </div>
-        </aside>
-
-        {/* Sağ: zaman çizgisi */}
-        <div className="mt-timeline">
-          {secili && (
-            <div className="mt-filter">
-              <span>Yalnız <b>{secili.n} {AYLAR[ay]}</b> gösteriliyor</span>
-              <button type="button" onClick={() => setSeciliGun(null)}><X size={12} /> Tümünü göster</button>
-            </div>
-          )}
-          {gruplar.length === 0 ? (
-            <div className="mt-empty">
-              {seciliGun != null ? 'Seçili günde son tarih ya da not yok.' : 'Kalan günlerde beyanname, bildirim veya e-Defter son tarihi yok.'}
-            </div>
-          ) : (
-            <ol className="mt-groups">
-              {gruplar.map((g) => (
-                <li key={g.key} className="mt-group" data-urgency={g.sonTarihler.length > 0 ? aciliyet(g.gunFark) : 'note'}>
-                  <div className="mt-leaf" aria-hidden="true">
-                    <b>{g.n}</b>
-                    <small>{AYLAR[ay].slice(0, 3)}</small>
-                  </div>
-                  <div className="mt-group-body">
-                  <div className="mt-group-head">
-                    <span className="mt-group-date">
-                      {GUN_UZUN[g.date.getDay()]} <em>· {g.n} {AYLAR[ay]}</em>
-                    </span>
-                    <span className="mt-group-remaining">{kalanEtiket(g.gunFark)}</span>
-                  </div>
-                  <ul className="mt-items">
-                    {g.sonTarihler.map((s, i) => {
-                      const Icon = s.icon;
-                      return (
-                        <li key={i} className="mt-item" data-kind={s.kind}>
-                          <span className="mt-item-icon" aria-hidden="true"><Icon size={15} /></span>
-                          <span className="mt-item-text">
-                            <span className="mt-item-title">{s.title}</span>
-                            <span className="mt-item-sub">{s.subtitle}</span>
-                          </span>
-                        </li>
-                      );
-                    })}
-                    {g.notlar.length > 0 && (
-                      <li className="mt-item mt-item-notes" data-kind="note" title={g.notlar.join(String.fromCharCode(10))}>
-                        <span className="mt-item-icon" aria-hidden="true"><Bookmark size={15} /></span>
-                        <span className="mt-notes">
-                          <span className="mt-notes-label">{g.notlar.length} not</span>
-                          {g.notlar.slice(0, 3).map((n, i) => <span key={i} className="mt-note-chip">{n}</span>)}
-                          {g.notlar.length > 3 && <span className="mt-note-chip" data-more="true">+{g.notlar.length - 3}</span>}
-                        </span>
-                      </li>
-                    )}
-                  </ul>
-                  </div>
-                </li>
-              ))}
-            </ol>
-          )}
-        </div>
-      </div>
+      )}
     </section>
   );
 }
