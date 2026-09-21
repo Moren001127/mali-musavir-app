@@ -1,22 +1,22 @@
 'use client';
 import './module-white.css';
-import { portalStyle } from '@/lib/portal-theme';
 
-
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMe } from '@/hooks/useAuth';
 import {
   AlertTriangle,
-  BadgeCheck,
   Building2,
   ChevronDown,
+  ExternalLink,
   FileText,
   List,
   Plus,
   Search,
   Smartphone,
+  Trash2,
   User,
   Users,
   X,
@@ -26,16 +26,8 @@ import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { PortalCredentialInsightCard, portalAutomationApi } from '@/lib/portal-automation';
 
-const GOLD = '#d4b876';
-const GOLD_SOFT = '#b8a06f';
-const GREEN = '#00a65a';
-const ROSE = '#e74c3c';
-const AMBER = '#f59e0b';
-const CARD = 'rgba(255,255,255,0.022)';
-const LINE = 'rgba(255,255,255,0.075)';
-const TEXT = '#fafaf9';
-const MUTED = 'rgba(250,250,249,0.58)';
-const FAINT = 'rgba(250,250,249,0.38)';
+/* Renkler module-white.css içindeki değişkenlerden gelir: A teması koyu, D teması beyaz kurumsal.
+   Bu dosyada yalnız yerleşim ve işlev vardır. */
 
 type Taxpayer = {
   id: string;
@@ -68,14 +60,15 @@ type Taxpayer = {
 
 type TypeFilter = 'TUMU' | 'FIRMA' | 'SAHIS' | 'BASIT';
 type StatusFilter = 'active' | 'inactive' | 'all';
+type TypeKey = 'FİRMA' | 'ŞAHIS' | 'BASİT';
 
 const LETTERS = ['A', 'B', 'C', 'Ç', 'D', 'E', 'F', 'G', 'Ğ', 'H', 'I', 'İ', 'J', 'K', 'L', 'M', 'N', 'O', 'Ö', 'P', 'R', 'S', 'Ş', 'T', 'U', 'Ü', 'V', 'Y', 'Z', 'W', 'X', 'Q'];
 
-const TYPE_FILTERS: Array<{ key: TypeFilter; label: string; icon: LucideIcon; color: string }> = [
-  { key: 'FIRMA', label: 'FİRMA', icon: Building2, color: '#e74c3c' },
-  { key: 'SAHIS', label: 'ŞAHIS', icon: User, color: '#18aee2' },
-  { key: 'BASIT', label: 'BASİT', icon: FileText, color: '#f59e0b' },
-  { key: 'TUMU', label: 'TÜMÜ', icon: List, color: '#00a65a' },
+const TYPE_FILTERS: Array<{ key: TypeFilter; label: string; icon: LucideIcon }> = [
+  { key: 'FIRMA', label: 'Firma', icon: Building2 },
+  { key: 'SAHIS', label: 'Şahıs', icon: User },
+  { key: 'BASIT', label: 'Basit', icon: FileText },
+  { key: 'TUMU', label: 'Tümü', icon: List },
 ];
 
 const STATUS_FILTERS: Array<{ key: StatusFilter; label: string }> = [
@@ -83,6 +76,8 @@ const STATUS_FILTERS: Array<{ key: StatusFilter; label: string }> = [
   { key: 'inactive', label: 'Pasif' },
   { key: 'all', label: 'Tümü' },
 ];
+
+const TYPE_TONE: Record<TypeKey, string> = { 'FİRMA': 'blue', 'ŞAHIS': 'teal', 'BASİT': 'amber' };
 
 function taxpayerName(t: Taxpayer): string {
   return (t.companyName || [t.firstName, t.lastName].filter(Boolean).join(' ') || 'Mükellef').trim();
@@ -112,7 +107,7 @@ function isBasit(t: Taxpayer): boolean {
   return /BASIT|BASİT|BASIT[_\s-]*USUL/.test(value);
 }
 
-function typeLabel(t: Taxpayer): string {
+function typeLabel(t: Taxpayer): TypeKey {
   if (isBasit(t)) return 'BASİT';
   return t.type === 'TUZEL_KISI' ? 'FİRMA' : 'ŞAHIS';
 }
@@ -127,6 +122,13 @@ function matchesType(t: Taxpayer, filter: TypeFilter): boolean {
 function matchesLetter(t: Taxpayer, letter: string): boolean {
   if (letter === 'TÜMÜ') return true;
   return taxpayerName(t).toLocaleUpperCase('tr-TR').startsWith(letter);
+}
+
+/** Uyarı çipinin tonu: sıfır → kurşuni; "yanlış" → kırmızı; diğer (aynı şifre, "iz") → kehribar. */
+function insightTone(card: PortalCredentialInsightCard): 'zero' | 'red' | 'amber' {
+  if (!card.count) return 'zero';
+  const wrong = /wrong|yanl/i.test(`${card.key} ${card.label}`);
+  return wrong ? 'red' : 'amber';
 }
 
 export default function MukellefListesiPage() {
@@ -183,6 +185,21 @@ export default function MukellefListesiPage() {
     return { active, inactive, firm, person, basit, total: taxpayers.length };
   }, [taxpayers]);
 
+  const typeCounts: Record<TypeFilter, number> = { FIRMA: counts.firm, SAHIS: counts.person, BASIT: counts.basit, TUMU: counts.total };
+
+  /** Durum + tür süzgecinden geçen kayıtların baş harfleri — boş harfler soluk gösterilir, tıklanabilir kalır. */
+  const lettersInUse = useMemo(() => {
+    const set = new Set<string>();
+    for (const t of taxpayers) {
+      if (statusFilter === 'active' && !t.isActive) continue;
+      if (statusFilter === 'inactive' && t.isActive) continue;
+      if (!matchesType(t, typeFilter)) continue;
+      const first = taxpayerName(t).toLocaleUpperCase('tr-TR').charAt(0);
+      if (first) set.add(first);
+    }
+    return set;
+  }, [taxpayers, statusFilter, typeFilter]);
+
   const filtered = useMemo(() => {
     const collator = new Intl.Collator('tr', { sensitivity: 'base' });
     return taxpayers
@@ -195,157 +212,145 @@ export default function MukellefListesiPage() {
   }, [taxpayers, statusFilter, typeFilter, letter]);
 
   return (
-    <div data-module-review="liste" className="max-w-none space-y-4">
-      <header data-review-heading
-        className="relative overflow-hidden rounded-[18px] border px-5 py-4"
-        style={portalStyle({
-          background:
-            'radial-gradient(120% 140% at 0% 0%, rgba(212,184,118,0.16), transparent 46%), radial-gradient(120% 140% at 100% 0%, rgba(139,118,73,0.12), transparent 48%), #0f0d0b',
-          borderColor: 'rgba(255,255,255,0.06)',
-          boxShadow: '0 16px 42px rgba(0,0,0,0.28)',
-        })}
-      >
-        <div
-          className="absolute inset-x-0 top-0 h-1"
-          style={portalStyle({ background: 'linear-gradient(90deg, #8b7649, #b8a06f, #d4b876, #e7cf95, #d4b876, #b8a06f)' })}
-        />
-        <div className="mb-3 flex items-center gap-2.5">
-          <span className="h-px w-[26px]" style={portalStyle({ background: GOLD })} />
-          <span className="text-[10px] font-bold uppercase tracking-[.18em]" style={portalStyle({ color: GOLD_SOFT })}>Mükellef CRM</span>
-        </div>
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex min-w-0 items-center gap-3.5">
-            <span
-              className="grid shrink-0 place-items-center rounded-xl"
-              style={portalStyle({ width: 46, height: 46, background: `linear-gradient(135deg, ${GOLD}, ${GOLD_SOFT})`, boxShadow: '0 8px 22px rgba(212,184,118,0.30)' })}
-            >
-              <Users size={24} style={portalStyle({ color: '#1a1410' })} />
-            </span>
-            <div className="min-w-0">
-              <h1 style={portalStyle({ fontFamily: 'Inter, Manrope, system-ui, sans-serif', fontSize: 30, fontWeight: 600, color: TEXT, letterSpacing: '-.03em', lineHeight: 1.05 })}>Mükellef Listesi</h1>
-              <p className="mt-1.5 text-[13px] font-semibold" style={portalStyle({ color: 'rgba(250,250,249,0.48)' })}>
-                {counts.active} aktif, {counts.inactive} pasif, toplam {counts.total} kayıt
-              </p>
-            </div>
+    <div className="ml-root max-w-none space-y-4">
+      {/* Sayfa başlığı: simge kutusu + başlık + sayılar; sağda birincil eylem */}
+      <header className="ml-head flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="ml-head-icon grid h-9 w-9 shrink-0 place-items-center rounded-[10px]">
+            <Users size={18} />
+          </span>
+          <div className="min-w-0">
+            <h1 className="ml-title text-[22px] font-bold leading-tight tracking-[-0.01em]">Mükellef Listesi</h1>
+            <p className="ml-sub mt-0.5 text-[13px]">
+              <b className="ml-sub-num">{counts.active}</b> aktif <span className="ml-dot">·</span> <b className="ml-sub-num">{counts.inactive}</b> pasif <span className="ml-dot">·</span> <b className="ml-sub-num">{counts.total}</b> kayıt
+            </p>
           </div>
-          <Link
-            href="/panel/mukellefler/yeni"
-            className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-[10px] px-4 text-[12.5px] font-bold transition-all"
-            style={portalStyle({ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_SOFT})`, color: '#0f0d0b', boxShadow: '0 10px 24px rgba(212,184,118,0.16)' })}
-          >
-            <Plus size={14} /> Yeni Mükellef
-          </Link>
         </div>
+        <Link href="/panel/mukellefler/yeni" className="ml-btn-primary inline-flex h-9 shrink-0 items-center gap-1.5 rounded-[10px] px-3.5 text-[13px] font-semibold transition">
+          <Plus size={15} /> Yeni Mükellef
+        </Link>
       </header>
 
-      <CredentialInsightStrip
-        cards={credentialInsights?.cards || []}
-        onOpen={setSelectedInsight}
-      />
+      <CredentialInsightStrip cards={credentialInsights?.cards || []} onOpen={setSelectedInsight} />
 
-      <section
-        className="rounded-[8px] p-3"
-        style={portalStyle({ background: 'rgba(255,255,255,0.018)', border: `1px solid ${LINE}` })}
-      >
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap gap-2">
-            {TYPE_FILTERS.map((item) => {
-              const Icon = item.icon;
-              const active = typeFilter === item.key;
+      {/* Araç çubuğu: tür kapsül grubu · arama · durum kapsül grubu */}
+      <section className="ml-toolbar flex flex-wrap items-center justify-between gap-3 rounded-[12px] px-3 py-2.5">
+        <div className="ml-seg inline-flex items-center gap-0.5 rounded-[10px] p-[3px]" role="tablist" aria-label="Mükellef türü">
+          {TYPE_FILTERS.map((item) => {
+            const Icon = item.icon;
+            const active = typeFilter === item.key;
+            return (
+              <button
+                key={item.key}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                aria-pressed={active}
+                onClick={() => setTypeFilter(item.key)}
+                className="ml-seg-btn inline-flex h-8 items-center gap-1.5 rounded-[8px] px-3 text-[12.5px] font-semibold transition"
+                title={`${item.label} süzgeci`}
+              >
+                <Icon size={14} /> {item.label}
+                <span className="ml-seg-count inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1.5 text-[10.5px] font-bold tabular-nums">{typeCounts[item.key]}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="flex flex-1 flex-wrap items-center justify-end gap-2">
+          <label className="relative min-w-[260px] max-w-[420px] flex-1">
+            <Search size={14} className="ml-search-icon pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="İsim, VKN/TC veya vergi dairesi ara..."
+              className="ml-input h-9 w-full rounded-[10px] py-2 pl-9 pr-3 text-[13px] outline-none"
+              aria-label="Mükellef ara"
+            />
+          </label>
+          <div className="ml-seg inline-flex items-center gap-0.5 rounded-[10px] p-[3px]" role="tablist" aria-label="Durum">
+            {STATUS_FILTERS.map((item) => {
+              const active = statusFilter === item.key;
               return (
                 <button
                   key={item.key}
                   type="button"
-                  onClick={() => setTypeFilter(item.key)}
-                  className="inline-flex h-10 items-center gap-2 rounded-[6px] px-3.5 text-[13px] font-bold transition"
-                  style={portalStyle({
-                    background: active ? item.color : 'rgba(255,255,255,0.035)',
-                    border: `1px solid ${active ? item.color : 'rgba(255,255,255,0.09)'}`,
-                    color: active ? '#fff' : 'rgba(250,250,249,0.72)',
-                  })}
-                  title={`${item.label} filtresi`}
+                  role="tab"
+                  aria-selected={active}
+                  aria-pressed={active}
+                  onClick={() => setStatusFilter(item.key)}
+                  className="ml-seg-btn h-8 rounded-[8px] px-3 text-[12.5px] font-semibold transition"
                 >
-                  <Icon size={15} /> {item.label}
+                  {item.label}
                 </button>
               );
             })}
           </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative min-w-[280px] flex-1">
-              <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={portalStyle({ color: FAINT })} />
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="İsim, VKN/TC, vergi dairesi ara..."
-                className="h-10 w-full rounded-[8px] py-2 pl-10 pr-3 text-[12.5px] outline-none"
-                style={portalStyle({ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.09)', color: TEXT })}
-              />
-            </div>
-            <div className="inline-flex rounded-[8px] p-1" style={portalStyle({ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.08)' })}>
-              {STATUS_FILTERS.map((item) => {
-                const active = statusFilter === item.key;
-                return (
-                  <button
-                    key={item.key}
-                    type="button"
-                    onClick={() => setStatusFilter(item.key)}
-                    className="h-8 rounded-[6px] px-3 text-[12px] font-bold transition"
-                    style={portalStyle({ background: active ? `${GOLD}26` : 'transparent', color: active ? GOLD : MUTED })}
-                  >
-                    {item.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
         </div>
       </section>
 
-      <section
-        className="grid grid-cols-[repeat(auto-fit,minmax(42px,1fr))] gap-px overflow-hidden rounded-[8px]"
-        style={portalStyle({ border: `1px solid ${LINE}`, background: LINE })}
-      >
-        {[...LETTERS, 'TÜMÜ'].map((item) => {
+      {/* Harf seçici: kompakt çip satırı */}
+      <nav className="ml-letters flex flex-wrap items-center gap-1" aria-label="Baş harfe göre süz">
+        {['TÜMÜ', ...LETTERS].map((item) => {
           const active = letter === item;
+          const empty = item !== 'TÜMÜ' && !lettersInUse.has(item);
           return (
             <button
               key={item}
               type="button"
+              aria-pressed={active}
+              data-empty={empty ? 'true' : undefined}
               onClick={() => setLetter(item)}
-              className="h-10 text-[13px] font-bold transition"
-              style={portalStyle({ background: active ? 'rgba(212,184,118,0.18)' : 'rgba(255,255,255,0.028)', color: active ? GOLD : 'rgba(250,250,249,0.68)' })}
+              className={`ml-letter inline-flex h-7 items-center justify-center rounded-[7px] text-[11.5px] font-semibold transition ${item === 'TÜMÜ' ? 'px-2.5' : 'w-7'}`}
+              title={empty ? `${item} ile başlayan kayıt yok` : `${item} ile başlayanlar`}
             >
-              {item}
+              {item === 'TÜMÜ' ? 'Tümü' : item}
             </button>
           );
         })}
-      </section>
+      </nav>
 
       {isLoading ? (
-        <div className="rounded-[8px] py-16 text-center" style={portalStyle({ background: CARD, border: `1px solid ${LINE}`, color: MUTED })}>
-          Yükleniyor...
-        </div>
+        <div className="ml-empty rounded-[12px] py-14 text-center text-[13px]">Yükleniyor...</div>
       ) : filtered.length === 0 ? (
-        <div className="rounded-[8px] py-16 text-center" style={portalStyle({ background: CARD, border: `1px solid ${LINE}` })}>
-          <p className="text-[14px] font-semibold" style={portalStyle({ color: TEXT })}>Kayıt bulunamadı</p>
-          <p className="mt-1 text-[12px]" style={portalStyle({ color: FAINT })}>Seçili filtrelerde mükellef yok</p>
+        <div className="ml-empty rounded-[12px] py-14 text-center">
+          <Users size={22} className="ml-empty-icon mx-auto mb-2" />
+          <p className="ml-empty-title text-[14px] font-semibold">Kayıt bulunamadı</p>
+          <p className="ml-empty-sub mt-1 text-[12px]">Seçili süzgeçlerde mükellef yok</p>
         </div>
       ) : (
-        <div className="grid gap-4 xl:grid-cols-2">
-          {filtered.map((taxpayer) => (
-            <TaxpayerCard
-              key={taxpayer.id}
-              taxpayer={taxpayer}
-              onToggle={() => toggleActive.mutate({ id: taxpayer.id, isActive: !taxpayer.isActive })}
-              busy={toggleActive.isPending}
-              onDelete={() => {
-                if (confirm(`${taxpayerName(taxpayer)} silinsin mi?`)) deleteTaxpayer.mutate(taxpayer.id);
-              }}
-              deleteBusy={deleteTaxpayer.isPending}
-              canDelete={canDelete}
-            />
-          ))}
+        <div className="ml-table-wrap overflow-x-auto rounded-[12px]">
+          <table className="ml-table w-full min-w-[960px] border-collapse text-left">
+            <thead>
+              <tr>
+                <th className="ml-th">Mükellef</th>
+                <th className="ml-th w-[92px]">Tür</th>
+                <th className="ml-th w-[170px]">Vergi dairesi</th>
+                <th className="ml-th w-[150px]">Erişim</th>
+                <th className="ml-th w-[118px]">Durum</th>
+                <th className="ml-th w-[96px] text-right">Eylemler</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((taxpayer) => (
+                <TaxpayerRow
+                  key={taxpayer.id}
+                  taxpayer={taxpayer}
+                  onToggle={() => toggleActive.mutate({ id: taxpayer.id, isActive: !taxpayer.isActive })}
+                  busy={toggleActive.isPending}
+                  onDelete={() => {
+                    if (confirm(`${taxpayerName(taxpayer)} silinsin mi?`)) deleteTaxpayer.mutate(taxpayer.id);
+                  }}
+                  deleteBusy={deleteTaxpayer.isPending}
+                  canDelete={canDelete}
+                />
+              ))}
+            </tbody>
+          </table>
+          <div className="ml-table-foot px-4 py-2.5 text-[12px] tabular-nums">
+            {filtered.length} kayıt gösteriliyor
+            {letter !== 'TÜMÜ' && <> · <b>{letter}</b> harfi</>}
+          </div>
         </div>
       )}
       {selectedInsight && (
@@ -355,6 +360,7 @@ export default function MukellefListesiPage() {
   );
 }
 
+/** Şifre/uyarı sayaçları: tek satır çipler; sıfır olanlar soluk, dolu olanlar anlamına göre renkli; tıklanınca liste açılır. */
 function CredentialInsightStrip({
   cards,
   onOpen,
@@ -363,111 +369,88 @@ function CredentialInsightStrip({
   onOpen: (card: PortalCredentialInsightCard) => void;
 }) {
   if (!cards.length) return null;
-  const firstRow = cards.slice(0, 2);
-  const secondRow = cards.slice(2);
   return (
-    <section className="grid gap-1.5">
-      <div className="grid gap-1.5 lg:grid-cols-2">
-        {firstRow.map((card) => (
-          <InsightButton key={card.key} card={card} onClick={() => onOpen(card)} />
-        ))}
-      </div>
-      <div className="grid gap-1.5 md:grid-cols-3">
-        {secondRow.map((card) => (
-          <InsightButton key={card.key} card={card} onClick={() => onOpen(card)} />
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function InsightButton({ card, onClick }: { card: PortalCredentialInsightCard; onClick: () => void }) {
-  const blue = card.tone === 'blue';
-  return (
-    <button data-review-counter={blue ? "blue" : "amber"}
-      type="button"
-      onClick={onClick}
-      className="flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-[5px] px-3 text-[11.5px] font-bold transition hover:brightness-110"
-      style={portalStyle({
-        background: blue ? 'linear-gradient(135deg, #3a88b8, #2f789f)' : 'linear-gradient(135deg, #e79a25, #c67f19)',
-        border: `1px solid ${blue ? 'rgba(125,211,252,0.24)' : 'rgba(251,191,36,0.28)'}`,
-        color: '#fff',
-        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.14), 0 5px 12px rgba(0,0,0,0.14)',
+    <section className="ml-chips flex flex-wrap items-center gap-1.5" aria-label="Şifre ve uyarı sayaçları">
+      {cards.map((card) => {
+        const tone = insightTone(card);
+        return (
+          <button
+            key={card.key}
+            type="button"
+            data-tone={tone}
+            onClick={() => onOpen(card)}
+            className="ml-chip inline-flex h-7 items-center gap-1.5 rounded-full pl-2.5 pr-1.5 text-[11px] font-semibold transition"
+            title={`${card.label}: ${card.count} mükellef`}
+          >
+            {tone !== 'zero' && <AlertTriangle size={12} className="shrink-0" />}
+            <span className="truncate">{card.label}</span>
+            <span className="ml-chip-count inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1.5 text-[10.5px] font-bold tabular-nums">{card.count}</span>
+          </button>
+        );
       })}
-    >
-      <span className="truncate">{card.label}</span>
-      <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-white px-1 text-[10px] font-black leading-none" style={portalStyle({ color: blue ? '#2f79a7' : '#c78019' })}>
-        {card.count}
-      </span>
-    </button>
+    </section>
   );
 }
 
 function CredentialInsightDialog({ card, onClose }: { card: PortalCredentialInsightCard; onClose: () => void }) {
   const taxpayers = card.taxpayers || [];
-  const blue = card.tone === 'blue';
+  const tone = insightTone(card);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
   return (
-    <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
-      style={portalStyle({ background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(4px)' })}
-      onClick={onClose}
-    >
+    <div className="ml-dialog-backdrop fixed inset-0 z-[9999] flex items-center justify-center p-4" onClick={onClose} role="presentation">
       <div
         onClick={(event) => event.stopPropagation()}
-        className="w-full max-w-3xl overflow-hidden rounded-[10px]"
-        style={portalStyle({
-          background: '#111211',
-          border: `1px solid ${blue ? 'rgba(125,211,252,0.35)' : 'rgba(245,158,11,0.42)'}`,
-          boxShadow: '0 28px 90px rgba(0,0,0,0.5)',
-        })}
+        className="ml-dialog w-full max-w-3xl overflow-hidden rounded-[14px]"
+        role="dialog"
+        aria-modal="true"
+        aria-label={card.label}
       >
-        <div className="flex items-start justify-between gap-4 px-5 py-4" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.08)' })}>
+        <div className="ml-dialog-head flex items-start justify-between gap-4 px-5 py-4">
           <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[8px]" style={portalStyle({ background: blue ? 'rgba(79,134,201,0.16)' : 'rgba(245,158,11,0.16)', color: blue ? '#93c5fd' : '#fbbf24' })}>
-              <AlertTriangle size={18} />
+            <div className="ml-dialog-icon flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px]" data-tone={tone}>
+              <AlertTriangle size={17} />
             </div>
             <div>
-              <h2 className="text-[18px] font-black" style={portalStyle({ color: TEXT })}>{card.label}</h2>
-              <p className="mt-1 text-[12.5px]" style={portalStyle({ color: MUTED })}>
-                {card.count} mükellef listeleniyor
-              </p>
+              <h2 className="ml-dialog-title text-[16px] font-bold">{card.label}</h2>
+              <p className="ml-dialog-sub mt-0.5 text-[12.5px]">{card.count} mükellef listeleniyor</p>
             </div>
           </div>
-          <button type="button" onClick={onClose} className="rounded-[7px] p-2 transition hover:bg-white/[0.06]" style={portalStyle({ color: MUTED })}>
-            <X size={18} />
+          <button type="button" onClick={onClose} className="ml-icon-btn inline-flex h-8 w-8 items-center justify-center rounded-[8px] transition" aria-label="Kapat">
+            <X size={16} />
           </button>
         </div>
         <div className="max-h-[62vh] overflow-y-auto p-4">
           {taxpayers.length === 0 ? (
-            <div className="rounded-[8px] px-4 py-10 text-center text-[13px]" style={portalStyle({ border: '1px dashed rgba(255,255,255,0.12)', color: MUTED })}>
-              Bu grupta mükellef yok.
-            </div>
+            <div className="ml-empty rounded-[10px] px-4 py-10 text-center text-[13px]">Bu grupta mükellef yok.</div>
           ) : (
-            <div data-review-table className="overflow-hidden rounded-[8px]" style={portalStyle({ border: '1px solid rgba(255,255,255,0.08)' })}>
-              <div data-review-heading className="grid grid-cols-[56px_minmax(220px,1fr)_170px_minmax(180px,1fr)] px-4 py-3 text-[10.5px] font-black uppercase tracking-[0.12em]" style={portalStyle({ background: 'rgba(255,255,255,0.04)', color: FAINT })}>
-                <div>No</div>
-                <div>Mükellef</div>
-                <div>VKN/TC</div>
-                <div>Açıklama</div>
-              </div>
-              <div className="divide-y" style={portalStyle({ borderColor: 'rgba(255,255,255,0.07)' })}>
-                {taxpayers.map((item, index) => (
-                  <Link
-                    key={`${card.key}-${item.id}-${index}`}
-                    href={`/panel/mukellefler/${item.id}`}
-                    className="grid grid-cols-[56px_minmax(220px,1fr)_170px_minmax(180px,1fr)] items-center px-4 py-3 text-[12.5px] transition hover:bg-white/[0.035]"
-                    onClick={onClose}
-                  >
-                    <div className="font-black tabular-nums" style={portalStyle({ color: FAINT })}>{index + 1}</div>
-                    <div className="min-w-0 pr-3">
-                      <div className="liste-firma-adi truncate text-[16px] font-semibold" style={portalStyle({ color: TEXT, fontFamily: 'Inter, Manrope, system-ui, sans-serif' })}>{item.name}</div>
-                      <div className="mt-0.5 truncate text-[11px]" style={portalStyle({ color: FAINT })}>{item.taxOffice || '-'}</div>
-                    </div>
-                    <div className="font-semibold tabular-nums" style={portalStyle({ color: MUTED })}>{item.taxNumber || '-'}</div>
-                    <div className="truncate" style={portalStyle({ color: MUTED })}>{item.reason || '-'}</div>
-                  </Link>
-                ))}
-              </div>
+            <div className="ml-table-wrap overflow-hidden rounded-[10px]">
+              <table className="ml-table w-full border-collapse text-left">
+                <thead>
+                  <tr>
+                    <th className="ml-th w-[52px]">No</th>
+                    <th className="ml-th">Mükellef</th>
+                    <th className="ml-th w-[150px]">VKN/TC</th>
+                    <th className="ml-th">Açıklama</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {taxpayers.map((item, index) => (
+                    <tr key={`${card.key}-${item.id}-${index}`} className="ml-tr">
+                      <td className="ml-td ml-num-faint tabular-nums">{index + 1}</td>
+                      <td className="ml-td">
+                        <Link href={`/panel/mukellefler/${item.id}`} onClick={onClose} className="ml-name block truncate text-[13.5px] font-semibold">{item.name}</Link>
+                        <div className="ml-id mt-0.5 truncate text-[11.5px]">{item.taxOffice || '—'}</div>
+                      </td>
+                      <td className="ml-td ml-id-cell tabular-nums">{item.taxNumber || '—'}</td>
+                      <td className="ml-td ml-cell-secondary">{item.reason || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
@@ -476,7 +459,7 @@ function CredentialInsightDialog({ card, onClose }: { card: PortalCredentialInsi
   );
 }
 
-function TaxpayerCard({
+function TaxpayerRow({
   taxpayer,
   onToggle,
   busy,
@@ -491,178 +474,145 @@ function TaxpayerCard({
   deleteBusy: boolean;
   canDelete: boolean;
 }) {
+  const router = useRouter();
   const name = taxpayerName(taxpayer);
   const phone = primaryPhone(taxpayer);
   const email = primaryEmail(taxpayer);
   const type = typeLabel(taxpayer);
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
+  const href = `/panel/mukellefler/${taxpayer.id}`;
 
   return (
-    <article data-review-surface
-      className="group grid gap-3 rounded-[8px] p-3 transition md:grid-cols-[74px_minmax(0,1fr)_96px]"
-      style={portalStyle({
-        background: 'linear-gradient(180deg, rgba(18,18,17,0.98), rgba(10,10,10,0.98))',
-        border: '1px solid rgba(212,184,118,0.16)',
-        boxShadow: '0 10px 24px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.035)',
-      })}
+    <tr
+      className="ml-tr ml-tr-link"
+      onClick={() => router.push(href)}
+      title="Mükellef kartını aç"
     >
-      <div className="flex h-[74px] items-center justify-center overflow-hidden rounded-[7px]" style={portalStyle({ background: 'linear-gradient(135deg, #21313b, #516979)', border: '1px solid rgba(255,255,255,0.12)' })}>
-        {taxpayer.logoUrl ? (
-          <div className="h-full w-full bg-cover bg-center" style={portalStyle({ backgroundImage: `url(${taxpayer.logoUrl})` })} />
-        ) : (
-          <div className="flex h-[46px] w-[46px] items-center justify-center rounded-full text-[16px] font-black" style={portalStyle({ background: 'rgba(11,16,22,0.38)', color: '#fff', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08)' })}>
-            {initials(taxpayer)}
-          </div>
-        )}
-      </div>
-
-      <div className="min-w-0 py-0.5">
-        <div className="flex min-w-0 items-start gap-2">
-          <Link href={`/panel/mukellefler/${taxpayer.id}`} className="min-w-0 flex-1">
-            <h2 className="liste-firma-adi truncate text-[16px] font-semibold leading-tight" style={portalStyle({ color: TEXT, fontFamily: 'Inter, Manrope, system-ui, sans-serif', letterSpacing: 0 })}>{name}</h2>
-          </Link>
-          <span
-            className="shrink-0 rounded-[5px] px-2 py-1 text-[10.5px] font-black"
-            style={portalStyle({
-              background: type === 'BASİT' ? 'rgba(245,158,11,0.16)' : type === 'FİRMA' ? 'rgba(79,134,201,0.18)' : 'rgba(24,174,226,0.18)',
-              color: type === 'BASİT' ? AMBER : '#7fc2f0',
-            })}
-          >
-            {type}
+      <td className="ml-td">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="ml-avatar grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-[9px] text-[11.5px] font-bold">
+            {taxpayer.logoUrl ? (
+              <span className="h-full w-full bg-cover bg-center" style={{ backgroundImage: `url(${taxpayer.logoUrl})` }} />
+            ) : (
+              initials(taxpayer)
+            )}
           </span>
+          <div className="min-w-0">
+            <Link href={href} onClick={(e) => e.stopPropagation()} className="ml-name block truncate text-[13.5px] font-semibold leading-tight">{name}</Link>
+            <div className="ml-id mt-0.5 truncate text-[11.5px] tabular-nums">{taxpayer.taxNumber || 'VKN/TC yok'}</div>
+          </div>
         </div>
-
-        <div className="mt-2.5 flex flex-wrap gap-1.5">
-          <HattatPresenceIcon active={!!taxpayer.hasVergiDairesiCredential} kind="gib" title="Vergi dairesi şifresi" />
-          <HattatPresenceIcon active={!!taxpayer.hasSgkCredential} kind="sgk" title="SGK e-Bildirge şifresi" />
-          <HattatPresenceIcon active={!!email} kind="mail" title="E-posta" />
-          <HattatPresenceIcon active={!!phone} kind="phone" title="Telefon" />
+      </td>
+      <td className="ml-td">
+        <span className="ml-type-chip inline-flex h-[22px] items-center rounded-full px-2 text-[11px] font-semibold" data-tone={TYPE_TONE[type]}>
+          {type === 'FİRMA' ? 'Firma' : type === 'ŞAHIS' ? 'Şahıs' : 'Basit'}
+        </span>
+      </td>
+      <td className="ml-td ml-cell-secondary">
+        {taxpayer.taxOffice ? <span className="block truncate">{taxpayer.taxOffice}</span> : <span className="ml-num-faint">—</span>}
+      </td>
+      <td className="ml-td">
+        <div className="flex items-center gap-1">
+          <PresenceIcon active={!!taxpayer.hasVergiDairesiCredential} kind="gib" title="Vergi dairesi şifresi" />
+          <PresenceIcon active={!!taxpayer.hasSgkCredential} kind="sgk" title="SGK e-Bildirge şifresi" />
+          <PresenceIcon active={!!email} kind="mail" title="E-posta" />
+          <PresenceIcon active={!!phone} kind="phone" title="Telefon" />
         </div>
-      </div>
-
-      <div className="flex flex-col items-stretch gap-2 md:items-end">
-        <div className="relative w-full md:w-auto">
+      </td>
+      <td className="ml-td" onClick={(e) => e.stopPropagation()}>
+        <div className="relative inline-block">
           <button
             type="button"
             onClick={() => setStatusMenuOpen((v) => !v)}
             disabled={busy}
-            className="inline-flex w-full items-center justify-center gap-1.5 rounded-[6px] px-2.5 py-2 text-[12px] font-black transition hover:brightness-110 disabled:opacity-40 md:w-[90px]"
-            style={portalStyle({
-              background: taxpayer.isActive ? 'rgba(0,166,90,0.14)' : 'rgba(96,121,135,0.14)',
-              border: `1px solid ${taxpayer.isActive ? 'rgba(0,166,90,0.36)' : 'rgba(96,121,135,0.32)'}`,
-              color: taxpayer.isActive ? '#39d17e' : '#9fb1bb',
-              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.035)',
-            })}
+            aria-haspopup="menu"
+            aria-expanded={statusMenuOpen}
+            data-on={taxpayer.isActive ? 'true' : 'false'}
+            className="ml-status inline-flex h-7 items-center gap-1 rounded-full pl-2 pr-1.5 text-[11.5px] font-semibold transition disabled:opacity-50"
+            title="Durumu değiştir"
           >
-            <BadgeCheck size={14} /> {taxpayer.isActive ? 'Aktif' : 'Pasif'} <ChevronDown size={13} />
+            <span className="ml-status-dot h-1.5 w-1.5 rounded-full" />
+            {taxpayer.isActive ? 'Aktif' : 'Pasif'}
+            <ChevronDown size={13} className="ml-status-caret" />
           </button>
           {statusMenuOpen && (
-            <div
-              className="absolute right-0 top-[calc(100%+6px)] z-20 w-[150px] overflow-hidden rounded-[7px] border p-1 shadow-2xl"
-              style={portalStyle({ background: '#141414', borderColor: LINE })}
-            >
-              <button
-                type="button"
-                onClick={() => {
-                  setStatusMenuOpen(false);
-                  onToggle();
-                }}
-                disabled={busy}
-                className="w-full rounded-[5px] px-3 py-2 text-left text-[12px] font-bold transition hover:bg-white/[0.06] disabled:opacity-40"
-                style={portalStyle({ color: taxpayer.isActive ? '#ff9aae' : '#7eeaa5' })}
-              >
-                {taxpayer.isActive ? 'Pasife al' : 'Aktife al'}
-              </button>
-            </div>
+            <>
+              <div className="fixed inset-0 z-10" onClick={() => setStatusMenuOpen(false)} aria-hidden="true" />
+              <div className="ml-menu absolute left-0 top-[calc(100%+4px)] z-20 w-[150px] rounded-[9px] p-1" role="menu">
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setStatusMenuOpen(false);
+                    onToggle();
+                  }}
+                  disabled={busy}
+                  data-tone={taxpayer.isActive ? 'red' : 'green'}
+                  className="ml-menu-item w-full rounded-[6px] px-3 py-2 text-left text-[12.5px] font-semibold transition disabled:opacity-50"
+                >
+                  {taxpayer.isActive ? 'Pasife al' : 'Aktife al'}
+                </button>
+              </div>
+            </>
           )}
         </div>
-        {canDelete && (
-          <button
-            type="button"
-            onClick={onDelete}
-            disabled={deleteBusy}
-            className="inline-flex h-8 items-center justify-center rounded-[6px] px-3 text-[12px] font-black transition hover:brightness-110 disabled:opacity-40 md:w-[64px]"
-            style={portalStyle({
-              background: 'rgba(216,27,96,0.13)',
-              border: '1px solid rgba(216,27,96,0.36)',
-              color: '#ff8fb0',
-              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.035)',
-            })}
-            title="Mükellefi sil"
-          >
-            Sil
-          </button>
-        )}
-      </div>
-    </article>
+      </td>
+      <td className="ml-td" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-end gap-1">
+          <Link href={href} className="ml-icon-btn inline-flex h-7 w-7 items-center justify-center rounded-[7px] transition" title="Mükellef kartını aç" aria-label="Mükellef kartını aç">
+            <ExternalLink size={14} />
+          </Link>
+          {canDelete && (
+            <button
+              type="button"
+              onClick={onDelete}
+              disabled={deleteBusy}
+              className="ml-icon-btn ml-icon-btn--danger inline-flex h-7 w-7 items-center justify-center rounded-[7px] transition disabled:opacity-50"
+              title="Mükellefi sil"
+              aria-label="Mükellefi sil"
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
+        </div>
+      </td>
+    </tr>
   );
 }
 
-function PresenceIcon({ active, icon: Icon, title }: { active: boolean; icon: LucideIcon; title: string }) {
-  const color = active ? GREEN : ROSE;
+type PresenceKind = 'gib' | 'sgk' | 'mail' | 'phone';
+
+/** Erişim simgeleri (Hattat kalıbı): tanımlı olan yeşil, olmayan soluk. */
+function PresenceIcon({ active, kind, title }: { active: boolean; kind: PresenceKind; title: string }) {
   return (
     <span
       title={`${title}: ${active ? 'tanımlı' : 'eksik'}`}
       aria-label={`${title}: ${active ? 'tanımlı' : 'eksik'}`}
-      className="inline-flex h-10 w-10 items-center justify-center rounded-[5px]"
-      style={portalStyle({
-        background: active ? 'rgba(34,197,94,0.13)' : 'rgba(251,113,133,0.12)',
-        border: `1px solid ${active ? 'rgba(34,197,94,0.32)' : 'rgba(251,113,133,0.32)'}`,
-        color,
-      })}
+      data-on={active ? 'true' : 'false'}
+      className="ml-access inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px]"
     >
-      <Icon size={17} />
-    </span>
-  );
-}
-
-type HattatIconKind = 'gib' | 'sgk' | 'mail' | 'phone';
-
-function HattatPresenceIcon({ active, kind, title }: { active: boolean; kind: HattatIconKind; title: string }) {
-  const color = active ? GREEN : ROSE;
-  return (
-    <span
-      title={`${title}: ${active ? 'tanımlı' : 'eksik'}`}
-      aria-label={`${title}: ${active ? 'tanımlı' : 'eksik'}`}
-      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px]"
-      style={portalStyle({
-        background: active ? 'rgba(0,166,90,0.12)' : 'rgba(231,76,60,0.10)',
-        border: `1px solid ${active ? 'rgba(0,166,90,0.34)' : 'rgba(231,76,60,0.30)'}`,
-        color,
-        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.035), 0 1px 0 rgba(0,0,0,0.18)',
-      })}
-    >
-      {kind === 'gib' && <GibMark color={color} />}
+      {kind === 'gib' && <GibMark />}
       {kind === 'sgk' && <span className="inline-flex h-4 w-4 items-center justify-center font-sans text-[8px] font-bold leading-none">SGK</span>}
-      {kind === 'mail' && <EnvelopeMark color={color} />}
-      {kind === 'phone' && <Smartphone size={16} strokeWidth={2.55} />}
+      {kind === 'mail' && <EnvelopeMark />}
+      {kind === 'phone' && <Smartphone size={15} strokeWidth={2.4} />}
     </span>
   );
 }
 
-function GibMark({ color }: { color: string }) {
+function GibMark() {
   return (
-    <svg viewBox="0 0 100 100" width="16" height="16" aria-hidden="true">
-      <path
-        d="M53.8 8.8C32.7 23.6 21.7 45.2 23.5 72.7c.5 7.1 2.1 13.4 4.4 18.5H48C38 64.6 40.8 35.2 64.8 8.8h-11Z"
-        fill={color}
-      />
-      <path
-        d="M56.3 47.8h32.4L79.6 91.2H48.4l8.8-36.5H50l1.6-6.9h4.7Z"
-        fill={color}
-      />
-      <ellipse cx="76.2" cy="29.4" rx="12.8" ry="17.5" transform="rotate(9 76.2 29.4)" fill={color} />
+    <svg viewBox="0 0 100 100" width="15" height="15" aria-hidden="true" fill="currentColor">
+      <path d="M53.8 8.8C32.7 23.6 21.7 45.2 23.5 72.7c.5 7.1 2.1 13.4 4.4 18.5H48C38 64.6 40.8 35.2 64.8 8.8h-11Z" />
+      <path d="M56.3 47.8h32.4L79.6 91.2H48.4l8.8-36.5H50l1.6-6.9h4.7Z" />
+      <ellipse cx="76.2" cy="29.4" rx="12.8" ry="17.5" transform="rotate(9 76.2 29.4)" />
     </svg>
   );
 }
 
-function EnvelopeMark({ color }: { color: string }) {
+function EnvelopeMark() {
   return (
-    <svg viewBox="0 0 32 24" width="16" height="16" aria-hidden="true">
-      <path
-        d="M3.4 4.1h25.2v2.1L16 14.1 3.4 6.2V4.1Zm0 4.6 9.1 5.7-9.1 6.1V8.7Zm25.2 0v11.8l-9.1-6.1 9.1-5.7Zm-15 6.6 2.4 1.5 2.4-1.5 9.2 6.2H4.4l9.2-6.2Z"
-        fill={color}
-      />
+    <svg viewBox="0 0 32 24" width="15" height="15" aria-hidden="true" fill="currentColor">
+      <path d="M3.4 4.1h25.2v2.1L16 14.1 3.4 6.2V4.1Zm0 4.6 9.1 5.7-9.1 6.1V8.7Zm25.2 0v11.8l-9.1-6.1 9.1-5.7Zm-15 6.6 2.4 1.5 2.4-1.5 9.2 6.2H4.4l9.2-6.2Z" />
     </svg>
   );
 }

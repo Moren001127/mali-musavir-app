@@ -1,18 +1,29 @@
 'use client';
 import './aylik-takip.css';
-import { portalStyle, portalPaint } from '@/lib/portal-theme';
-
 
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { api } from '@/lib/api';
-import { ClipboardCheck, Search, Upload, AlertCircle, PhoneOff, Check as CheckIcon } from 'lucide-react';
+import {
+  AlertCircle,
+  CheckCircle2,
+  ClipboardCheck,
+  Download,
+  FileCheck2,
+  Inbox,
+  PhoneOff,
+  ScanSearch,
+  Search,
+  Settings2,
+  Upload,
+  Users,
+  Check as CheckIcon,
+  type LucideIcon,
+} from 'lucide-react';
 
-const GOLD = '#d4b876';
-const GOLD_SOFT = '#b8a06f';
-// Satır: avatar | ad | durum etiketi | 6 onay kutusu | not
-const TAXPAYER_TABLE_GRID = '34px minmax(190px, 1.15fr) 140px repeat(7, minmax(44px, 0.3fr)) minmax(185px, 1.05fr)';
+/* Renkler aylik-takip.css içindeki değişkenlerden gelir: A teması koyu, D teması beyaz kurumsal.
+   Bu dosyada yalnız yerleşim ve işlev vardır. */
 
 type MonthlyStatus = {
   id?: string;
@@ -53,7 +64,7 @@ type Taxpayer = {
   monthlyStatus: MonthlyStatus | null;
 };
 
-// Tablodaki checkbox alanlarının tipi
+// Tablodaki onay kutusu alanlarının tipi
 type StatusKey =
   | 'evraklarGeldi'
   | 'yuklendi'
@@ -73,15 +84,26 @@ const AYLAR_TR = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','A�
 const FILTER_KEYS: FilterKey[] = ['all', 'evrak-gelmedi', 'yukleme-bekliyor', 'islem-bekliyor', 'kontrol-bekliyor', 'islenmedi', 'beyanname-bekliyor', 'beyanname-verilmedi', 'verildi'];
 const PROFILE_FILTER_KEYS: ProfileFilterKey[] = ['all', 'profil-eksik', 'telefon-yok'];
 
-// İş akışı aşamaları — sıradaki bekleyen adımı gösterir, her biri farklı renk
+// İş akışı aşamaları — sıradaki bekleyen adımı gösterir; ton CSS'te (data-stage) tanımlıdır
 type Stage = 'evrak-bekliyor' | 'yukleme-bekliyor' | 'islem-bekliyor' | 'kontrol-bekliyor' | 'beyan-hazir' | 'verildi';
-const STAGES: Record<Stage, { label: string; color: string }> = {
-  'evrak-bekliyor':   { label: 'Evrak bekleniyor', color: '#e0843e' },
-  'yukleme-bekliyor': { label: 'Yükleme bekliyor', color: '#2dd4bf' },
-  'islem-bekliyor':   { label: 'İşleme bekliyor',  color: '#5b9bd5' },
-  'kontrol-bekliyor': { label: 'Kontrol bekliyor', color: '#a78bdb' },
-  'beyan-hazir':      { label: 'Beyanname verilebilir',  color: GOLD },
-  'verildi':          { label: 'Verildi',          color: '#4ade80' },
+const STAGES: Record<Stage, { label: string }> = {
+  'evrak-bekliyor':   { label: 'Evrak bekleniyor' },
+  'yukleme-bekliyor': { label: 'Yükleme bekliyor' },
+  'islem-bekliyor':   { label: 'İşleme bekliyor' },
+  'kontrol-bekliyor': { label: 'Kontrol bekliyor' },
+  'beyan-hazir':      { label: 'Beyanname verilebilir' },
+  'verildi':          { label: 'Verildi' },
+};
+
+/** Sayaç kartları: anahtar → ton (CSS data-tone) ve simge */
+const STAGE_CARD_META: Record<Exclude<FilterKey, 'islenmedi' | 'beyanname-verilmedi'>, { tone: string; icon: LucideIcon }> = {
+  'all':                { tone: 'indigo', icon: Users },
+  'evrak-gelmedi':      { tone: 'amber', icon: Inbox },
+  'yukleme-bekliyor':   { tone: 'teal', icon: Upload },
+  'islem-bekliyor':     { tone: 'blue', icon: Settings2 },
+  'kontrol-bekliyor':   { tone: 'violet', icon: ScanSearch },
+  'beyanname-bekliyor': { tone: 'indigo-light', icon: FileCheck2 },
+  'verildi':            { tone: 'green', icon: CheckCircle2 },
 };
 
 function getQueryParam(key: string): string | null {
@@ -227,7 +249,7 @@ export default function MukelleflerPage() {
     return m;
   }, [completenessSummary]);
 
-  // Checkbox toggle — optimistic update
+  // Onay kutusu değişimi — iyimser güncelleme
   const updateStatus = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: MonthlyStatusPatch }) => {
       return api.patch(`/taxpayers/${id}/monthly-status`, { year, month, ...data });
@@ -305,167 +327,126 @@ export default function MukelleflerPage() {
   const pageItems = filtered.slice((pageSafe - 1) * PAGE_SIZE, pageSafe * PAGE_SIZE);
 
   // KPI = filtre kartları (sayı + tıklayınca o aşamayı süzer)
-  const stageCards: { key: FilterKey; label: string; count: number; color: string }[] = [
-    { key: 'all',                label: 'Takipteki mükellef', count: counts.total,          color: GOLD },
-    { key: 'evrak-gelmedi',      label: 'Evrak bekleniyor', count: counts.evrakBekliyor,    color: STAGES['evrak-bekliyor'].color },
-    { key: 'yukleme-bekliyor',   label: 'Yükleme bekliyor', count: counts.yuklemeBekliyor,  color: STAGES['yukleme-bekliyor'].color },
-    { key: 'islem-bekliyor',     label: 'İşleme bekliyor',  count: counts.islemBekliyor,    color: STAGES['islem-bekliyor'].color },
-    { key: 'kontrol-bekliyor',   label: 'Kontrol bekliyor', count: counts.kontrolBekliyor,  color: STAGES['kontrol-bekliyor'].color },
-    { key: 'beyanname-bekliyor', label: 'Beyanname verilebilir',  count: counts.beyanHazir,       color: STAGES['beyan-hazir'].color },
-    { key: 'verildi',            label: 'Verildi',          count: counts.verildi,          color: STAGES['verildi'].color },
+  const stageCards: { key: keyof typeof STAGE_CARD_META; label: string; count: number }[] = [
+    { key: 'all',                label: 'Takipteki mükellef',   count: counts.total },
+    { key: 'evrak-gelmedi',      label: 'Evrak bekleniyor',     count: counts.evrakBekliyor },
+    { key: 'yukleme-bekliyor',   label: 'Yükleme bekliyor',     count: counts.yuklemeBekliyor },
+    { key: 'islem-bekliyor',     label: 'İşleme bekliyor',      count: counts.islemBekliyor },
+    { key: 'kontrol-bekliyor',   label: 'Kontrol bekliyor',     count: counts.kontrolBekliyor },
+    { key: 'beyanname-bekliyor', label: 'Beyanname verilebilir', count: counts.beyanHazir },
+    { key: 'verildi',            label: 'Verildi',              count: counts.verildi },
   ];
 
   const profileCounts = useMemo(() => ({
     profilEksik: raw.filter(t => isProfileIncomplete(t, completenessMap.get(t.id))).length,
     telefonYok: raw.filter(t => !hasUsablePhone(t)).length,
   }), [raw, completenessMap]);
-  const profileFilterBtns: { key: Exclude<ProfileFilterKey, 'all'>; label: string; count: number; icon: typeof AlertCircle }[] = [
-    { key: 'profil-eksik', label: 'Profil Eksik', count: profileCounts.profilEksik, icon: AlertCircle },
-    { key: 'telefon-yok', label: 'Telefon Yok', count: profileCounts.telefonYok, icon: PhoneOff },
+  const profileFilterBtns: { key: Exclude<ProfileFilterKey, 'all'>; label: string; count: number; icon: LucideIcon; tone: 'amber' | 'slate' }[] = [
+    { key: 'profil-eksik', label: 'Profil eksik', count: profileCounts.profilEksik, icon: AlertCircle, tone: 'amber' },
+    { key: 'telefon-yok', label: 'Telefon yok', count: profileCounts.telefonYok, icon: PhoneOff, tone: 'slate' },
   ];
 
   const donemStr = `${AYLAR_TR[month - 1]} ${year}`;
   const beyannameDonemiStr = getPreviousMonthPeriodLabel(year, month);
 
+  const disaAktar = () => {
+    const rows = [
+      ['İsim','Tür','VKN/TC','VD','Evrak','Yüklendi','İşlendi','İnd.KDV','Hes.KDV','E-Arşiv','Beyanname','Not'],
+      ...raw.map(t => {
+        const s = t.monthlyStatus;
+        return [
+          getName(t),
+          t.type === 'TUZEL_KISI' ? 'Şirket' : 'Şahıs',
+          t.taxNumber,
+          t.taxOffice,
+          s?.evraklarGeldi ? 'Evet' : 'Hayır',
+          s?.yuklendi ? 'Evet' : 'Hayır',
+          s?.evraklarIslendi ? 'Evet' : 'Hayır',
+          s?.indirilecekKdvKontrol ? 'Evet' : 'Hayır',
+          s?.hesaplananKdvKontrol ? 'Evet' : 'Hayır',
+          s?.eArsivKontrol ? 'Evet' : 'Hayır',
+          deriveBeyannameStatus(s) === 'verildi' ? 'Verildi' : deriveBeyannameStatus(s) === 'bekliyor' ? 'Bekliyor' : 'Verilmedi',
+          s?.notes || '',
+        ];
+      }),
+    ];
+    const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `aylik-takip-${year}-${String(month).padStart(2,'0')}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
-    <div className="aylik-takip space-y-3 max-w-none">
-      <header data-portal-page-header
-        className="aylik-takip-baslik relative overflow-hidden rounded-[18px] border px-5 py-4"
-        style={portalStyle({
-          background:
-            'radial-gradient(120% 140% at 0% 0%, rgba(212,184,118,0.16), transparent 46%), radial-gradient(120% 140% at 100% 0%, rgba(139,118,73,0.12), transparent 48%), #0f0d0b',
-          borderColor: 'rgba(255,255,255,0.06)',
-          boxShadow: '0 16px 42px rgba(0,0,0,0.28)',
-        })}
-      >
-        <div
-          className="aylik-takip-serit absolute inset-x-0 top-0 h-1"
-          style={portalStyle({ background: 'linear-gradient(90deg, #8b7649, #b8a06f, #d4b876, #e7cf95, #d4b876, #b8a06f)' })}
-        />
-        <div className="aylik-takip-ust-etiket mb-3 flex items-center gap-2.5">
-          <span className="h-px w-[26px]" style={portalStyle({ background: GOLD })} />
-          <span className="text-[10px] font-bold uppercase tracking-[.18em]" style={portalStyle({ color: GOLD_SOFT })}>Mükellef CRM</span>
-        </div>
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex min-w-0 items-center gap-3.5">
-            <span
-              className="aylik-takip-baslik-ikon grid shrink-0 place-items-center rounded-xl"
-              style={portalStyle({
-                width: 46,
-                height: 46,
-                background: `linear-gradient(135deg, ${GOLD}, ${GOLD_SOFT})`,
-                boxShadow: '0 8px 22px rgba(212,184,118,0.30)',
-              })}
-            >
-              <ClipboardCheck size={24} style={portalStyle({ color: '#1a1410' })} />
-            </span>
-            <div className="min-w-0">
-              <h1 style={portalStyle({ fontFamily: 'Fraunces, Georgia, serif', fontSize: 30, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em', lineHeight: 1.05 })}>Aylık Takip Listesi</h1>
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <span
-                  className="inline-flex items-center rounded-full px-2.5 py-1 text-[11.5px] font-semibold"
-                  style={portalStyle({ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.72)' })}
-                >
-                  İşlem ayı: {donemStr}
-                </span>
-                <span
-                  className="aylik-takip-donem inline-flex items-center rounded-full px-2.5 py-1 text-[11.5px] font-bold"
-                  style={portalStyle({ background: 'rgba(212,184,118,0.11)', border: '1px solid rgba(212,184,118,0.32)', color: GOLD })}
-                >
-                  Beyanname dönemi: {beyannameDonemiStr}
-                </span>
-                <span className="text-[12px] font-semibold" style={portalStyle({ color: 'rgba(250,250,249,0.48)' })}>
-                  işe başlama/bitiş tarihine göre takipte {counts.total} mükellef
-                </span>
-              </div>
-            </div>
+    <div className="at-root max-w-none space-y-3">
+      {/* Sayfa başlığı: simge kutusu + başlık + dönem satırı; sağda ikincil dışa aktarım */}
+      <header className="at-head flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="at-head-icon grid h-9 w-9 shrink-0 place-items-center rounded-[10px]">
+            <ClipboardCheck size={18} />
+          </span>
+          <div className="min-w-0">
+            <h1 className="at-title text-[22px] font-bold leading-tight tracking-[-0.01em]">Aylık Takip Listesi</h1>
+            <p className="at-sub mt-0.5 text-[13px]" title={`${donemStr} işlem ayında ${beyannameDonemiStr} beyannameleri takip edilir`}>
+              İşlem ayı <b className="at-sub-strong">{donemStr}</b>
+              <span className="at-dot">·</span>
+              Beyanname dönemi <b className="at-sub-strong">{beyannameDonemiStr}</b>
+              <span className="at-dot">·</span>
+              <b className="at-sub-strong">{counts.total}</b> mükellef takipte
+            </p>
           </div>
-          <button
-            type="button"
-            onClick={() => {
-              const rows = [
-                ['İsim','Tür','VKN/TC','VD','Evrak','Yüklendi','İşlendi','İnd.KDV','Hes.KDV','E-Arşiv','Beyanname','Not'],
-                ...raw.map(t => {
-                  const s = t.monthlyStatus;
-                  return [
-                    getName(t),
-                    t.type === 'TUZEL_KISI' ? 'Şirket' : 'Şahıs',
-                    t.taxNumber,
-                    t.taxOffice,
-                    s?.evraklarGeldi ? 'Evet' : 'Hayır',
-                    s?.yuklendi ? 'Evet' : 'Hayır',
-                    s?.evraklarIslendi ? 'Evet' : 'Hayır',
-                    s?.indirilecekKdvKontrol ? 'Evet' : 'Hayır',
-                    s?.hesaplananKdvKontrol ? 'Evet' : 'Hayır',
-                    s?.eArsivKontrol ? 'Evet' : 'Hayır',
-                    deriveBeyannameStatus(s) === 'verildi' ? 'Verildi' : deriveBeyannameStatus(s) === 'bekliyor' ? 'Bekliyor' : 'Verilmedi',
-                    s?.notes || '',
-                  ];
-                }),
-              ];
-              const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
-              const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = `aylik-takip-${year}-${String(month).padStart(2,'0')}.csv`;
-              a.click();
-              URL.revokeObjectURL(url);
-            }}
-            className="aylik-takip-aktar inline-flex h-10 shrink-0 items-center gap-1.5 rounded-[10px] px-4 text-[12.5px] font-bold transition-all"
-            style={portalStyle({ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_SOFT})`, color: '#0f0d0b', boxShadow: '0 10px 24px rgba(212,184,118,0.16)' })}
-          >
-            <Upload size={14} /> Dışa Aktar
-          </button>
         </div>
+        <button
+          type="button"
+          onClick={disaAktar}
+          className="at-btn-secondary inline-flex h-9 shrink-0 items-center gap-1.5 rounded-[10px] px-3.5 text-[13px] font-semibold transition"
+          title="Takip listesini CSV olarak indir"
+        >
+          <Download size={15} /> Dışa Aktar
+        </button>
       </header>
 
-      {/* TOOLBAR: arama + dönem + profil çipleri */}
-      <div className="flex flex-wrap items-center gap-2 rounded-xl px-3 py-2.5" style={portalStyle({ background: 'rgba(255,255,255,0.018)', border: '1px solid rgba(255,255,255,0.07)' })}>
-        <div className="flex-1 min-w-[240px] relative">
-          <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })} />
+      {/* Araç çubuğu: arama · ay/yıl · profil çipleri */}
+      <div className="at-toolbar flex flex-wrap items-center gap-2 rounded-[12px] px-3 py-2.5">
+        <label className="relative min-w-[240px] flex-1">
+          <Search size={14} className="at-search-icon pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-            placeholder="Takipteki mükellef, VKN/TC veya VD ara..."
-            className="w-full rounded-[10px] py-2 pl-10 pr-3 text-[12.5px] outline-none"
-            style={portalStyle({ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' })}
+            placeholder="Takipteki mükellef, VKN/TC veya vergi dairesi ara..."
+            className="at-input h-9 w-full rounded-[10px] py-2 pl-9 pr-3 text-[13px] outline-none"
+            aria-label="Mükellef ara"
           />
-        </div>
+        </label>
 
         {/* Dönem seçici */}
-        <div className="flex items-center gap-1 p-1 rounded-[10px]" style={portalStyle({ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' })}>
+        <div className="at-select-group inline-flex h-9 items-center rounded-[10px]">
           <select
             value={month}
             onChange={(e) => { setMonth(parseInt(e.target.value)); setPage(1); }}
-            className="bg-transparent outline-none px-2 py-1.5 text-[12.5px] font-medium cursor-pointer"
-            style={portalStyle({ color: '#fafaf9' })}
+            className="at-select h-full cursor-pointer rounded-l-[10px] pl-3 pr-2 text-[13px] font-semibold outline-none"
+            aria-label="İşlem ayı"
           >
-            {AYLAR_TR.map((a, i) => (<option key={i} value={i + 1} style={portalStyle({ background: '#0f0d0b' })}>{a}</option>))}
+            {AYLAR_TR.map((a, i) => (<option key={i} value={i + 1}>{a}</option>))}
           </select>
-          <span style={portalStyle({ width: 1, height: 18, background: 'rgba(255,255,255,0.08)' })} />
+          <span className="at-select-sep h-[18px] w-px" />
           <select
             value={year}
             onChange={(e) => { setYear(parseInt(e.target.value)); setPage(1); }}
-            className="bg-transparent outline-none px-2 py-1.5 text-[12.5px] font-medium cursor-pointer"
-            style={portalStyle({ color: '#fafaf9' })}
+            className="at-select h-full cursor-pointer rounded-r-[10px] pl-2 pr-3 text-[13px] font-semibold outline-none"
+            aria-label="İşlem yılı"
           >
             {[now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1].map((y) => (
-              <option key={y} value={y} style={portalStyle({ background: '#0f0d0b' })}>{y}</option>
+              <option key={y} value={y}>{y}</option>
             ))}
           </select>
         </div>
 
-        <div
-          className="aylik-takip-donem inline-flex items-center gap-1.5 rounded-[10px] px-3 py-2 text-[11.5px] font-bold"
-          style={portalStyle({ background: 'rgba(212,184,118,0.1)', border: '1px solid rgba(212,184,118,0.24)', color: GOLD })}
-          title={`${donemStr} işlem ayında ${beyannameDonemiStr} beyannameleri takip edilir`}
-        >
-          Beyanname: {beyannameDonemiStr}
-        </div>
-
-        {/* İkincil profil filtreleri */}
+        {/* İkincil profil süzgeçleri */}
         {profileFilterBtns.map((b) => {
           const Icon = b.icon;
           const active = profileFilter === b.key;
@@ -473,24 +454,26 @@ export default function MukelleflerPage() {
             <button
               key={b.key}
               type="button"
+              aria-pressed={active}
+              data-tone={b.count > 0 ? b.tone : 'zero'}
               onClick={() => { setProfileFilter(active ? 'all' : (b.key as ProfileFilterKey)); setPage(1); }}
-              className="inline-flex items-center gap-1.5 rounded-[9px] px-3 py-2 text-[11.5px] font-semibold transition-all"
-              style={portalStyle({
-                background: active ? 'rgba(224,168,62,0.12)' : 'rgba(255,255,255,0.03)',
-                border: `1px solid ${active ? 'rgba(224,168,62,0.32)' : 'rgba(255,255,255,0.08)'}`,
-                color: active ? '#e9b75a' : 'rgba(250,250,249,0.55)',
-              })}
+              className="at-chip inline-flex h-8 items-center gap-1.5 rounded-full pl-2.5 pr-1.5 text-[11.5px] font-semibold transition"
+              title={active ? 'Süzgeci kaldır' : `${b.label} olan mükellefleri göster`}
             >
-              <Icon size={12} /> {b.label} ({b.count})
+              <Icon size={12} /> {b.label}
+              <span className="at-chip-count inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1.5 text-[10.5px] font-bold tabular-nums">{b.count}</span>
             </button>
           );
         })}
       </div>
 
-      {/* AŞAMA KARTLARI — hem KPI hem filtre (7 kart: tek satırda) */}
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
+      {/* AŞAMA SAYAÇLARI — beyaz kart + gradyan simge + koyu sayı + ton çubuğu; tıklanınca süzer */}
+      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 lg:grid-cols-7">
         {stageCards.map((c) => {
           const active = filter === c.key;
+          const meta = STAGE_CARD_META[c.key];
+          const Icon = meta.icon;
+          const pct = counts.total > 0 ? Math.round((c.count / counts.total) * 100) : 0;
           return (
             <button
               key={c.key}
@@ -501,22 +484,19 @@ export default function MukelleflerPage() {
                 if (next === 'all') setProfileFilter('all');
                 setPage(1);
               }}
-              data-aylik-asama={c.key}
-              data-aylik-secili={active ? 'true' : 'false'}
-              className="aylik-takip-sayac relative overflow-hidden rounded-[11px] px-3.5 py-3 text-left transition-all"
-              style={portalStyle({
-                background: active ? `${c.color}14` : 'rgba(255,255,255,0.02)',
-                border: `1px solid ${active ? `${c.color}66` : 'rgba(255,255,255,0.07)'}`,
-              })}
+              data-tone={meta.tone}
+              aria-pressed={active}
+              className="at-kpi rounded-[14px] px-3.5 pb-3 pt-3 text-left transition"
+              title={active && c.key !== 'all' ? 'Süzgeci kaldır' : `${c.label} olanları göster`}
             >
-              <span className="absolute bottom-2.5 left-0 top-2.5 w-[3px] rounded" style={portalStyle({ background: c.color, opacity: active ? 1 : 0.5 })} />
-              <div className="pl-2">
-                <div className="text-[24px] leading-none font-black tabular-nums" style={portalStyle({ fontFamily: 'Manrope, Inter, system-ui, sans-serif', color: active ? c.color : '#fafaf9' })}>
-                  {c.count}
-                </div>
-                <div className="mt-1.5 text-[11px] font-semibold tracking-[0.01em]" style={portalStyle({ color: active ? c.color : 'rgba(250,250,249,0.6)' })}>
-                  {c.label}
-                </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="at-kpi-icon grid h-[34px] w-[34px] place-items-center rounded-[10px]"><Icon size={17} /></span>
+                {c.key !== 'all' && <span className="at-kpi-pct rounded-full px-2 py-0.5 text-[10.5px] font-semibold tabular-nums">%{pct}</span>}
+              </div>
+              <div className="at-kpi-num mt-2.5 text-[24px] font-extrabold leading-none tabular-nums" data-zero={c.count === 0 ? 'true' : undefined}>{c.count}</div>
+              <div className="at-kpi-label mt-1 truncate text-[12px] font-semibold">{c.label}</div>
+              <div className="at-kpi-bar mt-2.5 h-[5px] overflow-hidden rounded-full">
+                <div className="at-kpi-bar-fill h-full rounded-full" style={{ width: `${c.key === 'all' ? 100 : pct}%` }} />
               </div>
             </button>
           );
@@ -524,83 +504,77 @@ export default function MukelleflerPage() {
       </div>
 
       {/* TABLO */}
-      <div className="aylik-takip-tablo rounded-xl overflow-x-auto overflow-y-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.018)', border: '1px solid rgba(255,255,255,0.07)' })}>
-        <div
-          className="aylik-takip-tablo-baslik grid min-w-[1180px] w-full items-center px-3 py-2.5 text-[9.5px] font-semibold uppercase"
-          style={portalStyle({
-            gridTemplateColumns: TAXPAYER_TABLE_GRID,
-            gap: 8,
-            background: 'rgba(212,184,118,0.04)',
-            borderBottom: '1px solid rgba(212,184,118,0.12)',
-            color: 'rgba(250,250,249,0.48)',
-            letterSpacing: '0.09em',
-          })}
-        >
-          <span></span>
-          <span>Mükellef</span>
-          <span>Durum</span>
-          <span className="text-center" title="Evrak geldi">Evrak</span>
-          <span className="text-center" title="Sisteme yüklendi (fiş görselleri / portal faturaları)">Yüklendi</span>
-          <span className="text-center" title="Evraklar işlendi">İşlem</span>
-          <span className="text-center" title="İndirilecek KDV kontrol" style={portalStyle({ borderLeft: '1px solid rgba(255,255,255,0.07)', paddingLeft: 6 })}>İnd</span>
-          <span className="text-center" title="Hesaplanan KDV kontrol">Hes</span>
-          <span className="text-center" title="E-Arşiv fatura kontrol">Arşiv</span>
-          <span className="text-center" title="Beyanname verildi" style={portalStyle({ borderLeft: '1px solid rgba(255,255,255,0.07)', paddingLeft: 6 })}>Beyan</span>
-          <span>Not / Açıklama</span>
-        </div>
-
-        {isLoading ? (
-          <div className="py-16 flex flex-col items-center gap-3" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>
-            <div className="w-8 h-8 rounded-full animate-spin" style={portalStyle({ border: '2px solid rgba(255,255,255,0.08)', borderTopColor: GOLD })} />
-            <span className="text-sm">Yükleniyor...</span>
-          </div>
-        ) : pageItems.length === 0 ? (
-          <div className="py-16 text-center">
-            <p className="text-[14px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>Kayıt bulunamadı</p>
-            <p className="text-[12px] mt-1" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
-              {donemStr} döneminde takip kaydı yok veya filtre eşleşmedi
-            </p>
-          </div>
-        ) : (
-          pageItems.map((t) => (
-            <TaxpayerRow
-              key={t.id}
-              taxpayer={t}
-              completeness={completenessMap.get(t.id)}
-              onToggle={(key, value) => updateStatus.mutate({ id: t.id, data: { [key]: value } as MonthlyStatusPatch })}
-              onNotesChange={(notes) => updateStatus.mutate({ id: t.id, data: { notes } })}
-            />
-          ))
-        )}
+      <div className="at-table-wrap overflow-x-auto rounded-[12px]">
+        <table className="at-table w-full min-w-[1120px] border-collapse text-left">
+          <thead>
+            <tr>
+              <th className="at-th">Mükellef</th>
+              <th className="at-th w-[178px]">Durum</th>
+              <th className="at-th at-th-center w-[64px]" title="Evrak geldi">Evrak</th>
+              <th className="at-th at-th-center w-[64px]" title="Sisteme yüklendi (fiş görselleri / portal faturaları)">Yüklendi</th>
+              <th className="at-th at-th-center w-[64px]" title="Evraklar işlendi">İşlem</th>
+              <th className="at-th at-th-center at-th-group w-[64px]" title="İndirilecek KDV kontrol">İnd. KDV</th>
+              <th className="at-th at-th-center w-[64px]" title="Hesaplanan KDV kontrol">Hes. KDV</th>
+              <th className="at-th at-th-center w-[64px]" title="e-Arşiv fatura kontrol">e-Arşiv</th>
+              <th className="at-th at-th-center at-th-group w-[64px]" title="Beyanname verildi">Beyan</th>
+              <th className="at-th w-[240px]">Not / Açıklama</th>
+            </tr>
+          </thead>
+          <tbody>
+            {isLoading ? (
+              <tr>
+                <td colSpan={10} className="at-td">
+                  <div className="at-loading flex flex-col items-center gap-3 py-14">
+                    <div className="at-spinner h-7 w-7 animate-spin rounded-full" />
+                    <span className="text-[13px]">Yükleniyor...</span>
+                  </div>
+                </td>
+              </tr>
+            ) : pageItems.length === 0 ? (
+              <tr>
+                <td colSpan={10} className="at-td">
+                  <div className="at-empty mx-3 my-3 rounded-[10px] py-12 text-center">
+                    <ClipboardCheck size={22} className="at-empty-icon mx-auto mb-2" />
+                    <p className="at-empty-title text-[14px] font-semibold">Kayıt bulunamadı</p>
+                    <p className="at-empty-sub mt-1 text-[12px]">{donemStr} döneminde takip kaydı yok veya süzgeç eşleşmedi</p>
+                  </div>
+                </td>
+              </tr>
+            ) : (
+              pageItems.map((t) => (
+                <TaxpayerRow
+                  key={t.id}
+                  taxpayer={t}
+                  completeness={completenessMap.get(t.id)}
+                  onToggle={(key, value) => updateStatus.mutate({ id: t.id, data: { [key]: value } as MonthlyStatusPatch })}
+                  onNotesChange={(notes) => updateStatus.mutate({ id: t.id, data: { notes } })}
+                />
+              ))
+            )}
+          </tbody>
+        </table>
 
         {/* Sayfalama */}
         {!isLoading && filtered.length > 0 && (
-          <div
-            className="aylik-takip-sayfalama px-5 py-3.5 flex items-center justify-between"
-            style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.04)', fontSize: 12, color: 'rgba(250,250,249,0.4)' })}
-          >
+          <div className="at-paging flex items-center justify-between px-4 py-2.5 text-[12px]">
             <span className="tabular-nums">
-              Gösterilen: {(pageSafe - 1) * PAGE_SIZE + 1}-{Math.min(pageSafe * PAGE_SIZE, filtered.length)} / {filtered.length}
+              Gösterilen: {(pageSafe - 1) * PAGE_SIZE + 1}–{Math.min(pageSafe * PAGE_SIZE, filtered.length)} / {filtered.length}
             </span>
-            <div className="flex gap-2">
+            <div className="flex items-center gap-2">
               <button
                 type="button"
                 disabled={pageSafe <= 1}
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
-                className="px-3.5 py-1.5 text-[11.5px] font-medium rounded-[8px] transition-all disabled:opacity-30 disabled:cursor-not-allowed"
-                style={portalStyle({ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.75)' })}
+                className="at-btn-secondary h-8 rounded-[8px] px-3 text-[12px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-40"
               >
                 ← Önceki
               </button>
-              <span className="px-3 py-1.5 text-[11.5px] font-medium" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>
-                Sayfa {pageSafe} / {totalPages}
-              </span>
+              <span className="at-paging-page px-1 tabular-nums">Sayfa {pageSafe} / {totalPages}</span>
               <button
                 type="button"
                 disabled={pageSafe >= totalPages}
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                className="px-3.5 py-1.5 text-[11.5px] font-medium rounded-[8px] transition-all disabled:opacity-30 disabled:cursor-not-allowed"
-                style={portalStyle({ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.75)' })}
+                className="at-btn-secondary h-8 rounded-[8px] px-3 text-[12px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Sonraki →
               </button>
@@ -617,17 +591,27 @@ export default function MukelleflerPage() {
 // ─────────────────────────────────────────────────────────────
 
 function StatusPill({ stage }: { stage: Stage }) {
-  const { label, color } = STAGES[stage];
+  const { label } = STAGES[stage];
   return (
     <span
-      className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10.5px] font-bold whitespace-nowrap"
-      style={portalStyle({ background: `${color}1a`, border: `1px solid ${color}40`, color })}
+      data-stage={stage}
+      className="at-stage inline-flex h-[22px] items-center gap-1.5 whitespace-nowrap rounded-full px-2 text-[11px] font-semibold"
       title={label}
     >
-      <span className="h-1.5 w-1.5 rounded-full shrink-0" style={portalStyle({ background: color })} />
+      <span className="at-stage-dot h-1.5 w-1.5 shrink-0 rounded-full" />
       {label}
     </span>
   );
+}
+
+type CompletenessLevel = 'tam' | 'iyi' | 'eksik' | 'kritik' | 'yok';
+
+function completenessLevel(c?: { durum: string }): CompletenessLevel {
+  if (!c) return 'yok';
+  if (c.durum === 'TAM') return 'tam';
+  if (c.durum === 'IYI') return 'iyi';
+  if (c.durum === 'EKSIK') return 'eksik';
+  return 'kritik';
 }
 
 function TaxpayerRow({
@@ -649,140 +633,89 @@ function TaxpayerRow({
     setNotesDraft(s?.notes || '');
   }, [s?.notes, taxpayer.id]);
 
-  // v1.36.76: Profil tamamlık göstergesi rengi
-  const compColor =
-    !completeness ? 'rgba(255,255,255,0.10)' :
-    completeness.durum === 'TAM' ? '#22c55e' :
-    completeness.durum === 'IYI' ? '#84cc16' :
-    completeness.durum === 'EKSIK' ? '#f59e0b' : '#ef4444';
+  // v1.36.76: Profil tamamlık göstergesi
+  const level = completenessLevel(completeness);
   const compTooltip = completeness
     ? `Profil: %${completeness.score}${completeness.kritikEksikSayisi > 0 ? ` · ${completeness.kritikEksikSayisi} KRİTİK eksik` : completeness.eksikSayisi > 0 ? ` · ${completeness.eksikSayisi} eksik` : ' · TAM'}`
     : 'Profil yükleniyor...';
 
   return (
-    <div
-      className="aylik-takip-satir grid min-w-[1180px] w-full items-center px-3 py-2 transition-all group"
-      style={portalStyle({
-        gridTemplateColumns: TAXPAYER_TABLE_GRID,
-        gap: 8,
-        minHeight: 54,
-        borderBottom: '1px solid rgba(255,255,255,0.035)',
-      })}
-      onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = portalPaint('rgba(184,160,111,0.04)', 'background'); }}
-      onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = portalPaint('transparent', 'background'); }}
-    >
-      {/* Avatar — sağ üst köşede tamamlık göstergesi noktası */}
-      <div className="flex justify-center">
-        <div className="relative">
-          <div className="aylik-takip-avatar w-8 h-8 rounded-[9px] flex items-center justify-center text-[11.5px] font-bold" style={portalStyle({ background: 'rgba(184,160,111,0.075)', color: GOLD, border: '1px solid rgba(184,160,111,0.16)' })}>
-            {getInitials(taxpayer)}
-          </div>
-          {/* v1.36.76: Profil tamamlık dot — avatar'ın sağ üst köşesinde */}
-          <div
-            className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full"
-            style={portalStyle({
-              background: compColor,
-              border: '1.5px solid #0f0d0b',
-              boxShadow: completeness?.kritikEksikSayisi ? `0 0 6px ${compColor}` : undefined,
-            })}
-            title={compTooltip}
-          />
-        </div>
-      </div>
-
-      {/* Mükellef adı — kart bağlantısı; kimlik bilgileri arama ve dışa aktarmada korunur. */}
-      <Link
-        href={`/panel/mukellefler/${taxpayer.id}`}
-        className="min-w-0 block transition-colors"
-        title="Mükellef kartını aç"
-      >
-        <div className="flex items-center gap-2">
-          <p
-            className="aylik-takip-firma text-[13.5px] font-semibold truncate transition-colors hover:text-[#d4b876]"
-            style={portalStyle({ color: '#fafaf9', letterSpacing: '-0.01em' })}
-          >
-            {getName(taxpayer)}
-          </p>
-          {completeness && completeness.score < 80 && (
-            <span
-              className="text-[10px] tabular-nums font-bold px-1.5 py-0.5 rounded shrink-0"
-              style={portalStyle({ background: `${compColor}22`, color: compColor })}
-              title={compTooltip}
-            >
-              %{completeness.score}
-            </span>
-          )}
-        </div>
-      </Link>
+    <tr className="at-tr">
+      {/* Mükellef adı — kart bağlantısı; sağ üst köşede profil tamamlık noktası */}
+      <td className="at-td">
+        <Link href={`/panel/mukellefler/${taxpayer.id}`} className="flex min-w-0 items-center gap-3" title="Mükellef kartını aç">
+          <span className="relative shrink-0">
+            <span className="at-avatar grid h-8 w-8 place-items-center rounded-[9px] text-[11.5px] font-bold">{getInitials(taxpayer)}</span>
+            <span className="at-dot-comp absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full" data-level={level} title={compTooltip} />
+          </span>
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="at-name truncate text-[13.5px] font-semibold">{getName(taxpayer)}</span>
+            {completeness && completeness.score < 80 && (
+              <span className="at-score shrink-0 rounded-full px-1.5 py-0.5 text-[10.5px] font-bold tabular-nums" data-level={level} title={compTooltip}>
+                %{completeness.score}
+              </span>
+            )}
+          </span>
+        </Link>
+      </td>
 
       {/* Durum etiketi */}
-      <div className="min-w-0">
-        <StatusPill stage={stage} />
-      </div>
+      <td className="at-td"><StatusPill stage={stage} /></td>
 
-      {/* Evrak */}
-      <div className="flex justify-center">
+      {/* Evrak · Yüklendi · İşlem */}
+      <td className="at-td at-td-center">
         <Check checked={!!s?.evraklarGeldi} onClick={() => onToggle('evraklarGeldi', !s?.evraklarGeldi)} title="Evrak geldi" />
-      </div>
-
-      {/* Yüklendi — evrak sisteme yüklendi (fiş görselleri, portal faturaları çekildi) */}
-      <div className="flex justify-center">
+      </td>
+      <td className="at-td at-td-center">
         <Check checked={!!s?.yuklendi} onClick={() => onToggle('yuklendi', !s?.yuklendi)} title="Sisteme yüklendi (fiş görselleri / portal faturaları)" />
-      </div>
-
-      {/* İşlendi */}
-      <div className="flex justify-center">
+      </td>
+      <td className="at-td at-td-center">
         <Check checked={!!s?.evraklarIslendi} onClick={() => onToggle('evraklarIslendi', !s?.evraklarIslendi)} title="Evraklar işlendi" />
-      </div>
+      </td>
 
-      {/* İnd. KDV — KDV grubu başlangıcı */}
-      <div className="flex justify-center" style={portalStyle({ borderLeft: '1px solid rgba(255,255,255,0.05)' })}>
+      {/* KDV kontrol grubu */}
+      <td className="at-td at-td-center at-td-group">
         <Check checked={!!s?.indirilecekKdvKontrol} onClick={() => onToggle('indirilecekKdvKontrol', !s?.indirilecekKdvKontrol)} title="İndirilecek KDV kontrol" />
-      </div>
-
-      {/* Hes. KDV */}
-      <div className="flex justify-center">
+      </td>
+      <td className="at-td at-td-center">
         <Check checked={!!s?.hesaplananKdvKontrol} onClick={() => onToggle('hesaplananKdvKontrol', !s?.hesaplananKdvKontrol)} title="Hesaplanan KDV kontrol" />
-      </div>
+      </td>
+      <td className="at-td at-td-center">
+        <Check checked={!!s?.eArsivKontrol} onClick={() => onToggle('eArsivKontrol', !s?.eArsivKontrol)} title="e-Arşiv fatura kontrol" />
+      </td>
 
-      {/* E-Arşiv */}
-      <div className="flex justify-center">
-        <Check checked={!!s?.eArsivKontrol} onClick={() => onToggle('eArsivKontrol', !s?.eArsivKontrol)} title="E-Arşiv Fatura kontrol" />
-      </div>
-
-      {/* Beyanname — beyan grubu başlangıcı */}
-      <div className="flex justify-center" style={portalStyle({ borderLeft: '1px solid rgba(255,255,255,0.05)' })}>
+      {/* Beyanname */}
+      <td className="at-td at-td-center at-td-group">
         <Check
           checked={!!s?.beyannameVerildi}
           onClick={() => onToggle('beyannameVerildi', !s?.beyannameVerildi)}
           title={stage === 'verildi' ? 'Beyanname verildi' : stage === 'beyan-hazir' ? 'Beyanname verilebilir' : 'Beyanname verilmedi'}
         />
-      </div>
+      </td>
 
       {/* Not / Açıklama */}
-      <input
-        value={notesDraft}
-        onChange={(e) => setNotesDraft(e.target.value)}
-        onBlur={() => {
-          const next = notesDraft.trim();
-          setNotesDraft(next);
-          if ((s?.notes || '') !== next) onNotesChange(next);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') e.currentTarget.blur();
-        }}
-        maxLength={1000}
-        placeholder="Not ekle..."
-        className="h-8 w-full rounded-[7px] px-2.5 text-[11.5px] outline-none transition-colors"
-        style={portalStyle({
-          background: notesDraft ? 'rgba(212,184,118,0.055)' : 'rgba(255,255,255,0.025)',
-          border: `1px solid ${notesDraft ? 'rgba(212,184,118,0.20)' : 'rgba(255,255,255,0.065)'}`,
-          color: '#fafaf9',
-        })}
-        title={notesDraft || 'Not / açıklama'}
-      />
-
-    </div>
+      <td className="at-td">
+        <input
+          type="text"
+          value={notesDraft}
+          onChange={(e) => setNotesDraft(e.target.value)}
+          onBlur={() => {
+            const next = notesDraft.trim();
+            setNotesDraft(next);
+            if ((s?.notes || '') !== next) onNotesChange(next);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') e.currentTarget.blur();
+          }}
+          maxLength={1000}
+          placeholder="Not ekle..."
+          data-filled={notesDraft ? 'true' : undefined}
+          className="at-note h-8 w-full rounded-[8px] px-2.5 text-[12px] outline-none transition"
+          title={notesDraft || 'Not / açıklama'}
+          aria-label={`${getName(taxpayer)} notu`}
+        />
+      </td>
+    </tr>
   );
 }
 
@@ -795,28 +728,9 @@ function Check({ checked, onClick, title, disabled = false }: { checked: boolean
       aria-label={title}
       aria-pressed={checked}
       disabled={disabled}
-      className="aylik-takip-isaret inline-flex items-center justify-center transition-all hover:brightness-110"
-      style={portalStyle({
-        width: 22, height: 22, borderRadius: 7,
-        border: checked ? '1px solid rgba(74,222,128,0.55)' : '1px solid rgba(255,255,255,0.12)',
-        background: checked ? 'rgba(74,222,128,0.16)' : 'rgba(255,255,255,0.035)',
-        color: checked ? '#4ade80' : 'rgba(250,250,249,0.28)',
-        cursor: 'pointer',
-      })}
-      onMouseEnter={(e) => {
-        if (!checked) {
-          (e.currentTarget as HTMLButtonElement).style.borderColor = portalPaint('rgba(212,184,118,0.42)', 'borderColor');
-          (e.currentTarget as HTMLButtonElement).style.background = portalPaint('rgba(212,184,118,0.07)', 'background');
-        }
-      }}
-      onMouseLeave={(e) => {
-        if (!checked) {
-          (e.currentTarget as HTMLButtonElement).style.borderColor = portalPaint('rgba(255,255,255,0.12)', 'borderColor');
-          (e.currentTarget as HTMLButtonElement).style.background = portalPaint('rgba(255,255,255,0.035)', 'background');
-        }
-      }}
+      className="at-check inline-flex h-[22px] w-[22px] items-center justify-center rounded-[6px] transition"
     >
-      {checked ? <CheckIcon size={13} strokeWidth={2.8} /> : <span className="h-1.5 w-1.5 rounded-full" style={portalStyle({ background: 'rgba(250,250,249,0.25)' })} />}
+      {checked ? <CheckIcon size={13} strokeWidth={3} /> : <span className="at-check-dot h-1.5 w-1.5 rounded-full" />}
     </button>
   );
 }
