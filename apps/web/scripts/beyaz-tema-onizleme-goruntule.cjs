@@ -22,7 +22,6 @@ fs.mkdirSync(CIKIS, { recursive: true });
     ['sayaclar', '[data-dashboard-counters]'],
     ['panorama', '.ofis-panorama'],
     ['beyan-tablo', '[data-beyan-panel]'],
-    ['is-akisi', '[data-workflow-panel]'],
     ['takvim', '[data-calendar]'],
   ];
   for (const [ad, sec] of hedefler) {

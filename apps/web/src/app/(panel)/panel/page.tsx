@@ -35,7 +35,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { KritikUyariStatCard } from '@/components/dashboard/KritikUyariStatCard';
 import { MaliTakvim } from '@/components/dashboard/MaliTakvim';
-import { IsAkisiHatti } from '@/components/dashboard/IsAkisiHatti';
 import { BeyanDurumTakibi, donemEtiket, type BeyanFilter } from '@/components/dashboard/BeyanDurumTakibi';
 import { OfisPanoramasi, type PanoramaPeriodProps } from '@/components/dashboard/OfisPanoramasi';
 
@@ -1088,8 +1087,6 @@ export default function DashboardPage() {
       <OfisPanoramasi {...panoramaPeriod} />
 
       <ToplubeyannameTable {...panoramaPeriod} />
-
-      <IsAkisiHatti counts={workflowCounts} total={workflowTotal} activeCount={activeCount || totalTx} />
 
       <MaliTakvim />
       </div>

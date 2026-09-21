@@ -179,14 +179,12 @@ export function MaliTakvim() {
       <header className="mt-band">
         <span className="mt-band-icon" aria-hidden="true"><CalendarDays size={17} /></span>
         <div className="mt-band-text">
+          <p>MALİ TAKVİM</p>
           <h3>Bu Ay Mali Takvim</h3>
-          <p title={KURAL_NOTU}>{AYLAR[ay]} {yil} · {kalanSonTarih} son tarih kaldı{yakin > 0 ? ` · ${yakin} yakın` : ''}</p>
         </div>
+        <span className="mt-note" title={KURAL_NOTU}>{kalanSonTarih} son tarih kaldı{yakin > 0 ? ` · ${yakin} yakın` : ''}{notSayisi > 0 ? ` · ${notSayisi} not` : ''}</span>
         <div className="mt-band-chips">
-          <span className="mt-chip" data-tone="rose">{kalanSonTarih} son tarih</span>
-          {yakin > 0 && <span className="mt-chip" data-tone="red">{yakin} yakın</span>}
-          {notSayisi > 0 && <span className="mt-chip" data-tone="blue">{notSayisi} not</span>}
-          <span className="mt-range">1 {AYLAR[ay].slice(0, 3)} — {gunSayisi} {AYLAR[ay].slice(0, 3)}</span>
+          <span className="mt-chip"><CalendarDays size={12} aria-hidden="true" /> {AYLAR[ay]} {yil}</span>
         </div>
       </header>
 

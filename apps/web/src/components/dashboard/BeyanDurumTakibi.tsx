@@ -1,15 +1,14 @@
 'use client';
-import React, { ReactNode } from 'react';
-import { BookOpenCheck, ClipboardList, FileCheck2, FileText, Landmark, Receipt, Search, Stamp, Wallet } from 'lucide-react';
+import { BookOpenCheck, CalendarDays, ClipboardList, FileCheck2, FileText, Landmark, Receipt, Search, Stamp, Wallet } from 'lucide-react';
 import { BEYAN_ETIKETLER, type BeyanTipi, type DonemTuru, type OzetRow } from '@/lib/beyanname-takip';
 import './beyan-durum.css';
 
 /**
- * Beyanname Durum Takibi — ÖZET KAROSU + SATIR KARTLARI (2026-09-22 gece, Muzaffer Bey: "bu tabloyu da yeniden tasarla").
- * Eski yedi sütunlu tablo yerine: solda çivit karo (tamamlanma halkası + beş sayaç), sağda her beyanname için satır kartı
- * (tür simgesi, ad + vergi dönemi, bölümlü ilerleme çubuğu, tıklanabilir sayı çipleri, durum rozeti + yüzde).
- * Veri, dönem/mod seçimi, Sorgula ve sayıya tıklayınca açılan mükellef listesi (onNumberClick → modal) aynı.
- * Görünüm `beyan-durum.css`te: koyu tema A varsayılan, beyaz tema D ezer.
+ * Beyanname Durum Takibi — panorama dili (2026-09-22, Muzaffer Bey: üst bölümdeki SGK/E-Defter/Fatura kartları gibi
+ * "göz yormayan, kusursuz"): açık çivit yıkamalı kart, soluk simge kutuları, noktalı sayı listesi, ince satır kartları.
+ * Solda özet (onay halkası + toplam + noktalı liste), sağda her beyanname için satır (simge, ad + vergi dönemi + mükellef,
+ * ince bölümlü çubuk, tıklanabilir sayılar, yüzde + durum). Veri, dönem/mod seçimi, Sorgula ve sayıya tıklayınca açılan
+ * mükellef listesi (onNumberClick → pencere) aynı. Görünüm `beyan-durum.css`te: koyu tema A varsayılan, D ezer.
  */
 
 export type BeyanFilter = 'toplam' | 'onaylanan' | 'bekleyen' | 'hatali' | 'kalan';
@@ -38,15 +37,14 @@ const BEYAN_TIPLERI: BeyanTipi[] = [
   'OTV1', 'OTV3A', 'OTV3B', 'OTV4',
 ];
 
-/** Tür ailesi: simge + renk (CSS `data-family`). */
-function aile(tip: BeyanTipi): { family: string; icon: any } {
-  if (tip.startsWith('KDV')) return { family: 'vat', icon: Receipt };
-  if (tip.startsWith('MUHSGK')) return { family: 'payroll', icon: FileText };
-  if (tip === 'DAMGA') return { family: 'stamp', icon: Stamp };
-  if (tip === 'KURUMLAR' || tip === 'GELIR' || tip === 'GGECICI' || tip === 'KGECICI' || tip === 'GMSI') return { family: 'income', icon: Landmark };
-  if (tip === 'BILDIRGE') return { family: 'ledger', icon: ClipboardList };
-  if (tip === 'EDEFTER') return { family: 'book', icon: BookOpenCheck };
-  return { family: 'other', icon: Wallet };
+function simge(tip: BeyanTipi): any {
+  if (tip.startsWith('KDV')) return Receipt;
+  if (tip.startsWith('MUHSGK')) return FileText;
+  if (tip === 'DAMGA') return Stamp;
+  if (tip === 'KURUMLAR' || tip === 'GELIR' || tip === 'GGECICI' || tip === 'KGECICI' || tip === 'GMSI') return Landmark;
+  if (tip === 'BILDIRGE') return ClipboardList;
+  if (tip === 'EDEFTER') return BookOpenCheck;
+  return Wallet;
 }
 
 function durum(row: OzetRow): { key: 'done' | 'error' | 'pending'; label: string } {
@@ -54,6 +52,9 @@ function durum(row: OzetRow): { key: 'done' | 'error' | 'pending'; label: string
   if (row.kalan <= 0) return { key: 'done', label: 'Tamam' };
   return { key: 'pending', label: 'Devam ediyor' };
 }
+
+// Halka: r=44 → çevre
+const CEVRE = 2 * Math.PI * 44;
 
 export function BeyanDurumTakibi({
   donem, setDonem, donemTuru, setDonemTuru, donemOptions, selectedDonem, rows, isLoading, onRefetch, onNumberClick,
@@ -79,18 +80,16 @@ export function BeyanDurumTakibi({
   const modeNote = donemTuru === 'VERILME' ? 'Seçilen ayda verilmesi gerekenler' : 'Seçilen vergi dönemine ait olanlar';
   const bos = !isLoading && aktif.length === 0;
 
-  // Halka: r=52 → çevre ≈ 326.7
-  const CEVRE = 2 * Math.PI * 52;
-
   return (
     <section className="bd" data-beyan-panel aria-label="Beyanname durum takibi">
-      <header className="bd-band">
-        <span className="bd-band-icon" aria-hidden="true"><FileCheck2 size={17} /></span>
-        <div className="bd-band-text">
+      <header className="bd-head">
+        <span className="bd-icon" aria-hidden="true"><FileCheck2 size={17} /></span>
+        <div className="bd-heading">
+          <p>BEYANNAME TAKİBİ</p>
           <h3>Beyanname Durum Takibi</h3>
-          <p>{modeLabel} · {donemEtiket(selectedDonem)} · {modeNote}</p>
         </div>
-        <div className="bd-band-tools">
+        <span className="bd-note">{modeNote}</span>
+        <div className="bd-tools">
           <div className="bd-mode" role="tablist" aria-label="Dönem türü">
             {([['VERILME', 'Verilme dönemi'], ['VERGI', 'Vergi dönemi']] as const).map(([value, label]) => (
               <button key={value} type="button" role="tab" aria-selected={donemTuru === value} data-active={donemTuru === value ? 'true' : undefined} onClick={() => setDonemTuru(value)}>
@@ -98,40 +97,39 @@ export function BeyanDurumTakibi({
               </button>
             ))}
           </div>
-          <select className="bd-select" aria-label="Beyanname takip dönemi" value={donem} onChange={(e) => setDonem(e.target.value)}>
-            {donemOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-          <button type="button" className="bd-query" onClick={onRefetch}><Search size={13} /> Sorgula</button>
+          <label className="bd-period">
+            <CalendarDays size={12} aria-hidden="true" />
+            <select aria-label="Beyanname takip dönemi" value={donem} onChange={(e) => setDonem(e.target.value)}>
+              {donemOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </label>
+          <button type="button" className="bd-query" onClick={onRefetch}><Search size={13} aria-hidden="true" /> Sorgula</button>
         </div>
       </header>
 
       <div className="bd-body">
-        {/* Sol: özet karosu */}
-        <aside className="bd-tile" data-state={toplam.hatali > 0 ? 'error' : yuzde >= 100 && toplam.toplam > 0 ? 'done' : 'pending'}>
-          <div className="bd-tile-head">
-            <span className="bd-tile-label">{donemEtiket(selectedDonem)}</span>
-            <span className="bd-tile-mode">{modeLabel}</span>
-          </div>
-          <div className="bd-ring" role="img" aria-label={`Onaylanan oranı yüzde ${yuzde}`}>
-            <svg viewBox="0 0 120 120" aria-hidden="true">
-              <circle className="bd-ring-track" cx="60" cy="60" r="52" />
-              <circle className="bd-ring-fill" cx="60" cy="60" r="52" strokeDasharray={`${(CEVRE * yuzde) / 100} ${CEVRE}`} />
+        {/* Sol: özet (halka + toplam + noktalı liste) */}
+        <aside className="bd-summary" data-state={toplam.hatali > 0 ? 'error' : yuzde >= 100 && toplam.toplam > 0 ? 'done' : 'pending'}>
+          <div className="bd-gauge" role="img" aria-label={`Onaylanan oranı yüzde ${yuzde}`}>
+            <svg viewBox="0 0 110 110" aria-hidden="true">
+              <circle className="bd-track" cx="55" cy="55" r="44" />
+              <circle className="bd-progress" cx="55" cy="55" r="44" strokeDasharray={`${(CEVRE * yuzde) / 100} ${CEVRE}`} />
             </svg>
-            <div className="bd-ring-text">
-              <b>%{yuzde}</b>
-              <small>onaylandı</small>
-            </div>
+            <div className="bd-gauge-text"><b>%{yuzde}</b><small>onaylandı</small></div>
           </div>
-          <p className="bd-tile-sub">{aktif.length} takip kalemi · {tamamKalem} tamam</p>
-          <dl className="bd-tile-stats">
-            <Sayac etiket="Toplam" deger={toplam.toplam} ton="total" />
-            <Sayac etiket="Onaylanan" deger={toplam.onaylanan} ton="ok" />
-            <Sayac etiket="Kalan" deger={toplam.kalan} ton="left" />
-            <Sayac etiket="Bekleyen · Hatalı" deger={toplam.bekleyen + toplam.hatali} ton={toplam.hatali > 0 ? 'err' : 'wait'} />
-          </dl>
+          <div className="bd-numbers">
+            <p className="bd-total"><strong>{toplam.toplam}</strong> <span>mükellef</span></p>
+            <dl>
+              <div data-ton="ok"><dt>Onaylanan</dt><dd>{toplam.onaylanan}</dd></div>
+              <div data-ton="wait" data-zero={toplam.bekleyen === 0 ? 'true' : undefined}><dt>Bekleyen</dt><dd>{toplam.bekleyen}</dd></div>
+              <div data-ton="err" data-zero={toplam.hatali === 0 ? 'true' : undefined}><dt>Hatalı</dt><dd>{toplam.hatali}</dd></div>
+              <div data-ton="left"><dt>Kalan</dt><dd>{toplam.kalan}</dd></div>
+            </dl>
+            <p className="bd-summary-sub">{donemEtiket(selectedDonem)} · {modeLabel} · {aktif.length} kalem, {tamamKalem} tamam</p>
+          </div>
         </aside>
 
-        {/* Sağ: satır kartları */}
+        {/* Sağ: satırlar */}
         <div className="bd-list">
           {isLoading && <div className="bd-empty">Yükleniyor…</div>}
           {bos && (
@@ -141,7 +139,7 @@ export function BeyanDurumTakibi({
             </div>
           )}
           {beyanRows.length > 0 && (
-            <div className="bd-group" style={{ ["--satir" as string]: beyanRows.length } as React.CSSProperties}>
+            <div className="bd-group" style={{ flexGrow: beyanRows.length }}>
               <div className="bd-group-head"><span>Beyannameler</span><em>{beyanRows.length} tür</em></div>
               <ul className="bd-rows">
                 {beyanRows.map((row) => <BeyanSatiri key={row.beyanTipi} row={row} onNumberClick={onNumberClick} />)}
@@ -149,10 +147,10 @@ export function BeyanDurumTakibi({
             </div>
           )}
           {yardimciRows.length > 0 && (
-            <div className="bd-group" style={{ ["--satir" as string]: yardimciRows.length } as React.CSSProperties}>
+            <div className="bd-group" style={{ flexGrow: yardimciRows.length }}>
               <div className="bd-group-head"><span>Bildirge ve E-Defter</span><em>{donemEtiket(selectedDonem)}</em></div>
               <ul className="bd-rows">
-                {yardimciRows.map((row) => <BeyanSatiri key={row.beyanTipi} row={row} onNumberClick={onNumberClick} onayLabel={row.beyanTipi === 'EDEFTER' ? 'verilen' : 'onaylanan'} />)}
+                {yardimciRows.map((row) => <BeyanSatiri key={row.beyanTipi} row={row} onNumberClick={onNumberClick} />)}
               </ul>
             </div>
           )}
@@ -162,29 +160,20 @@ export function BeyanDurumTakibi({
   );
 }
 
-function Sayac({ etiket, deger, ton, wide }: { etiket: string; deger: number; ton: string; wide?: boolean }) {
-  return (
-    <div className="bd-stat" data-ton={ton} data-zero={deger === 0 ? 'true' : undefined} data-wide={wide ? 'true' : undefined}>
-      <dt>{etiket}</dt>
-      <dd>{deger}</dd>
-    </div>
-  );
-}
-
-function BeyanSatiri({ row, onNumberClick, onayLabel = 'onaylanan' }: { row: OzetRow; onNumberClick: (tip: BeyanTipi, filter: BeyanFilter) => void; onayLabel?: string }) {
-  const { family, icon: Icon } = aile(row.beyanTipi);
+function BeyanSatiri({ row, onNumberClick }: { row: OzetRow; onNumberClick: (tip: BeyanTipi, filter: BeyanFilter) => void }) {
+  const Icon = simge(row.beyanTipi);
   const d = durum(row);
-  // Bildirge ve E-Defter'de "bekleyen" / "hatalı" kavramı yok (Muzaffer Bey); diğerlerinde sıfırsa çip gösterilmez
-  const yardimci = row.beyanTipi === 'BILDIRGE' || row.beyanTipi === 'EDEFTER';
   const pct = Math.max(0, Math.min(100, row.yuzde));
   const pay = (v: number) => (row.toplam > 0 ? (v / row.toplam) * 100 : 0);
-  const label = BEYAN_ETIKETLER[row.beyanTipi];
+  // Muzaffer Bey: beyannamelerde "bekleyen" ve "hatalı" HER ZAMAN görünür (sıfır olsa da); Bildirge ve E-Defter'de bu kavramlar yok
+  const yardimci = row.beyanTipi === 'BILDIRGE' || row.beyanTipi === 'EDEFTER';
+  const onayEtiket = row.beyanTipi === 'EDEFTER' ? 'verilen' : 'onaylanan';
   return (
-    <li className="bd-row" data-family={family} data-state={d.key}>
+    <li className="bd-row" data-state={d.key}>
       <button type="button" className="bd-row-id" onClick={() => onNumberClick(row.beyanTipi, 'toplam')} title="Mükellef listesini göster">
-        <span className="bd-row-icon" aria-hidden="true"><Icon size={17} /></span>
+        <span className="bd-row-icon" aria-hidden="true"><Icon size={16} /></span>
         <span className="bd-row-name">
-          <b>{label}</b>
+          <b>{BEYAN_ETIKETLER[row.beyanTipi]}</b>
           <small>{donemEtiket(row.vergiDonem)} · {row.toplam} mükellef</small>
         </span>
       </button>
@@ -194,26 +183,26 @@ function BeyanSatiri({ row, onNumberClick, onayLabel = 'onaylanan' }: { row: Oze
           {row.bekleyen > 0 && <i data-seg="wait" style={{ width: `${pay(row.bekleyen)}%` }} />}
           {row.hatali > 0 && <i data-seg="err" style={{ width: `${pay(row.hatali)}%` }} />}
         </div>
-        <div className="bd-chips">
-          <Cip deger={row.onaylanan} etiket={onayLabel} ton="ok" onClick={() => onNumberClick(row.beyanTipi, 'onaylanan')} />
-          {!yardimci && row.bekleyen > 0 && <Cip deger={row.bekleyen} etiket="bekleyen" ton="wait" onClick={() => onNumberClick(row.beyanTipi, 'bekleyen')} />}
-          {!yardimci && row.hatali > 0 && <Cip deger={row.hatali} etiket="hatalı" ton="err" onClick={() => onNumberClick(row.beyanTipi, 'hatali')} />}
-          <Cip deger={row.kalan} etiket="kalan" ton="left" onClick={() => onNumberClick(row.beyanTipi, 'kalan')} />
+        <div className="bd-nums">
+          <Sayi deger={row.onaylanan} etiket={onayEtiket} ton="ok" onClick={() => onNumberClick(row.beyanTipi, 'onaylanan')} />
+          {!yardimci && <Sayi deger={row.bekleyen} etiket="bekleyen" ton="wait" onClick={() => onNumberClick(row.beyanTipi, 'bekleyen')} />}
+          {!yardimci && <Sayi deger={row.hatali} etiket="hatalı" ton="err" onClick={() => onNumberClick(row.beyanTipi, 'hatali')} />}
+          <Sayi deger={row.kalan} etiket="kalan" ton="left" onClick={() => onNumberClick(row.beyanTipi, 'kalan')} />
         </div>
       </div>
       <div className="bd-row-status">
         <b className="bd-pct">%{pct}</b>
-        {d.key === 'pending' ? <span className="bd-status-text">{d.label}</span> : <span className="bd-status" data-state={d.key}>{d.label}</span>}
+        <span className="bd-status" data-state={d.key}>{d.label}</span>
       </div>
     </li>
   );
 }
 
-function Cip({ deger, etiket, ton, onClick }: { deger: number; etiket: ReactNode; ton: string; onClick: () => void }) {
+function Sayi({ deger, etiket, ton, onClick }: { deger: number; etiket: string; ton: string; onClick: () => void }) {
   const tiklanir = deger > 0;
   return (
-    <button type="button" className="bd-chip" data-ton={ton} data-zero={tiklanir ? undefined : 'true'} disabled={!tiklanir} onClick={tiklanir ? onClick : undefined} title={tiklanir ? 'Mükellef listesini göster' : undefined}>
-      <b>{deger}</b> {etiket}
+    <button type="button" className="bd-num" data-ton={ton} data-zero={tiklanir ? undefined : 'true'} disabled={!tiklanir} onClick={tiklanir ? onClick : undefined} title={tiklanir ? 'Mükellef listesini göster' : undefined}>
+      <i aria-hidden="true" /><b>{deger}</b> {etiket}
     </button>
   );
 }
