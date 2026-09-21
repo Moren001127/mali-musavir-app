@@ -22,6 +22,7 @@ import {
   Search as SearchIcon,
   BellRing,
   BrainCircuit,
+  CalendarDays,
   Building2,
   ClipboardCheck,
   DatabaseZap,
@@ -221,75 +222,23 @@ function WorkflowOverview({ counts, total, activeCount }: { counts?: WorkflowCou
   );
 }
 
-function DashboardSectionBridge({
-  from = 'İş Akışı',
-  to = 'Son Tarihler',
-  tone = 'gold',
-}: {
-  from?: string;
-  to?: string;
-  tone?: 'mint' | 'gold' | 'rose';
-}) {
-  const tones = {
-    mint: {
-      accent: '#8fd7bd',
-      accent2: '#d8bd86',
-      bg: 'rgba(143,215,189,0.040)',
-      border: 'rgba(143,215,189,0.15)',
-      text: '#bfe9dc',
-    },
-    gold: {
-      accent: '#d8bd86',
-      accent2: '#8cc8ff',
-      bg: 'rgba(216,189,134,0.038)',
-      border: 'rgba(216,189,134,0.15)',
-      text: '#d8c38f',
-    },
-    rose: {
-      accent: '#f0a6b6',
-      accent2: '#d8bd86',
-      bg: 'rgba(240,166,182,0.038)',
-      border: 'rgba(240,166,182,0.15)',
-      text: '#e8b8c1',
-    },
+/** Bölüm başlığı — sola yaslı: yumuşak tonlu simge kutusu + başlık + sağa uzayan ince çizgi.
+ *  (2026-09-21, Muzaffer Bey: "yanda çizgileri olan başlıkları yeniden tasarla" → ortalı kapsül + köprüler kaldırıldı.) */
+function DashboardSectionTitle({ children, tone = 'gold', icon: Icon }: { children: React.ReactNode; tone?: 'mint' | 'gold' | 'rose'; icon?: any }) {
+  const t = {
+    mint: { accent: '#8fd7bd', soft: 'rgba(143,215,189,0.12)', border: 'rgba(143,215,189,0.28)' },
+    gold: { accent: '#d8bd86', soft: 'rgba(216,189,134,0.12)', border: 'rgba(216,189,134,0.28)' },
+    rose: { accent: '#f0a6b6', soft: 'rgba(240,166,182,0.12)', border: 'rgba(240,166,182,0.28)' },
   }[tone];
   return (
-    <div className="relative my-12 flex items-center gap-4 px-2 sm:px-6">
-      <div className="h-[2px] flex-1 rounded-full" style={{ background: `linear-gradient(90deg, transparent, ${tones.accent}88, ${tones.accent2}55)` }} />
-        <div
-          data-dashboard-surface className="flex min-w-0 flex-wrap items-center justify-center gap-2 rounded-2xl px-3 py-2 sm:flex-nowrap"
-          style={portalStyle({
-            background: 'rgba(3,3,3,0.92)',
-            border: `1px solid ${tones.border}`,
-            boxShadow: `0 10px 24px rgba(0,0,0,0.26), 0 0 0 4px rgba(0,0,0,0.18)`,
-          })}
-        >
-          <span className="rounded-xl px-3 py-1.5 text-[10px] font-black uppercase tracking-[.14em]" style={portalStyle({ background: `${tones.bg}`, color: tones.text, border: `1px solid ${tones.border}` })}>
-            {from}
-          </span>
-          <span className="flex h-7 w-7 items-center justify-center rounded-full" style={portalStyle({ background: 'rgba(255,255,255,0.035)', color: tones.accent, border: `1px solid ${tones.border}` })}>
-            <ArrowRight size={14} />
-          </span>
-          <span className="rounded-xl px-3 py-1.5 text-[10px] font-black uppercase tracking-[.14em]" style={portalStyle({ background: `${tones.bg}`, color: tones.text, border: `1px solid ${tones.border}` })}>
-            {to}
-          </span>
-        </div>
-      <div className="h-[2px] flex-1 rounded-full" style={{ background: `linear-gradient(90deg, ${tones.accent2}55, ${tones.accent}88, transparent)` }} />
-    </div>
-  );
-}
-
-/** Ortalı bölüm başlığı — köprülerle aynı dil (yanlarda çizgi, ortada kapsül). Muzaffer Bey (2026-09-21):
- *  "Beyanname Durum Takibi başlığı diğerleri gibi ortalı, yanlardan çizgili olsun; iç içe duruyor". */
-function DashboardSectionTitle({ children, tone = 'gold' }: { children: React.ReactNode; tone?: 'mint' | 'gold' | 'rose' }) {
-  const t = { mint: ['#8fd7bd', '#d8bd86', 'rgba(143,215,189,0.15)', '#bfe9dc'], gold: ['#d8bd86', '#8cc8ff', 'rgba(216,189,134,0.15)', '#d8c38f'], rose: ['#f0a6b6', '#d8bd86', 'rgba(240,166,182,0.15)', '#e8b8c1'] }[tone];
-  return (
-    <div data-dashboard-section-title className="relative mt-10 mb-4 flex items-center gap-4 px-2 sm:px-6">
-      <div className="h-[2px] flex-1 rounded-full" style={{ background: `linear-gradient(90deg, transparent, ${t[0]}88, ${t[1]}55)` }} />
-      <div data-dashboard-surface className="rounded-2xl px-4 py-2 text-[11px] font-black uppercase tracking-[.16em] whitespace-nowrap" style={portalStyle({ background: 'rgba(3,3,3,0.92)', border: `1px solid ${t[2]}`, color: t[3], boxShadow: '0 10px 24px rgba(0,0,0,0.26), 0 0 0 4px rgba(0,0,0,0.18)' })}>
-        {children}
-      </div>
-      <div className="h-[2px] flex-1 rounded-full" style={{ background: `linear-gradient(90deg, ${t[1]}55, ${t[0]}88, transparent)` }} />
+    <div data-dashboard-section-title data-tone={tone} className="mt-9 mb-3 flex items-center gap-3 px-1">
+      {Icon && (
+        <span data-dashboard-section-icon className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg" style={portalStyle({ background: t.soft, border: `1px solid ${t.border}`, color: t.accent })}>
+          <Icon size={15} />
+        </span>
+      )}
+      <h2 data-dashboard-section-text className="whitespace-nowrap text-[14px] font-bold tracking-[.01em]" style={portalStyle({ color: '#f8f4ec' })}>{children}</h2>
+      <div data-dashboard-section-rule className="h-px flex-1" style={{ background: `linear-gradient(90deg, ${t.accent}66, transparent)` }} />
     </div>
   );
 }
@@ -1977,7 +1926,7 @@ export default function DashboardPage() {
 
       <OfisPanoramasi {...panoramaPeriod} />
 
-      <DashboardSectionTitle tone="gold">Beyanname Durum Takibi</DashboardSectionTitle>
+      <DashboardSectionTitle tone="gold" icon={FileCheck2}>Beyanname Durum Takibi</DashboardSectionTitle>
 
       <div
         data-beyan-panel data-dashboard-surface className="rounded-2xl overflow-hidden"
@@ -1990,11 +1939,11 @@ export default function DashboardPage() {
         <ToplubeyannameTable {...panoramaPeriod} />
       </div>
 
-      <DashboardSectionBridge from="Beyanname Takibi" to="Bu Ay İş Akışı" />
+      <DashboardSectionTitle tone="mint" icon={Workflow}>Bu Ay İş Akışı</DashboardSectionTitle>
 
       <WorkflowOverview counts={workflowCounts} total={workflowTotal} activeCount={activeCount || totalTx} />
 
-      <DashboardSectionBridge tone="rose" />
+      <DashboardSectionTitle tone="rose" icon={CalendarDays}>Bu Ay Mali Takvim</DashboardSectionTitle>
 
       <BuHaftaTakvim />
       </div>

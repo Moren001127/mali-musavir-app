@@ -42,6 +42,16 @@ fs.mkdirSync(CIKIS, { recursive: true });
     await pan.screenshot({ path: path.join(CIKIS, 'panorama-hafif.png') });
     await pg.addStyleTag({ content: "html[data-theme='D'] .yukumluluk-karti, html[data-theme='D'] .fatura-grafik-karti, html[data-theme='D'] .ofis-beyan { --panorama-tint: 1.8 !important; }" });
   }
+  // Bölüm başlıkları: her başlık + altındaki kartın ilk 150px'i
+  const basliklar = pg.locator('[data-dashboard-section-title]');
+  const nb = await basliklar.count();
+  for (let i = 0; i < nb; i++) {
+    const b = basliklar.nth(i);
+    await b.evaluate((e) => e.scrollIntoView({ block: 'start' }));
+    await pg.waitForTimeout(400);
+    const k = await b.boundingBox();
+    if (k) await pg.screenshot({ path: path.join(CIKIS, `baslik-${i + 1}.png`), clip: { x: Math.max(0, k.x - 8), y: Math.max(0, k.y - 24), width: k.width + 16, height: 200 } });
+  }
   // Üçü birlikte (beyan başlığından takvim sonuna) tam sayfa dilimi
   const bas = pg.locator('[data-dashboard-section-title]').first();
   const tak = pg.locator('[data-calendar]').first();

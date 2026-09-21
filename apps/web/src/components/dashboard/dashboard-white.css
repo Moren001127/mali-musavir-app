@@ -545,3 +545,40 @@ html[data-theme='D'] [data-beyan-mini] [data-beyan-num] > div:last-child { font-
 html[data-theme='D'] [data-beyan-mini] .h-1\.5 { height: 6px; }
 html[data-theme='D'] [data-beyan-mini] > div { grid-template-columns: minmax(120px, 1.6fr) repeat(3, minmax(62px, .7fr)) minmax(112px, 1.4fr); }
 html[data-theme='D'] [data-beyan-mini] button > div:first-child { letter-spacing: .03em; }
+
+/* ── 2026-09-21 Bölüm başlıkları (sola yaslı; kapsül + köprüler kalktı) + Beyan tablosu kartına çivit zemin (onaylandı) */
+html[data-theme='D'] [data-dashboard-section-title] { margin-top: 28px; margin-bottom: 10px; }
+html[data-theme='D'] [data-dashboard-section-text] { color: #1e293b !important; font-size: 14px; }
+html[data-theme='D'] [data-dashboard-section-icon] { border-radius: 9px; }
+html[data-theme='D'] [data-dashboard-section-title][data-tone='gold'] [data-dashboard-section-icon] { background: #edf2ff !important; border-color: #dbe4ff !important; color: #4263eb !important; }
+html[data-theme='D'] [data-dashboard-section-title][data-tone='gold'] [data-dashboard-section-icon] svg { color: #4263eb !important; }
+html[data-theme='D'] [data-dashboard-section-title][data-tone='gold'] [data-dashboard-section-rule] { background: linear-gradient(90deg, #c5d3ff, transparent) !important; }
+html[data-theme='D'] [data-dashboard-section-title][data-tone='mint'] [data-dashboard-section-icon] { background: #e6fcf5 !important; border-color: #c3fae8 !important; color: #0ca678 !important; }
+html[data-theme='D'] [data-dashboard-section-title][data-tone='mint'] [data-dashboard-section-icon] svg { color: #0ca678 !important; }
+html[data-theme='D'] [data-dashboard-section-title][data-tone='mint'] [data-dashboard-section-rule] { background: linear-gradient(90deg, #b5ecd9, transparent) !important; }
+html[data-theme='D'] [data-dashboard-section-title][data-tone='rose'] [data-dashboard-section-icon] { background: #fff0f6 !important; border-color: #fcc2d7 !important; color: #c2255c !important; }
+html[data-theme='D'] [data-dashboard-section-title][data-tone='rose'] [data-dashboard-section-icon] svg { color: #c2255c !important; }
+html[data-theme='D'] [data-dashboard-section-title][data-tone='rose'] [data-dashboard-section-rule] { background: linear-gradient(90deg, #fcc2d7, transparent) !important; }
+/* Kart içindeki tekrar eden başlıklar gizli; kart üst satırı araç çubuğu olarak kalır (açıklama + rozetler) */
+html[data-theme='D'] [data-workflow-panel] [data-dashboard-band='mint'] h3 { display: none; }
+html[data-theme='D'] [data-workflow-panel] [data-dashboard-band='mint'] p { margin-top: 0; font-size: 12.5px; color: #475569 !important; }
+html[data-theme='D'] [data-calendar] [data-calendar-header] h3 { display: none; }
+/* Beyanname Durum Takibi kartı: yan kartlarla aynı dil, çivit zemin */
+html[data-theme='D'] [data-beyan-panel][data-dashboard-surface] {
+  --panorama-tint: 1.8;
+  --pt-a: #4263eb;
+  --pt-b: #4263eb;
+  --pt-wash: #eef2ff;
+  --pt-edge: #d5ddfb;
+  border: 1px solid var(--pt-edge) !important;
+  background:
+    radial-gradient(60% 70% at 100% 0%, color-mix(in srgb, var(--pt-a) calc(10% * var(--panorama-tint)), transparent), transparent 55%),
+    radial-gradient(50% 60% at 0% 100%, color-mix(in srgb, var(--pt-b) calc(6% * var(--panorama-tint)), transparent), transparent 55%),
+    linear-gradient(160deg, color-mix(in srgb, var(--pt-wash) calc(100% * var(--panorama-tint)), #fff) 0%, #fff 100%) !important;
+  box-shadow: 0 6px 18px rgba(66, 99, 235, 0.09) !important;
+}
+html[data-theme='D'] [data-beyan-panel] [data-beyan-heading] { border-bottom-color: #dfe5fb !important; }
+html[data-theme='D'] [data-beyan-panel] [data-beyan-mode-group] { background: rgba(255, 255, 255, 0.7) !important; border-color: #d5ddfb !important; }
+html[data-theme='D'] [data-beyan-table-scroll] { border-color: #d5ddfb !important; }
+html[data-theme='D'] [data-beyan-mini] { border-color: #d5ddfb !important; }
+html[data-theme='D'] [data-dashboard-section-text] { font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-weight: 700; letter-spacing: -0.005em; }
