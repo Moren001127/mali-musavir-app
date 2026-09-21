@@ -20,6 +20,16 @@ fs.mkdirSync(CIKIS, { recursive: true });
   const menu = pg.locator('[data-moren-sidebar]').first();
   await menu.screenshot({ path: path.join(CIKIS, 'menu.png') });
   await pg.screenshot({ path: path.join(CIKIS, 'panel-tam.png') });
+  // Sayaç kartları + beyanname bölüm başlığı
+  const sayac = pg.locator('[data-dashboard-counters]').first();
+  if (await sayac.count()) await sayac.screenshot({ path: path.join(CIKIS, 'sayaclar.png') });
+  const bolum = pg.locator('[data-dashboard-section-title]').first();
+  if (await bolum.count()) {
+    await bolum.scrollIntoViewIfNeeded();
+    await pg.waitForTimeout(400);
+    const kutu = await bolum.boundingBox();
+    if (kutu) await pg.screenshot({ path: path.join(CIKIS, 'beyan-baslik.png'), clip: { x: Math.max(0, kutu.x - 8), y: Math.max(0, kutu.y - 20), width: kutu.width + 16, height: 220 } });
+  }
   // Beyanname görünümü grafiği (gösterge paneli)
   const grafik = pg.locator('.ofis-beyan').first();
   if (await grafik.count()) {

@@ -277,6 +277,21 @@ function DashboardSectionBridge({
   );
 }
 
+/** Ortalı bölüm başlığı — köprülerle aynı dil (yanlarda çizgi, ortada kapsül). Muzaffer Bey (2026-09-21):
+ *  "Beyanname Durum Takibi başlığı diğerleri gibi ortalı, yanlardan çizgili olsun; iç içe duruyor". */
+function DashboardSectionTitle({ children, tone = 'gold' }: { children: React.ReactNode; tone?: 'mint' | 'gold' | 'rose' }) {
+  const t = { mint: ['#8fd7bd', '#d8bd86', 'rgba(143,215,189,0.15)', '#bfe9dc'], gold: ['#d8bd86', '#8cc8ff', 'rgba(216,189,134,0.15)', '#d8c38f'], rose: ['#f0a6b6', '#d8bd86', 'rgba(240,166,182,0.15)', '#e8b8c1'] }[tone];
+  return (
+    <div data-dashboard-section-title className="relative mt-10 mb-4 flex items-center gap-4 px-2 sm:px-6">
+      <div className="h-[2px] flex-1 rounded-full" style={{ background: `linear-gradient(90deg, transparent, ${t[0]}88, ${t[1]}55)` }} />
+      <div data-dashboard-surface className="rounded-2xl px-4 py-2 text-[11px] font-black uppercase tracking-[.16em] whitespace-nowrap" style={portalStyle({ background: 'rgba(3,3,3,0.92)', border: `1px solid ${t[2]}`, color: t[3], boxShadow: '0 10px 24px rgba(0,0,0,0.26), 0 0 0 4px rgba(0,0,0,0.18)' })}>
+        {children}
+      </div>
+      <div className="h-[2px] flex-1 rounded-full" style={{ background: `linear-gradient(90deg, ${t[1]}55, ${t[0]}88, transparent)` }} />
+    </div>
+  );
+}
+
 function AgentMini({ href, icon: Icon, name, stat, running }: { href: string; icon: any; name: string; stat: string; running: boolean }) {
   return (
     <Link href={href} className="flex items-center gap-3 p-3 rounded-xl transition-all duration-300" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' })}
@@ -381,14 +396,12 @@ function ToplubeyannamePanel({ donem, setDonem, donemTuru, setDonemTuru }: Panor
     <div>
       <div data-beyan-heading data-dashboard-band="plum" className="px-5 py-4" style={portalStyle({ borderBottom: `1px solid ${BEYAN_TONE.border}` })}>
         <div className="grid gap-3 xl:grid-cols-[minmax(300px,1fr)_auto] xl:items-center">
+          {/* Kart başlığı dışarıdaki ortalı bölüm başlığına taşındı; burada yalnız dönem açıklaması + süzgeçler */}
           <div className="flex min-w-0 items-center gap-2.5">
-            <span data-beyan-heading-icon className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" style={portalStyle({ background: BEYAN_TONE.bg, border: `1px solid ${BEYAN_TONE.border}`, color: BEYAN_TONE.accentSoft })}>
-              <FileCheck2 size={15} />
+            <span data-beyan-heading-icon className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg" style={portalStyle({ background: BEYAN_TONE.bg, border: `1px solid ${BEYAN_TONE.border}`, color: BEYAN_TONE.accentSoft })}>
+              <FileCheck2 size={14} />
             </span>
-            <div className="min-w-0">
-              <h3 className="truncate text-[16px] font-semibold leading-tight" style={portalStyle({ color: BEYAN_TONE.title })}>Beyanname Durum Takibi</h3>
-              <p className="mt-0.5 truncate text-[11.5px]" style={portalStyle({ color: BEYAN_TONE.muted })}>{modeLabel} - {donemEtiket(selectedDonem)} - {modeNote}</p>
-            </div>
+            <p className="min-w-0 truncate text-[12px]" style={portalStyle({ color: BEYAN_TONE.muted })}>{modeLabel} · {donemEtiket(selectedDonem)} · {modeNote}</p>
           </div>
           <div className="flex flex-wrap items-center justify-start gap-2 xl:justify-end">
             <div className="inline-flex rounded-lg p-0.5" style={portalStyle({ background: 'rgba(244,239,229,0.03)', border: `1px solid ${BEYAN_TONE.borderSoft}` })}>
@@ -1931,6 +1944,8 @@ export default function DashboardPage() {
       </div>
 
       <OfisPanoramasi {...panoramaPeriod} />
+
+      <DashboardSectionTitle tone="gold">Beyanname Durum Takibi</DashboardSectionTitle>
 
       <div
         data-beyan-panel data-dashboard-surface className="rounded-2xl overflow-hidden"

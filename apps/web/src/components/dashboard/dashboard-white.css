@@ -149,8 +149,7 @@ html[data-theme='D'] [data-beyan-heading][data-dashboard-band] {
   border-bottom-color: #c7b5d8 !important;
   box-shadow: inset 0 1px 0 #ffffffb3;
 }
-html[data-theme='D'] [data-beyan-heading] h3 { font-size: 20px; font-weight: 750; color: #443252 !important; }
-html[data-theme='D'] [data-beyan-heading] p { color: #665771 !important; }
+html[data-theme='D'] [data-beyan-heading] p { color: #665771 !important; font-size: 12.5px; }
 html[data-theme='D'] [data-beyan-heading-icon] { background: linear-gradient(135deg,#65457f,#9674ad) !important; color: #fff !important; border-color: #8a6b9e !important; }
 html[data-theme='D'] [data-beyan-heading-icon] svg { color: #fff !important; }
 html[data-theme='D'] [data-beyan-mode='active'] { background: #fff !important; color: #684780 !important; border-color: #bca7cc !important; box-shadow: 0 2px 5px #49335c12; }
@@ -169,20 +168,41 @@ html[data-theme='D'] [data-dashboard-counters] { margin-top: 12px !important; ma
 html[data-theme='D'] [data-dashboard-counters] [data-dashboard-kpi] { padding: 10px 14px !important; }
 html[data-theme='D'] [data-dashboard-counters] + .workflow-distribution { margin-top: 0 !important; }
 
-/* Ana sayaçlarda doygun zemin ve yüksek karşıtlıklı beyaz metin. */
+/* Ana sayaçlar: Fatura İşleme Merkezi > Genel Bakış kutucuklarıyla AYNI tonlar (Muzaffer Bey, 2026-09-21):
+   135° gradyan, sağ üstte yarı saydam beyaz daire, tona göre yumuşak gölge, beyaz metin.
+   sage → yeşil · sky → mavi · champagne → çivit · kritik uyarı: sorun varsa kırmızı, yoksa deniz yeşili. */
 html[data-theme='D'] [data-dashboard-counters] [data-dashboard-kpi] {
-  --counter-solid: #a85a0b;
-  background: var(--counter-solid) !important;
-  border-color: var(--counter-solid) !important;
+  --counter-solid: #e03131;
+  --counter-2: #ff6b6b;
+  --counter-shadow: rgba(224,49,49,.5);
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(135deg, var(--counter-solid), var(--counter-2)) !important;
+  border-color: transparent !important;
+  border-radius: 16px !important;
+  box-shadow: 0 10px 22px -14px var(--counter-shadow) !important;
   color: #fff !important;
 }
-html[data-theme='D'] [data-dashboard-counters] [data-dashboard-kpi='sage'] { --counter-solid: #137957; }
-html[data-theme='D'] [data-dashboard-counters] [data-dashboard-kpi='sky'] { --counter-solid: #2469b1; }
-html[data-theme='D'] [data-dashboard-counters] [data-dashboard-kpi='champagne'] { --counter-solid: #a13e70; }
+html[data-theme='D'] [data-dashboard-counters] [data-dashboard-kpi]::after {
+  content: '';
+  position: absolute;
+  right: -18px;
+  top: -18px;
+  width: 82px;
+  height: 82px;
+  border-radius: 50%;
+  background: rgba(255,255,255,.14);
+  pointer-events: none;
+}
+html[data-theme='D'] [data-dashboard-counters] [data-dashboard-kpi] > * { position: relative; z-index: 1; }
+html[data-theme='D'] [data-dashboard-counters] [data-dashboard-kpi='sage'] { --counter-solid: #2f9e44; --counter-2: #51cf66; --counter-shadow: rgba(47,158,68,.5); }
+html[data-theme='D'] [data-dashboard-counters] [data-dashboard-kpi='sky'] { --counter-solid: #1971c2; --counter-2: #339af0; --counter-shadow: rgba(25,113,194,.5); }
+html[data-theme='D'] [data-dashboard-counters] [data-dashboard-kpi='champagne'] { --counter-solid: #4263eb; --counter-2: #5c7cfa; --counter-shadow: rgba(66,99,235,.5); }
+html[data-theme='D'] [data-dashboard-counters] [data-dashboard-kpi][data-dashboard-alert='clear'] { --counter-solid: #0ca678; --counter-2: #20c997; --counter-shadow: rgba(12,166,120,.5); }
 html[data-theme='D'] [data-dashboard-counters] [data-dashboard-kpi] :is(p, span, div, svg, .tabular-nums) { color: #fff !important; }
 html[data-theme='D'] [data-dashboard-counters] :is([data-dashboard-kpi-icon], [data-dashboard-kpi-badge]) {
-  background: rgba(255,255,255,.16) !important;
-  border-color: rgba(255,255,255,.24) !important;
+  background: rgba(255,255,255,.22) !important;
+  border-color: transparent !important;
 }
 
 /* Başlık yerine ince araç satırı, grafiğe daha fazla alan. */
