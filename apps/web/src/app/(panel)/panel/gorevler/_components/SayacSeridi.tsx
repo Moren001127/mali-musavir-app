@@ -17,7 +17,7 @@ const HAPLAR: Array<{ key: SayacAnahtari; ad: string; renk: string; ikon: typeof
   { key: 'not', ad: 'Notlar', renk: NOT_RENK, ikon: StickyNote, ipucu: 'Serbest notlar' },
 ];
 
-/** Tek satır hap sayaç şeridi — tıklanınca süzer (aktif hap dolu). Dar ekranda yatay kayar, sayfa kaymaz. */
+/** Tek satır hap sayaç şeridi — tıklanınca süzer (aktif hap dolu). Dar ekranda yatay kayar, sayfa kaymaz. Beyaz temada renk yalnız anlam (gorevler-white.css). */
 export function SayacSeridi({ sayaclar, aktif, onSec }: { sayaclar?: AjandaSayaclar; aktif: SayacAnahtari; onSec: (k: SayacAnahtari) => void }) {
   return (
     <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -28,7 +28,8 @@ export function SayacSeridi({ sayaclar, aktif, onSec }: { sayaclar?: AjandaSayac
         const var_ = (sayi ?? 0) > 0;
         return (
           <button
-            data-inceleme-sayac={h.key}
+            data-gorev-sayac={h.key}
+            data-sayi={var_ ? 'var' : 'yok'}
             key={h.key}
             type="button"
             onClick={() => onSec(h.key)}
@@ -46,7 +47,7 @@ export function SayacSeridi({ sayaclar, aktif, onSec }: { sayaclar?: AjandaSayac
             {sayi === undefined ? (
               <span className="inline-block h-3 w-5 animate-pulse rounded" style={portalStyle({ background: 'rgba(255,255,255,0.12)' })} />
             ) : (
-              <span className="rounded-full px-1.5 text-[10px] font-bold leading-4 tabular-nums" style={portalStyle(secili ? { background: 'rgba(0,0,0,0.22)' } : { background: `${h.renk}22` })}>
+              <span data-gorev-sayac-rozet className="rounded-full px-1.5 text-[10px] font-bold leading-4 tabular-nums" style={portalStyle(secili ? { background: 'rgba(0,0,0,0.22)' } : { background: `${h.renk}22` })}>
                 {sayi}
               </span>
             )}

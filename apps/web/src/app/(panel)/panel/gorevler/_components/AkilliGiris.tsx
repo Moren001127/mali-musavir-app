@@ -106,7 +106,7 @@ export function AkilliGiris({
     >
       <div className="p-3">
         {/* Giriş satırı */}
-        <div className="flex items-center gap-2 rounded-xl px-3" style={portalStyle({ background: 'rgba(0,0,0,0.28)', border: `1px solid ${dolu ? `${GOLD}55` : 'rgba(255,255,255,0.10)'}` })}>
+        <div data-gorev-giris-satir data-dolu={dolu} className="flex items-center gap-2 rounded-xl px-3" style={portalStyle({ background: 'rgba(0,0,0,0.28)', border: `1px solid ${dolu ? `${GOLD}55` : 'rgba(255,255,255,0.10)'}` })}>
           <Sparkles size={16} className="flex-shrink-0" style={portalStyle({ color: GOLD })} />
           <input
             ref={girdiRef}
@@ -126,7 +126,7 @@ export function AkilliGiris({
             style={portalStyle({ color: METIN })}
           />
           {dolu && (
-            <button type="button" onClick={sifirla} title="Temizle (Esc)" className="flex-shrink-0 rounded-md p-1 hover:bg-white/10" style={portalStyle({ color: IKINCIL })}>
+            <button type="button" data-gorev-temizle onClick={sifirla} title="Temizle (Esc)" className="flex-shrink-0 rounded-md p-1 hover:bg-white/10" style={portalStyle({ color: IKINCIL })}>
               <X size={14} />
             </button>
           )}
@@ -135,6 +135,7 @@ export function AkilliGiris({
             onClick={ekle}
             disabled={!baslik || gonderiliyor}
             title={tur === 'NOT' ? 'Not olarak kaydet (Enter)' : 'Görev ekle (Enter)'}
+            data-gorev-dugme="birincil"
             className="gorev-ekle inline-flex h-8 flex-shrink-0 items-center gap-1.5 rounded-lg px-3 text-[12.5px] font-bold transition-[transform,filter] hover:-translate-y-px hover:brightness-110 disabled:opacity-40 disabled:hover:translate-y-0"
             style={portalStyle({ background: `linear-gradient(135deg, ${tur === 'NOT' ? NOT_RENK : GOLD}, ${tur === 'NOT' ? '#d97706' : GOLD_SOFT})`, color: '#0f0d0b' })}
           >
@@ -187,6 +188,7 @@ export function AkilliGiris({
                   type="button"
                   onClick={() => setElle((e) => ({ ...e, mukellefId: a.id }))}
                   title="Bu mükellef mi? Tıklayınca bağlanır"
+                  data-gorev-cip="aday"
                   className={`inline-flex flex-shrink-0 items-center gap-1 rounded-full px-2 py-[3px] text-[11px] font-medium transition ${CIP_ADAY_SINIF}`}
                 >
                   {a.ad}?
@@ -197,7 +199,7 @@ export function AkilliGiris({
                   <div className="py-1">
                     <MenuBaslik>Kategori</MenuBaslik>
                     {CATEGORY_OPTIONS.map((c) => (
-                      <MenuSatiri key={c.value} aktif={kategori === c.value} ikon={<span className="h-2 w-2 rounded-full" style={portalStyle({ background: c.color })} />} onClick={() => { setElle((e) => ({ ...e, kategori: c.value })); kapat(); }}>
+                      <MenuSatiri key={c.value} aktif={kategori === c.value} ikon={<span data-gorev-kategori-nokta data-kategori={c.value} className="h-2 w-2 rounded-full" style={portalStyle({ background: c.color })} />} onClick={() => { setElle((e) => ({ ...e, kategori: c.value })); kapat(); }}>
                         {c.label}
                       </MenuSatiri>
                     ))}
@@ -222,14 +224,15 @@ export function AkilliGiris({
               </Cip>
             </>
           ) : (
-            <span className="text-[11.5px]" style={portalStyle({ color: SONUK })}>
+            <span data-gorev-yardim className="text-[11.5px]" style={portalStyle({ color: SONUK })}>
               Tarih, saat, mükellef, kategori ve öncelik yazdıkça kendiliğinden ayrışır; çiplerden düzeltebilirsiniz.
             </span>
           )}
 
           {/* Not anahtarı */}
-          <label className="ml-auto inline-flex flex-shrink-0 cursor-pointer select-none items-center gap-2 text-[11.5px] font-semibold" style={portalStyle({ color: tur === 'NOT' ? NOT_RENK : IKINCIL })} title="Görev yerine serbest not olarak kaydet">
+          <label data-gorev-anahtar data-acik={tur === 'NOT'} className="ml-auto inline-flex flex-shrink-0 cursor-pointer select-none items-center gap-2 text-[11.5px] font-semibold" style={portalStyle({ color: tur === 'NOT' ? NOT_RENK : IKINCIL })} title="Görev yerine serbest not olarak kaydet">
             <span
+              data-gorev-anahtar-ray
               role="switch"
               aria-checked={tur === 'NOT'}
               className="relative inline-block h-[18px] w-[32px] rounded-full transition-colors"
@@ -259,6 +262,7 @@ function Cip({ ikon, etiket, bos, title, children }: { ikon: ReactNode; etiket: 
           type="button"
           onClick={ac}
           title={`${title} — değiştirmek için tıkla`}
+          data-gorev-cip={acik ? 'acik' : bos ? 'bos' : 'normal'}
           className={`inline-flex max-w-[260px] flex-shrink-0 items-center gap-1 rounded-full px-2.5 py-[3px] text-[11px] font-medium transition ${acik ? CIP_ACIK_SINIF : bos ? CIP_BOS_SINIF : CIP_SINIF}`}
         >
           {ikon}
@@ -290,8 +294,8 @@ function TarihMenusu({ deger, onSec }: { deger: string | null; onSec: (g: string
       ))}
       <MenuAyrac />
       <div className="flex items-center gap-2 px-3 py-2">
-        <input type="date" value={tarih} onChange={(e) => setTarih(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && tarih && onSec(tarih)} className="h-8 min-w-0 flex-1 px-2 text-[12px]" style={portalStyle(GIRDI)} title="Tarih seç" />
-        <button type="button" disabled={!tarih} onClick={() => tarih && onSec(tarih)} className="h-8 rounded-lg px-3 text-[12px] font-semibold disabled:opacity-40" style={portalStyle({ background: 'rgba(212,184,118,0.10)', color: GOLD, border: `1px solid ${GOLD}66` })}>
+        <input type="date" data-gorev-girdi value={tarih} onChange={(e) => setTarih(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && tarih && onSec(tarih)} className="h-8 min-w-0 flex-1 px-2 text-[12px]" style={portalStyle(GIRDI)} title="Tarih seç" />
+        <button type="button" data-gorev-dugme="yumusak" disabled={!tarih} onClick={() => tarih && onSec(tarih)} className="h-8 rounded-lg px-3 text-[12px] font-semibold disabled:opacity-40" style={portalStyle({ background: 'rgba(212,184,118,0.10)', color: GOLD, border: `1px solid ${GOLD}66` })}>
           Seç
         </button>
       </div>
@@ -314,14 +318,14 @@ function SaatMenusu({ deger, onSec }: { deger: string | null; onSec: (s: string 
       <MenuBaslik>Saat</MenuBaslik>
       <div className="flex flex-wrap gap-1 px-3 py-1">
         {['09:00', '10:00', '11:00', '14:00', '16:00', '17:30'].map((s) => (
-          <button key={s} type="button" onClick={() => onSec(s)} className="rounded-md px-2 py-1 text-[11.5px] font-semibold tabular-nums transition hover:brightness-125" style={portalStyle({ background: deger === s ? 'rgba(212,184,118,0.14)' : 'rgba(255,255,255,0.05)', color: deger === s ? GOLD : METIN, border: `1px solid ${deger === s ? `${GOLD}66` : 'rgba(255,255,255,0.08)'}` })}>
+          <button key={s} type="button" data-gorev-saat data-secili={deger === s} onClick={() => onSec(s)} className="rounded-md px-2 py-1 text-[11.5px] font-semibold tabular-nums transition hover:brightness-125" style={portalStyle({ background: deger === s ? 'rgba(212,184,118,0.14)' : 'rgba(255,255,255,0.05)', color: deger === s ? GOLD : METIN, border: `1px solid ${deger === s ? `${GOLD}66` : 'rgba(255,255,255,0.08)'}` })}>
             {s}
           </button>
         ))}
       </div>
       <div className="flex items-center gap-2 px-3 py-2">
-        <input type="time" value={saat} onChange={(e) => setSaat(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && saat && onSec(saat)} className="h-8 min-w-0 flex-1 px-2 text-[12px]" style={portalStyle(GIRDI)} title="Saat seç" />
-        <button type="button" disabled={!saat} onClick={() => saat && onSec(saat)} className="h-8 rounded-lg px-3 text-[12px] font-semibold disabled:opacity-40" style={portalStyle({ background: 'rgba(212,184,118,0.10)', color: GOLD, border: `1px solid ${GOLD}66` })}>
+        <input type="time" data-gorev-girdi value={saat} onChange={(e) => setSaat(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && saat && onSec(saat)} className="h-8 min-w-0 flex-1 px-2 text-[12px]" style={portalStyle(GIRDI)} title="Saat seç" />
+        <button type="button" data-gorev-dugme="yumusak" disabled={!saat} onClick={() => saat && onSec(saat)} className="h-8 rounded-lg px-3 text-[12px] font-semibold disabled:opacity-40" style={portalStyle({ background: 'rgba(212,184,118,0.10)', color: GOLD, border: `1px solid ${GOLD}66` })}>
           Seç
         </button>
       </div>
@@ -348,15 +352,15 @@ export function MukellefMenusu({ mukellefler, deger, onSec }: { mukellefler: Muk
   }, [mukellefler, arama]);
   return (
     <div className="flex max-h-[320px] flex-col">
-      <div className="p-2" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.07)' })}>
+      <div data-gorev-ayrac className="p-2" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.07)' })}>
         <div className="relative">
-          <Search size={12} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2" style={portalStyle({ color: IKINCIL })} />
-          <input autoFocus value={arama} onChange={(e) => setArama(e.target.value)} placeholder="Ad ya da VKN ara…" className="h-8 w-full pl-7 pr-2 text-[12px]" style={portalStyle(GIRDI)} />
+          <Search size={12} data-gorev-arama-ikon className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2" style={portalStyle({ color: IKINCIL })} />
+          <input autoFocus data-gorev-girdi value={arama} onChange={(e) => setArama(e.target.value)} placeholder="Ad ya da VKN ara…" className="h-8 w-full pl-7 pr-2 text-[12px]" style={portalStyle(GIRDI)} />
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto py-1">
         {liste.length === 0 && (
-          <div className="px-3 py-4 text-center text-[11.5px]" style={portalStyle({ color: IKINCIL })}>
+          <div data-gorev-soluk className="px-3 py-4 text-center text-[11.5px]" style={portalStyle({ color: IKINCIL })}>
             Eşleşen mükellef yok
           </div>
         )}
@@ -367,7 +371,7 @@ export function MukellefMenusu({ mukellefler, deger, onSec }: { mukellefler: Muk
         ))}
       </div>
       {deger && (
-        <div style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.07)' })}>
+        <div data-gorev-ayrac style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.07)' })}>
           <MenuSatiri ikon={<X size={12} />} onClick={() => onSec(null)}>
             Mükellef bağını kaldır
           </MenuSatiri>

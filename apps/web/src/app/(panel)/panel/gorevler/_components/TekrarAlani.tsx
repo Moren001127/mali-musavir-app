@@ -14,10 +14,10 @@ export function TekrarAlani({ value, onChange }: { value: RecurrenceConfig | nul
   const v: RecurrenceConfig = value || { type: 'NONE' };
   return (
     <div className="space-y-2">
-      <label className="block text-[10.5px] font-bold uppercase tracking-[.12em]" style={portalStyle({ color: IKINCIL })}>
+      <label data-gorev-etiket className="block text-[10.5px] font-bold uppercase tracking-[.12em]" style={portalStyle({ color: IKINCIL })}>
         <Repeat size={10} className="mr-1 inline" /> Tekrar
       </label>
-      <select value={v.type || 'NONE'} onChange={(e) => onChange({ ...v, type: e.target.value as RecurrenceType })} className="h-9 w-full px-3 text-[12.5px]" style={portalStyle(GIRDI)} title="Tekrar sıklığı">
+      <select data-gorev-girdi value={v.type || 'NONE'} onChange={(e) => onChange({ ...v, type: e.target.value as RecurrenceType })} className="h-9 w-full px-3 text-[12.5px]" style={portalStyle(GIRDI)} title="Tekrar sıklığı">
         <option value="NONE" style={portalStyle(SECENEK_STIL)}>Tekrar yok (tek seferlik)</option>
         <option value="DAILY" style={portalStyle(SECENEK_STIL)}>Her gün</option>
         <option value="WEEKLY" style={portalStyle(SECENEK_STIL)}>Haftalık (belli günler)</option>
@@ -34,6 +34,7 @@ export function TekrarAlani({ value, onChange }: { value: RecurrenceConfig | nul
                 key={idx}
                 type="button"
                 title={d}
+                data-gorev-gun-sec
                 aria-pressed={sel}
                 onClick={() => {
                   const wd = v.weekdays || [];
@@ -58,6 +59,7 @@ export function TekrarAlani({ value, onChange }: { value: RecurrenceConfig | nul
           onChange={(e) => onChange({ ...v, monthDay: parseInt(e.target.value) || undefined })}
           placeholder="Ayın günü 1-31 (örn. 26)"
           title="Ayın hangi günü"
+          data-gorev-girdi
           className="h-9 w-full px-3 text-[12.5px]"
           style={portalStyle(GIRDI)}
         />
@@ -65,14 +67,14 @@ export function TekrarAlani({ value, onChange }: { value: RecurrenceConfig | nul
 
       {v.type === 'YEARLY' && (
         <div className="grid grid-cols-2 gap-2">
-          <select value={v.yearMonth || 1} onChange={(e) => onChange({ ...v, yearMonth: parseInt(e.target.value) })} className="h-9 w-full px-3 text-[12.5px]" style={portalStyle(GIRDI)} title="Ay">
+          <select data-gorev-girdi value={v.yearMonth || 1} onChange={(e) => onChange({ ...v, yearMonth: parseInt(e.target.value) })} className="h-9 w-full px-3 text-[12.5px]" style={portalStyle(GIRDI)} title="Ay">
             {AYLAR.map((m, i) => (
               <option key={i} value={i + 1} style={portalStyle(SECENEK_STIL)}>
                 {m}
               </option>
             ))}
           </select>
-          <input type="number" min={1} max={31} value={v.yearDay || 1} onChange={(e) => onChange({ ...v, yearDay: parseInt(e.target.value) || 1 })} title="Gün" className="h-9 w-full px-3 text-[12.5px]" style={portalStyle(GIRDI)} />
+          <input type="number" data-gorev-girdi min={1} max={31} value={v.yearDay || 1} onChange={(e) => onChange({ ...v, yearDay: parseInt(e.target.value) || 1 })} title="Gün" className="h-9 w-full px-3 text-[12.5px]" style={portalStyle(GIRDI)} />
         </div>
       )}
     </div>

@@ -78,7 +78,7 @@ export function MukellefeGoreGorunumu({
       onGrupSec={onGrupSec}
       eylemler={eylemler}
       acikId={acikId}
-      bos={<BosDurum ikon={<Building2 size={18} />} metin="Mükellefe bağlı görev yok" renk={EKIP_RENK} />}
+      bos={<div data-gorev-bos><BosDurum ikon={<Building2 size={18} />} metin="Mükellefe bağlı görev yok" renk={EKIP_RENK} /></div>}
     />
   );
 }

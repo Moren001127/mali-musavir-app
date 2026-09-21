@@ -15,7 +15,7 @@ import {
   ALTIN_SOLUK, DurumRozeti, EkipIstekCipi, GECIKME_RENK, KENAR_NOTR, KategoriEtiketi, KaynakRozeti, MukellefCipi, NotSayisi, OncelikEtiketi, SABIT_RENK, TekrarIkonu,
 } from './Rozetler';
 import {
-  EKIP_RENK, GIRDI, GOLD, IKINCIL, METIN, MOR, SONUK, YESIL,
+  EKIP_RENK, GIRDI, GOLD, GRUPLAR, IKINCIL, METIN, MOR, SONUK, YESIL,
   etkinTarih, gecikmeMetni, goreliZaman, kisaTarih, type SatirGrubu,
 } from './ortak';
 
@@ -56,8 +56,8 @@ export interface GorevTablosuProps {
 export function GorevTablosu({ gruplar, secili, onSec, onGrupSec, eylemler, acikId, basliksiz, bos }: GorevTablosuProps) {
   const dolu = gruplar.filter((g) => g.satirlar.length > 0);
   return (
-    <div className="gorev-tablo-cerceve overflow-x-auto rounded-xl" style={portalStyle({ border: `1px solid ${KENAR_NOTR}`, background: 'rgba(255,255,255,0.02)' })}>
-      <table data-inceleme-tablo className="w-full" style={portalStyle({ borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: 760 })}>
+    <div data-gorev-tablo-cerceve className="gorev-tablo-cerceve overflow-x-auto rounded-xl" style={portalStyle({ border: `1px solid ${KENAR_NOTR}`, background: 'rgba(255,255,255,0.02)' })}>
+      <table data-gorev-tablo className="w-full" style={portalStyle({ borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: 760 })}>
         <colgroup>
           <col style={portalStyle({ width: 36 })} />
           <col />
@@ -89,15 +89,17 @@ export function GorevTablosu({ gruplar, secili, onSec, onGrupSec, eylemler, acik
           {dolu.map((g, gi) => {
             const gorevIdleri = g.satirlar.filter((s) => s.tip === 'gorev').map((s) => (s as { gorev: Task }).gorev.id);
             const hepsiSecili = gorevIdleri.length > 0 && gorevIdleri.every((id) => secili.has(id));
+            // Ajanda grupları (Gecikmiş/Bugün/…/Sizden istenen) aciliyet rengi taşır; diğerleri (mükellef adı, gün) nötr.
+            const grupTuru = g.key === 'istek' || GRUPLAR.some((x) => x.key === g.key) ? 'ajanda' : 'ozel';
             return (
               <Fragment key={g.key}>
                 {!basliksiz && gi > 0 && (
-                  <tr aria-hidden="true">
+                  <tr aria-hidden="true" data-gorev-bosluk>
                     <td colSpan={SUTUN} style={portalStyle({ border: 'none', padding: 0, height: GRUP_BOSLUK, background: 'transparent' })} />
                   </tr>
                 )}
                 {!basliksiz && (
-                  <tr data-inceleme-grup style={portalStyle({ background: GRUP_ZEMIN })}>
+                  <tr data-gorev-grup={g.key} data-gorev-grup-tur={grupTuru} style={portalStyle({ background: GRUP_ZEMIN })}>
                     <td style={portalStyle({ ...HUCRE, borderTop: GRUP_CIZGI, borderBottom: GRUP_CIZGI, borderRight: 'none', borderLeft: `4px solid ${g.renk}`, padding: '10px 4px', textAlign: 'center' })}>
                       {gorevIdleri.length > 0 && (
                         <input
@@ -112,14 +114,14 @@ export function GorevTablosu({ gruplar, secili, onSec, onGrupSec, eylemler, acik
                     </td>
                     <td colSpan={SUTUN - 1} style={portalStyle({ ...HUCRE, borderTop: GRUP_CIZGI, borderBottom: GRUP_CIZGI, borderLeft: 'none', padding: '10px 12px' })}>
                       <div className="flex items-center gap-2.5">
-                        <span className="text-[12px] font-extrabold uppercase" style={portalStyle({ color: GOLD, letterSpacing: '.16em' })}>
+                        <span data-gorev-grup-ad className="text-[12px] font-extrabold uppercase" style={portalStyle({ color: GOLD, letterSpacing: '.16em' })}>
                           {g.ad}
                         </span>
-                        <span className="rounded-md px-1.5 text-[10.5px] font-bold tabular-nums leading-[18px]" style={portalStyle({ background: 'rgba(212,184,118,0.22)', color: GOLD })}>
+                        <span data-gorev-grup-sayi className="rounded-md px-1.5 text-[10.5px] font-bold tabular-nums leading-[18px]" style={portalStyle({ background: 'rgba(212,184,118,0.22)', color: GOLD })}>
                           {g.satirlar.length}
                         </span>
                         {g.ek && (
-                          <span className="text-[11px]" style={portalStyle({ color: IKINCIL })}>
+                          <span data-gorev-grup-ek className="text-[11px]" style={portalStyle({ color: IKINCIL })}>
                             · {g.ek}
                           </span>
                         )}
@@ -127,8 +129,8 @@ export function GorevTablosu({ gruplar, secili, onSec, onGrupSec, eylemler, acik
                     </td>
                   </tr>
                 )}
-                {g.satirlar.map((s) => {
-                  if (s.tip === 'istek') return <EkipIstekSatiri key={`i-${s.istek.id}`} istek={s.istek} eylemler={eylemler} />;
+                {g.satirlar.map((s, si) => {
+                  if (s.tip === 'istek') return <EkipIstekSatiri key={`i-${s.istek.id}`} istek={s.istek} eylemler={eylemler} zebra={si % 2 === 1} />;
                   return (
                     <GorevSatiri
                       key={s.gorev.id}
@@ -137,6 +139,7 @@ export function GorevTablosu({ gruplar, secili, onSec, onGrupSec, eylemler, acik
                       acik={acikId === s.gorev.id}
                       onSec={(v) => onSec(s.gorev.id, v)}
                       eylemler={eylemler}
+                      zebra={si % 2 === 1}
                     />
                   );
                 })}
@@ -157,6 +160,7 @@ export function GorevSatiri({
   onSec,
   eylemler,
   zemin,
+  zebra,
 }: {
   gorev: Task;
   secili: boolean;
@@ -164,6 +168,8 @@ export function GorevSatiri({
   onSec: (v: boolean) => void;
   eylemler: GorevEylemleri;
   zemin?: string;
+  /** Grup içi sıra çiftliği — beyaz temada hafif zebra (gorevler-white.css). */
+  zebra?: boolean;
 }) {
   const bitti = t.status === 'DONE';
   const iptal = t.status === 'CANCELLED';
@@ -171,11 +177,13 @@ export function GorevSatiri({
   const tarih = etkinTarih(t);
   const gecikme = !kapali ? gecikmeMetni(tarih) : '';
   const gecikti = gecikme.endsWith('gecikti');
+  // Beyaz tema vade tonu: gecikti kırmızı · bugün/yarın kehribar · ileri tarih soluk.
+  const vadeTonu = gecikti ? 'gecikti' : gecikme === 'bugün' || gecikme === 'yarın' ? 'yakin' : 'ileri';
   // Seçili / detayda açık satır: tek vurgu altın.
   const arka = secili ? 'rgba(212,184,118,0.09)' : acik ? 'rgba(212,184,118,0.05)' : 'transparent';
 
   return (
-    <tr aria-selected={secili} data-gorev-acik={!!acik} style={portalStyle({ background: arka, boxShadow: acik ? `inset 3px 0 0 ${GOLD}` : undefined })} className="transition-colors hover:bg-white/[0.03]">
+    <tr data-gorev-satir="gorev" data-zebra={!!zebra} aria-selected={secili} data-gorev-acik={!!acik} style={portalStyle({ background: arka, boxShadow: acik ? `inset 3px 0 0 ${GOLD}` : undefined })} className="transition-colors hover:bg-white/[0.03]">
       <td style={portalStyle({ ...HUCRE, padding: '8px 4px', textAlign: 'center' })}>
         <input type="checkbox" checked={secili} onChange={(e) => onSec(e.target.checked)} title="Seç" className="h-3.5 w-3.5 cursor-pointer" style={portalStyle({ accentColor: GOLD })} />
       </td>
@@ -184,6 +192,7 @@ export function GorevSatiri({
           type="button"
           onClick={() => eylemler.ac(t.id)}
           title="Detayı aç"
+          data-gorev-satir-baslik
           className={`block w-full min-w-0 truncate text-left text-[13px] font-medium leading-5 transition hover:underline decoration-dotted underline-offset-4 ${kapali ? 'line-through opacity-50' : ''}`}
           style={portalStyle({ color: METIN })}
         >
@@ -195,7 +204,7 @@ export function GorevSatiri({
           <KaynakRozeti value={t.kaynak} />
           <DurumRozeti task={t} />
           {t.ekipIsId && (
-            <Link href="/panel/ekip" onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 text-[10.5px] font-medium hover:underline" style={portalStyle({ color: IKINCIL })} title="Ekip konsolunda aç">
+            <Link href="/panel/ekip" data-gorev-meta onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 text-[10.5px] font-medium hover:underline" style={portalStyle({ color: IKINCIL })} title="Ekip konsolunda aç">
               <Users size={10} /> Ekipte
             </Link>
           )}
@@ -212,18 +221,18 @@ export function GorevSatiri({
       <td style={portalStyle({ ...HUCRE, whiteSpace: 'nowrap' })}>
         {tarih ? (
           <div className="leading-tight">
-            <div className="text-[12.5px] tabular-nums" style={portalStyle({ color: 'rgba(250,250,249,0.88)' })}>
+            <div data-gorev-tarih className="text-[12.5px] tabular-nums" style={portalStyle({ color: 'rgba(250,250,249,0.88)' })}>
               {kisaTarih(tarih)}
               {!t.allDay && t.dueTime ? <span style={portalStyle({ color: IKINCIL })}> {t.dueTime}</span> : null}
             </div>
             {gecikme && (
-              <div className="text-[10.5px]" style={portalStyle({ color: gecikti ? GECIKME_RENK : IKINCIL })}>
+              <div data-gorev-vade={vadeTonu} className="text-[10.5px]" style={portalStyle({ color: gecikti ? GECIKME_RENK : IKINCIL })}>
                 {gecikme}
               </div>
             )}
           </div>
         ) : (
-          <span className="text-[11px]" style={portalStyle({ color: SONUK })}>
+          <span data-gorev-yok className="text-[11px]" style={portalStyle({ color: SONUK })}>
             —
           </span>
         )}
@@ -245,7 +254,7 @@ export function SatirEylemleri({ gorev: t, eylemler, kompakt, durumDugmesiz }: {
       {durumDugmesiz ? null : bitti ? (
         <IkonDugme ikon={<RotateCcw size={13} />} title="Yeniden aç" renk={GOLD} onClick={() => eylemler.yenidenAc(t.id)} />
       ) : (
-        <IkonDugme ikon={<Check size={14} />} title="Tamamla" renk={YESIL} onClick={() => eylemler.tamamla(t.id)} disabled={iptal} />
+        <IkonDugme ikon={<Check size={14} />} title="Tamamla" renk={YESIL} ton="yesil" onClick={() => eylemler.tamamla(t.id)} disabled={iptal} />
       )}
       <AcilirMenu genislik={240} tetik={({ ref, ac, acik }) => <IkonDugme refDis={ref} ikon={<AlarmClock size={13} />} title="Ertele" renk={MOR} onClick={ac} aktif={acik} disabled={kapali} />}>
         {(kapat) => (
@@ -318,7 +327,7 @@ function HizliNot({ gorev: t, eylemler }: { gorev: Task; eylemler: GorevEylemler
         };
         return (
           <div className="p-3">
-            <div className="mb-1.5 truncate text-[11px] font-medium" style={portalStyle({ color: IKINCIL })} title={t.title}>
+            <div data-gorev-soluk className="mb-1.5 truncate text-[11px] font-medium" style={portalStyle({ color: IKINCIL })} title={t.title}>
               {t.title}
             </div>
             <textarea
@@ -330,15 +339,17 @@ function HizliNot({ gorev: t, eylemler }: { gorev: Task; eylemler: GorevEylemler
               }}
               rows={3}
               placeholder="Not yaz… (Ctrl+Enter kaydeder)"
+              data-gorev-girdi
               className="w-full resize-none px-2.5 py-2 text-[12.5px]"
               style={portalStyle(GIRDI)}
             />
             <div className="mt-2 flex justify-end gap-2">
-              <button type="button" onClick={kapat} className="h-8 rounded-lg px-3 text-[12px] font-medium" style={portalStyle({ color: IKINCIL })}>
+              <button type="button" data-gorev-dugme="sessiz" onClick={kapat} className="h-8 rounded-lg px-3 text-[12px] font-medium" style={portalStyle({ color: IKINCIL })}>
                 Vazgeç
               </button>
               <button
                 type="button"
+                data-gorev-dugme="birincil"
                 onClick={kaydet}
                 disabled={!metin.trim() || kaydediyor}
                 className="inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-[12px] font-semibold disabled:opacity-40"
@@ -364,27 +375,27 @@ const GRI_DUGME = 'bg-white/[0.03] border border-white/[0.14] text-[#d4b876] hov
 const NOTR_IKON_BAGLANTI = 'bg-white/[0.04] border border-white/10 text-[#fafaf9]/60 hover:border-[#d4b876]/60 hover:text-[#d4b876]';
 
 /** "Sizden istenen" — Ekip ajanının Muzaffer Bey'den istediği iş. Eylem: Yapıldı · Konsolda aç. Sky yalnız satır başı nokta + çipteki nokta. */
-function EkipIstekSatiri({ istek: i, eylemler }: { istek: EkipIstek; eylemler: GorevEylemleri }) {
+function EkipIstekSatiri({ istek: i, eylemler, zebra }: { istek: EkipIstek; eylemler: GorevEylemleri; zebra?: boolean }) {
   const [kapaniyor, setKapaniyor] = useState(false);
   return (
-    <tr className="transition-colors hover:bg-white/[0.03]">
+    <tr data-gorev-satir="istek" data-zebra={!!zebra} className="transition-colors hover:bg-white/[0.03]">
       <td style={portalStyle({ ...HUCRE, padding: '8px 4px', textAlign: 'center' })}>
-        <span className="inline-block h-1.5 w-1.5 rounded-full" style={portalStyle({ background: EKIP_RENK, opacity: 0.85 })} title="Ekip isteği" />
+        <span data-gorev-nokta="istek" className="inline-block h-1.5 w-1.5 rounded-full" style={portalStyle({ background: EKIP_RENK, opacity: 0.85 })} title="Ekip isteği" />
       </td>
       <td style={portalStyle({ ...HUCRE, minWidth: 0 })}>
-        <div className="truncate text-[13px] font-medium leading-5" style={portalStyle({ color: METIN })} title={i.aciklama || i.baslik}>
+        <div data-gorev-satir-baslik className="truncate text-[13px] font-medium leading-5" style={portalStyle({ color: METIN })} title={i.aciklama || i.baslik}>
           {i.baslik}
         </div>
         <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
           {i.mukellefAd && <MukellefCipi id={i.taxpayerId} ad={i.mukellefAd} />}
           <KaynakRozeti value="EKIP" />
           {i.ajanId && (
-            <span className="text-[10.5px]" style={portalStyle({ color: IKINCIL })} title={`İsteyen ajan: ${i.ajanId}`}>
+            <span data-gorev-meta className="text-[10.5px]" style={portalStyle({ color: IKINCIL })} title={`İsteyen ajan: ${i.ajanId}`}>
               {ajanKisaAd(i.ajanId)} ajanı
             </span>
           )}
           {i.aciklama && (
-            <span className="min-w-0 truncate text-[11px]" style={portalStyle({ color: IKINCIL, maxWidth: 420 })} title={i.aciklama}>
+            <span data-gorev-soluk className="min-w-0 truncate text-[11px]" style={portalStyle({ color: IKINCIL, maxWidth: 420 })} title={i.aciklama}>
               {i.aciklama}
             </span>
           )}
@@ -394,15 +405,15 @@ function EkipIstekSatiri({ istek: i, eylemler }: { istek: EkipIstek; eylemler: G
         <EkipIstekCipi />
       </td>
       <td style={portalStyle(HUCRE)}>
-        <span className="text-[11px]" style={portalStyle({ color: SONUK })}>
+        <span data-gorev-yok className="text-[11px]" style={portalStyle({ color: SONUK })}>
           —
         </span>
       </td>
       <td style={portalStyle({ ...HUCRE, whiteSpace: 'nowrap' })}>
-        <div className="text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.88)' })}>
+        <div data-gorev-tarih className="text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.88)' })}>
           {goreliZaman(i.createdAt)}
         </div>
-        <div className="text-[10.5px]" style={portalStyle({ color: IKINCIL })}>
+        <div data-gorev-vade="ileri" className="text-[10.5px]" style={portalStyle({ color: IKINCIL })}>
           istendi
         </div>
       </td>
@@ -420,11 +431,12 @@ function EkipIstekSatiri({ istek: i, eylemler }: { istek: EkipIstek; eylemler: G
               }
             }}
             title="Yapıldı — isteği kapat"
+            data-gorev-dugme="yesil"
             className={`inline-flex h-7 items-center gap-1 rounded-md px-2 text-[11.5px] font-semibold transition disabled:opacity-50 ${ALTIN_DUGME}`}
           >
             {kapaniyor ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />} Yapıldı
           </button>
-          <Link href="/panel/ekip" title="Ekip konsolunda aç" className={`inline-flex h-7 w-7 items-center justify-center rounded-md transition ${NOTR_IKON_BAGLANTI}`}>
+          <Link href="/panel/ekip" title="Ekip konsolunda aç" data-gorev-dugme="ikon" className={`inline-flex h-7 w-7 items-center justify-center rounded-md transition ${NOTR_IKON_BAGLANTI}`}>
             <ExternalLink size={13} />
           </Link>
         </div>

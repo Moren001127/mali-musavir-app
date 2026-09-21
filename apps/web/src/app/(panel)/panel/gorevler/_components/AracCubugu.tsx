@@ -48,7 +48,7 @@ export function AracCubugu({
   return (
     <div className="gorev-araclar flex min-w-0 flex-wrap items-center gap-2">
       {/* Görünüm sekmeleri */}
-      <div className="gorev-gorunumler inline-flex flex-shrink-0 items-center rounded-full p-[3px]" style={portalStyle({ background: 'rgba(0,0,0,0.32)', border: '1px solid rgba(255,255,255,0.08)' })} role="tablist">
+      <div data-gorev-sekmeler className="gorev-gorunumler inline-flex flex-shrink-0 items-center rounded-full p-[3px]" style={portalStyle({ background: 'rgba(0,0,0,0.32)', border: '1px solid rgba(255,255,255,0.08)' })} role="tablist">
         {GORUNUMLER.map((g) => {
           const Ikon = g.ikon;
           const aktif = gorunum === g.key;
@@ -57,6 +57,7 @@ export function AracCubugu({
               key={g.key}
               type="button"
               role="tab"
+              data-gorev-sekme
               aria-selected={aktif}
               onClick={() => onGorunum(g.key)}
               title={`${g.ad} görünümü`}
@@ -79,7 +80,7 @@ export function AracCubugu({
             <MenuSatiri aktif={!suzgec.kategori} onClick={() => { onSuzgec({ ...suzgec, kategori: '' }); kapat(); }}>Tümü</MenuSatiri>
             <MenuAyrac />
             {CATEGORY_OPTIONS.map((c) => (
-              <MenuSatiri key={c.value} aktif={suzgec.kategori === c.value} ikon={<span className="h-2 w-2 rounded-full" style={portalStyle({ background: c.color })} />} onClick={() => { onSuzgec({ ...suzgec, kategori: c.value }); kapat(); }}>
+              <MenuSatiri key={c.value} aktif={suzgec.kategori === c.value} ikon={<span data-gorev-kategori-nokta data-kategori={c.value} className="h-2 w-2 rounded-full" style={portalStyle({ background: c.color })} />} onClick={() => { onSuzgec({ ...suzgec, kategori: c.value }); kapat(); }}>
                 {c.label}
               </MenuSatiri>
             ))}
@@ -111,7 +112,7 @@ export function AracCubugu({
             <MenuSatiri aktif={!suzgec.kaynak} onClick={() => { onSuzgec({ ...suzgec, kaynak: '' }); kapat(); }}>Tümü</MenuSatiri>
             <MenuAyrac />
             {KAYNAK_OPTIONS.map((k) => (
-              <MenuSatiri key={k.value} aktif={suzgec.kaynak === k.value} ikon={k.value === 'EKIP' ? <Users size={12} /> : <span className="h-2 w-2 rounded-full" style={portalStyle({ background: KAYNAK_COLOR[k.value] })} />} renk={KAYNAK_COLOR[k.value]} onClick={() => { onSuzgec({ ...suzgec, kaynak: k.value }); kapat(); }}>
+              <MenuSatiri key={k.value} aktif={suzgec.kaynak === k.value} ikon={k.value === 'EKIP' ? <Users size={12} /> : <span data-gorev-kaynak-nokta data-kaynak={k.value} className="h-2 w-2 rounded-full" style={portalStyle({ background: KAYNAK_COLOR[k.value] })} />} renk={KAYNAK_COLOR[k.value]} onClick={() => { onSuzgec({ ...suzgec, kaynak: k.value }); kapat(); }}>
                 {k.label}
               </MenuSatiri>
             ))}
@@ -135,9 +136,10 @@ export function AracCubugu({
 
       {/* Arama */}
       <div className="gorev-arama relative min-w-[160px] flex-1">
-        <Search size={13} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" style={portalStyle({ color: IKINCIL })} />
+        <Search size={13} data-gorev-arama-ikon className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" style={portalStyle({ color: IKINCIL })} />
         <input
           type="search"
+          data-gorev-girdi
           value={suzgec.arama}
           onChange={(e) => onSuzgec({ ...suzgec, arama: e.target.value })}
           placeholder="Ara — başlık, açıklama, mükellef"
@@ -152,6 +154,7 @@ export function AracCubugu({
           type="button"
           onClick={() => onSuzgec({ kategori: '', oncelik: '', kaynak: '', mukellefId: '', arama: '' })}
           title="Süzgeçleri temizle"
+          data-gorev-dugme="ikincil"
           className="inline-flex h-8 flex-shrink-0 items-center gap-1 rounded-full px-2.5 text-[11.5px] font-semibold transition hover:brightness-125"
           style={portalStyle({ color: IKINCIL, border: '1px solid rgba(255,255,255,0.10)' })}
         >
@@ -174,7 +177,8 @@ function HapMenu({ ikon, etiket, aktif, renk, title, genislik = 230, children }:
           type="button"
           onClick={ac}
           title={title}
-          data-gorev-filtre={aktif ? "aktif" : "normal"}
+          data-gorev-filtre={aktif ? 'aktif' : 'normal'}
+          data-acik={acik}
           aria-expanded={acik}
           className="inline-flex max-w-[220px] flex-shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-[11.5px] font-semibold transition-[transform,filter] hover:-translate-y-px hover:brightness-125"
           style={portalStyle(aktif ? { background: `${renk}18`, border: `1px solid ${renk}66`, color: renk } : { background: 'transparent', border: `1px solid rgba(255,255,255,${acik ? '0.24' : '0.12'})`, color: acik ? METIN : IKINCIL })}

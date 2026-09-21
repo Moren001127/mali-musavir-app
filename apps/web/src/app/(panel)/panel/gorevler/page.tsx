@@ -1,5 +1,5 @@
 'use client';
-import './beyaz-inceleme.css';
+import './gorevler-white.css';
 import { portalStyle } from '@/lib/portal-theme';
 
 
@@ -9,6 +9,7 @@ import { portalStyle } from '@/lib/portal-theme';
  * Veri: GET /tasks/ajanda (görevler + notlar + ekip istekleri + sayaçlar) — tek çağrı. Mali Takvim kalemleri bu ekranda
  * GÖSTERİLMEZ (Muzaffer Bey 2026-09-14: "mali takvimi görevler alanından kaldır, göz yoruyor"); arka uç yine döndürür, yok sayılır.
  * Bu dosya yalnız veri kabuğu + düzen; parçalar _components/ altında.
+ * Beyaz tema (D, 2026-09-21): satır içi renkler koyu tema (A) içindir; D görünümü `data-gorev-*` kancaları + gorevler-white.css ile verilir.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -313,7 +314,7 @@ export default function GorevlerPage() {
             onGrupSec={grupSec}
             eylemler={eylemler}
             acikId={detay?.id}
-            bos={<BosDurum ikon={sayac === 'istek' ? <Inbox size={18} /> : <CheckSquare size={18} />} metin={bosMetin[sayac]} renk={sayac === 'istek' ? EKIP_RENK : GOLD} />}
+            bos={<div data-gorev-bos><BosDurum ikon={sayac === 'istek' ? <Inbox size={18} /> : <CheckSquare size={18} />} metin={bosMetin[sayac]} renk={sayac === 'istek' ? EKIP_RENK : GOLD} /></div>}
           />
         )}
         {notlarGorunur && <NotlarBolumu notlar={notlar} eylemler={eylemler} acikId={detay?.id} />}
@@ -322,8 +323,8 @@ export default function GorevlerPage() {
   };
 
   return (
-    <div data-inceleme="gorevler" className="space-y-3 max-w-none">
-      <header data-inceleme-baslik
+    <div data-gorevler className="space-y-3 max-w-none">
+      <header data-gorev-baslik
         className="relative overflow-hidden rounded-[18px] border px-5 py-4"
         style={portalStyle({
           background:
@@ -378,7 +379,7 @@ export default function GorevlerPage() {
       {/* Akıllı giriş satırı */}
       <AkilliGiris mukellefler={mukellefler} varsayilanMukellefId={suzgec.mukellefId || undefined} onEkle={hizliEkle} />
 
-      {/* Görünüm sekmeleri + süzgeçler — ayrı ton (Muzaffer Bey: "Ajanda/Kanban başlıklarının arka planı farklı olsun, ayırt edici") */}
+      {/* Görünüm sekmeleri + süzgeçler — ayrı ton (Muzaffer Bey: "Ajanda/Kanban başlıklarının arka planı farklı olsun, ayırt edici"); beyaz temada ayırt edici olan kapsül sekme grubudur */}
       <div className="gorev-filtre-yuzey rounded-xl px-3 py-2" style={portalStyle({ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.11)' })}>
         <AracCubugu gorunum={gorunum} onGorunum={setGorunum} suzgec={suzgec} onSuzgec={setSuzgec} mukellefler={mukellefler} />
       </div>

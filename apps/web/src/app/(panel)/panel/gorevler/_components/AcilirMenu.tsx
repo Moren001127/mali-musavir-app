@@ -85,7 +85,7 @@ export function AcilirMenu({
       {acik &&
         typeof document !== 'undefined' &&
         createPortal(
-          <div ref={panelRef} role="menu" className="fixed z-[1000] overflow-hidden" style={portalStyle({ ...MENU_ZEMIN, top: konum.top, left: konum.left, width: genislik })}>
+          <div ref={panelRef} role="menu" data-gorev-menu className="fixed z-[1000] overflow-hidden" style={portalStyle({ ...MENU_ZEMIN, top: konum.top, left: konum.left, width: genislik })}>
             {children(kapat)}
           </div>,
           document.body,
@@ -124,26 +124,29 @@ export function MenuSatiri({
     <button
       type="button"
       role="menuitem"
+      data-gorev-menu-satir
+      data-aktif={!!aktif}
+      data-tehlike={!!tehlike}
       onClick={onClick}
       title={title}
       disabled={disabled}
       className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[12.5px] font-medium transition hover:bg-white/[0.05] disabled:opacity-40"
       style={portalStyle({ color: yazi, background: aktif ? 'rgba(212,184,118,0.10)' : undefined })}
     >
-      {ikon && <span className="flex w-4 justify-center" style={portalStyle({ color: ikonRenk })}>{ikon}</span>}
-      <span className="min-w-0 flex-1 truncate">{children}</span>
-      {aktif && <span className="h-1.5 w-1.5 rounded-full" style={portalStyle({ background: GOLD })} />}
+      {ikon && <span data-gorev-menu-ikon className="flex w-4 justify-center" style={portalStyle({ color: ikonRenk })}>{ikon}</span>}
+      <span data-gorev-menu-metin className="min-w-0 flex-1 truncate">{children}</span>
+      {aktif && <span data-gorev-menu-nokta className="h-1.5 w-1.5 rounded-full" style={portalStyle({ background: GOLD })} />}
     </button>
   );
 }
 
 export function MenuAyrac() {
-  return <div style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.07)' })} />;
+  return <div data-gorev-ayrac style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.07)' })} />;
 }
 
 export function MenuBaslik({ children }: { children: ReactNode }) {
   return (
-    <div className="px-3 pb-1 pt-2 text-[10px] font-bold uppercase tracking-[.14em]" style={portalStyle({ color: IKINCIL })}>
+    <div data-gorev-menu-baslik className="px-3 pb-1 pt-2 text-[10px] font-bold uppercase tracking-[.14em]" style={portalStyle({ color: IKINCIL })}>
       {children}
     </div>
   );
@@ -175,12 +178,14 @@ export function ErtelemeSecenekleri({ onSec, baslik = 'Ne zamana ertelensin?' }:
           onKeyDown={(e) => {
             if (e.key === 'Enter' && tarih) onSec(tarih);
           }}
+          data-gorev-girdi
           className="h-8 min-w-0 flex-1 px-2 text-[12px]"
           style={portalStyle(GIRDI)}
           title="Tarih seç"
         />
         <button
           type="button"
+          data-gorev-dugme="yumusak"
           disabled={!tarih}
           onClick={() => tarih && onSec(tarih)}
           className="h-8 rounded-lg px-3 text-[12px] font-semibold disabled:opacity-40"
@@ -207,11 +212,14 @@ export function IkonDugme({
   aktif,
   className = '',
   style,
+  ton = 'notr',
 }: {
   ikon: ReactNode;
   title: string;
   /** İşlev rengi — yalnız hover / odak / aktif durumda uygulanır. */
   renk: string;
+  /** Beyaz tema tonu (gorevler-white.css): nötr · yeşil (tamamla) · tehlike (sil) · kehribar (sabit). */
+  ton?: 'notr' | 'yesil' | 'tehlike' | 'kehribar';
   onClick?: () => void;
   disabled?: boolean;
   refDis?: RefObject<HTMLButtonElement>;
@@ -230,6 +238,8 @@ export function IkonDugme({
       type="button"
       title={title}
       aria-label={title}
+      data-gorev-ikon={ton}
+      data-aktif={!!aktif}
       onClick={(e) => {
         e.stopPropagation();
         onClick?.();

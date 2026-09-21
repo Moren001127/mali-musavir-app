@@ -34,6 +34,7 @@ export function TopluSerit({ secili, onTemizle, onIslem }: { secili: string[]; o
       <div
         role="toolbar"
         aria-label="Toplu işlemler"
+        data-gorev-toplu
         className="pointer-events-auto flex max-w-full flex-wrap items-center gap-2 rounded-2xl px-3 py-2"
         style={portalStyle({
           background: 'linear-gradient(160deg, rgba(28,24,20,0.98), rgba(14,12,10,0.98))',
@@ -41,20 +42,20 @@ export function TopluSerit({ secili, onTemizle, onIslem }: { secili: string[]; o
           boxShadow: `0 0 0 1px ${GOLD}22, 0 20px 60px rgba(0,0,0,0.6)`,
         })}
       >
-        <span className="inline-flex items-center gap-1.5 pr-1 text-[12.5px] font-bold" style={portalStyle({ color: METIN })}>
-          <span className="rounded-md px-1.5 text-[11px] font-extrabold tabular-nums leading-5" style={portalStyle({ background: GOLD, color: '#0f0d0b' })}>
+        <span data-gorev-toplu-etiket className="inline-flex items-center gap-1.5 pr-1 text-[12.5px] font-bold" style={portalStyle({ color: METIN })}>
+          <span data-gorev-toplu-sayi className="rounded-md px-1.5 text-[11px] font-extrabold tabular-nums leading-5" style={portalStyle({ background: GOLD, color: '#0f0d0b' })}>
             {secili.length}
           </span>
           seçili
         </span>
-        <span className="h-4 w-px" style={portalStyle({ background: 'rgba(255,255,255,0.12)' })} />
+        <span data-gorev-toplu-ayrac className="h-4 w-px" style={portalStyle({ background: 'rgba(255,255,255,0.12)' })} />
 
-        <button type="button" disabled={!!calisan} onClick={() => calistir('tamamla', { islem: 'tamamla' })} className={dugme} style={portalStyle({ background: `${YESIL}1f`, color: YESIL, border: `1px solid ${YESIL}55` })} title="Seçilenleri tamamla">
+        <button type="button" data-gorev-dugme="yesil" disabled={!!calisan} onClick={() => calistir('tamamla', { islem: 'tamamla' })} className={dugme} style={portalStyle({ background: `${YESIL}1f`, color: YESIL, border: `1px solid ${YESIL}55` })} title="Seçilenleri tamamla">
           {calisan === 'tamamla' ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />} Tamamla
         </button>
 
         <AcilirMenu genislik={240} tetik={({ ref, ac }) => (
-          <button ref={ref} type="button" disabled={!!calisan} onClick={ac} className={dugme} style={portalStyle({ background: `${MOR}1f`, color: '#c084fc', border: `1px solid ${MOR}55` })} title="Seçilenleri ertele">
+          <button ref={ref} type="button" data-gorev-dugme="ikincil" disabled={!!calisan} onClick={ac} className={dugme} style={portalStyle({ background: `${MOR}1f`, color: '#c084fc', border: `1px solid ${MOR}55` })} title="Seçilenleri ertele">
             {calisan === 'ertele' ? <Loader2 size={13} className="animate-spin" /> : <AlarmClock size={13} />} Ertele <ChevronDown size={11} />
           </button>
         )}>
@@ -69,7 +70,7 @@ export function TopluSerit({ secili, onTemizle, onIslem }: { secili: string[]; o
         </AcilirMenu>
 
         <AcilirMenu genislik={230} tetik={({ ref, ac }) => (
-          <button ref={ref} type="button" disabled={!!calisan} onClick={ac} className={dugme} style={portalStyle({ background: 'rgba(255,255,255,0.05)', color: METIN, border: '1px solid rgba(255,255,255,0.12)' })} title="Seçilenlerin kategorisini değiştir">
+          <button ref={ref} type="button" data-gorev-dugme="ikincil" disabled={!!calisan} onClick={ac} className={dugme} style={portalStyle({ background: 'rgba(255,255,255,0.05)', color: METIN, border: '1px solid rgba(255,255,255,0.12)' })} title="Seçilenlerin kategorisini değiştir">
             {calisan === 'kategori' ? <Loader2 size={13} className="animate-spin" /> : <Tag size={13} />} Kategori <ChevronDown size={11} />
           </button>
         )}>
@@ -77,7 +78,7 @@ export function TopluSerit({ secili, onTemizle, onIslem }: { secili: string[]; o
             <div className="py-1">
               <MenuBaslik>Kategori ata</MenuBaslik>
               {CATEGORY_OPTIONS.map((c) => (
-                <MenuSatiri key={c.value} ikon={<span className="h-2 w-2 rounded-full" style={portalStyle({ background: c.color })} />} onClick={() => { kapat(); calistir('kategori', { islem: 'kategori', category: c.value }); }}>
+                <MenuSatiri key={c.value} ikon={<span data-gorev-kategori-nokta data-kategori={c.value} className="h-2 w-2 rounded-full" style={portalStyle({ background: c.color })} />} onClick={() => { kapat(); calistir('kategori', { islem: 'kategori', category: c.value }); }}>
                   {c.label}
                 </MenuSatiri>
               ))}
@@ -90,7 +91,7 @@ export function TopluSerit({ secili, onTemizle, onIslem }: { secili: string[]; o
         </AcilirMenu>
 
         <AcilirMenu genislik={200} tetik={({ ref, ac }) => (
-          <button ref={ref} type="button" disabled={!!calisan} onClick={ac} className={dugme} style={portalStyle({ background: 'rgba(255,255,255,0.05)', color: METIN, border: '1px solid rgba(255,255,255,0.12)' })} title="Seçilenlerin önceliğini değiştir">
+          <button ref={ref} type="button" data-gorev-dugme="ikincil" disabled={!!calisan} onClick={ac} className={dugme} style={portalStyle({ background: 'rgba(255,255,255,0.05)', color: METIN, border: '1px solid rgba(255,255,255,0.12)' })} title="Seçilenlerin önceliğini değiştir">
             {calisan === 'oncelik' ? <Loader2 size={13} className="animate-spin" /> : <Flag size={13} />} Öncelik <ChevronDown size={11} />
           </button>
         )}>
@@ -112,6 +113,7 @@ export function TopluSerit({ secili, onTemizle, onIslem }: { secili: string[]; o
           onClick={() => {
             if (confirm(`${secili.length} kayıt silinsin mi? Geri alınamaz.`)) calistir('sil', { islem: 'sil' });
           }}
+          data-gorev-dugme="tehlike"
           className={dugme}
           style={portalStyle({ background: `${KIRMIZI}1a`, color: '#fca5a5', border: `1px solid ${KIRMIZI}55` })}
           title="Seçilenleri sil"
@@ -119,7 +121,7 @@ export function TopluSerit({ secili, onTemizle, onIslem }: { secili: string[]; o
           {calisan === 'sil' ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />} Sil
         </button>
 
-        <button type="button" onClick={onTemizle} className="inline-flex h-8 w-8 items-center justify-center rounded-lg transition hover:bg-white/10" style={portalStyle({ color: IKINCIL })} title="Seçimi bırak">
+        <button type="button" data-gorev-dugme="sessiz" onClick={onTemizle} className="inline-flex h-8 w-8 items-center justify-center rounded-lg transition hover:bg-white/10" style={portalStyle({ color: IKINCIL })} title="Seçimi bırak">
           <X size={14} />
         </button>
       </div>
