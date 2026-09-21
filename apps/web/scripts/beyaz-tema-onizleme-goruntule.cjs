@@ -22,14 +22,12 @@ fs.mkdirSync(CIKIS, { recursive: true });
     ['sayaclar', '[data-dashboard-counters]'],
     ['panorama', '.ofis-panorama'],
     ['beyan-tablo', '[data-beyan-panel]'],
-    ['is-akisi', '[data-workflow-counter]'],
+    ['is-akisi', '[data-workflow-panel]'],
     ['takvim', '[data-calendar]'],
   ];
   for (const [ad, sec] of hedefler) {
     let el = pg.locator(sec).first();
     if (!(await el.count())) { console.log('yok:', ad); continue; }
-    // iş akışı için kutucuğun kart sarmalayıcısı (data-dashboard-surface) alınır
-    if (ad === 'is-akisi') el = pg.locator('[data-workflow-counter]').first().locator('xpath=ancestor::*[@data-dashboard-surface][1]');
     await el.evaluate((e) => e.scrollIntoView({ block: 'start' }));
     await pg.waitForTimeout(600);
     await el.screenshot({ path: path.join(CIKIS, `${ad}.png`) });

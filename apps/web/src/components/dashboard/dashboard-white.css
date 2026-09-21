@@ -108,27 +108,6 @@ html[data-theme='D'] [data-dashboard-root] svg text {
   fill: #344b54;
 }
 
-/* Akış sayaçları: renk yalnız çizgide değil, kart yüzeyinde de okunur. */
-html[data-theme='D'] [data-workflow-counter] {
-  --flow-start: #aa4d15;
-  --flow-end: #e5a258;
-  background: linear-gradient(125deg, color-mix(in srgb,var(--flow-end) 22%,white), #fff) !important;
-  border: 1px solid color-mix(in srgb, var(--flow-start) 45%, white) !important;
-  border-radius: 18px;
-  box-shadow: 0 5px 14px color-mix(in srgb, var(--flow-start) 16%, transparent) !important;
-}
-html[data-theme='D'] [data-workflow-counter='yukleme'] { --flow-start: #08756e; --flow-end: #42ada3; }
-html[data-theme='D'] [data-workflow-counter='islenme'] { --flow-start: #305cac; --flow-end: #7a9edb; }
-html[data-theme='D'] [data-workflow-counter='kontrol'] { --flow-start: #7142a0; --flow-end: #ad85cf; }
-html[data-theme='D'] [data-workflow-counter='beyanname'] { --flow-start: #a63861; --flow-end: #d583a2; }
-html[data-theme='D'] [data-workflow-counter='tamam'] { --flow-start: #237746; --flow-end: #70b58a; }
-html[data-theme='D'] [data-workflow-counter] :is(div, span, svg) { color: var(--flow-start) !important; }
-html[data-theme='D'] [data-workflow-counter] > div:first-child > :is(div, span) {
-  background: #ffffff80 !important; border-color: color-mix(in srgb,var(--flow-start) 24%,white) !important;
-}
-html[data-theme='D'] [data-workflow-counter] > div:last-child { background: color-mix(in srgb,var(--flow-start) 12%,white) !important; }
-html[data-theme='D'] [data-workflow-counter] > div:last-child > div { background: var(--flow-start) !important; }
-
 /* Tablo bütünlüğü: tek çerçeve, sakin başlık ve ince satır ayırıcıları. */
 html[data-theme='D'] [data-dashboard-root] table {
   border-collapse: separate; border-spacing: 0;
@@ -166,7 +145,6 @@ html[data-theme='D'] [data-dashboard-intro] { padding-top: 0; padding-bottom: 0;
 html[data-theme='D'] [data-dashboard-intro] h1 { font-size: 25px !important; }
 html[data-theme='D'] [data-dashboard-counters] { margin-top: 12px !important; margin-bottom: 14px !important; }
 html[data-theme='D'] [data-dashboard-counters] [data-dashboard-kpi] { padding: 10px 14px !important; }
-html[data-theme='D'] [data-dashboard-counters] + .workflow-distribution { margin-top: 0 !important; }
 
 /* Ana sayaçlar: Fatura İşleme Merkezi > Genel Bakış kutucuklarıyla AYNI tonlar (Muzaffer Bey, 2026-09-21):
    135° gradyan, sağ üstte yarı saydam beyaz daire, tona göre yumuşak gölge, beyaz metin.
@@ -294,85 +272,6 @@ html[data-theme='D'] [data-beyan-mini] { border-radius: 8px; }
    Ton ailesi = Fatura İşleme Merkezi > Genel Bakış kutucukları: çivit #4263eb · mavi #1971c2 ·
    deniz yeşili #0ca678 · yeşil #2f9e44 · kehribar #f08c00 · kırmızı #e03131 · mor #7048e8.
    ═════════════════════════════════════════════════════════════════════════════════════════════ */
-
-/* ── Bu Ay İş Akışı ─────────────────────────────────────────────────────────────────────────── */
-html[data-theme='D'] [data-workflow-panel][data-dashboard-surface] {
-  background: #fff !important;
-  border: 1px solid #e3e8ef !important;
-  border-radius: 16px;
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05) !important;
-}
-html[data-theme='D'] [data-workflow-panel] [data-dashboard-band='mint'] {
-  padding: 13px 20px;
-  background: #fff !important;
-  border-color: #edf1f5 !important;
-  border-bottom: 1px solid #edf1f5 !important;
-}
-html[data-theme='D'] [data-workflow-panel] [data-dashboard-band='mint'] > div:first-child > span:first-child {
-  width: 3px;
-  height: 22px;
-  border-radius: 2px;
-  background: linear-gradient(180deg, #4263eb, #5c7cfa) !important;
-}
-html[data-theme='D'] [data-workflow-panel] h3 { color: #1e293b !important; font-size: 15px; font-weight: 650; }
-html[data-theme='D'] [data-workflow-panel] [data-dashboard-band='mint'] p { color: #64748b !important; font-size: 11.5px; margin-top: 2px; }
-html[data-theme='D'] [data-workflow-panel] [data-dashboard-band='mint'] > div:last-child > span {
-  padding: 4px 11px;
-  border-radius: 999px !important;
-  border: 1px solid transparent !important;
-  font-size: 11px;
-  font-weight: 650;
-}
-html[data-theme='D'] [data-workflow-panel] [data-dashboard-band='mint'] > div:last-child > span:nth-child(1) { background: #edf2ff !important; border-color: #dbe4ff !important; color: #3b5bdb !important; }
-html[data-theme='D'] [data-workflow-panel] [data-dashboard-band='mint'] > div:last-child > span:nth-child(2) { background: #ebfbee !important; border-color: #d3f9d8 !important; color: #2b8a3e !important; }
-html[data-theme='D'] [data-workflow-panel] [data-dashboard-band='mint'] > div:last-child > span:nth-child(3) { background: #f1f5f9 !important; border-color: #e2e8f0 !important; color: #64748b !important; }
-
-/* Kutucuklar: beyaz kart; ton yalnız simge kutusu (gradyan), yüzde rozeti ve ilerleme çubuğunda. Sayı koyu mürekkep. */
-html[data-theme='D'] [data-workflow-counter] {
-  --flow-start: #f08c00;
-  --flow-end: #f9a825;
-  --flow-soft: #fff4e6;
-  --flow-ink: #d9480f;
-  padding: 13px 14px 12px;
-  background: #fff !important;
-  border: 1px solid #e6ebf1 !important;
-  border-radius: 14px;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04) !important;
-}
-html[data-theme='D'] [data-workflow-counter]:hover {
-  background: #fff !important;
-  border-color: color-mix(in srgb, var(--flow-start) 45%, #e6ebf1) !important;
-  box-shadow: 0 12px 24px -16px color-mix(in srgb, var(--flow-start) 70%, transparent) !important;
-}
-html[data-theme='D'] [data-workflow-counter='yukleme'] { --flow-start: #0ca678; --flow-end: #20c997; --flow-soft: #e6fcf5; --flow-ink: #099268; }
-html[data-theme='D'] [data-workflow-counter='islenme'] { --flow-start: #1971c2; --flow-end: #339af0; --flow-soft: #e7f5ff; --flow-ink: #1971c2; }
-html[data-theme='D'] [data-workflow-counter='kontrol'] { --flow-start: #7048e8; --flow-end: #9775fa; --flow-soft: #f3f0ff; --flow-ink: #6741d9; }
-html[data-theme='D'] [data-workflow-counter='beyanname'] { --flow-start: #4263eb; --flow-end: #5c7cfa; --flow-soft: #edf2ff; --flow-ink: #3b5bdb; }
-html[data-theme='D'] [data-workflow-counter='tamam'] { --flow-start: #2f9e44; --flow-end: #51cf66; --flow-soft: #ebfbee; --flow-ink: #2b8a3e; }
-html[data-theme='D'] [data-workflow-counter] > div:first-child > div {
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
-  background: linear-gradient(135deg, var(--flow-start), var(--flow-end)) !important;
-  border-color: transparent !important;
-  box-shadow: 0 6px 14px -8px var(--flow-start);
-  color: #fff !important;
-}
-html[data-theme='D'] [data-workflow-counter] > div:first-child > div svg { color: #fff !important; }
-html[data-theme='D'] [data-workflow-counter] > div:first-child > span {
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 10.5px;
-  background: var(--flow-soft) !important;
-  border-color: transparent !important;
-  color: var(--flow-ink) !important;
-}
-html[data-theme='D'] [data-workflow-counter] > div:nth-child(2) { margin-top: 10px; }
-html[data-theme='D'] [data-workflow-counter] > div:nth-child(2) > div:nth-child(1) { color: #1e293b !important; font-size: 24px; font-weight: 750; letter-spacing: -0.02em; }
-html[data-theme='D'] [data-workflow-counter] > div:nth-child(2) > div:nth-child(2) { color: #334155 !important; font-size: 12.5px; font-weight: 600; }
-html[data-theme='D'] [data-workflow-counter] > div:nth-child(2) > div:nth-child(3) { color: #94a3b8 !important; font-size: 10.5px; }
-html[data-theme='D'] [data-workflow-counter] > div:last-child { height: 5px; margin-top: 10px; background: #eef2f6 !important; }
-html[data-theme='D'] [data-workflow-counter] > div:last-child > div { background: linear-gradient(90deg, var(--flow-start), var(--flow-end)) !important; }
 
 /* ── Beyanname Durum Takibi ─────────────────────────────────────────────────────────────────── */
 html[data-theme='D'] [data-beyan-panel][data-dashboard-surface] {
@@ -559,10 +458,6 @@ html[data-theme='D'] [data-dashboard-section-title][data-tone='mint'] [data-dash
 html[data-theme='D'] [data-dashboard-section-title][data-tone='rose'] [data-dashboard-section-icon] { background: #fff0f6 !important; border-color: #fcc2d7 !important; color: #c2255c !important; }
 html[data-theme='D'] [data-dashboard-section-title][data-tone='rose'] [data-dashboard-section-icon] svg { color: #c2255c !important; }
 html[data-theme='D'] [data-dashboard-section-title][data-tone='rose'] [data-dashboard-section-rule] { background: linear-gradient(90deg, #fcc2d7, transparent) !important; }
-/* Kart içindeki tekrar eden başlıklar gizli; kart üst satırı araç çubuğu olarak kalır (açıklama + rozetler) */
-html[data-theme='D'] [data-workflow-panel] [data-dashboard-band='mint'] h3 { display: none; }
-html[data-theme='D'] [data-workflow-panel] [data-dashboard-band='mint'] p { margin-top: 0; font-size: 12.5px; color: #475569 !important; }
-html[data-theme='D'] [data-calendar] [data-calendar-header] h3 { display: none; }
 /* Beyanname Durum Takibi kartı: yan kartlarla aynı dil, çivit zemin */
 html[data-theme='D'] [data-beyan-panel][data-dashboard-surface] {
   --panorama-tint: 1.8;
@@ -586,7 +481,8 @@ html[data-theme='D'] [data-dashboard-section-text] { font-family: Inter, ui-sans
 /* ═════════════════════════════════════════════════════════════════════════════════════════════
    2026-09-21 gece — ÜÇ BÖLÜM AYIRT EDİCİ (Muzaffer Bey: "beyanname takip, iş akışı ve mali takvim ayırt edilmiyor,
    çok karışık"): dış başlıklar kalktı; her kartın üstünde KENDİ RENGİNDE başlık bandı + 4px üst çizgi + hafif gövde
-   yıkaması. Beyanname çivit · İş Akışı deniz yeşili · Mali Takvim gül. Kart içi düzen aynı. */
+   yıkaması. Beyanname çivit · İş Akışı deniz yeşili · Mali Takvim gül. İş Akışı ve Takvim kartları artık kendi dosyalarında
+   (`is-akisi-hatti.css`, `mali-takvim.css`); burada yalnız Beyanname kartı kaldı. */
 
 /* ── Beyanname Durum Takibi (çivit) ── */
 html[data-theme='D'] [data-beyan-panel][data-dashboard-surface] {
@@ -602,36 +498,3 @@ html[data-theme='D'] [data-beyan-panel] [data-beyan-heading] {
 html[data-theme='D'] [data-beyan-panel] [data-beyan-heading-icon] { width: 36px; height: 36px; border-radius: 10px; }
 html[data-theme='D'] [data-beyan-panel] [data-beyan-title] { color: #1e293b !important; font-size: 15px; font-weight: 700; letter-spacing: -0.005em; }
 html[data-theme='D'] [data-beyan-panel] [data-beyan-heading] p { color: #5b6b8a !important; font-size: 12px; }
-
-/* ── Bu Ay İş Akışı (deniz yeşili) ── */
-html[data-theme='D'] [data-workflow-panel][data-dashboard-surface] {
-  margin-top: 44px; /* Muzaffer Bey: bölümler arasına biraz daha boşluk */
-  border-top: 4px solid #0ca678 !important;
-  background:
-    radial-gradient(60% 70% at 100% 0%, rgba(12, 166, 120, 0.06), transparent 55%),
-    linear-gradient(160deg, #f3fdf9 0%, #ffffff 60%) !important;
-}
-html[data-theme='D'] [data-workflow-panel] [data-dashboard-band='mint'] {
-  padding: 14px 18px;
-  background: linear-gradient(90deg, #e6fcf5 0%, #f2fdf9 55%, #fbfefd 100%) !important;
-  border-bottom: 1px solid #c3fae8 !important;
-}
-html[data-theme='D'] [data-workflow-panel] [data-dashboard-band='mint'] > div:first-child { gap: 12px; }
-html[data-theme='D'] [data-workflow-panel] [data-dashboard-band='mint'] > div:first-child > span:first-child {
-  width: 36px; height: 36px; border-radius: 10px;
-  background: linear-gradient(135deg, #0ca678, #20c997) !important;
-  box-shadow: 0 6px 14px -8px #0ca678;
-}
-html[data-theme='D'] [data-workflow-panel] [data-dashboard-band='mint'] h3 { display: block; color: #1e293b !important; font-size: 15px; font-weight: 700; }
-html[data-theme='D'] [data-workflow-panel] [data-dashboard-band='mint'] p { color: #4f6b62 !important; font-size: 12px; margin-top: 2px; }
-
-html[data-theme='D'] [data-workflow-panel] [data-dashboard-band='mint'] > div:first-child > span:first-child {
-  display: inline-flex; align-items: center; justify-content: center;
-}
-html[data-theme='D'] [data-workflow-panel] [data-dashboard-band='mint'] > div:first-child > span:first-child::before {
-  content: '';
-  width: 17px; height: 17px;
-  background: #fff;
-  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='8' height='8' x='3' y='3' rx='2'/%3E%3Cpath d='M7 11v4a2 2 0 0 0 2 2h4'/%3E%3Crect width='8' height='8' x='13' y='13' rx='2'/%3E%3C/svg%3E") center / contain no-repeat;
-          mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='8' height='8' x='3' y='3' rx='2'/%3E%3Cpath d='M7 11v4a2 2 0 0 0 2 2h4'/%3E%3Crect width='8' height='8' x='13' y='13' rx='2'/%3E%3C/svg%3E") center / contain no-repeat;
-}

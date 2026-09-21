@@ -9,12 +9,8 @@ import {
   AlertTriangle,
   ArrowRight,
   Receipt,
-  FileCheck,
   Plus,
   Bot,
-  FileInput,
-  UploadCloud,
-  CheckCircle2,
   X as IconX,
   Download,
   FileCheck2,
@@ -40,6 +36,7 @@ import { ReactNode, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { KritikUyariStatCard } from '@/components/dashboard/KritikUyariStatCard';
 import { BuHaftaTakvim } from '@/components/dashboard/BuHaftaTakvim';
+import { IsAkisiHatti } from '@/components/dashboard/IsAkisiHatti';
 import { OfisPanoramasi, type PanoramaPeriodProps } from '@/components/dashboard/OfisPanoramasi';
 
 const GOLD = '#d4b876';
@@ -116,110 +113,6 @@ function StatCard({ title, value, icon: Icon, href, sub, trend, trendKind, accen
 type WorkflowCounts = { evrak: number; yukleme: number; islenme: number; kontrol: number; beyanname: number; tamam: number };
 
 const EMPTY_WORKFLOW_COUNTS: WorkflowCounts = { evrak: 0, yukleme: 0, islenme: 0, kontrol: 0, beyanname: 0, tamam: 0 };
-
-const WORKFLOW_STEPS: Array<{
-  key: keyof WorkflowCounts;
-  label: string;
-  sub: string;
-  href: string;
-  icon: any;
-  color: string;
-  bg: string;
-  border: string;
-}> = [
-  { key: 'evrak', label: 'Evrak Bekliyor', sub: 'Mükelleften gelecek', href: '/panel/is-yuku', icon: FileInput, color: '#d8caa9', bg: 'rgba(255,255,255,0.022)', border: 'rgba(216,189,134,0.15)' },
-  { key: 'yukleme', label: 'Yükleme', sub: 'Sisteme yüklenecek', href: '/panel/kdv-kontrol', icon: UploadCloud, color: '#2dd4bf', bg: 'rgba(255,255,255,0.020)', border: 'rgba(45,212,191,0.16)' },
-  { key: 'islenme', label: 'Fatura İşleme', sub: 'Belge merkezi', href: '/panel/fatura-isleme', icon: Receipt, color: '#d2b06f', bg: 'rgba(255,255,255,0.020)', border: 'rgba(210,176,111,0.16)' },
-  { key: 'kontrol', label: 'KDV Kontrol', sub: 'Kontrol bekliyor', href: '/panel/kdv-kontrol', icon: FileCheck, color: '#8db6c6', bg: 'rgba(255,255,255,0.020)', border: 'rgba(141,182,198,0.16)' },
-  { key: 'beyanname', label: 'Beyanname', sub: 'Hazırlanacak', href: '/panel/beyannameler', icon: FileText, color: '#cda2ad', bg: 'rgba(255,255,255,0.020)', border: 'rgba(205,162,173,0.15)' },
-  { key: 'tamam', label: 'Tamamlandı', sub: 'Bu ay kapandı', href: '/panel/is-yuku', icon: CheckCircle2, color: '#86c7a0', bg: 'rgba(255,255,255,0.020)', border: 'rgba(134,199,160,0.16)' },
-];
-
-function WorkflowOverview({ counts, total, activeCount }: { counts?: WorkflowCounts; total: number; activeCount: number }) {
-  const c = counts || EMPTY_WORKFLOW_COUNTS;
-  const scopedTotal = total || Object.values(c).reduce((sum, v) => sum + (Number(v) || 0), 0);
-  const activeWork = c.islenme + c.kontrol + c.beyanname;
-  const completed = c.tamam;
-  const outside = Math.max(activeCount - scopedTotal, 0);
-
-  return (
-    <div
-      data-workflow-panel data-dashboard-surface className="rounded-2xl overflow-hidden"
-      style={portalStyle({
-        background: 'radial-gradient(circle at 8% 0%, rgba(125,211,252,0.10), transparent 30%), radial-gradient(circle at 92% 14%, rgba(143,215,189,0.07), transparent 28%), linear-gradient(180deg, rgba(8,15,16,0.96), rgba(5,9,10,0.92))',
-        border: '1px solid rgba(125,211,252,0.14)',
-        boxShadow: '0 14px 34px rgba(0,0,0,0.20), inset 0 1px 0 rgba(180,230,240,0.035)',
-      })}
-    >
-      <div data-dashboard-band="mint" className="flex flex-wrap items-center justify-between gap-3 px-5 py-4" style={portalStyle({ borderBottom: '1px solid rgba(125,211,252,0.10)' })}>
-        <div className="flex items-center gap-3">
-          <span className="w-[3px] h-8 rounded-sm" style={{ background: '#8bd3dd' }} />
-          <div>
-            <h3 className="text-[17px] font-semibold leading-tight" style={portalStyle({ color: '#eefafa' })}>Bu Ay İş Akışı</h3>
-            <p className="text-[12px] mt-1" style={portalStyle({ color: 'rgba(250,250,249,0.50)' })}>
-              {scopedTotal} mükellef akışta · {activeCount} aktif mükellef
-            </p>
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[11.5px] font-semibold px-3 py-1 rounded-md" style={portalStyle({ background: 'rgba(125,211,252,0.075)', border: '1px solid rgba(125,211,252,0.18)', color: '#8bd3dd' })}>
-            {activeWork} aktif
-          </span>
-          <span className="text-[11.5px] font-semibold px-3 py-1 rounded-md" style={portalStyle({ background: 'rgba(134,199,160,0.075)', border: '1px solid rgba(134,199,160,0.16)', color: '#86c7a0' })}>
-            {completed} tamam
-          </span>
-          {outside > 0 && (
-            <span className="text-[11.5px] font-semibold px-3 py-1 rounded-md" style={portalStyle({ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(250,250,249,0.56)' })}>
-              {outside} dışında
-            </span>
-          )}
-        </div>
-      </div>
-
-      <div className="px-5 py-4">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 xl:grid-cols-6">
-          {WORKFLOW_STEPS.map((step) => {
-            const value = c[step.key] || 0;
-            const pct = scopedTotal > 0 ? Math.round((value / scopedTotal) * 100) : 0;
-            const Icon = step.icon;
-            return (
-              <Link
-                key={step.key}
-                data-workflow-counter={step.key}
-                href={step.href}
-                className="group min-h-[96px] rounded-lg px-3.5 py-3 transition-all"
-                style={portalStyle({
-                  background: `linear-gradient(180deg, ${step.bg}, rgba(255,255,255,0.012))`,
-                  border: `1px solid ${step.border}`,
-                  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.025)',
-                })}
-                onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.background = 'rgba(255,255,255,0.032)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.background = `linear-gradient(180deg, ${step.bg}, rgba(255,255,255,0.012))`; }}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="w-8 h-8 rounded-md flex items-center justify-center flex-shrink-0" style={portalStyle({ background: 'rgba(5,7,7,0.24)', border: `1px solid ${step.border}`, color: step.color })}>
-                    <Icon size={16} />
-                  </div>
-                  <span className="rounded-md px-2 py-0.5 text-[10.5px] font-bold tabular-nums" style={portalStyle({ color: step.color, background: 'rgba(0,0,0,0.14)', border: `1px solid ${step.border}` })}>
-                    %{pct}
-                  </span>
-                </div>
-                <div className="mt-3">
-                  <div className="text-[25px] leading-none tabular-nums font-bold" style={portalStyle({ color: step.color, fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', letterSpacing: 0 })}>{value}</div>
-                  <div className="mt-1 text-[12.5px] font-semibold truncate" style={portalStyle({ color: '#fafaf9' })}>{step.label}</div>
-                  <div className="mt-0.5 text-[10.5px] truncate" style={portalStyle({ color: 'rgba(250,250,249,0.46)' })}>{step.sub}</div>
-                </div>
-                <div className="mt-3 h-1 overflow-hidden rounded-full" style={portalStyle({ background: 'rgba(255,255,255,0.07)' })}>
-                  <div className="h-full rounded-full transition-all duration-500" style={portalStyle({ width: `${pct}%`, background: step.color })} />
-                </div>
-              </Link>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function AgentMini({ href, icon: Icon, name, stat, running }: { href: string; icon: any; name: string; stat: string; running: boolean }) {
   return (
@@ -1918,7 +1811,7 @@ export default function DashboardPage() {
         <ToplubeyannameTable {...panoramaPeriod} />
       </div>
 
-      <WorkflowOverview counts={workflowCounts} total={workflowTotal} activeCount={activeCount || totalTx} />
+      <IsAkisiHatti counts={workflowCounts} total={workflowTotal} activeCount={activeCount || totalTx} />
 
       <BuHaftaTakvim />
       </div>
