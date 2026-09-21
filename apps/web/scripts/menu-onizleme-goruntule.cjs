@@ -15,11 +15,15 @@ fs.mkdirSync(CIKIS, { recursive: true });
   await pg.locator('input[type=password]').fill('sahte-deneme-1');
   await pg.locator('button[type=submit]').click();
   await pg.waitForURL(/\/panel/, { timeout: 60000 });
+  await pg.evaluate(() => document.fonts.ready);
   await pg.waitForTimeout(3000);
   const menu = pg.locator('[data-moren-sidebar]').first();
   await menu.screenshot({ path: path.join(CIKIS, 'menu.png') });
   await pg.screenshot({ path: path.join(CIKIS, 'panel-tam.png') });
   const genislik = await menu.evaluate((e) => e.getBoundingClientRect().width);
+  // Kesilen (…) madde adları: scrollWidth > clientWidth
+  const kesilen = await pg.$$eval('[data-moren-sidebar-label]', (els) => els.filter((e) => e.scrollWidth > e.clientWidth + 1).map((e) => e.textContent));
+  console.log(JSON.stringify({ kesilen }));
   console.log(JSON.stringify({ genislik, cikis: CIKIS }));
   await b.close();
 })().catch((e) => { console.error(e); process.exit(1); });

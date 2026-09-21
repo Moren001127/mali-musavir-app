@@ -98,7 +98,7 @@ const navGroups = [
     icon: ReceiptText,
     items: [
       { href: '/fatura-merkezi', label: 'Fatura İşleme Merkezi', icon: FileStack },
-      { href: '/panel/e-arsiv', label: 'E-Fatura / E-Arşiv Sorgulama', icon: FileScan },
+      { href: '/panel/e-arsiv', label: 'E-Fatura / E-Arşiv', icon: FileScan },
       { href: '/panel/genel-sorgular', label: 'Genel Sorgulamalar', icon: ScanSearch },
       // { href: '/panel/ajanlar/mihsap', label: 'Mihsap Fatura İşleme', icon: BotMessageSquare }, // gizlendi 2026-08-06 (sayfa+backend duruyor, sadece menüden kaldırıldı)
       { href: '/panel/faturalar', label: 'İşlenen Faturalar', icon: ReceiptText },
@@ -141,7 +141,7 @@ const navGroups = [
       { href: '/panel/cari-kasa', label: 'Cari Kasa & Tahsilat', icon: HandCoins },
       { href: '/panel/iletim-raporu', label: 'İletim Raporu', icon: ClipboardList },
       // { href: '/panel/evraklar', label: 'Evrak Arşivi', icon: FolderArchive }, // gizlendi 2026-08-06 (sayfa+backend duruyor, sadece menüden kaldırıldı)
-      { href: '/panel/mukellef-erisim', label: 'Mükellef Portal Erişimi', icon: LockKeyhole },
+      { href: '/panel/mukellef-erisim', label: 'Portal Erişimi', icon: LockKeyhole },
       { href: '/panel/duyurular', label: 'Duyurular', icon: Megaphone },
       { href: '/panel/galeri/hgs-ihlal', label: 'HGS İhlal Sorgulama', icon: Gavel },
     ],

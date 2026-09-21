@@ -148,10 +148,10 @@ html[data-theme='D'] [data-moren-sidebar] {
   box-shadow: none !important;
 }
 
-/* Muzaffer Bey (2026-09-21): menü gereksiz geniş ve yazılar kaba/sola yaslı duruyordu →
-   214px, yazılar sağa yaslı, daha ince ve hafif aralıklı yazı; grup başlıkları küçük büyük harf. */
+/* Muzaffer Bey (2026-09-21): "yazılar sola yaslı, şeritte lüzumsuz genişlik olmayacak" →
+   224px (en uzun ad "Fatura İşleme Merkezi" yazı tipi yüklenince de sığar), ince yazı; grup başlıkları küçük büyük harf. */
 html[data-theme='D'] [data-moren-sidebar][data-collapsed='false'] {
-  width: 228px !important;
+  width: 224px !important;
 }
 
 /* Madde listesi girintisi ve madde iç boşlukları sıkı: uzun adlar (Fatura İşleme Merkezi) kesilmesin */
@@ -194,13 +194,12 @@ html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-item] {
   background: rgba(255,255,255,.04) !important;
   border-color: transparent !important;
   padding-left: 8px;
-  padding-right: 10px;
+  padding-right: 8px;
   gap: 9px;
 }
 
 html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-label] {
-  text-align: right;
-  padding-right: 2px;
+  text-align: left;
 }
 
 html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-item]:hover,
