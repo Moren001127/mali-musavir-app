@@ -1,29 +1,36 @@
 'use client';
-import { portalStyle } from '@/lib/portal-theme';
+import './moren-ai-white.css';
 
+// MOREN AI (Elif) — 2026-09-21 beyaz tema yeniden tasarımı (bilgi/BEYAZ-TEMA-TASARIM-DILI.md).
+//   Üç parçalı düzen: kompakt başlık · sol sohbet listesi (arama + mükellef bağlamı) · sağda ince canlı ses şeridi + sohbet paneli.
+//   Sayfa satır içi renk kullanmaz; renkler moren-ai-white.css'te tema değişkeni (A koyu / D beyaz).
+//   Veri akışları, uçlar ve kısayollar aynen korunur; yalnız düzen, hiyerarşi ve renk değişti.
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { toast } from 'sonner';
 import {
-  Brain,
+  Building2,
   CheckCircle2,
-  DollarSign,
   Edit3,
   ChevronDown,
   Loader2,
   Mic,
   MicOff,
   MessageSquare,
+  PanelLeftClose,
+  PanelLeftOpen,
   Plus,
   RefreshCw,
+  Search,
   Send,
   Sparkles,
   Trash2,
   Volume2,
   VolumeX,
+  X,
 } from 'lucide-react';
 import {
   chat,
@@ -49,13 +56,27 @@ import {
 import { morenVoice, voiceStatusLabel } from '@/lib/moren-voice-session';
 import { useMorenVoice } from '@/hooks/useMorenVoice';
 
-const GOLD = '#d4b876';
-const GOLD_DEEP = '#8b7649';
-const LINE = 'rgba(255,255,255,0.08)';
-const LINE_GOLD = 'rgba(212,184,118,0.22)';
-const TEXT = '#fafaf9';
-const MUTED = 'rgba(250,250,249,0.56)';
-const SOFT = 'rgba(255,255,255,0.035)';
+const TZ = 'Europe/Istanbul';
+function gunAnahtari(d: Date) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+}
+/** Sohbet listesi: bugün "14:20", bu yıl "21 Eyl", eski "21.09.2025". */
+function kisaTarih(iso: string) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const simdi = new Date();
+  if (gunAnahtari(d) === gunAnahtari(simdi)) return new Intl.DateTimeFormat('tr-TR', { timeZone: TZ, hour: '2-digit', minute: '2-digit' }).format(d);
+  if (d.getFullYear() === simdi.getFullYear()) return new Intl.DateTimeFormat('tr-TR', { timeZone: TZ, day: 'numeric', month: 'short' }).format(d);
+  return new Intl.DateTimeFormat('tr-TR', { timeZone: TZ }).format(d);
+}
+/** Mesaj zaman damgası: bugün "14:22", diğer "21 Eyl 14:22". */
+function mesajSaati(iso: string) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const saat = new Intl.DateTimeFormat('tr-TR', { timeZone: TZ, hour: '2-digit', minute: '2-digit' }).format(d);
+  if (gunAnahtari(d) === gunAnahtari(new Date())) return saat;
+  return `${new Intl.DateTimeFormat('tr-TR', { timeZone: TZ, day: 'numeric', month: 'short' }).format(d)} ${saat}`;
+}
 
 // Canlı ses (OpenAI Realtime) artık sayfaya bağlı DEĞİL: tek oturum lib/moren-voice-session.ts'te
 // yaşar (GlobalMorenVoice her sayfada durur). Bu sayfa yalnız aynı oturumu gösterir/başlatır/durdurur;
@@ -523,108 +544,124 @@ export default function MorenAIPage() {
           : 'çevrimiçi';
   const sekreterMesgul = sendMutation.isPending || recorder.recording || voiceStatus === 'speaking' || voice.status === 'speaking' || voice.status === 'thinking';
 
+  const [conversationSearch, setConversationSearch] = useState('');
+  const filteredConversations = useMemo(() => {
+    const q = conversationSearch.trim().toLocaleLowerCase('tr-TR');
+    if (!q) return conversations;
+    return conversations.filter((conversation) => conversation.title.toLocaleLowerCase('tr-TR').includes(q));
+  }, [conversations, conversationSearch]);
+  const taxpayerLabel = useCallback(
+    (id: string | null) => {
+      if (!id) return 'Genel ofis';
+      const t = taxpayers.find((item) => item.id === id);
+      return t ? taxpayerName(t) : 'Mükellef';
+    },
+    [taxpayers],
+  );
+  const contextLabel = selectedTaxpayer ? taxpayerName(selectedTaxpayer) : 'Genel ofis sorusu';
+  const showCost = messages.length > 0 || voice.sessionCost > 0;
+  const voiceChipState = !voiceActive
+    ? 'idle'
+    : voice.status === 'error'
+      ? 'error'
+      : voice.status === 'thinking' || voice.status === 'connecting' || voiceStatus === 'transcribing' || voiceStatus === 'thinking'
+        ? 'busy'
+        : 'online';
+  const micLive = recorder.recording || realtimeActive;
+
+  const selectConversation = (id: string) => {
+    setActiveConversationId(id);
+    setIsDraftingNewChat(false);
+    setInput('');
+  };
+
   return (
-    <div className="relative flex h-full min-h-0 max-w-none flex-col gap-3 overflow-hidden">
-      {/* ── Sekreter başlığı: Elif — gerçek biriyle yazışıyormuş havası ── */}
-      <header
-        className="relative shrink-0 overflow-hidden rounded-2xl border px-5 py-3.5"
-        style={portalStyle({
-          borderColor: LINE,
-          background:
-            'radial-gradient(120% 140% at 0% 0%, rgba(240,154,168,0.16), transparent 46%), radial-gradient(120% 140% at 100% 0%, rgba(212,184,118,0.14), transparent 46%), #0f0d0b',
-        })}
-      >
-        <div className="absolute inset-x-0 top-0 h-1" style={portalStyle({ background: 'linear-gradient(90deg,#f09aa8,#e7b6a0,#d4b876,#c8a25e,#f09aa8)' })} />
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <span className="relative grid h-12 w-12 place-items-center rounded-full text-[19px] font-bold" style={portalStyle({ background: 'linear-gradient(135deg,#f09aa8,#d4b876)', boxShadow: '0 6px 18px rgba(240,154,168,0.34)', color: '#1a1410', fontFamily: 'Fraunces, serif' })}>
-              E
-              <span
-                className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2"
-                style={portalStyle({
-                  borderColor: '#0f0d0b',
-                  background: sekreterMesgul ? '#fbbf24' : '#4ade80',
-                  boxShadow: `0 0 8px ${sekreterMesgul ? 'rgba(251,191,36,0.8)' : 'rgba(74,222,128,0.8)'}`,
-                })}
-              />
+    <div className="ai-root relative flex h-full min-h-0 max-w-none flex-col gap-3 overflow-hidden">
+      {/* ── Başlık: Elif (kompakt) ── */}
+      <header className="ai-card ai-header flex shrink-0 flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="ai-avatar" title="Elif — MOREN AI Ofis Sekreteri">
+            E
+            <span className="ai-avatar__dot" data-busy={sekreterMesgul ? 'true' : 'false'} />
+          </span>
+          <div className="min-w-0">
+            <h1 className="ai-title">Elif</h1>
+            <p className="ai-subtitle">MOREN AI Ofis Sekreteri</p>
+          </div>
+          <span className="ai-chip ai-chip--status ml-1" data-state={sekreterMesgul ? 'busy' : 'online'}>
+            {sekreterDurum}
+          </span>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {showCost && (
+            <span className="ai-chip ai-hide-sm" title="Bu sohbet + canlı ses oturumunun maliyeti">
+              Oturum <b className="tabular-nums">${visibleSessionCost.toFixed(4)}</b>
             </span>
-            <div>
-              <h1 className="text-[21px] font-bold leading-tight" style={portalStyle({ color: TEXT, fontFamily: 'Fraunces, serif' })}>Elif</h1>
-              <p className="flex items-center gap-1.5 text-[12px]" style={portalStyle({ color: sekreterMesgul ? GOLD : MUTED })}>
-                {sekreterDurum}
-                <span style={portalStyle({ color: 'rgba(250,250,249,0.35)' })}>· MOREN AI Ofis Sekreteri</span>
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            {(messages.length > 0 || voice.sessionCost > 0) && (
-              <div className="hidden items-center gap-1.5 rounded-xl border px-3 py-2 text-[12px] sm:flex" style={portalStyle({ borderColor: LINE, color: MUTED })}>
-                Oturum <b className="tabular-nums" style={portalStyle({ color: TEXT })}>${visibleSessionCost.toFixed(4)}</b>
-              </div>
-            )}
-            <button
-              type="button"
-              onClick={() => setTtsEnabled((value) => !value)}
-              className="flex h-10 w-10 items-center justify-center rounded-xl border transition hover:bg-white/[0.06]"
-              style={portalStyle({ borderColor: ttsEnabled ? LINE_GOLD : LINE, color: ttsEnabled ? GOLD : MUTED })}
-              title={ttsEnabled ? 'Sesli okuma açık' : 'Sesli okuma kapalı'}
-            >
-              {ttsEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
-            </button>
-            <button
-              type="button"
-              onClick={() => setLeftCollapsed((value) => !value)}
-              className="hidden h-10 items-center gap-2 rounded-xl border px-3 text-[12.5px] font-semibold transition hover:bg-white/[0.06] lg:flex"
-              style={portalStyle({ borderColor: leftCollapsed ? LINE : LINE_GOLD, color: leftCollapsed ? MUTED : GOLD })}
-              title="Sohbet panelini gizle/göster"
-            >
-              <MessageSquare size={15} /> Sohbetler
-            </button>
-            <button
-              type="button"
-              onClick={() => setQuickMenuOpen((value) => !value)}
-              className="flex h-10 items-center gap-2 rounded-xl border px-3 text-[12.5px] font-semibold transition hover:bg-white/[0.06]"
-              style={portalStyle({ borderColor: quickMenuOpen ? LINE_GOLD : LINE, color: quickMenuOpen ? GOLD : MUTED })}
-              title="Hızlı sorular, canlı özet ve hafıza notu"
-            >
-              <Sparkles size={15} /> Hızlı menü
-            </button>
-          </div>
+          )}
+          <button
+            type="button"
+            onClick={() => setTtsEnabled((value) => !value)}
+            className="ai-btn ai-btn--icon"
+            data-active={ttsEnabled ? 'true' : 'false'}
+            aria-pressed={ttsEnabled}
+            title={ttsEnabled ? 'Sesli okuma açık — kapatmak için tıkla' : 'Sesli okuma kapalı — açmak için tıkla'}
+          >
+            {ttsEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
+          </button>
+          <button
+            type="button"
+            onClick={() => setLeftCollapsed((value) => !value)}
+            className="ai-btn ai-btn--icon ai-hide-md"
+            aria-pressed={!leftCollapsed}
+            title={leftCollapsed ? 'Sohbet listesini göster' : 'Sohbet listesini gizle'}
+          >
+            {leftCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+          </button>
+          <button
+            type="button"
+            onClick={() => setQuickMenuOpen((value) => !value)}
+            className="ai-btn"
+            data-active={quickMenuOpen ? 'true' : 'false'}
+            aria-expanded={quickMenuOpen}
+            title="Hızlı sorular, canlı özet ve hafıza notu"
+          >
+            <Sparkles size={15} /> Hızlı menü
+          </button>
+          <button type="button" onClick={handleNewChat} className="ai-btn" title="Yeni konuşma başlat">
+            <Plus size={15} /> Yeni sohbet
+          </button>
         </div>
       </header>
 
       {/* ── Hızlı menü açılırı (eski Ofis Beyni içeriği, kompakt) ── */}
       {quickMenuOpen && (
-        <div
-          className="absolute right-0 top-[84px] z-40 flex max-h-[72vh] w-[320px] flex-col overflow-hidden rounded-xl border shadow-2xl"
-          style={portalStyle({ borderColor: LINE_GOLD, background: '#141210' })}
-        >
-          <div className="flex items-center gap-2 border-b px-4 py-2.5" style={portalStyle({ borderColor: LINE })}>
-            <Sparkles size={14} style={portalStyle({ color: GOLD })} />
-            <span className="flex-1 text-[13px] font-semibold" style={portalStyle({ color: TEXT })}>Hızlı menü</span>
-            <button type="button" onClick={() => refetchBrain()} className="flex h-7 w-7 items-center justify-center rounded-lg border transition hover:bg-white/[0.06]" style={portalStyle({ borderColor: LINE, color: GOLD })} title="Yenile">
+        <div className="ai-pop" role="dialog" aria-label="Hızlı menü">
+          <div className="ai-pop__head">
+            <Sparkles size={14} style={{ color: 'var(--ai-accent-ink)' }} />
+            <span className="ai-pop__title">Hızlı menü</span>
+            <button type="button" onClick={() => refetchBrain()} className="ai-btn ai-btn--sm ai-btn--icon ai-btn--ghost" title="Yenile">
               {brainLoading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
             </button>
-            <button type="button" onClick={() => setQuickMenuOpen(false)} className="flex h-7 w-7 items-center justify-center rounded-lg border transition hover:bg-white/[0.06]" style={portalStyle({ borderColor: LINE, color: MUTED })} title="Kapat">
-              ×
+            <button type="button" onClick={() => setQuickMenuOpen(false)} className="ai-btn ai-btn--sm ai-btn--icon ai-btn--ghost" title="Kapat">
+              <X size={14} />
             </button>
           </div>
-          <div className="flex-1 overflow-y-auto p-3">
-            <div className="grid grid-cols-2 gap-1.5">
+          <div className="ai-pop__body">
+            <div className="grid grid-cols-2 gap-2">
               {[
                 { label: 'Evrak bekleyen', value: officeBrain?.briefing?.ozet?.evrakEksik ?? 0 },
                 { label: 'Beyan riski', value: officeBrain?.briefing?.ozet?.kdvKontrolEksik ?? 0 },
                 { label: 'Banka aksiyonu', value: (officeBrain?.briefing?.ozet?.bankaEksik ?? 0) + (officeBrain?.briefing?.ozet?.bankaHesapsiz ?? 0) },
                 { label: 'Cari borçlu', value: officeBrain?.briefing?.ozet?.borcluMukellef ?? 0 },
               ].map((metric) => (
-                <div key={metric.label} className="rounded-lg border px-2.5 py-2" style={portalStyle({ borderColor: LINE, background: SOFT })}>
-                  <p className="text-[10px]" style={portalStyle({ color: MUTED })}>{metric.label}</p>
-                  <p className="mt-0.5 text-[18px] font-semibold leading-none tabular-nums" style={portalStyle({ color: TEXT })}>{metric.value}</p>
+                <div key={metric.label} className="ai-metric">
+                  <p className="ai-metric__label">{metric.label}</p>
+                  <p className="ai-metric__value">{metric.value}</p>
                 </div>
               ))}
             </div>
-            <p className="mb-1.5 mt-3 text-[10.5px] font-semibold uppercase tracking-[0.12em]" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>Hazır sorular</p>
-            <div className="space-y-1.5">
+            <p className="ai-label">Hazır sorular</p>
+            <div className="grid gap-1.5">
               {[
                 'Bugün önce neye bakmalıyım?',
                 'Beyana hazır olmayanları risk sırasına koy.',
@@ -635,41 +672,45 @@ export default function MorenAIPage() {
                 <button
                   key={quick}
                   type="button"
-                  onClick={() => { askQuick(quick); setQuickMenuOpen(false); }}
-                  className="w-full rounded-lg border px-3 py-2 text-left text-[12px] transition hover:bg-white/[0.05]"
-                  style={portalStyle({ borderColor: LINE, color: TEXT, background: 'rgba(255,255,255,0.02)' })}
+                  onClick={() => {
+                    askQuick(quick);
+                    setQuickMenuOpen(false);
+                  }}
+                  className="ai-quick"
                 >
                   {quick}
                 </button>
               ))}
             </div>
-            <p className="mb-1.5 mt-3 text-[10.5px] font-semibold uppercase tracking-[0.12em]" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>Son hafıza</p>
-            <div className="space-y-1.5">
+            <p className="ai-label">Son hafıza</p>
+            <div className="grid gap-1.5">
               {(memoryData?.memories || []).slice(0, 3).map((memory: any) => (
-                <div key={memory.id} className="rounded-lg border px-3 py-2" style={portalStyle({ borderColor: LINE, background: 'rgba(255,255,255,0.02)' })}>
-                  <p className="truncate text-[12px] font-semibold" style={portalStyle({ color: TEXT })}>{memory.title}</p>
-                  <p className="mt-0.5 line-clamp-2 text-[11px] leading-relaxed" style={portalStyle({ color: MUTED })}>{memory.content}</p>
+                <div key={memory.id} className="ai-memo">
+                  <p className="ai-memo__title">{memory.title}</p>
+                  <p className="ai-memo__text">{memory.content}</p>
                 </div>
               ))}
-              {!(memoryData?.memories || []).length && <p className="text-[12px]" style={portalStyle({ color: MUTED })}>Henüz kayıtlı not yok.</p>}
+              {!(memoryData?.memories || []).length && <p className="ai-empty-note !py-2 !text-left">Henüz kayıtlı not yok.</p>}
             </div>
           </div>
-          <div className="border-t p-3" style={portalStyle({ borderColor: LINE })}>
+          <div className="ai-pop__foot">
             <div className="flex gap-2">
               <input
                 value={memoryText}
                 onChange={(event) => setMemoryText(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && memoryText.trim() && !saveMemoryMut.isPending) saveMemoryMut.mutate();
+                }}
                 placeholder="Hafızaya kısa not..."
-                className="h-9 min-w-0 flex-1 rounded-lg border px-3 text-[12px]"
-                style={portalStyle({ background: SOFT, borderColor: LINE, color: TEXT })}
+                aria-label="Hafızaya kısa not"
+                className="ai-input min-w-0 flex-1"
               />
               <button
                 type="button"
                 disabled={!memoryText.trim() || saveMemoryMut.isPending}
                 onClick={() => saveMemoryMut.mutate()}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition disabled:opacity-40"
-                style={portalStyle({ borderColor: LINE_GOLD, color: GOLD, background: 'rgba(212,184,118,0.08)' })}
-                title="Kaydet"
+                className="ai-btn ai-btn--primary ai-btn--icon shrink-0"
+                title="Hafızaya kaydet"
               >
                 {saveMemoryMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={15} />}
               </button>
@@ -678,354 +719,303 @@ export default function MorenAIPage() {
         </div>
       )}
 
-      {/* ── Gövde: sohbet listesi · konuşma · ofis beyni ── */}
-      <div className="flex min-h-0 flex-1 gap-3 overflow-hidden">
-      {!leftCollapsed && (
-      <aside className="flex w-[260px] shrink-0 flex-col overflow-hidden rounded-lg border bg-[#0f0d0b]/80" style={portalStyle({ borderColor: LINE })}>
-        <div className="flex items-center gap-3 border-b px-4 py-3" style={portalStyle({ borderColor: LINE })}>
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg" style={portalStyle({ background: 'rgba(212,184,118,0.12)', color: GOLD })}>
-            <Brain size={18} />
-          </div>
-          <div className="min-w-0 flex-1">
-            <h1 className="text-[15px] font-semibold leading-tight" style={portalStyle({ color: TEXT })}>Sohbetler</h1>
-            <p className="truncate text-[11px]" style={portalStyle({ color: MUTED })}>Elif ile geçmiş konuşmalar</p>
-          </div>
-          <button
-            type="button"
-            onClick={handleNewChat}
-            className="flex h-8 w-8 items-center justify-center rounded-lg border transition hover:bg-white/[0.06]"
-            style={portalStyle({ borderColor: LINE_GOLD, color: GOLD })}
-            title="Yeni konuşma"
-          >
-            <Plus size={16} />
-          </button>
-        </div>
+      {/* ── Gövde: sohbet listesi · canlı ses · konuşma ── */}
+      <div className="ai-body flex min-h-0 flex-1 gap-3 overflow-hidden">
+        {!leftCollapsed && (
+          <aside className="ai-card ai-side flex shrink-0 flex-col overflow-hidden">
+            <div className="ai-side__head">
+              <MessageSquare size={15} style={{ color: 'var(--ai-accent-ink)' }} />
+              <h2 className="ai-side__title flex-1">Sohbetler</h2>
+              <span className="ai-count" title="Kayıtlı konuşma sayısı">{conversations.length}</span>
+              <button type="button" onClick={handleNewChat} className="ai-btn ai-btn--sm ai-btn--icon" title="Yeni konuşma">
+                <Plus size={15} />
+              </button>
+            </div>
 
-        <div className="relative border-b p-3" style={portalStyle({ borderColor: LINE })}>
-          <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em]" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>
-            Mükellef konteksti
-          </label>
-          <div
-            className="relative"
-            onBlur={(event) => {
-              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-                setTaxpayerPickerOpen(false);
-              }
-            }}
-          >
-            <button
-              type="button"
-              onClick={() => setTaxpayerPickerOpen((value) => !value)}
-              className="flex h-9 w-full items-center justify-between gap-2 rounded-lg border px-3 text-left text-[12.5px] transition hover:bg-white/[0.06]"
-              style={portalStyle({ background: SOFT, borderColor: taxpayerPickerOpen ? LINE_GOLD : LINE, color: TEXT })}
-              aria-expanded={taxpayerPickerOpen}
-            >
-              <span className="min-w-0 truncate">
-                {selectedTaxpayer ? taxpayerName(selectedTaxpayer) : 'Genel ofis sorusu'}
-              </span>
-              <ChevronDown
-                size={14}
-                className={`shrink-0 transition ${taxpayerPickerOpen ? 'rotate-180' : ''}`}
-                style={portalStyle({ color: GOLD })}
-              />
-            </button>
-
-            {taxpayerPickerOpen && (
+            <div className="ai-side__tools">
+              <div className="ai-search">
+                <Search size={14} />
+                <input
+                  value={conversationSearch}
+                  onChange={(event) => setConversationSearch(event.target.value)}
+                  placeholder="Sohbetlerde ara"
+                  aria-label="Sohbetlerde ara"
+                  className="ai-search__input"
+                />
+              </div>
               <div
-                className="absolute left-0 right-0 z-30 mt-2 max-h-[280px] overflow-y-auto rounded-lg border p-1 shadow-2xl"
-                style={portalStyle({
-                  background: '#14110e',
-                  borderColor: LINE_GOLD,
-                  boxShadow: '0 18px 50px rgba(0,0,0,0.45)',
-                })}
-              >
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedTaxpayerId('');
+                className="relative"
+                onBlur={(event) => {
+                  if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
                     setTaxpayerPickerOpen(false);
-                  }}
-                  className="w-full rounded-md px-3 py-2 text-left text-[12.5px] font-semibold transition hover:bg-white/[0.06]"
-                  style={portalStyle({
-                    color: selectedTaxpayerId ? MUTED : TEXT,
-                    background: selectedTaxpayerId ? 'transparent' : 'rgba(212,184,118,0.12)',
-                  })}
+                  }
+                }}
+              >
+                <label className="ai-label" htmlFor="moren-ai-context">
+                  Mükellef bağlamı
+                </label>
+                <button
+                  id="moren-ai-context"
+                  type="button"
+                  onClick={() => setTaxpayerPickerOpen((value) => !value)}
+                  className="ai-select"
+                  data-set={selectedTaxpayerId ? 'true' : 'false'}
+                  aria-expanded={taxpayerPickerOpen}
+                  title="Sorular bu mükellefin verisiyle yanıtlanır"
                 >
-                  Genel ofis sorusu
+                  <span className="flex min-w-0 items-center gap-2">
+                    <Building2 size={14} />
+                    <span className="truncate">{contextLabel}</span>
+                  </span>
+                  <ChevronDown size={14} className={`transition ${taxpayerPickerOpen ? 'rotate-180' : ''}`} />
                 </button>
-                <div className="my-1 border-t" style={portalStyle({ borderColor: LINE })} />
-                {taxpayers.map((taxpayer) => {
-                  const active = selectedTaxpayerId === taxpayer.id;
-                  return (
+
+                {taxpayerPickerOpen && (
+                  <div className="ai-dd" role="listbox" aria-label="Mükellef bağlamı">
                     <button
-                      key={taxpayer.id}
                       type="button"
                       onClick={() => {
-                        setSelectedTaxpayerId(taxpayer.id);
+                        setSelectedTaxpayerId('');
                         setTaxpayerPickerOpen(false);
                       }}
-                      className="w-full rounded-md px-3 py-2 text-left text-[12.5px] transition hover:bg-white/[0.06]"
-                      style={portalStyle({
-                        color: active ? TEXT : 'rgba(250,250,249,0.72)',
-                        background: active ? 'rgba(212,184,118,0.12)' : 'transparent',
-                      })}
+                      className="ai-dd__item"
+                      data-active={selectedTaxpayerId ? 'false' : 'true'}
                     >
-                      <span className="block truncate">{taxpayerName(taxpayer)}</span>
+                      Genel ofis sorusu
                     </button>
-                  );
-                })}
+                    <div className="ai-dd__sep" />
+                    {taxpayers.map((taxpayer) => (
+                      <button
+                        key={taxpayer.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedTaxpayerId(taxpayer.id);
+                          setTaxpayerPickerOpen(false);
+                        }}
+                        className="ai-dd__item truncate"
+                        data-active={selectedTaxpayerId === taxpayer.id ? 'true' : 'false'}
+                      >
+                        {taxpayerName(taxpayer)}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-2">
-          {conversations.length === 0 ? (
-            <div className="px-4 py-10 text-center text-[12px]" style={portalStyle({ color: MUTED })}>
-              Henüz konuşma yok.
             </div>
-          ) : (
-            <div className="space-y-1.5">
-              {conversations.map((conversation) => {
-                const active = activeConversationId === conversation.id;
-                return (
-                  <div
-                    key={conversation.id}
-                    onClick={() => {
-                      setActiveConversationId(conversation.id);
-                      setIsDraftingNewChat(false);
-                      setInput('');
-                    }}
-                    className="group relative cursor-pointer rounded-lg border px-3 py-2.5 transition"
-                    style={portalStyle({
-                      background: active ? 'rgba(212,184,118,0.11)' : 'transparent',
-                      borderColor: active ? LINE_GOLD : 'transparent',
-                    })}
-                  >
-                    <div className="flex gap-2">
-                      <MessageSquare size={14} className="mt-0.5 shrink-0" style={portalStyle({ color: active ? GOLD : 'rgba(250,250,249,0.38)' })} />
-                      <div className="min-w-0 flex-1 pr-9">
-                        <p className="truncate text-[12.5px] font-semibold" style={portalStyle({ color: TEXT })}>{conversation.title}</p>
-                        <p className="mt-1 text-[10.5px] tabular-nums" style={portalStyle({ color: 'rgba(250,250,249,0.38)' })}>
-                          {new Date(conversation.updatedAt).toLocaleDateString('tr-TR')} · ${conversation.totalCostUsd.toFixed(3)}
+
+            <div className="ai-side__list">
+              {conversations.length === 0 ? (
+                <div className="ai-empty-note">Henüz konuşma yok.</div>
+              ) : filteredConversations.length === 0 ? (
+                <div className="ai-empty-note">Aramayla eşleşen sohbet yok.</div>
+              ) : (
+                filteredConversations.map((conversation) => {
+                  const active = activeConversationId === conversation.id;
+                  return (
+                    <div
+                      key={conversation.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => selectConversation(conversation.id)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          selectConversation(conversation.id);
+                        }
+                      }}
+                      className="ai-conv"
+                      data-active={active ? 'true' : 'false'}
+                      aria-current={active ? 'true' : undefined}
+                    >
+                      <span className="ai-conv__icon">
+                        <MessageSquare size={14} />
+                      </span>
+                      <div className="ai-conv__body">
+                        <p className="ai-conv__title" title={conversation.title}>{conversation.title}</p>
+                        <p className="ai-conv__meta">
+                          {taxpayerLabel(conversation.taxpayerId)} · ${conversation.totalCostUsd.toFixed(3)}
                         </p>
                       </div>
+                      <span className="ai-conv__time" title={new Date(conversation.updatedAt).toLocaleString('tr-TR')}>
+                        {kisaTarih(conversation.updatedAt)}
+                      </span>
+                      <div className="ai-conv__tools">
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleRename(conversation);
+                          }}
+                          className="ai-conv__tool"
+                          title="Yeniden adlandır"
+                        >
+                          <Edit3 size={12} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            if (confirm('Konuşma silinsin mi?')) deleteMut.mutate(conversation.id);
+                          }}
+                          className="ai-conv__tool ai-conv__tool--danger"
+                          title="Sil"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
                     </div>
-                    <div className="absolute right-2 top-2 flex opacity-0 transition group-hover:opacity-100">
-                      <button
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          handleRename(conversation);
-                        }}
-                        className="flex h-6 w-6 items-center justify-center rounded-md hover:bg-white/10"
-                        title="Yeniden adlandır"
-                      >
-                        <Edit3 size={11} style={portalStyle({ color: MUTED })} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          if (confirm('Konuşma silinsin mi?')) deleteMut.mutate(conversation.id);
-                        }}
-                        className="flex h-6 w-6 items-center justify-center rounded-md hover:bg-red-500/15"
-                        title="Sil"
-                      >
-                        <Trash2 size={11} style={portalStyle({ color: '#f87171' })} />
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })
+              )}
             </div>
-          )}
-        </div>
-      </aside>
-      )}
+          </aside>
+        )}
 
-      <section className="flex min-w-0 flex-1 flex-col gap-3 overflow-hidden">
-        {/* ── Canlı MOREN AI — kompakt şerit (konuşma öncelikli) ── */}
-        <div
-          className="relative flex shrink-0 items-center gap-3 overflow-hidden rounded-xl border px-4 py-2.5"
-          style={portalStyle({
-            borderColor: voiceActive ? 'rgba(240,154,168,0.5)' : LINE_GOLD,
-            background: 'radial-gradient(90% 160% at 10% 0%, rgba(240,154,168,0.12), transparent 60%), #14110e',
-            boxShadow: voiceActive ? '0 0 0 1px rgba(240,154,168,0.16)' : 'none',
-          })}
-        >
-          <div className="relative grid h-11 w-11 shrink-0 place-items-center">
-            {voiceActive && (
-              <>
-                <span className="moren-voice-ring absolute inset-0 rounded-full" style={portalStyle({ border: '2px solid rgba(240,154,168,0.5)' })} />
-                <span className="moren-voice-ring absolute inset-0 rounded-full" style={portalStyle({ border: '2px solid rgba(240,154,168,0.5)', animationDelay: '0.8s' })} />
-                <span className="moren-voice-ring absolute inset-0 rounded-full" style={portalStyle({ border: '2px solid rgba(240,154,168,0.5)', animationDelay: '1.6s' })} />
-              </>
-            )}
-            <div
-              className={`grid h-10 w-10 place-items-center rounded-full ${voiceActive ? 'moren-voice-orb-live' : ''}`}
-              style={portalStyle({ background: 'radial-gradient(circle at 35% 30%, #ffd9e0, #f09aa8 55%, #9f5260)', color: '#1a1012', boxShadow: '0 6px 16px rgba(240,154,168,0.4), inset 0 2px 5px rgba(255,255,255,0.4)' })}
-            >
-              {voice.status === 'connecting' || voice.status === 'thinking' ? <Loader2 size={18} className="animate-spin" /> : voiceStatus === 'speaking' || voice.status === 'speaking' ? <Sparkles size={18} /> : <Mic size={18} />}
-            </div>
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <p className="text-[14px] font-bold" style={portalStyle({ color: TEXT })}>Canlı MOREN AI</p>
-              <span
-                className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10.5px] font-bold"
-                style={portalStyle({ background: voiceActive ? 'rgba(34,197,94,0.14)' : 'rgba(212,184,118,0.14)', color: voiceActive ? '#86efac' : GOLD })}
-              >
-                <span className="h-1.5 w-1.5 rounded-full" style={portalStyle({ background: 'currentColor' })} />
-                {voiceLabel}
-              </span>
-            </div>
-            {voiceActive && voice.status === 'thinking' ? (
-              <p className="mt-0.5 truncate text-[11px]" style={portalStyle({ color: voice.longWait ? GOLD : MUTED })}>
-                {voice.longWait ? 'Hâlâ çalışıyor — koordinatör işi yürütüyor; sonuç mesajlaşmaya da düşer.' : 'Koordinatör veriyi topluyor…'}
-              </p>
-            ) : voiceActive ? (
-              <div className="mt-1 flex items-end gap-[2px]" style={portalStyle({ height: 15 })}>
-                {Array.from({ length: 18 }).map((_, index) => (
-                  <span
-                    key={index}
-                    className="moren-voice-bar w-[2.5px] rounded-full"
-                    style={portalStyle({ background: 'linear-gradient(180deg,#f09aa8,#d4b876)', animationDelay: `${index * 0.05}s` })}
-                  />
-                ))}
+        <section className="ai-main flex min-w-0 flex-1 flex-col gap-3 overflow-hidden">
+          {/* ── Canlı MOREN AI — ince şerit ── */}
+          <div className="ai-card ai-voice shrink-0" data-live={voiceActive ? 'true' : 'false'}>
+            <div className="ai-voice__orb">
+              {voiceActive && (
+                <>
+                  <span className="moren-voice-ring" />
+                  <span className="moren-voice-ring" style={{ animationDelay: '0.8s' }} />
+                  <span className="moren-voice-ring" style={{ animationDelay: '1.6s' }} />
+                </>
+              )}
+              <div className={`ai-voice__disc ${voiceActive ? 'moren-voice-orb-live' : ''}`}>
+                {voice.status === 'connecting' || voice.status === 'thinking' ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : voiceStatus === 'speaking' || voice.status === 'speaking' ? (
+                  <Sparkles size={16} />
+                ) : (
+                  <Mic size={16} />
+                )}
               </div>
-            ) : (
-              <p className="mt-0.5 truncate text-[11px]" style={portalStyle({ color: MUTED })}>
-                {voice.errorText
-                  ? voice.errorText
-                  : 'Gerçek zamanlı sesli asistan — muhatap ekip koordinatörü; sayfa değişse de ses sürer.'}
-              </p>
-            )}
-          </div>
-          <div className="flex shrink-0 items-center gap-3">
-            <div className="hidden text-right sm:block">
-              <p className="text-[9.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.40)' })}>maliyet · token</p>
-              <p className="text-[12px] font-bold tabular-nums" style={portalStyle({ color: TEXT })}>${voice.sessionCost.toFixed(4)} · {voice.sessionTokens}</p>
             </div>
-            <button
-              type="button"
-              onClick={handleVoiceModeToggle}
-              className="flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-[13px] font-bold transition"
-              style={portalStyle({
-                background: voiceActive ? 'rgba(248,113,113,0.16)' : 'linear-gradient(135deg,#f09aa8,#9f5260)',
-                color: voiceActive ? '#fca5a5' : '#160d10',
-                border: voiceActive ? '1px solid rgba(248,113,113,0.34)' : 'none',
-              })}
-            >
-              {voice.status === 'connecting' ? <Loader2 size={16} className="animate-spin" /> : voiceActive ? <MicOff size={16} /> : <Mic size={16} />}
-              {voiceActive ? 'Sesi Kapat' : 'Canlı Konuş'}
-            </button>
+            <div className="min-w-0 flex-1">
+              <p className="ai-voice__title">
+                Canlı MOREN AI
+                <span className={`ai-chip ${voiceChipState === 'idle' ? '' : 'ai-chip--status'}`} data-state={voiceChipState}>
+                  {voiceLabel}
+                </span>
+              </p>
+              {voiceActive && voice.status === 'thinking' ? (
+                <p className="ai-voice__sub" data-warn={voice.longWait ? 'true' : 'false'}>
+                  {voice.longWait ? 'Hâlâ çalışıyor — koordinatör işi yürütüyor; sonuç mesajlaşmaya da düşer.' : 'Koordinatör veriyi topluyor…'}
+                </p>
+              ) : voiceActive ? (
+                <div className="ai-voice__bars" aria-hidden>
+                  {Array.from({ length: 18 }).map((_, index) => (
+                    <span key={index} className="moren-voice-bar" style={{ animationDelay: `${index * 0.05}s` }} />
+                  ))}
+                </div>
+              ) : (
+                <p className="ai-voice__sub" data-warn={voice.errorText ? 'true' : 'false'}>
+                  {voice.errorText || 'Gerçek zamanlı sesli asistan — muhatap ekip koordinatörü; sayfa değişse de ses sürer.'}
+                </p>
+              )}
+            </div>
+            <div className="flex shrink-0 items-center gap-3">
+              <div className="ai-voice__cost ai-hide-sm">
+                <p>maliyet · token</p>
+                <p>${voice.sessionCost.toFixed(4)} · {voice.sessionTokens}</p>
+              </div>
+              <button
+                type="button"
+                onClick={handleVoiceModeToggle}
+                className={`ai-btn ${voiceActive ? 'ai-btn--danger' : 'ai-btn--primary'}`}
+                title={voiceActive ? 'Canlı ses oturumunu kapat' : 'Canlı ses oturumu başlat'}
+              >
+                {voice.status === 'connecting' ? <Loader2 size={15} className="animate-spin" /> : voiceActive ? <MicOff size={15} /> : <Mic size={15} />}
+                {voiceActive ? 'Sesi Kapat' : 'Canlı Konuş'}
+              </button>
+            </div>
           </div>
-        </div>
 
-        {/* ── Konuşma kartı ── */}
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border bg-[#0f0d0b]/80" style={portalStyle({ borderColor: LINE })}>
-        <div className="flex items-center gap-3 border-b px-4 py-2.5" style={portalStyle({ borderColor: LINE })}>
-          <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-bold uppercase tracking-[0.14em]" style={portalStyle({ color: GOLD })}>
-              {selectedTaxpayer ? taxpayerName(selectedTaxpayer) : 'Genel çalışma'}
-            </p>
-            <h2 className="truncate text-[14px] font-semibold" style={portalStyle({ color: TEXT })}>
-              {activeConv?.title || 'Yeni konuşma'}
-            </h2>
-          </div>
-          {messages.length > 0 && (
-            <p className="hidden text-[11px] tabular-nums sm:block" style={portalStyle({ color: MUTED })}>{messages.length} mesaj</p>
-          )}
-        </div>
+          {/* ── Konuşma kartı ── */}
+          <div className="ai-card ai-chat flex min-h-0 flex-1 flex-col overflow-hidden">
+            <div className="ai-chat__head">
+              <div className="min-w-0 flex-1">
+                <p className="ai-eyebrow">{selectedTaxpayer ? taxpayerName(selectedTaxpayer) : 'Genel çalışma'}</p>
+                <h2 className="ai-chat__title">{activeConv?.title || 'Yeni konuşma'}</h2>
+              </div>
+              {messages.length > 0 && <span className="ai-chip ai-hide-sm">{messages.length} mesaj</span>}
+            </div>
 
-        <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-5">
-          {messages.length === 0 && !sendMutation.isPending ? (
-            <EmptyChatState askQuick={askQuick} />
-          ) : (
-            <div className="space-y-4">
-              {messages.map((message) => (
-                <MessageBubble
-                  key={message.id}
-                  message={message}
-                  onConfirmAction={(preview) => confirmActionMut.mutate(preview)}
-                  confirming={confirmActionMut.isPending}
-                />
-              ))}
-              {sendMutation.isPending && (
-                <div className="flex items-center gap-2.5">
-                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[13px] font-bold" style={portalStyle({ background: 'linear-gradient(135deg,#f09aa8,#d4b876)', color: '#1a1410', fontFamily: 'Fraunces, serif' })}>
-                    E
-                  </span>
-                  <div className="flex items-center gap-1 rounded-2xl border px-3.5 py-2.5" style={portalStyle({ borderColor: LINE, background: SOFT })}>
-                    {[0, 1, 2].map((i) => (
-                      <span
-                        key={i}
-                        className="h-1.5 w-1.5 animate-bounce rounded-full"
-                        style={portalStyle({ background: GOLD, animationDelay: `${i * 0.15}s` })}
-                      />
-                    ))}
-                    <span className="ml-2 text-[11.5px]" style={portalStyle({ color: MUTED })}>Elif yazıyor…</span>
-                  </div>
+            <div ref={scrollRef} className="ai-chat__scroll">
+              {messages.length === 0 && !sendMutation.isPending ? (
+                <EmptyChatState askQuick={askQuick} />
+              ) : (
+                <div className="space-y-4">
+                  {messages.map((message) => (
+                    <MessageBubble
+                      key={message.id}
+                      message={message}
+                      onConfirmAction={(preview) => confirmActionMut.mutate(preview)}
+                      confirming={confirmActionMut.isPending}
+                    />
+                  ))}
+                  {sendMutation.isPending && (
+                    <div className="ai-msg" data-role="assistant">
+                      <span className="ai-avatar ai-avatar--sm">E</span>
+                      <div className="ai-typing" aria-live="polite">
+                        <span className="ai-typing__dot" />
+                        <span className="ai-typing__dot" />
+                        <span className="ai-typing__dot" />
+                        <span className="ai-typing__text">Elif yazıyor…</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
-          )}
-        </div>
 
-        <div className="border-t p-3" style={portalStyle({ borderColor: LINE })}>
-          <div className="flex items-end gap-2 rounded-lg border bg-black/20 p-2" style={portalStyle({ borderColor: LINE })}>
-            <textarea
-              ref={inputRef}
-              id="moren-ai-chat-input"
-              name="moren-ai-question"
-              autoComplete="off"
-              autoCorrect="off"
-              autoCapitalize="off"
-              spellCheck={false}
-              value={input}
-              onChange={(event) => setInput(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' && !event.shiftKey) {
-                  event.preventDefault();
-                  handleSend();
-                }
-              }}
-              placeholder={inputPlaceholder}
-              disabled={sendMutation.isPending || recorder.recording}
-              rows={1}
-              className="moren-ai-input min-h-[42px] flex-1 resize-none border-0 bg-transparent px-2 py-2 text-sm outline-none"
-              style={portalStyle({ color: TEXT, caretColor: GOLD, boxShadow: 'none' })}
-            />
-            <button
-              type="button"
-              onClick={handleMic}
-              disabled={sendMutation.isPending}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border transition disabled:opacity-40"
-              style={portalStyle({
-                background: (recorder.recording || realtimeActive) ? 'rgba(239,68,68,0.18)' : SOFT,
-                borderColor: (recorder.recording || realtimeActive) ? 'rgba(239,68,68,0.45)' : LINE,
-                color: (recorder.recording || realtimeActive) ? '#fca5a5' : GOLD,
-              })}
-              title={recorder.recording || realtimeActive ? 'Sesi durdur' : 'Mikrofon'}
-            >
-              {voice.status === 'connecting' ? <Loader2 size={16} className="animate-spin" /> : (recorder.recording || realtimeActive) ? <MicOff size={16} /> : <Mic size={16} />}
-            </button>
-            <button
-              type="button"
-              onClick={handleSend}
-              disabled={!input.trim() || sendMutation.isPending}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg font-semibold transition disabled:opacity-40"
-              style={portalStyle({ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DEEP})`, color: '#0f0d0b' })}
-              title="Gönder"
-            >
-              {sendMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-            </button>
+            <div className="ai-composer">
+              <div className="ai-composer__box">
+                <textarea
+                  ref={inputRef}
+                  id="moren-ai-chat-input"
+                  name="moren-ai-question"
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
+                  value={input}
+                  onChange={(event) => setInput(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && !event.shiftKey) {
+                      event.preventDefault();
+                      handleSend();
+                    }
+                  }}
+                  placeholder={inputPlaceholder}
+                  disabled={sendMutation.isPending || recorder.recording}
+                  rows={1}
+                  className="moren-ai-input ai-composer__input"
+                />
+                <button
+                  type="button"
+                  onClick={handleMic}
+                  disabled={sendMutation.isPending}
+                  className={`ai-btn ai-btn--icon shrink-0 ${micLive ? 'ai-btn--danger' : ''}`}
+                  title={micLive ? 'Sesi durdur' : 'Mikrofonla sor'}
+                >
+                  {voice.status === 'connecting' ? <Loader2 size={16} className="animate-spin" /> : micLive ? <MicOff size={16} /> : <Mic size={16} />}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSend}
+                  disabled={!input.trim() || sendMutation.isPending}
+                  className="ai-btn ai-btn--primary ai-btn--icon shrink-0"
+                  title="Gönder (Enter)"
+                >
+                  {sendMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                </button>
+              </div>
+              <p className="ai-composer__hint">Enter gönderir · Shift+Enter yeni satır</p>
+            </div>
           </div>
-        </div>
-        </div>
-      </section>
-
+        </section>
       </div>
 
       <audio ref={audioRef} />
@@ -1044,25 +1034,19 @@ function EmptyChatState({ askQuick }: { askQuick: (text: string) => void }) {
   return (
     <div className="flex h-full flex-col justify-center">
       <div className="mx-auto w-full max-w-2xl">
-        <div className="mb-6 flex items-center gap-4">
-          <span className="relative grid h-14 w-14 shrink-0 place-items-center rounded-full text-[22px] font-bold" style={portalStyle({ background: 'linear-gradient(135deg,#f09aa8,#d4b876)', boxShadow: '0 6px 18px rgba(240,154,168,0.34)', color: '#1a1410', fontFamily: 'Fraunces, serif' })}>
+        <div className="ai-hello">
+          <span className="ai-avatar ai-avatar--lg">
             E
-            <span className="absolute bottom-0.5 right-0.5 h-3 w-3 rounded-full border-2" style={portalStyle({ borderColor: '#0f0d0b', background: '#4ade80', boxShadow: '0 0 8px rgba(74,222,128,0.8)' })} />
+            <span className="ai-avatar__dot" />
           </span>
           <div>
-            <h3 className="text-[22px] font-semibold" style={portalStyle({ color: TEXT, fontFamily: 'Fraunces, serif' })}>Merhaba, ben Elif 👋</h3>
-            <p className="mt-1 text-sm" style={portalStyle({ color: MUTED })}>Ofisin sekreteriyim — mükellef, beyan, evrak, tahsilat… ne lazımsa yazman yeterli.</p>
+            <h3 className="ai-hello__title">Merhaba, ben Elif</h3>
+            <p className="ai-hello__text">Ofisin sekreteriyim — mükellef, beyan, evrak, tahsilat… ne lazımsa yazman yeterli.</p>
           </div>
         </div>
         <div className="grid gap-2 sm:grid-cols-2">
           {prompts.map((prompt) => (
-            <button
-              key={prompt}
-              type="button"
-              onClick={() => askQuick(prompt)}
-              className="rounded-lg border p-3 text-left text-[12.5px] leading-relaxed transition hover:bg-white/[0.05]"
-              style={portalStyle({ borderColor: LINE, color: TEXT, background: SOFT })}
-            >
+            <button key={prompt} type="button" onClick={() => askQuick(prompt)} className="ai-prompt">
               {prompt}
             </button>
           ))}
@@ -1132,53 +1116,35 @@ function MessageBubble({
   const isUser = message.role === 'user';
   const tools = !isUser ? normalizeTools(message) : [];
   const previews = getActionPreviews(tools);
+  const zaman = mesajSaati(message.createdAt);
+  const tokenVar = !isUser && !!(message.inputTokens || message.outputTokens);
 
   return (
-    <div className={`flex ${isUser ? 'justify-end' : 'items-end justify-start gap-2.5'}`}>
+    <div className="ai-msg" data-role={isUser ? 'user' : 'assistant'}>
       {!isUser && (
-        <span
-          className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[13px] font-bold"
-          style={portalStyle({ background: 'linear-gradient(135deg,#f09aa8,#d4b876)', color: '#1a1410', fontFamily: 'Fraunces, serif' })}
-          title="Elif — MOREN AI Ofis Sekreteri"
-        >
+        <span className="ai-avatar ai-avatar--sm" title="Elif — MOREN AI Ofis Sekreteri">
           E
         </span>
       )}
-      <div
-        className="max-w-[78%] rounded-lg border px-4 py-3 text-sm"
-        style={portalStyle({
-          background: isUser ? 'rgba(212,184,118,0.12)' : 'rgba(255,255,255,0.035)',
-          borderColor: isUser ? LINE_GOLD : LINE,
-          color: TEXT,
-        })}
-      >
-        <div className="moren-md text-[13px] leading-[1.6]">
+      <div className="ai-msg__bubble">
+        <div className="moren-md">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
         </div>
         {/* "Kullanılan veri ve araçlar" rozeti kaldırıldı (kullanıcı kararı 2026-07-04) —
             teknik araç listesi sekreter sohbetinde görünmesin. previews için tools hâlâ okunuyor. */}
-        {!isUser && previews.length > 0 ? (
-          <div className="mt-3 space-y-2">
-            {previews.map((preview: any, index: number) => (
-              <div
-                key={`${preview.agent}-${preview.action}-${index}`}
-                className="rounded-lg border p-3"
-                style={portalStyle({ borderColor: preview.ok ? 'rgba(240,154,168,0.34)' : 'rgba(248,113,113,0.34)', background: preview.ok ? 'rgba(240,154,168,0.08)' : 'rgba(248,113,113,0.08)' })}
-              >
+        {!isUser && previews.length > 0
+          ? previews.map((preview: any, index: number) => (
+              <div key={`${preview.agent}-${preview.action}-${index}`} className="ai-action" data-ok={preview.ok ? 'true' : 'false'}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-[12px] font-semibold" style={portalStyle({ color: TEXT })}>Onay bekleyen aksiyon</p>
-                    <p className="mt-1 text-[11px]" style={portalStyle({ color: MUTED })}>{preview.agent} · {preview.action}</p>
+                    <p className="ai-action__title">Onay bekleyen aksiyon</p>
+                    <p className="ai-action__meta">{preview.agent} · {preview.action}</p>
                   </div>
-                  <span className="rounded-md border px-2 py-1 text-[10px] font-semibold" style={portalStyle({ borderColor: LINE, color: preview.ok ? GOLD : '#fca5a5' })}>
-                    {preview.ok ? 'Hazır' : 'Eksik'}
-                  </span>
+                  <span className="ai-action__badge">{preview.ok ? 'Hazır' : 'Eksik'}</span>
                 </div>
-                {preview.etki ? (
-                  <p className="mt-2 text-[12px] leading-relaxed" style={portalStyle({ color: TEXT })}>{preview.etki}</p>
-                ) : null}
+                {preview.etki ? <p className="ai-action__effect">{preview.etki}</p> : null}
                 {Array.isArray(preview.errors) && preview.errors.length > 0 ? (
-                  <ul className="mt-2 space-y-1 text-[11px]" style={portalStyle({ color: '#fca5a5' })}>
+                  <ul className="ai-action__errors">
                     {preview.errors.map((error: string) => <li key={error}>{error}</li>)}
                   </ul>
                 ) : null}
@@ -1186,23 +1152,27 @@ function MessageBubble({
                   type="button"
                   disabled={!preview.ok || confirming}
                   onClick={() => onConfirmAction?.(preview)}
-                  className="mt-3 inline-flex h-8 items-center gap-2 rounded-lg border px-3 text-[11.5px] font-semibold transition disabled:opacity-45"
-                  style={portalStyle({ borderColor: LINE_GOLD, color: GOLD, background: 'rgba(212,184,118,0.08)' })}
+                  className="ai-btn ai-btn--sm ai-btn--primary mt-2.5"
                 >
                   {confirming ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
                   Onayla ve kuyruğa al
                 </button>
               </div>
-            ))}
+            ))
+          : null}
+        {(zaman || tokenVar) && (
+          <div className="ai-msg__foot">
+            {zaman && <time dateTime={message.createdAt}>{zaman}</time>}
+            {tokenVar && (
+              <>
+                <span aria-hidden>·</span>
+                <span title="Bu yanıtın maliyeti">${message.costUsd?.toFixed(4) || '0.0000'}</span>
+                <span aria-hidden>·</span>
+                <span>{message.inputTokens || 0}+{message.outputTokens || 0} token</span>
+              </>
+            )}
           </div>
-        ) : null}
-
-        {!isUser && (message.inputTokens || message.outputTokens) ? (
-          <div className="mt-2 flex gap-3 border-t pt-2 text-[10px]" style={portalStyle({ borderColor: LINE, color: 'rgba(250,250,249,0.36)' })}>
-            <span className="flex items-center gap-1"><DollarSign size={10} />${message.costUsd?.toFixed(4) || '0.0000'}</span>
-            <span>{message.inputTokens}+{message.outputTokens} token</span>
-          </div>
-        ) : null}
+        )}
       </div>
     </div>
   );

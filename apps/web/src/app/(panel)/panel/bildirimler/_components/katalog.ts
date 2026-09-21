@@ -32,9 +32,16 @@ export type Bildirim = {
   metadata?: Record<string, any> | null;
 };
 
+/** Beyaz tema ton ailesi (bilgi/BEYAZ-TEMA-TASARIM-DILI.md): otomasyon/ajan çivit · bilgi mavi · WhatsApp yeşil ·
+ *  görev/bekleyen kehribar · kritik/bütçe(kritik) kırmızı · AI mor · sistem kurşuni · ofis sohbeti/bütçe deniz yeşili. */
+export type Ton = 'civit' | 'mavi' | 'deniz' | 'yesil' | 'kehribar' | 'kirmizi' | 'mor' | 'kursuni';
+
 export type TurTanimi = {
   ad: string;
+  /** Koyu tema (A) rengi. */
   renk: string;
+  /** Beyaz tema (D) ton ailesi; renkler bildirimler-white.css'te. */
+  ton: Ton;
   Ikon: LucideIcon;
   /** Kritik türler "Kritik" sekmesinde ve kırmızı şeritle gösterilir (sunucudaki CRITICAL_TYPES ile aynı liste). */
   kritik?: boolean;
@@ -45,38 +52,38 @@ export type TurTanimi = {
 };
 
 export const TUR: Record<string, TurTanimi> = {
-  E_TEBLIGAT: { ad: 'e-Tebligat', renk: KIRMIZI, Ikon: Mail, kritik: true, aciklama: 'Mükellefe yeni e-Tebligat geldiğinde', kapatilamaz: true },
-  TAX_DEADLINE: { ad: 'Beyanname son gün', renk: KIRMIZI, Ikon: CalendarClock, kritik: true, aciklama: 'Onaylanmamış beyanname varken son 7 gün', kapatilamaz: true },
-  PORTAL_CREDENTIAL_FAIL: { ad: 'Portal şifre hatası', renk: KIRMIZI, Ikon: Key, kritik: true, aciklama: 'GİB/SGK girişinde şifre hatası (şifre güncellenene kadar 1 kez)' },
-  CAPTCHA_SOLVER_ERROR: { ad: 'Güvenlik kodu servisi', renk: KIRMIZI, Ikon: ShieldAlert, kritik: true, aciklama: 'Güvenlik kodu çözücü bakiyesi bitince otomasyonlar durur' },
-  AUTH_NEW_DEVICE: { ad: 'Yeni cihaz girişi', renk: KIRMIZI, Ikon: ShieldAlert, kritik: true, aciklama: 'Hesabınıza yeni bir adresten giriş yapıldığında', kapatilamaz: true },
-  AI_COST_LIMIT: { ad: 'AI maliyet tavanı', renk: KIRMIZI, Ikon: HandCoins, kritik: true, aciklama: 'Günlük AI harcaması sınırı aşınca' },
-  LUCA_SYNC_ERROR: { ad: 'Luca aktarımı', renk: TURUNCU, Ikon: AlertTriangle, kritik: true, aciklama: 'Luca veri çekme işi hata verince ya da sırada beklerken' },
-  PENDING_DECISION: { ad: 'Onay bekleyen karar', renk: TURUNCU, Ikon: AlertTriangle, aciklama: 'Fatura/işletme kaydında karar sizden bekleniyor' },
-  TASK_DUE: { ad: 'Görev hatırlatması', renk: TURUNCU, Ikon: CheckCircle2, aciklama: 'Görevin vadesi yaklaşınca ya da geçince' },
-  INVOICE_OVERDUE: { ad: 'Bekleyen alış faturaları', renk: TURUNCU, Ikon: Receipt, aciklama: '60+ gündür muhasebeleşmemiş alış faturası özeti (haftalık)' },
-  WHATSAPP: { ad: 'WhatsApp', renk: '#27d39a', Ikon: MessageCircle, aciklama: 'Kayıtsız numara ya da müşavir yanıtı bekleyen mesaj' },
-  OFFICE_CHAT: { ad: 'Ofis sohbeti', renk: '#8fd7bd', Ikon: Inbox, aciklama: 'Ofis içi mesaj' },
-  BANK_TRANSACTION_ALERT: { ad: 'Banka ekstresi', renk: MAVI, Ikon: Banknote, aciklama: 'Mükellefin banka ekstresi geldiğinde' },
-  DOCUMENT_UPLOADED: { ad: 'Yeni evrak', renk: MAVI, Ikon: Upload, aciklama: 'Mükellef portala evrak yüklediğinde' },
-  KDV_RESULT: { ad: 'KDV kontrol sonucu', renk: MAVI, Ikon: Receipt, aciklama: 'KDV kontrolünde inceleme/hata çıkan kayıt varsa' },
-  MIHSAP_RESULT: { ad: 'Mihsap aktarımı', renk: MAVI, Ikon: FileText, aciklama: 'Mihsap fatura aktarımı hata verince' },
-  AUTOMATION: { ad: 'Otomasyon', renk: MAVI, Ikon: Zap, aciklama: 'Otomasyon başarısız olunca ya da rapor hazır olunca' },
-  AGENT: { ad: 'Ajan', renk: MAVI, Ikon: Bot, aciklama: 'Ajan taramaları' },
-  AI: { ad: 'Moren AI', renk: ALTIN, Ikon: Sparkles, aciklama: 'Bot kalite raporu ve AI bilgilendirmeleri' },
-  MOREN_AI_ALERT: { ad: 'Moren AI uyarısı', renk: ALTIN, Ikon: Sparkles, aciklama: 'Belge içerik denetiminde risk bulununca' },
-  AI_PROPOSAL: { ad: 'AI önerisi', renk: ALTIN, Ikon: Lightbulb, aciklama: 'DENİZ tarama önerileri' },
-  SYSTEM: { ad: 'Sistem', renk: GRI, Ikon: AlertCircle, aciklama: 'Ajan/oturum/kuyruk arızaları ve gece işi özetleri' },
-  BUTCE: { ad: 'Bütçe', renk: YESIL, Ikon: HandCoins, aciklama: 'Kişisel bütçe hatırlatmaları' },
-  BUTCE_KRITIK: { ad: 'Bütçe (kritik)', renk: KIRMIZI, Ikon: HandCoins, aciklama: 'Kart limiti, gecikmiş ödeme, nakit açığı' },
-  GALERI_HGS_OZET: { ad: 'HGS sorgu özeti', renk: MAVI, Ikon: Receipt, aciklama: 'Galeri HGS ihlal sorgusu sonucu' },
+  E_TEBLIGAT: { ad: 'e-Tebligat', renk: KIRMIZI, ton: 'kirmizi', Ikon: Mail, kritik: true, aciklama: 'Mükellefe yeni e-Tebligat geldiğinde', kapatilamaz: true },
+  TAX_DEADLINE: { ad: 'Beyanname son gün', renk: KIRMIZI, ton: 'kirmizi', Ikon: CalendarClock, kritik: true, aciklama: 'Onaylanmamış beyanname varken son 7 gün', kapatilamaz: true },
+  PORTAL_CREDENTIAL_FAIL: { ad: 'Portal şifre hatası', renk: KIRMIZI, ton: 'kirmizi', Ikon: Key, kritik: true, aciklama: 'GİB/SGK girişinde şifre hatası (şifre güncellenene kadar 1 kez)' },
+  CAPTCHA_SOLVER_ERROR: { ad: 'Güvenlik kodu servisi', renk: KIRMIZI, ton: 'kirmizi', Ikon: ShieldAlert, kritik: true, aciklama: 'Güvenlik kodu çözücü bakiyesi bitince otomasyonlar durur' },
+  AUTH_NEW_DEVICE: { ad: 'Yeni cihaz girişi', renk: KIRMIZI, ton: 'kirmizi', Ikon: ShieldAlert, kritik: true, aciklama: 'Hesabınıza yeni bir adresten giriş yapıldığında', kapatilamaz: true },
+  AI_COST_LIMIT: { ad: 'AI maliyet tavanı', renk: KIRMIZI, ton: 'kirmizi', Ikon: HandCoins, kritik: true, aciklama: 'Günlük AI harcaması sınırı aşınca' },
+  LUCA_SYNC_ERROR: { ad: 'Luca aktarımı', renk: TURUNCU, ton: 'kehribar', Ikon: AlertTriangle, kritik: true, aciklama: 'Luca veri çekme işi hata verince ya da sırada beklerken' },
+  PENDING_DECISION: { ad: 'Onay bekleyen karar', renk: TURUNCU, ton: 'kehribar', Ikon: AlertTriangle, aciklama: 'Fatura/işletme kaydında karar sizden bekleniyor' },
+  TASK_DUE: { ad: 'Görev hatırlatması', renk: TURUNCU, ton: 'kehribar', Ikon: CheckCircle2, aciklama: 'Görevin vadesi yaklaşınca ya da geçince' },
+  INVOICE_OVERDUE: { ad: 'Bekleyen alış faturaları', renk: TURUNCU, ton: 'kehribar', Ikon: Receipt, aciklama: '60+ gündür muhasebeleşmemiş alış faturası özeti (haftalık)' },
+  WHATSAPP: { ad: 'WhatsApp', renk: '#27d39a', ton: 'yesil', Ikon: MessageCircle, aciklama: 'Kayıtsız numara ya da müşavir yanıtı bekleyen mesaj' },
+  OFFICE_CHAT: { ad: 'Ofis sohbeti', renk: '#8fd7bd', ton: 'deniz', Ikon: Inbox, aciklama: 'Ofis içi mesaj' },
+  BANK_TRANSACTION_ALERT: { ad: 'Banka ekstresi', renk: MAVI, ton: 'mavi', Ikon: Banknote, aciklama: 'Mükellefin banka ekstresi geldiğinde' },
+  DOCUMENT_UPLOADED: { ad: 'Yeni evrak', renk: MAVI, ton: 'mavi', Ikon: Upload, aciklama: 'Mükellef portala evrak yüklediğinde' },
+  KDV_RESULT: { ad: 'KDV kontrol sonucu', renk: MAVI, ton: 'mavi', Ikon: Receipt, aciklama: 'KDV kontrolünde inceleme/hata çıkan kayıt varsa' },
+  MIHSAP_RESULT: { ad: 'Mihsap aktarımı', renk: MAVI, ton: 'mavi', Ikon: FileText, aciklama: 'Mihsap fatura aktarımı hata verince' },
+  AUTOMATION: { ad: 'Otomasyon', renk: MAVI, ton: 'civit', Ikon: Zap, aciklama: 'Otomasyon başarısız olunca ya da rapor hazır olunca' },
+  AGENT: { ad: 'Ajan', renk: MAVI, ton: 'civit', Ikon: Bot, aciklama: 'Ajan taramaları' },
+  AI: { ad: 'Moren AI', renk: ALTIN, ton: 'mor', Ikon: Sparkles, aciklama: 'Bot kalite raporu ve AI bilgilendirmeleri' },
+  MOREN_AI_ALERT: { ad: 'Moren AI uyarısı', renk: ALTIN, ton: 'mor', Ikon: Sparkles, aciklama: 'Belge içerik denetiminde risk bulununca' },
+  AI_PROPOSAL: { ad: 'AI önerisi', renk: ALTIN, ton: 'mor', Ikon: Lightbulb, aciklama: 'DENİZ tarama önerileri' },
+  SYSTEM: { ad: 'Sistem', renk: GRI, ton: 'kursuni', Ikon: AlertCircle, aciklama: 'Ajan/oturum/kuyruk arızaları ve gece işi özetleri' },
+  BUTCE: { ad: 'Bütçe', renk: YESIL, ton: 'deniz', Ikon: HandCoins, aciklama: 'Kişisel bütçe hatırlatmaları' },
+  BUTCE_KRITIK: { ad: 'Bütçe (kritik)', renk: KIRMIZI, ton: 'kirmizi', Ikon: HandCoins, aciklama: 'Kart limiti, gecikmiş ödeme, nakit açığı' },
+  GALERI_HGS_OZET: { ad: 'HGS sorgu özeti', renk: MAVI, ton: 'mavi', Ikon: Receipt, aciklama: 'Galeri HGS ihlal sorgusu sonucu' },
 };
 
 // Eski kayıtlarda görülen takma adlar → asıl tür
 const TAKMA: Record<string, string> = { WhatsApp: 'WHATSAPP', MOREN_AI: 'AI', 'Moren AI': 'AI' };
 export function turKodu(t: string): string { return TAKMA[t] || t; }
 export function tur(t: string): TurTanimi {
-  return TUR[turKodu(t)] || { ad: t, renk: GRI, Ikon: Bell, aciklama: '' };
+  return TUR[turKodu(t)] || { ad: t, renk: GRI, ton: 'kursuni', Ikon: Bell, aciklama: '' };
 }
 
 /** "Luca işi bekliyor / bayat iş iptal" durum bildirimleri kritik sayılmaz (gerçek aktarım hatası kritik). */
