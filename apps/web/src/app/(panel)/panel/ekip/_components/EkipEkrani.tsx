@@ -1,5 +1,6 @@
 'use client';
 import './ekip-redesign.css';
+import './ekip-white.css';
 import { portalStyle } from '@/lib/portal-theme';
 
 
@@ -311,7 +312,6 @@ export function EkipEkrani() {
     <div className="ekip-workspace flex min-w-0 flex-col gap-5 pb-10">
       <Baslik
         durum={durumS.data}
-        pano={panoS.data}
         ozet={panoOzet}
         ajanSayisi={ajanlar.length}
         kararSayisi={kararSayisi}
@@ -327,7 +327,7 @@ export function EkipEkrani() {
       />
 
       {kosular.bekleyenCevap && (sekme !== 'isler' || !panelGoster) && (
-        <div role="status" className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-200/15 bg-amber-200/5 px-4 py-2 text-xs text-stone-300">
+        <div role="status" className="ekip-bekleyen-cevap flex flex-wrap items-center gap-3 rounded-xl border border-amber-200/15 bg-amber-200/5 px-4 py-2 text-xs text-stone-300">
           <span className="flex-1">Cevabınız ilgili işin tamamlanmasını bekliyor.</span>
           <Dugme tur="sade" onClick={() => isiAc(kosular.bekleyenCevap!.vakaId)}>İşi aç</Dugme>
           <Dugme tur="sade" onClick={() => kosular.setBekleyenCevap(null)}>Cevabı iptal et</Dugme>
@@ -336,7 +336,7 @@ export function EkipEkrani() {
 
       {omurgaYok && <OmurgaYokBilgi />}
       {!!kadroS.error && !omurgaYok && (
-        <div className="rounded-2xl px-4 py-3 text-[12.5px]" style={portalStyle({ background: `${KIRMIZI}12`, border: `1px solid ${KIRMIZI}59`, color: TEXT })}>
+        <div className="ekip-hata-kutu rounded-2xl px-4 py-3 text-[12.5px]" style={portalStyle({ background: `${KIRMIZI}12`, border: `1px solid ${KIRMIZI}59`, color: TEXT })}>
           Kadro alınamadı: {(kadroS.error as any)?.message || 'hata'}
         </div>
       )}

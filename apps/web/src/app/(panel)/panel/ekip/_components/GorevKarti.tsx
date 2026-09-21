@@ -10,7 +10,7 @@ import type { Ajan, MukellefOzet } from '@/lib/ekip';
 import { startListening, isSpeechSupported } from '../../luca-operator/_components/voice';
 import type { KosularApi } from './kosular';
 import { MukellefSecici } from './MukellefSecici';
-import { CARD_BORDER, Dugme, GOLD, KIRMIZI, MUTED, TEXT, ipucuStil, koyuAlan } from './Tema';
+import { CARD_BORDER, Dugme, GOLD, KIRMIZI, MUTED, TEXT } from './Tema';
 import { SadeKart, koyuTon } from './GenelBakis';
 
 const KOORDINATOR = 'koordinator';
@@ -26,9 +26,12 @@ export interface KomutTaslak {
   nonce: number;
 }
 
+/** Koyu tema giriş alanı zemini (beyaz temada ekip-white.css ezer). */
+const koyuAlan = { background: 'rgba(0,0,0,0.3)', border: `1px solid ${CARD_BORDER}` } as const;
+
 /**
- * "Koordinatör'e görev ver" kartı; görev ve kararlar aynı sade kartta.
- * Yazı alanı (içinde mikrofon) · mükellef seçici · Kuru test / Canlı · Çalıştır (altın; canlıda kırmızı).
+ * "Yeni görev" kartı; görev ve kararlar aynı sade kartta.
+ * Yazı alanı · tek satır araç çubuğu: mükellef seçici · Kuru test / Canlı kapsül anahtar · Sesli (ikincil) · Başlat (birincil; canlıda kırmızı).
  * Kuru/Canlı depoya yazılmaz; her açılışta KURU. Canlıya geçiş kart içi teyitle.
  */
 export const GorevKarti = forwardRef<
@@ -135,7 +138,7 @@ export const GorevKarti = forwardRef<
       sag={
         <span className="flex flex-wrap items-center justify-end gap-1.5">
           {vakaId && (
-            <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium" style={portalStyle({ background: `${MUTED}1f`, border: `1px solid ${MUTED}44`, color: TEXT })} title={`Aynı iş zincirinde devam: ${vakaId}`}>
+            <span data-ekip-rozet data-ton="kursuni" className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] font-medium" style={portalStyle({ background: `${MUTED}1f`, border: `1px solid ${MUTED}44`, color: TEXT })} title={`Aynı iş zincirinde devam: ${vakaId}`}>
               <Link2 size={10} /> iş zinciri
               <button type="button" onClick={() => setVakaId(undefined)} className="rounded p-px hover:bg-white/10" title="Bağı kaldır — yeni zincir aç">
                 <X size={10} />
@@ -171,27 +174,15 @@ export const GorevKarti = forwardRef<
             rows={2}
             aria-label="Görev"
             placeholder={listening ? 'Dinliyorum…' : 'Örn: Bu ayın KDV kontrolünü yap.'}
-            className="eg-metin min-h-[104px] w-full resize-y bg-transparent px-4 py-3.5 pr-24 text-[14px] leading-relaxed outline-none"
+            className="eg-metin min-h-[96px] w-full resize-y bg-transparent px-4 py-3.5 text-[14px] leading-relaxed outline-none"
             style={portalStyle({ color: TEXT })}
           />
-          <button
-            type="button"
-            onClick={toggleMic}
-            disabled={buCalisiyor}
-            title={listening ? 'Dinlemeyi durdur' : 'Sesli söyle — konuş, metne dönüşsün'}
-            data-eg-dinliyor={listening}
-            className={`eg-ses absolute right-2.5 top-2.5 inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[11.5px] font-medium transition hover:brightness-125 disabled:opacity-40 ${listening ? 'animate-pulse' : ''}`}
-            style={portalStyle(listening ? { background: `${KIRMIZI}1f`, border: `1px solid ${KIRMIZI}66`, color: KIRMIZI } : { background: 'rgba(255,255,255,0.04)', border: `1px solid ${CARD_BORDER}`, color: MUTED })}
-          >
-            {listening ? <MicOff size={13} /> : <Mic size={13} />} {listening ? 'Dinliyor' : 'Sesli'}
-          </button>
-
         </div>
 
-        {/* Alt satır: mükellef · mod · çalıştır */}
+        {/* Araç çubuğu: mükellef · mod · sesli · başlat */}
         <div className="eg-kontroller flex flex-wrap items-center gap-2">
-          <span className="eg-secici inline-flex h-9 min-w-0 basis-full sm:basis-[200px] flex-1 items-center gap-2 rounded-xl px-3 text-[12.5px]" style={portalStyle(koyuAlan)}>
-            <Users size={13} style={portalStyle({ color: MUTED })} />
+          <span className="eg-secici inline-flex h-9 min-w-0 basis-full sm:basis-[180px] flex-1 items-center gap-2 rounded-xl px-3 text-[12.5px]" style={portalStyle(koyuAlan)}>
+            <Users size={13} className="eg-secici-simge flex-shrink-0" style={portalStyle({ color: MUTED })} />
             <span className="min-w-0 flex-1">
               <MukellefSecici sade yerTutucu="Ofis geneli · mükellef seç" mukellefler={mukellefler} value={taxpayerId} onChange={setTaxpayerId} renk={GOLD} escNonce={escNonce} />
             </span>
@@ -227,12 +218,23 @@ export const GorevKarti = forwardRef<
               );
             })}
           </span>
+          <button
+            type="button"
+            onClick={toggleMic}
+            disabled={buCalisiyor}
+            title={listening ? 'Dinlemeyi durdur' : 'Sesli söyle — konuş, metne dönüşsün'}
+            data-eg-dinliyor={listening}
+            className={`eg-ses inline-flex h-9 items-center gap-1.5 rounded-xl px-3 text-[12px] font-semibold transition hover:brightness-125 disabled:opacity-40 ${listening ? 'animate-pulse' : ''}`}
+            style={portalStyle(listening ? { background: `${KIRMIZI}1f`, border: `1px solid ${KIRMIZI}66`, color: KIRMIZI } : { background: 'rgba(255,255,255,0.04)', border: `1px solid ${CARD_BORDER}`, color: MUTED })}
+          >
+            {listening ? <MicOff size={13} /> : <Mic size={13} />} {listening ? 'Dinliyor' : 'Sesli'}
+          </button>
           {sabahOzetiSuruyor ? (
-            <Dugme disabled>
+            <Dugme disabled className="eg-baslat-yedek">
               <Loader2 size={13} className="animate-spin" /> Sabah özeti üretiliyor
             </Dugme>
           ) : buCalisiyor ? (
-            <Dugme tur="tehlike" onClick={() => void kosular.durdur(KOORDINATOR)}>
+            <Dugme tur="tehlike" className="eg-baslat-yedek" onClick={() => void kosular.durdur(KOORDINATOR)}>
               <Square size={12} /> Durdur
             </Dugme>
           ) : (
@@ -254,7 +256,7 @@ export const GorevKarti = forwardRef<
 
         {canliTeyit && dryRun && (
           <div className="eg-canli-teyit mt-3 flex flex-wrap items-center gap-2 rounded-xl px-3.5 py-2.5 text-[12.5px]" style={portalStyle({ background: `${KIRMIZI}12`, border: `1px solid ${KIRMIZI}66`, color: TEXT })}>
-            <AlertTriangle size={14} style={portalStyle({ color: KIRMIZI })} />
+            <AlertTriangle size={14} className="eg-canli-teyit-simge" style={portalStyle({ color: KIRMIZI })} />
             <span className="min-w-0 flex-1">
               <b>Canlı moda geçiliyor</b> — mükellefe mesaj gidebilir, Luca’ya fiş yazılabilir. Resmi gönderim (GİB/SGK/berat) yine sizde kalır.
             </span>
@@ -265,7 +267,7 @@ export const GorevKarti = forwardRef<
           </div>
         )}
 
-        <p className="eg-ipucu mt-2.5" style={portalStyle(ipucuStil)}>
+        <p className="eg-ipucu mt-2.5" style={portalStyle({ color: 'rgba(113,113,122,0.9)', fontSize: 11.5 })}>
           {dryRun ? 'Kuru testte mesaj gönderilmez, kayıt değiştirilmez.' : 'Canlı mod: gerçek işlem yapılır; gönderimler onayınıza gelir.'}
         </p>
         {children}

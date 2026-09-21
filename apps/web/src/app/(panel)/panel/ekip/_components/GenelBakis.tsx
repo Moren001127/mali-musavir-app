@@ -5,18 +5,18 @@ import { portalStyle } from '@/lib/portal-theme';
 
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { Eye, Square } from 'lucide-react';
-import type { Ajan, Pano, Vaka, VakaAdimIs } from '@/lib/ekip';
+import type { Pano, Vaka, VakaAdimIs } from '@/lib/ekip';
 import type { KomutTaslak } from './GorevKarti';
 import type { Kosu } from './kosular';
-import { CARD_BG, GOLD, Ilerleme, KIRMIZI, MAVI, MUTED, OK, Rozet, TEXT, ajanRengi } from './Tema';
-import { AJAN_UNVAN, ASAMALAR, SABLONLAR, adimAciklamasi, ajanKisaAd, ajanKisaltma, ajanTamAd, bugunMu, konuKisalt, sablonDoldur, saatKisa, sayacMetni, sonrakiAdim, sureKisa } from './ortak';
+import { CARD_BG, GOLD, Ilerleme, KIRMIZI, MAVI, MUTED, OK, Rozet, TEXT, ajanRengi, ajanTonu, renkTonu, type Ton } from './Tema';
+import { ASAMALAR, SABLONLAR, adimAciklamasi, ajanKisaAd, ajanKisaltma, ajanTamAd, bugunMu, konuKisalt, sablonDoldur, saatKisa, sayacMetni, sonrakiAdim, sureKisa } from './ortak';
 
 /* ─────────────────────────── Sade kart dili ───────────────────────────
- * Muzaffer Bey'in onayladığı taslak: _previews/ekip-sade (2026-09-19). Kutu sayısı 10 → 4; kutu içinde kutu YOK,
- * bölümler ince çizgiyle ayrılır. Renkler Bütçe / Cari Kasa paleti (Tema.tsx); altın yalnız başlık çizgisi, düğme ve bağlantı.
+ * Kutu içinde kutu YOK; bölümler ince çizgiyle ayrılır. Koyu temada Bütçe paleti (Tema.tsx) satır içi;
+ * beyaz temada (D) renkler ekip-white.css'ten gelir: beyaz kart, #e3e8ef kenar, 14–16px köşe, hafif gölge.
  */
 
-/** Kart kenarı · bölüm ayracı · soluk etiket rengi (taslaktaki --border / --sep / --dim). */
+/** Kart kenarı · bölüm ayracı · soluk etiket rengi (koyu tema). */
 export const SADE_KENAR = 'rgba(255,255,255,0.065)';
 export const SADE_AYRAC = 'rgba(255,255,255,0.055)';
 export const SOLUK = '#62626b';
@@ -32,7 +32,7 @@ export function acikTon(renk: string, beyaz = 0.45): string {
   return `#${kanal(n >> 16)}${kanal((n >> 8) & 255)}${kanal(n & 255)}`;
 }
 
-/** Hex rengi verilen oranda siyahla karıştırır (altın düğmenin koyu ucu). */
+/** Hex rengi verilen oranda siyahla karıştırır (koyu temada düğmenin koyu ucu). */
 export function koyuTon(renk: string, siyah = 0.14): string {
   const m = HEX.exec(renk.trim());
   if (!m) return `color-mix(in srgb, ${renk} ${Math.round((1 - siyah) * 100)}%, #000)`;
@@ -47,8 +47,8 @@ function saydam(renk: string, alfa: string): string {
 }
 
 /**
- * Sade kart: koyu zemin · 18px köşe · 1px ince kenar · yumuşak gölge · üstte kenarlardan 24px içeride ince altın çizgi.
- * Başlık 14px yarı kalın, sağda soluk açıklama ya da bağlantı; iç boşluk 24px yatay. `dolguYok` → bölümler (Bolum) kendi boşluğunu getirir.
+ * Sade kart: 14px köşe · 1px ince kenar · yumuşak gölge. Başlık 15px yarı kalın, sağda açıklama/bağlantı.
+ * `dolguYok` → bölümler (Bolum) kendi boşluğunu getirir.
  */
 export function SadeKart({
   baslik,
@@ -61,7 +61,7 @@ export function SadeKart({
 }: {
   baslik?: ReactNode;
   sag?: ReactNode;
-  /** Üst çizginin rengi (Görev kartı canlı modda kırmızıya döner). */
+  /** Koyu temada üst çizginin rengi (Görev kartı canlı modda kırmızıya döner). */
   renk?: string;
   dolguYok?: boolean;
   className?: string;
@@ -72,7 +72,7 @@ export function SadeKart({
     <section className={`eg-kart relative min-w-0 overflow-hidden rounded-[14px] ${className}`} style={portalStyle({ background: CARD_BG, border: `1px solid ${SADE_KENAR}`, boxShadow: '0 18px 44px rgba(0,0,0,0.24)', ...style })}>
       <div className="eg-ust-cizgi pointer-events-none absolute left-6 right-6 top-0 h-px" style={portalStyle({ background: `linear-gradient(90deg, transparent, ${saydam(renk, '73')}, transparent)` })} />
       {baslik && (
-        <header className="eg-kart-baslik flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 px-6 pb-1.5 pt-[18px]">
+        <header className="eg-kart-baslik flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-6 pb-1.5 pt-[18px]">
           <h3 className="text-[14px] font-semibold" style={portalStyle({ color: TEXT })}>
             {baslik}
           </h3>
@@ -84,11 +84,11 @@ export function SadeKart({
   );
 }
 
-/** Kart içi bölüm: 10.5px büyük harf aralıklı soluk etiket + sağda bağlantı/durum; bölümler ince çizgiyle ayrılır (ilk bölümde çizgi yok). */
+/** Kart içi bölüm: 13px başlık + sağda bağlantı/durum; bölümler ince çizgiyle ayrılır (ilk bölümde çizgi yok). */
 export function Bolum({ baslik, sag, ilk = false, children }: { baslik: ReactNode; sag?: ReactNode; ilk?: boolean; children: ReactNode }) {
   return (
     <div className="eg-bolum px-6 py-3.5" style={portalStyle(ilk ? undefined : { borderTop: `1px solid ${SADE_AYRAC}` })}>
-      <div className="mb-2 flex items-center justify-between gap-3">
+      <div className="eg-bolum-ust mb-2 flex items-center justify-between gap-3">
         <h3 className="eg-bolum-baslik text-[13px] font-semibold" style={portalStyle({ color: SOLUK })}>
           {baslik}
         </h3>
@@ -99,7 +99,7 @@ export function Bolum({ baslik, sag, ilk = false, children }: { baslik: ReactNod
   );
 }
 
-/** Altın metin bağlantısı ("Tümü →", "Dönem panosu →"). */
+/** Vurgu rengi metin bağlantısı ("Tümü →", "Dönem panosu →"). */
 export function AltinBaglanti({ onClick, children, title }: { onClick: () => void; children: ReactNode; title?: string }) {
   return (
     <button type="button" onClick={onClick} title={title} className="eg-baglanti text-[12px] font-semibold transition hover:brightness-125" style={portalStyle({ color: GOLD })}>
@@ -108,7 +108,7 @@ export function AltinBaglanti({ onClick, children, title }: { onClick: () => voi
   );
 }
 
-/** Küçük kenarlı düğme: renkli yazı + saydam kenar/zemin, 9px köşe (varsayılan altın; İzle mavi, Durdur kırmızı). */
+/** Küçük kenarlı düğme: beyaz temada ikincil düğme (Durdur → tehlike). */
 export function MetinDugme({ onClick, children, renk = GOLD, title, disabled, className = '' }: { onClick: () => void; children: ReactNode; renk?: string; title?: string; disabled?: boolean; className?: string }) {
   return (
     <button
@@ -116,7 +116,8 @@ export function MetinDugme({ onClick, children, renk = GOLD, title, disabled, cl
       onClick={onClick}
       title={title}
       disabled={disabled}
-      data-eg-tehlike={renk === KIRMIZI}
+      data-eg-tehlike={renk === KIRMIZI || undefined}
+      data-ton={renkTonu(renk)}
       className={`eg-metin-dugme inline-flex flex-shrink-0 items-center gap-1 whitespace-nowrap rounded-[9px] px-2.5 py-[5px] text-[11.5px] font-semibold transition hover:brightness-125 disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
       style={portalStyle({ color: renk, border: `1px solid ${saydam(renk, '47')}`, background: saydam(renk, '12') })}
     >
@@ -125,11 +126,14 @@ export function MetinDugme({ onClick, children, renk = GOLD, title, disabled, cl
   );
 }
 
-/** Gradyan avatar: koyu baş harfler, renkten açık tonuna geçiş, hafif parıltı; `halka` → 2px mavi halka (çalışıyor). */
-export function GradyanAvatar({ kisaltma, renk, boyut = 28, halka = false, nabiz = false, title, className = '' }: { kisaltma: string; renk: string; boyut?: number; halka?: boolean; nabiz?: boolean; title?: string; className?: string }) {
+/** Avatar kutusu: koyu temada gradyan daire; beyaz temada yumuşak tonlu 36px kutu (`ton`). `halka` → çalışıyor halkası. */
+export function GradyanAvatar({ kisaltma, renk, ton = 'kursuni', boyut = 28, halka = false, nabiz = false, title, className = '' }: { kisaltma: string; renk: string; ton?: Ton; boyut?: number; halka?: boolean; nabiz?: boolean; title?: string; className?: string }) {
   return (
     <span
       title={title}
+      data-eg-avatar
+      data-ton={ton}
+      data-nabiz={nabiz || undefined}
       className={`eg-avatar inline-flex flex-shrink-0 items-center justify-center rounded-full font-extrabold ${nabiz ? 'animate-pulse' : ''} ${className}`}
       style={portalStyle({
         width: boyut,
@@ -171,7 +175,7 @@ type CalisanIs = {
 
 /**
  * Şu an çalışan işler: yerel SSE koşusu (Koordinatör) + sunucuda süren vakalar (personel).
- * Her satır: avatar (mavi, nabızlı) · mükellef — konu · personel · süre · kuru/canlı · ilerleme çubuğu · "Şu an: …" · İzle / Durdur.
+ * Her satır: avatar (çivit, nabızlı) · mükellef — konu · personel · süre · kuru/canlı · ilerleme çubuğu · "Şu an: …" · İzle / Durdur.
  */
 function SuAnBolumu({
   kosu,
@@ -240,13 +244,11 @@ function SuAnBolumu({
       ilk
       baslik="Şu an"
       sag={
-        <span className="text-[11px] font-medium" style={portalStyle({ color: isler.length ? MAVI : MUTED })}>
-          {isler.length ? `${isler.length} sürüyor` : 'kadro boşta'}
-        </span>
+        <Rozet metin={isler.length ? `${isler.length} sürüyor` : 'kadro boşta'} renk={isler.length ? MAVI : MUTED} ton={isler.length ? 'civit' : 'kursuni'} />
       }
     >
       {!isler.length ? (
-        <div className="text-[12.5px]" style={portalStyle({ color: MUTED })}>
+        <div className="eg-bos-satir text-[12.5px]" style={portalStyle({ color: MUTED })}>
           Çalışan iş yok. Görev verdiğinizde ilerleme burada görünür.
         </div>
       ) : (
@@ -254,23 +256,23 @@ function SuAnBolumu({
           {isler.map((is, i) => (
             <div key={is.anahtar} className="eg-akis-satir py-2.5" style={portalStyle(i ? { borderTop: `1px solid ${SADE_AYRAC}` } : undefined)}>
               <div className="flex items-center gap-3">
-                <GradyanAvatar kisaltma={ajanKisaltma(is.ajanId)} renk={MAVI} boyut={28} nabiz title={ajanTamAd(is.ajanId, ajanAd(is.ajanId))} />
+                <GradyanAvatar kisaltma={ajanKisaltma(is.ajanId)} renk={MAVI} ton="civit" boyut={28} nabiz title={ajanTamAd(is.ajanId, ajanAd(is.ajanId))} />
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-[12.5px] font-semibold" style={portalStyle({ color: TEXT })} title={`${is.mukellef} — ${is.konu}`}>
+                  <div className="eg-akis-baslik truncate text-[12.5px] font-semibold" style={portalStyle({ color: TEXT })} title={`${is.mukellef} — ${is.konu}`}>
                     {konuKisalt(is.mukellef, 32)} — {is.konu}
                   </div>
-                  <div className="truncate text-[11px]" style={portalStyle({ color: MUTED })}>
-                    {ajanKisaAd(is.ajanId, ajanAd(is.ajanId))} · <span className="tabular-nums" style={portalStyle({ color: MAVI })}>{sayacMetni(Math.max(0, simdi - is.basladi))}</span> · {is.kuru ? 'kuru test' : <span style={portalStyle({ color: KIRMIZI })}>canlı</span>}
+                  <div className="eg-akis-alt truncate text-[11px]" style={portalStyle({ color: MUTED })}>
+                    {ajanKisaAd(is.ajanId, ajanAd(is.ajanId))} · <span className="eg-vurgu tabular-nums" style={portalStyle({ color: MAVI })}>{sayacMetni(Math.max(0, simdi - is.basladi))}</span> · {is.kuru ? 'kuru test' : <span className="eg-canli-yazi" style={portalStyle({ color: KIRMIZI })}>canlı</span>}
                   </div>
                 </div>
               </div>
-              <div className="mt-2 flex items-center gap-2 text-[11px]" style={portalStyle({ color: MUTED })}>
+              <div className="eg-akis-ilerleme mt-2 flex items-center gap-2 text-[11px]" style={portalStyle({ color: MUTED })}>
                 <span className="w-24 flex-shrink-0">{is.asama.ad}</span>
                 <Ilerleme yuzde={(is.asama.no / 4) * 100} />
                 <span className="tabular-nums">{is.asama.no}/4</span>
               </div>
-              <div className="mt-1.5 truncate text-[12px] leading-relaxed" style={portalStyle({ color: TEXT })} title={is.suAn}>
-                <b className="font-semibold" style={portalStyle({ color: MAVI })}>
+              <div className="eg-akis-suan mt-1.5 truncate text-[12px] leading-relaxed" style={portalStyle({ color: TEXT })} title={is.suAn}>
+                <b className="eg-vurgu font-semibold" style={portalStyle({ color: MAVI })}>
                   Şu an:
                 </b>{' '}
                 {is.suAn}
@@ -334,10 +336,11 @@ function oneriDugmeAdi(o: Oneri): string {
   return 'Hazırla';
 }
 
-function bitisRozeti(v: Vaka): { ad: string; renk: string } {
-  if (v.durum === 'hata') return { ad: 'yarım', renk: KIRMIZI };
-  if (v.kimde.ajanId === 'koordinator' && v.adimlar.filter((a) => a.tip === 'is').length === 1) return { ad: 'cevaplandı', renk: MUTED };
-  return { ad: 'bitti', renk: OK };
+/** Biten iş rozeti: yarım (hata) kırmızı · cevaplandı deniz yeşili · bitti yeşil. */
+function bitisRozeti(v: Vaka): { ad: string; renk: string; ton: Ton } {
+  if (v.durum === 'hata') return { ad: 'yarım', renk: KIRMIZI, ton: 'kirmizi' };
+  if (v.kimde.ajanId === 'koordinator' && v.adimlar.filter((a) => a.tip === 'is').length === 1) return { ad: 'cevaplandı', renk: MUTED, ton: 'deniz' };
+  return { ad: 'bitti', renk: OK, ton: 'yesil' };
 }
 
 function BugunBolumu({
@@ -370,7 +373,7 @@ function BugunBolumu({
     <>
       <Bolum ilk baslik="Bugünün son işleri" sag={<AltinBaglanti onClick={onTumu}>Tümü →</AltinBaglanti>}>
         {!bitenler.length ? (
-          <div className="text-[12.5px]" style={portalStyle({ color: MUTED })}>
+          <div className="eg-bos-satir text-[12.5px]" style={portalStyle({ color: MUTED })}>
             {yukleniyor ? 'İş akışı yükleniyor…' : hata ? 'Biten iş bilgisi alınamadı.' : 'Bugün henüz biten iş yok.'}
           </div>
         ) : (
@@ -392,19 +395,19 @@ function BugunBolumu({
                   style={portalStyle(i ? { borderTop: `1px solid ${SADE_AYRAC}` } : undefined)}
                   title="Raporu aç"
                 >
-                  <GradyanAvatar kisaltma={ajanKisaltma(ajanId)} renk={ajanRengi(ajanId)} boyut={28} title={ajanTamAd(ajanId, ajanAd(ajanId))} />
+                  <GradyanAvatar kisaltma={ajanKisaltma(ajanId)} renk={ajanRengi(ajanId)} ton={ajanTonu(ajanId)} boyut={28} title={ajanTamAd(ajanId, ajanAd(ajanId))} />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[12.5px] font-semibold" style={portalStyle({ color: TEXT })} title={v.mukellef?.ad ? `${v.mukellef.ad} — ${v.konu}` : v.konu || 'Ofis geneli'}>
+                    <span className="eg-akis-baslik block truncate text-[12.5px] font-semibold" style={portalStyle({ color: TEXT })} title={v.mukellef?.ad ? `${v.mukellef.ad} — ${v.konu}` : v.konu || 'Ofis geneli'}>
                       {v.mukellef?.ad ? konuKisalt(v.mukellef.ad, 32) : v.konu || 'Ofis geneli'}
                       {v.mukellef?.ad ? ` — ${v.konu}` : ''}
                     </span>
-                    <span className="block truncate text-[11px]" style={portalStyle({ color: MUTED })}>
+                    <span className="eg-akis-alt block truncate text-[11px]" style={portalStyle({ color: MUTED })}>
                       {saatKisa(v.guncellendi).slice(0, 5)}
                       {ozet ? ` · ${ozet}` : ''}
                       {sure ? ` · ${sure}` : ''}
                     </span>
                   </span>
-                  <Rozet metin={r.ad} renk={r.renk} />
+                  <Rozet metin={r.ad} renk={r.renk} ton={r.ton} />
                 </button>
               );
             })}
@@ -414,7 +417,7 @@ function BugunBolumu({
 
       <Bolum baslik="Öneriler" sag={<AltinBaglanti onClick={onPano}>Dönem panosu →</AltinBaglanti>}>
         {!oneriler.length ? (
-          <div className="text-[12.5px]" style={portalStyle({ color: MUTED })}>
+          <div className="eg-bos-satir text-[12.5px]" style={portalStyle({ color: MUTED })}>
             {panoYukleniyor ? 'Öneriler yükleniyor…' : panoHata ? 'Öneriler alınamadı.' : 'Panoya göre sırada bekleyen adım yok.'}
           </div>
         ) : (
@@ -423,12 +426,14 @@ function BugunBolumu({
               const sablon = SABLONLAR.find((s) => s.id === o.sablonId);
               return (
                 <div key={o.taxpayerId} className="eg-akis-satir flex items-center gap-3 py-[9px]" style={portalStyle(i ? { borderTop: `1px solid ${SADE_AYRAC}` } : undefined)}>
-                  <span className="shrink-0 text-[10px] font-semibold" style={portalStyle({ color: GOLD })} aria-hidden="true">{basHarfler(o.unvan)}</span>
+                  <span className="eg-oneri-harf inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-bold" style={portalStyle({ color: GOLD, background: `${GOLD}14`, border: `1px solid ${GOLD}40` })} aria-hidden="true">
+                    {basHarfler(o.unvan)}
+                  </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[12.5px] font-semibold" style={portalStyle({ color: TEXT })} title={o.unvan}>
+                    <span className="eg-akis-baslik block truncate text-[12.5px] font-semibold" style={portalStyle({ color: TEXT })} title={o.unvan}>
                       {konuKisalt(o.unvan, 32)}
                     </span>
-                    <span className="block truncate text-[11px]" style={portalStyle({ color: MUTED })} title={`${o.metin} · ${o.neden}`}>
+                    <span className="eg-akis-alt block truncate text-[11px]" style={portalStyle({ color: MUTED })} title={`${o.metin} · ${o.neden}`}>
                       {o.metin}
                     </span>
                   </span>
@@ -495,7 +500,7 @@ export function AkisKutu({
 
   return (
     <SadeKart dolguYok className={`eg-akis py-1 ${className}`}>
-      {!!hata && <p role="alert" className="px-6 py-3 text-[12px]" style={portalStyle({ color: KIRMIZI })}>İş akışı yenilenemedi. Lütfen yeniden deneyin.</p>}
+      {!!hata && <p role="alert" className="eg-hata-yazi px-6 py-3 text-[12px]" style={portalStyle({ color: KIRMIZI })}>İş akışı yenilenemedi. Lütfen yeniden deneyin.</p>}
       {calisanVar ? (
         <>
           <SuAnBolumu kosu={kosu} vakalar={vakalar} ajanAd={ajanAd} mukellefAd={mukellefAd} onIzle={onIzle} onDurdur={onDurdur} />
@@ -507,28 +512,6 @@ export function AkisKutu({
       ) : yukleniyor ? (
         <Bolum ilk baslik="İş akışı"><p role="status" className="text-[12.5px]" style={portalStyle({ color: MUTED })}>İş akışı yükleniyor…</p></Bolum>
       ) : <><SuAnBolumu kosu={kosu} vakalar={vakalar} ajanAd={ajanAd} mukellefAd={mukellefAd} onIzle={onIzle} onDurdur={onDurdur} />{digerIsler}</>}
-    </SadeKart>
-  );
-}
-
-
-/** Genel bakıştaki sade kadro şeridi; tüm personel sunucudan gelir. */
-export function KadroSeridi({ ajanlar, kosular, yukleniyor, onKadro }: { ajanlar: Ajan[]; kosular: Map<string, Kosu>; yukleniyor: boolean; onKadro: () => void }) {
-  const calisiyor = (ajan: Ajan) => !!ajan.suAn || !!(kosular.get(ajan.id) && !kosular.get(ajan.id)?.bitti);
-  const calisan = ajanlar.filter(calisiyor).length;
-  return (
-    <SadeKart baslik="Kadro" sag={<span className="text-[11.5px]" style={portalStyle({ color: MUTED })}>{ajanlar.length} personel · {calisan ? `${calisan} çalışıyor` : ajanlar.length ? 'hepsi boşta' : 'kadro bekleniyor'} · <AltinBaglanti onClick={onKadro}>Personel kartları →</AltinBaglanti></span>}>
-      {yukleniyor && !ajanlar.length ? <p role="status" className="text-[12px]" style={portalStyle({ color: MUTED })}>Kadro yükleniyor…</p> : !ajanlar.length ? <p className="text-[12px]" style={portalStyle({ color: MUTED })}>Gösterilecek personel yok.</p> : (
-        <div className="grid grid-cols-3 gap-x-2 gap-y-4 pt-2 sm:grid-cols-6 xl:grid-cols-12">
-          {ajanlar.map((ajan) => (
-            <button key={ajan.id} type="button" onClick={onKadro} title={`${ajan.ad} — ${ajan.unvan}${calisiyor(ajan) ? ' · çalışıyor' : ''}`} className="flex min-w-0 flex-col items-center rounded-lg px-0.5 py-1 text-center transition hover:bg-white/[0.04] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2" style={portalStyle({ outlineColor: GOLD })}>
-              <GradyanAvatar kisaltma={ajanKisaltma(ajan.id, ajan.ad)} renk={ajanRengi(ajan.id)} boyut={40} halka={calisiyor(ajan)} className="mb-2" />
-              <span className="w-full break-words text-[11px] font-semibold leading-tight" style={portalStyle({ color: TEXT })}>{ajanKisaAd(ajan.id, ajan.ad)}</span>
-              <span className="mt-0.5 w-full break-words text-[10.5px] leading-tight" style={portalStyle({ color: calisiyor(ajan) ? MAVI : MUTED })}>{calisiyor(ajan) ? 'Çalışıyor' : AJAN_UNVAN[ajan.id] || ajan.unvan}</span>
-            </button>
-          ))}
-        </div>
-      )}
     </SadeKart>
   );
 }

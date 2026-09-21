@@ -7,7 +7,7 @@ import { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import type { Ajan, EkipOnay } from '@/lib/ekip';
 import type { Kosu } from './kosular';
-import { CARD_BG, GOLD, KIRMIZI, MAVI, TEXT, ajanRengi } from './Tema';
+import { CARD_BG, GOLD, KIRMIZI, MAVI, TEXT, ajanRengi, ajanTonu } from './Tema';
 import { AJAN_UNVAN, ajanKisaAd, ajanKisaltma, saatKisa, sayacMetni, tarihKisa } from './ortak';
 
 const MUTED = '#8a8a93';
@@ -53,7 +53,7 @@ export function KadroKarti({ ajanlar, onaylar, kosular, mukellefAd, yukleniyor, 
 
   if (yukleniyor && !ajanlar.length)
     return (
-      <div className="flex items-center gap-2 py-8 text-[12px]" style={portalStyle({ color: MUTED })}>
+      <div className="ekip-yukleniyor flex items-center gap-2 py-8 text-[12px]" style={portalStyle({ color: MUTED })}>
         <Loader2 size={13} className="animate-spin" /> Kadro yükleniyor…
       </div>
     );
@@ -65,7 +65,7 @@ export function KadroKarti({ ajanlar, onaylar, kosular, mukellefAd, yukleniyor, 
         <dl className="epk-overview">
           {[
             ['Personel', ajanlar.length], ['Çalışıyor', calisanSayisi], ['Bugün koşu', bugunKosu], ['7 günde iş', haftaToplam],
-          ].map(([ad, sayi]) => <div key={ad}><dt className="epk-muted" style={portalStyle({ color: MUTED })}>{ad}</dt><dd>{sayi}</dd></div>)}
+          ].map(([ad, sayi]) => <div key={ad}><dt className="epk-muted" style={portalStyle({ color: MUTED })}>{ad}</dt><dd data-sifir={sayi === 0 || undefined}>{sayi}</dd></div>)}
         </dl>
       </header>
       <div className="epk-roster-grid" aria-label="Personel durumu">
@@ -90,6 +90,8 @@ export function KadroKarti({ ajanlar, onaylar, kosular, mukellefAd, yukleniyor, 
                 <span
                   aria-hidden="true"
                   className="epk-avatar"
+                  data-ton={ajanTonu(a.id)}
+                  data-calisiyor={calisiyor || undefined}
                   style={portalStyle({
                     color: renk,
                     background: `${renk}14`,
@@ -121,8 +123,8 @@ export function KadroKarti({ ajanlar, onaylar, kosular, mukellefAd, yukleniyor, 
                 {calisiyor ? d.metin : d.durum === 'hata' ? 'son iş yarım kaldı' : `${a.sonKosu?.createdAt ? 'boşta · ' : ''}${sonIsEtiketi(a.sonKosu?.createdAt)}`}
               </p>
               <dl className="epk-person-counts" style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.065)' })}>
-                <div><dt className="epk-muted" style={portalStyle({ color: MUTED })}>Bugün</dt><dd>{a.bugunKosu ?? 0}</dd></div>
-                <div><dt className="epk-muted" style={portalStyle({ color: MUTED })}>Son 7 gün</dt><dd>{haftalikIs.get(a.id) || 0}</dd></div>
+                <div><dt className="epk-muted" style={portalStyle({ color: MUTED })}>Bugün</dt><dd data-sifir={!(a.bugunKosu ?? 0) || undefined}>{a.bugunKosu ?? 0}</dd></div>
+                <div><dt className="epk-muted" style={portalStyle({ color: MUTED })}>Son 7 gün</dt><dd data-sifir={!haftalikIs.get(a.id) || undefined}>{haftalikIs.get(a.id) || 0}</dd></div>
               </dl>
             </article>
           );

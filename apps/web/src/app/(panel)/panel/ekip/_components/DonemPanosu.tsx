@@ -7,7 +7,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Loader2, Search, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { isOmurgaYok, type AsamaAdi, type AsamaDurumu, type Pano, type PanoDonemOzeti } from '@/lib/ekip';
 import type { KomutTaslak } from './GorevKarti';
-import { Bos, GOLD, MAVI, OK, TEXT, TURUNCU } from './Tema';
+import { Bos, GOLD, MAVI, MOR, OK, TEXT, TURUNCU, type Ton } from './Tema';
 import { ASAMALAR, SABLONLAR, donemEtiketi, sablonDoldur, sonrakiAdim } from './ortak';
 import { OmurgaYokBilgi } from './OmurgaYokBilgi';
 
@@ -69,13 +69,14 @@ function Nokta({ durum, title }: { durum: NoktaDurumu; title?: string }) {
 }
 
 /** Süzgeç hapı: seçili altın (ince altın kenar + hafif zemin), seçili değilse düz soluk metin. */
-function Hap({ aktif, onClick, title, children }: { aktif: boolean; onClick: () => void; title?: string; children: ReactNode }) {
+function Hap({ aktif, onClick, title, children, anahtar = false }: { aktif: boolean; onClick: () => void; title?: string; children: ReactNode; anahtar?: boolean }) {
   return (
     <button
       type="button"
       onClick={onClick}
       title={title}
       aria-pressed={aktif}
+      data-anahtar={anahtar || undefined}
       className="epk-filter"
       style={portalStyle(aktif ? { color: GOLD, border: '1px solid rgba(230,200,120,0.3)', background: 'rgba(230,200,120,0.08)' } : { color: MUTED, border: '1px solid transparent', background: 'transparent' })}
     >
@@ -199,11 +200,29 @@ export function DonemPanosu({
           <p className="epk-muted" style={portalStyle({ color: MUTED })}>{donem ? ayUzun(donem) : 'Mükellef × dönem aşamaları'} · {sayilar?.toplam ?? pano?.satirlar.length ?? 0} mükellef</p>
         </div>
         {sayilar && <dl className="epk-overview" aria-label={aciklama}>
-          {[
-            ['Verildi', sayilar.verildi], ['Hazır', sayilar.hazir], ['Kontrol', sayilar.kontrolde],
-            ['İşleme', sayilar.islemede], ['Evrak bekliyor', sayilar.evrakBekliyor],
-          ].map(([ad, sayi]) => <div key={ad}><dt className="epk-muted" style={portalStyle({ color: MUTED })}>{ad}</dt><dd>{sayi}</dd></div>)}
+          {([
+            ['Verildi', sayilar.verildi, 'yesil'], ['Hazır', sayilar.hazir, 'kehribar'], ['Kontrol', sayilar.kontrolde, 'mor'],
+            ['İşleme', sayilar.islemede, 'mavi'], ['Evrak bekliyor', sayilar.evrakBekliyor, 'kursuni'],
+          ] as Array<[string, number, string]>).map(([ad, sayi, ton]) => <div key={ad} data-ton={ton}><dt className="epk-muted" style={portalStyle({ color: MUTED })}><i className="epk-overview-nokta" aria-hidden="true" />{ad}</dt><dd data-sifir={sayi === 0 || undefined}>{sayi}</dd></div>)}
         </dl>}
+        {sayilar && sayilar.toplam > 0 && (
+          /* Aşama şeridi: mükellefler aşamalara göre (evrak bekliyor → işleme → kontrol → hazır → verildi); sayılar üstteki lejantta. */
+          <div className="epk-serit" role="img" aria-label={aciklama} style={portalStyle({ background: 'rgba(255,255,255,0.05)' })}>
+            {(
+              [
+                ['kursuni', sayilar.evrakBekliyor, 'evrak bekliyor', 'rgba(250,250,249,0.22)'],
+                ['mavi', sayilar.islemede, 'işleme', MAVI],
+                ['mor', sayilar.kontrolde, 'kontrol', MOR],
+                ['kehribar', sayilar.hazir, 'hazır', GOLD],
+                ['yesil', sayilar.verildi, 'verildi', OK],
+              ] as Array<[Ton, number, string, string]>
+            )
+              .filter(([, n]) => n > 0)
+              .map(([ton, n, ad, renk]) => (
+                <span key={ton} data-ton={ton} className="epk-serit-dilim" style={portalStyle({ width: `${(n / sayilar.toplam) * 100}%`, background: renk })} title={`${n} ${ad}`} />
+              ))}
+          </div>
+        )}
       </header>
       <div className="epk-toolbar" style={portalStyle({ borderTop: `1px solid ${KENAR}`, borderBottom: `1px solid ${KENAR}` })}>
           {/* Ay gezinme kapsülü: ‹ Ağustos 2026 › */}
@@ -238,18 +257,18 @@ export function DonemPanosu({
               ›
             </button>
           </span>
-          {/* Süzgeç hapları */}
-          <span className="epk-filters" role="group" aria-label="Sıralama ve süzgeçler">
+          {/* Sıralama kapsül grubu + "Sadece eksikler" anahtar çipi */}
+          <span className="epk-filters" role="group" aria-label="Sıralama">
             <Hap aktif={siralama === 'acil'} onClick={() => setSiralama('acil')} title="Sıradaki adımı en acil olan üstte">
               Acil önce
             </Hap>
             <Hap aktif={siralama === 'ad'} onClick={() => setSiralama('ad')} title="Ada göre alfabetik">
               Ada göre
             </Hap>
-            <Hap aktif={sadeceEksik} onClick={() => setSadeceEksik((e) => !e)} title="Beyannamesi verilmemiş mükellefler">
-              Sadece eksikler
-            </Hap>
           </span>
+          <Hap aktif={sadeceEksik} onClick={() => setSadeceEksik((e) => !e)} title="Beyannamesi verilmemiş mükellefler" anahtar>
+            Sadece eksikler
+          </Hap>
           {/* Sade arama alanı */}
           <label className="epk-search" style={portalStyle({ background: 'rgba(255,255,255,0.025)', border: `1px solid ${KENAR}` })}>
             <Search size={14} aria-hidden="true" />
@@ -265,30 +284,30 @@ export function DonemPanosu({
       </div>
       <div className="epk-panel-body">
       {ozet?.beyannameDonem && ozet.beyannameDonem !== ozet.donem && (
-        <div className="mb-2 text-[11.5px]" style={portalStyle({ color: MUTED })}>
+        <div className="epk-donem-notu mb-2 text-[12px]" style={portalStyle({ color: MUTED })}>
           İşlem ayı <b style={portalStyle({ color: TEXT })}>{ayUzun(ozet.donem)}</b> · beyanname dönemi <b style={portalStyle({ color: TEXT })}>{ayUzun(ozet.beyannameDonem)}</b>
         </div>
       )}
       {ozet?.hata && (
-        <div className="mb-3 flex items-center gap-1.5 rounded-xl px-3 py-2 text-[12px]" style={portalStyle({ background: `${TURUNCU}12`, border: `1px solid ${TURUNCU}59`, color: TEXT })}>
+        <div className="epk-uyari mb-3 flex items-center gap-1.5 rounded-xl px-3 py-2 text-[12px]" style={portalStyle({ background: `${TURUNCU}12`, border: `1px solid ${TURUNCU}59`, color: TEXT })}>
           <AlertTriangle size={12} style={portalStyle({ color: TURUNCU })} /> Bu dönem verisi alınamadı: {ozet.hata}
         </div>
       )}
       {ozet?.bosDonemFallback && donem && (
-        <div className="mb-3 flex items-center gap-1.5 rounded-xl px-3 py-2 text-[12px]" style={portalStyle({ background: `${TURUNCU}12`, border: `1px solid ${TURUNCU}59`, color: TEXT })}>
+        <div className="epk-uyari mb-3 flex items-center gap-1.5 rounded-xl px-3 py-2 text-[12px]" style={portalStyle({ background: `${TURUNCU}12`, border: `1px solid ${TURUNCU}59`, color: TEXT })}>
           <AlertTriangle size={12} style={portalStyle({ color: TURUNCU })} /> {ayUzun(donem)} boştu, önceki ay gösteriliyor
         </div>
       )}
 
       {isLoading ? (
-        <div className="flex items-center gap-2 py-8 text-[12px]" style={portalStyle({ color: MUTED })}>
+        <div className="ekip-yukleniyor flex items-center gap-2 py-8 text-[12px]" style={portalStyle({ color: MUTED })}>
           <Loader2 size={13} className="animate-spin" /> Pano yükleniyor (ilk açılış yavaş olabilir)…
         </div>
       ) : error ? (
         isOmurgaYok(error) ? (
           <OmurgaYokBilgi kucuk />
         ) : (
-          <div className="py-4 text-[12.5px]" style={portalStyle({ color: '#e0697a' })}>
+          <div className="eg-hata-yazi py-4 text-[12.5px]" style={portalStyle({ color: '#e0697a' })}>
             Pano alınamadı: {(error as any)?.message || 'hata'}
           </div>
         )
@@ -327,11 +346,11 @@ export function DonemPanosu({
                 return (
                   <tr key={s.taxpayerId} className="transition-colors hover:bg-white/[0.02]">
                     <td className="max-w-[300px] px-2.5 py-[9px] align-middle" style={portalStyle(tdStil)}>
-                      <div className="truncate text-[12.5px] font-semibold" style={portalStyle({ color: TEXT })} title={s.unvan}>
+                      <div className="epk-unvan truncate text-[12.5px] font-semibold" style={portalStyle({ color: TEXT })} title={s.unvan}>
                         {s.unvan}
                       </div>
                       {s.defterTuru && (
-                        <div className="truncate text-[11px]" style={portalStyle({ color: SOLUK })}>
+                        <div className="epk-defter truncate text-[11px]" style={portalStyle({ color: SOLUK })}>
                           {defterEtiketi(s.defterTuru)}
                         </div>
                       )}
@@ -344,7 +363,7 @@ export function DonemPanosu({
                         </td>
                       );
                     })}
-                    <td className="px-2.5 py-[9px] text-[12.5px] align-middle" style={portalStyle({ ...tdStil, color: MUTED })}>
+                    <td className="epk-sonraki px-2.5 py-[9px] text-[12.5px] align-middle" style={portalStyle({ ...tdStil, color: MUTED })}>
                       {adim.metin}
                     </td>
                     <td className="whitespace-nowrap px-2.5 py-[9px] text-center align-middle" style={portalStyle(tdStil)}>

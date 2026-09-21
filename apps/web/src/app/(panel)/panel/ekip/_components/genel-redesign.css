@@ -1,86 +1,36 @@
-/* Genel bakış bileşenleri. Yerleşim iki temada; renkler yalnız D temasında. */
+/* Genel bakış bileşenleri — yerleşim iki temada ortak; beyaz tema renkleri ekip-white.css'te. */
 .ekip-workspace .eg-kart { border-radius: 14px; font-size: 13px; }
-.ekip-workspace .eg-kart-baslik { padding: 16px 18px 10px; align-items: center; }
-.ekip-workspace .eg-kart-baslik h3 { font-size: 15px; line-height: 1.4; }
-.ekip-workspace .eg-kart-icerik { padding: 4px 18px 18px; }
-.ekip-workspace .eg-bolum { padding: 16px 18px; }
+.ekip-workspace .eg-kart-baslik { padding: 16px 20px 10px; align-items: center; }
+.ekip-workspace .eg-kart-baslik h3 { font-size: 15px; line-height: 1.4; font-weight: 650; }
+.ekip-workspace .eg-kart-icerik { padding: 4px 20px 18px; }
+.ekip-workspace .eg-bolum { padding: 14px 20px; }
 .ekip-workspace .eg-bolum-baslik { margin: 0; font-size: 13px; letter-spacing: 0; text-transform: none; }
-.ekip-workspace .eg-kontroller { margin-top: 12px; }
-.ekip-workspace :is(.eg-secici, .eg-mod, .eg-baslat) { border-radius: 8px; }
+.ekip-workspace .eg-kontroller { margin-top: 10px; }
+.ekip-workspace :is(.eg-secici, .eg-mod, .eg-ses, .eg-baslat) { border-radius: 10px; }
 .ekip-workspace .eg-baslat { margin-left: auto; min-height: 36px; }
-.ekip-workspace .eg-metin { display: block; font-size: 13px; line-height: 1.65; }
+.ekip-workspace .eg-baslat-yedek { margin-left: auto; min-height: 36px; }
+.ekip-workspace .eg-metin { display: block; font-size: 13.5px; line-height: 1.6; }
 .ekip-workspace .eg-ipucu { font-size: 12px; line-height: 1.5; }
 .ekip-workspace .eg-akis-satir { padding-top: 10px; padding-bottom: 10px; }
 .ekip-workspace .eg-akis-satir .truncate { text-overflow: ellipsis; }
-.ekip-workspace .eg-akis-satir .font-semibold { font-size: 13px; font-weight: 600; }
-.ekip-workspace .eg-metin-dugme { border-radius: 7px; min-height: 30px; font-size: 12px; }
-.ekip-workspace .eg-diger-isler > summary { padding: 10px 18px; }
-.ekip-workspace .eg-kararlar { margin-top: 18px; }
-.ekip-workspace .eg-kararlar-baslik { font-weight: 600; }
+.ekip-workspace .eg-akis-baslik { font-size: 13.5px; font-weight: 600; }
+.ekip-workspace .eg-akis-alt { font-size: 12px; margin-top: 1px; }
+.ekip-workspace .eg-metin-dugme { border-radius: 8px; min-height: 30px; font-size: 12px; }
+.ekip-workspace .eg-diger-isler > summary { padding: 10px 20px; }
+.ekip-workspace .eg-kararlar { margin-top: 16px; }
+.ekip-workspace .eg-kararlar-baslik { font-weight: 650; }
 .ekip-workspace .eg-karar-detay { border-radius: 10px; padding: 0 12px; margin-top: 8px; border-width: 1px; }
 .ekip-workspace .eg-kararlar .eg-karar { padding-top: 12px; padding-bottom: 14px; }
-.ekip-workspace .eg-karar-cevap { font-size: 13px; border-radius: 8px; }
-.ekip-workspace .eg-karar-birincil { border-radius: 7px; min-height: 32px; }
+.ekip-workspace .eg-karar-cevap { font-size: 13px; border-radius: 10px; }
+.ekip-workspace .eg-karar-birincil { border-radius: 8px; min-height: 32px; }
 .ekip-workspace .eg-karar-detay summary:focus-visible { outline-offset: -2px; }
-
-html[data-theme="D"] .ekip-workspace :is(.eg-kart, .eg-karar, .eg-kararlar) {
-  --portal-ink: #243b45;
-  --portal-secondary: #52656d;
-  --portal-muted: #61747b;
-  --portal-line: #dce4e7;
-  --portal-amber-ink: #85601e;
-  --portal-amber-wash: #fbf4e5;
-  --portal-blue-ink: #216c70;
-  --portal-blue-wash: #eaf4f3;
-}
-html[data-theme="D"] .ekip-workspace .eg-kart {
-  background: #fff !important;
-  border: 1px solid #dce4e7 !important;
-  box-shadow: none !important;
-  color: #243b45;
-}
-html[data-theme="D"] .ekip-workspace .eg-ust-cizgi { background: none !important; }
-html[data-theme="D"] .ekip-workspace :is(.eg-kart-baslik h3, .eg-bolum-baslik, .eg-kararlar-baslik) { color: #243b45 !important; }
-html[data-theme="D"] .ekip-workspace :is(.eg-bolum, .eg-akis-satir, .eg-diger-isler, .eg-kararlar-baslik, .eg-karar) { border-color: #dce4e7 !important; }
-/* İlk bölüm işareti olsa da art arda gelen bölümler çizgiyle ayrılır. */
-html[data-theme="D"] .ekip-workspace .eg-bolum + .eg-bolum { border-top: 1px solid #dce4e7; }
-html[data-theme="D"] .ekip-workspace .eg-diger-isler > summary { color: #52656d !important; background: #f7faf9; }
-html[data-theme="D"] .ekip-workspace .eg-yazi {
-  background: #fff !important;
-  border-color: #c8d6da !important;
-  box-shadow: none !important;
-  border-radius: 10px;
-}
-html[data-theme="D"] .ekip-workspace .eg-yazi:focus-within { border-color: #216c70 !important; box-shadow: 0 0 0 3px #eaf4f3 !important; }
-html[data-theme="D"] .ekip-workspace .eg-yazi[data-eg-canli="true"],
-html[data-theme="D"] .ekip-workspace .eg-yazi[data-eg-dinliyor="true"] { border-color: #b46477 !important; }
-html[data-theme="D"] .ekip-workspace .eg-metin { background: transparent !important; color: #243b45 !important; box-shadow: none !important; outline: none; }
-html[data-theme="D"] .ekip-workspace .eg-metin::placeholder { color: #6b7e84; }
-html[data-theme="D"] .ekip-workspace :is(.eg-secici, .eg-mod) { background: #fff !important; border-color: #dce4e7 !important; }
-html[data-theme="D"] .ekip-workspace .eg-mod [aria-checked="true"] { background: #eaf4f3 !important; color: #216c70 !important; box-shadow: inset 0 0 0 1px #b6d4d1 !important; }
-html[data-theme="D"] .ekip-workspace .eg-mod [data-eg-mod="canli"][aria-checked="true"] { background: #f9edf0 !important; color: #974558 !important; box-shadow: inset 0 0 0 1px #e1bac4 !important; }
-html[data-theme="D"] .ekip-workspace :is(.eg-baslat, .eg-karar-birincil) { background: #216c70 !important; border-color: #216c70 !important; color: #fff !important; box-shadow: none !important; }
-html[data-theme="D"] .ekip-workspace .eg-baslat[data-eg-canli="true"] { background: #974558 !important; border-color: #974558 !important; }
-html[data-theme="D"] .ekip-workspace :is(.eg-baslat, .eg-karar-birincil):hover:not(:disabled) { filter: brightness(.93); }
-html[data-theme="D"] .ekip-workspace .eg-ses { background: #f7faf9 !important; border-color: #dce4e7 !important; color: #52656d !important; }
-html[data-theme="D"] .ekip-workspace .eg-ses[data-eg-dinliyor="true"] { background: #f9edf0 !important; color: #974558 !important; border-color: #e1bac4 !important; }
-html[data-theme="D"] .ekip-workspace .eg-canli-teyit { background: #f9edf0 !important; border-color: #e1bac4 !important; color: #243b45 !important; }
-html[data-theme="D"] .ekip-workspace :is(.eg-baglanti, .eg-metin-dugme) { color: #216c70 !important; }
-html[data-theme="D"] .ekip-workspace .eg-metin-dugme { background: #eaf4f3 !important; border-color: #c9dfdc !important; }
-html[data-theme="D"] .ekip-workspace .eg-metin-dugme[data-eg-tehlike="true"] { color: #974558 !important; background: #f9edf0 !important; border-color: #e1bac4 !important; }
-html[data-theme="D"] .ekip-workspace .eg-avatar { background: #eaf4f3 !important; color: #216c70 !important; box-shadow: none !important; outline-color: #216c70 !important; }
-html[data-theme="D"] .ekip-workspace .eg-rapor:hover { background: #f4f8f7 !important; }
-html[data-theme="D"] .ekip-workspace .eg-karar-detay { background: #fff; border-color: #dce4e7 !important; }
-html[data-theme="D"] .ekip-workspace .eg-karar-detay[open] { border-color: #bed5d3 !important; }
-html[data-theme="D"] .ekip-workspace .eg-karar-detay summary > span:last-child { color: #216c70 !important; }
-html[data-theme="D"] .ekip-workspace .eg-karar-alinti { background: #f7faf9 !important; border-left-color: #a9c9c6 !important; color: #243b45 !important; }
-html[data-theme="D"] .ekip-workspace .eg-karar-cevap { background: #fff !important; border-color: #c8d6da !important; color: #243b45 !important; }
 
 @media (max-width: 480px) {
   .ekip-workspace .eg-kart-baslik { padding: 14px 14px 10px; }
   .ekip-workspace .eg-kart-icerik { padding: 4px 14px 14px; }
   .ekip-workspace .eg-bolum { padding: 14px; }
-  .ekip-workspace .eg-metin { padding-right: 16px; padding-top: 48px; }
+  .ekip-workspace .eg-diger-isler > summary { padding: 10px 14px; }
   .ekip-workspace .eg-kontroller { gap: 8px; }
+  .ekip-workspace .eg-baslat, .ekip-workspace .eg-baslat-yedek { margin-left: 0; flex: 1 1 100%; justify-content: center; }
   .ekip-workspace .eg-karar-detay { padding-right: 10px; padding-left: 10px; }
 }

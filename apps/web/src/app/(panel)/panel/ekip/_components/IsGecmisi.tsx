@@ -79,7 +79,7 @@ export function IsGecmisi({ akis, isLoading, error, sayaclar, suzgec, onSuzgec, 
       <header className="ekip-isler-liste-baslik">
         <div className="min-w-0">
           <h3 className="ekip-isler-baslik" style={portalStyle({ color: TEXT })}>İşler</h3>
-          <p className="mt-1 text-[11.5px]" style={portalStyle({ color: MUTED })}>
+          <p className="ekip-isler-aciklama mt-1 text-[12px]" style={portalStyle({ color: MUTED })}>
             {akis ? `${gun === 1 ? 'Bugün' : `Son ${gun} gün`} · ${vakalar.length} iş · ${bittiN} bitti${hataN ? ` · ${hataN} yarım` : ''}` : 'Verilen görevler'}
           </p>
         </div>
@@ -99,16 +99,18 @@ export function IsGecmisi({ akis, isLoading, error, sayaclar, suzgec, onSuzgec, 
               </IsFiltresi>
             );
           })}
-          {!!sayaclar?.gecikti && <Rozet metin={`${sayaclar.gecikti} gecikti`} renk={KIRMIZI} />}
+          {!!sayaclar?.gecikti && <Rozet metin={`${sayaclar.gecikti} gecikti`} renk={KIRMIZI} ton="kirmizi" />}
         </div>
         <div className="ekip-isler-donem">
-          {([1, 7, 30] as AkisGun[]).map((g) => (
-            <IsFiltresi key={g} aktif={gun === g} onClick={() => onGun(g)}>
-              {g === 1 ? 'Bugün' : `${g} gün`}
-            </IsFiltresi>
-          ))}
+          <div className="ekip-isler-filtre-grubu" role="group" aria-label="Zaman aralığı">
+            {([1, 7, 30] as AkisGun[]).map((g) => (
+              <IsFiltresi key={g} aktif={gun === g} onClick={() => onGun(g)}>
+                {g === 1 ? 'Bugün' : `${g} gün`}
+              </IsFiltresi>
+            ))}
+          </div>
           <span className="ekip-isler-arama" style={portalStyle({ background: 'rgba(255,255,255,0.025)', border: `1px solid ${ROW_SEP}` })}>
-            <Search size={12} style={portalStyle({ color: MUTED })} />
+            <Search size={13} className="ekip-isler-arama-simge flex-shrink-0" style={portalStyle({ color: MUTED })} />
             <span className="min-w-0 flex-1">
               <MukellefSecici sade yerTutucu="Mükellef ara…" mukellefler={mukellefler} value={taxpayerId} onChange={onTaxpayerId} renk={GOLD} />
             </span>
@@ -121,11 +123,11 @@ export function IsGecmisi({ akis, isLoading, error, sayaclar, suzgec, onSuzgec, 
         {omurgaYok ? (
           <OmurgaYokBilgi kucuk />
         ) : error ? (
-          <div className="py-3 text-[12.5px]" style={portalStyle({ color: KIRMIZI })}>
+          <div className="eg-hata-yazi py-3 text-[12.5px]" style={portalStyle({ color: KIRMIZI })}>
             Geçmiş alınamadı: {(error as any)?.message || 'hata'}
           </div>
         ) : isLoading && !akis ? (
-          <div className="flex items-center justify-center gap-2 py-8 text-[12px]" style={portalStyle({ color: MUTED })}>
+          <div className="ekip-yukleniyor flex items-center justify-center gap-2 py-8 text-[12px]" style={portalStyle({ color: MUTED })}>
             <Loader2 size={13} className="animate-spin" /> Geçmiş yükleniyor…
           </div>
         ) : !vakalar.length ? (
@@ -159,13 +161,13 @@ export function IsGecmisi({ akis, isLoading, error, sayaclar, suzgec, onSuzgec, 
                           <span className="ekip-isler-konu" title={v.konu} style={portalStyle({ color: MUTED })}>{v.konu || 'Konu yok'}</span>
                         </button>
                         {(siz || !v.kuru || v.gecikti) && <div className="ekip-isler-uyarilar">
-                          {siz && <span style={portalStyle({ color: GOLD })}>Sizden işlem bekliyor</span>}
-                          {!v.kuru && <span style={portalStyle({ color: KIRMIZI })}>Canlı işlem</span>}
-                          {v.gecikti && <span style={portalStyle({ color: KIRMIZI })}>Gecikti</span>}
+                          {siz && <span data-ton="kehribar" style={portalStyle({ color: GOLD })}>Sizden işlem bekliyor</span>}
+                          {!v.kuru && <span data-ton="kirmizi" style={portalStyle({ color: KIRMIZI })}>Canlı işlem</span>}
+                          {v.gecikti && <span data-ton="kirmizi" style={portalStyle({ color: KIRMIZI })}>Gecikti</span>}
                         </div>}
                       </td>
                       <td><span className="ekip-isler-sorumlu">
-                        <Avatar kisaltma={ajanKisaltma(personelId)} renk={ajanRengi(personelId)} ton={kosuyor ? 'mavi' : personelId === 'koordinator' ? 'gold' : 'gri'} boyut={24} nabiz={kosuyor} title={ajanKisaAd(personelId, ajanAd(personelId))} />
+                        <Avatar kisaltma={ajanKisaltma(personelId)} renk={ajanRengi(personelId)} ajanId={personelId} ton={kosuyor ? 'mavi' : personelId === 'koordinator' ? 'gold' : 'gri'} boyut={26} nabiz={kosuyor} title={ajanKisaAd(personelId, ajanAd(personelId))} />
                         <span>{ajanKisaAd(personelId, ajanAd(personelId))}</span>
                       </span></td>
                       <td><span className="ekip-isler-durum" data-durum={r.ad} style={portalStyle({ color: r.renk })}>
@@ -182,8 +184,8 @@ export function IsGecmisi({ akis, isLoading, error, sayaclar, suzgec, onSuzgec, 
           </div>
         )}
         {vakalar.length > gorunen && (
-          <div className="pt-2" style={portalStyle({ borderTop: `1px solid ${ROW_SEP}` })}>
-            <Dugme tur="sade" onClick={() => setGorunen((g) => g + SAYFA)} className="w-full justify-center">
+          <div className="ekip-isler-daha pt-2">
+            <Dugme tur="ikincil" onClick={() => setGorunen((g) => g + SAYFA)} className="w-full justify-center">
               <ChevronDown size={12} /> Daha fazla göster ({vakalar.length - gorunen} iş daha)
             </Dugme>
           </div>
