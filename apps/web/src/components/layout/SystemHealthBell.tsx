@@ -160,6 +160,7 @@ export default function SystemHealthBell() {
       {/* v1.36.78: Sağ üst sistem sağlık göstergesi — TIKLANMAZ.
           Sadece görsel uyarı; detay için Gösterge Paneli'ndeki Kritik Uyarı kartı kullanılır. */}
       <div data-moren-owned="surface"
+        data-health-state={isOk ? 'ok' : isCritical ? 'critical' : 'warning'}
         className="relative w-9 h-9 rounded-lg flex items-center justify-center cursor-default"
         style={ownedThemeStyle({
           border: `1px solid ${isCritical ? 'rgba(244,63,94,0.5)' : 'rgba(255,255,255,0.05)'}`,

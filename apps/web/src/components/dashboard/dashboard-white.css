@@ -524,3 +524,24 @@ html[data-theme='D'] .ofis-beyan {
   box-shadow: 0 6px 18px color-mix(in srgb, var(--pt-a) 9%, transparent) !important;
 }
 html[data-theme='D'] .ofis-beyan__header button { background: rgba(255, 255, 255, 0.75); }
+
+/* ── 2026-09-21 Beyanname Durum Takibi: yazı hiyerarşisi (Muzaffer Bey: "yazıları, başlıkları kötü duruyor")
+   Başlık satırı koyu gri ve biraz büyük, ad 14px kalın, dönem 11.5px, sayılar 14px, çubuk 6px; alt kartlarda aynı ölçek. */
+html[data-theme='D'] [data-beyan-panel] [data-beyan-heading] p { font-size: 13px; font-weight: 500; color: #475569 !important; }
+html[data-theme='D'] [data-beyan-panel] table thead th { padding: 9px 12px; background: #f1f5f9 !important; color: #475569 !important; font-size: 11px; letter-spacing: .06em; }
+html[data-theme='D'] [data-beyan-panel] table tbody td { height: 42px; padding: 7px 12px; }
+html[data-theme='D'] [data-beyan-panel] table tbody td:first-child > button { font-size: 14px; font-weight: 700; color: #0f172a !important; }
+html[data-theme='D'] [data-beyan-panel] table tbody td:first-child > div:not(.hidden) { margin-left: 8px; font-size: 11.5px; color: #64748b !important; }
+html[data-theme='D'] [data-beyan-panel] [data-beyan-num] button { font-size: 14px; }
+html[data-theme='D'] [data-beyan-panel] table tbody td:last-child span { font-size: 12px; font-weight: 650; }
+html[data-theme='D'] [data-beyan-panel] table tbody td:last-child .h-1\.5 { height: 6px; }
+html[data-theme='D'] [data-beyan-panel] [data-beyan-section] > div:first-child { font-size: 11px; letter-spacing: .08em; color: #334155 !important; }
+html[data-theme='D'] [data-beyan-panel] [data-beyan-section] > div:last-child { font-size: 12px; color: #64748b !important; }
+html[data-theme='D'] [data-beyan-mini] > div { padding: 9px 12px; }
+html[data-theme='D'] [data-beyan-mini] > div > button:first-child { font-size: 13.5px; }
+html[data-theme='D'] [data-beyan-mini] > div > button:first-child span { font-size: 11.5px; }
+html[data-theme='D'] [data-beyan-mini] button > div:first-child { font-size: 9.5px; letter-spacing: .06em; color: #64748b !important; }
+html[data-theme='D'] [data-beyan-mini] [data-beyan-num] > div:last-child { font-size: 15px; }
+html[data-theme='D'] [data-beyan-mini] .h-1\.5 { height: 6px; }
+html[data-theme='D'] [data-beyan-mini] > div { grid-template-columns: minmax(120px, 1.6fr) repeat(3, minmax(62px, .7fr)) minmax(112px, 1.4fr); }
+html[data-theme='D'] [data-beyan-mini] button > div:first-child { letter-spacing: .03em; }

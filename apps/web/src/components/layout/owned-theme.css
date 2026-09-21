@@ -281,3 +281,223 @@ html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-item]:focus-visibl
   outline: 2px solid #9ce3d8;
   outline-offset: -2px;
 }
+
+
+/* ═════════════════════════════════════════════════════════════════════════════════════════════
+   2026-09-21 — SOL MENÜ yeniden tasarım (Muzaffer Bey: "yazılar garip duruyor, başlıklarıyla ayırt
+   edilmiyor; profesyonel olsun"). Kapsül/kutu dili kalktı:
+   · Grup başlığı = küçük büyük-harf etiket (simge kutusu yok), gruplar arası ince ayraç.
+   · Madde = düz satır, tek renk simge (kutusuz), 13px; fare: hafif beyaz yıkama; etkin: nane sol çizgi +
+     nane simge + beyaz kalın yazı. Renk yalnız etkin maddede.
+   ═════════════════════════════════════════════════════════════════════════════════════════════ */
+html[data-theme='D'] [data-moren-sidebar][data-collapsed='false'] nav {
+  padding-left: 10px;
+  padding-right: 10px;
+  padding-top: 6px;
+}
+html[data-theme='D'] [data-moren-sidebar][data-collapsed='false'] nav > div + div {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(222, 238, 244, 0.08);
+}
+html[data-theme='D'] [data-moren-sidebar][data-collapsed='false'] [data-moren-sidebar-group] {
+  padding: 0 0 0 12px !important;
+  margin-bottom: 4px;
+  min-height: 0;
+  background: transparent !important;
+  border: 0 !important;
+  gap: 0;
+}
+html[data-theme='D'] [data-moren-sidebar][data-collapsed='false'] [data-moren-sidebar-group] > [data-moren-sidebar-icon] {
+  display: none;
+}
+html[data-theme='D'] [data-moren-sidebar][data-collapsed='false'] [data-moren-sidebar-group] p {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em !important;
+  line-height: 20px;
+  color: rgba(222, 238, 244, 0.5) !important;
+  text-shadow: none !important;
+}
+html[data-theme='D'] [data-moren-sidebar][data-collapsed='false'] [data-moren-sidebar-items] {
+  margin-left: 0;
+}
+html[data-theme='D'] [data-moren-sidebar][data-collapsed='false'] [data-moren-sidebar-items] > * + * {
+  margin-top: 2px !important;
+}
+html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-item] {
+  min-height: 36px;
+  padding: 7px 10px 7px 12px !important;
+  gap: 10px !important;
+  border-radius: 8px !important;
+  border: 0 !important;
+  background: transparent !important;
+  font-size: 13px !important;
+  font-weight: 450 !important;
+  letter-spacing: 0 !important;
+  color: rgba(226, 236, 244, 0.86) !important;
+  transform: none !important;
+}
+html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-item] [data-moren-sidebar-icon] {
+  width: 18px !important;
+  height: 18px !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+  transform: none !important;
+}
+html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-item] [data-moren-sidebar-icon] svg {
+  width: 16px;
+  height: 16px;
+  color: rgba(222, 238, 244, 0.62) !important;
+  opacity: 1 !important;
+  stroke-width: 1.9;
+}
+html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-item]:hover,
+html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-item]:focus-visible {
+  background: rgba(255, 255, 255, 0.07) !important;
+  color: #ffffff !important;
+  transform: none !important;
+}
+html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-item]:hover [data-moren-sidebar-icon] svg {
+  color: #ffffff !important;
+}
+html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-active='true'] {
+  background: rgba(255, 255, 255, 0.12) !important;
+  color: #ffffff !important;
+  font-weight: 600 !important;
+}
+html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-active='true'] [data-moren-sidebar-icon] svg {
+  color: #8fd8cc !important;
+  stroke-width: 2.1;
+}
+html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-indicator] {
+  left: 0;
+  width: 3px !important;
+  height: 18px !important;
+  background: #8fd8cc !important;
+}
+/* Etkin maddedeki sağ ok (alt menü işareti) ve dekor katmanları sakin */
+html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-item] > svg:last-child {
+  color: rgba(222, 238, 244, 0.55) !important;
+}
+
+/* ═════════════════════════════════════════════════════════════════════════════════════════════
+   2026-09-21 — ÜST ÇUBUK SAĞ SİMGELER (Muzaffer Bey: "profesyonel görünsün"): tek boy (36px), beyaz
+   zemin, ince gri kenar, tek renk simge; Konuş ve Luca yazılı kapsül; rozetler küçük kırmızı/kehribar.
+   Renk yalnız durum söylüyor: sistemde sorun → kırmızı; Konuş dinlemede → kehribar nokta.
+   ═════════════════════════════════════════════════════════════════════════════════════════════ */
+html[data-theme='D'] header[data-moren-owned='surface'] {
+  background: #ffffff !important;
+  border-bottom: 1px solid #e3e8ef !important;
+  box-shadow: none !important;
+}
+html[data-theme='D'] header[data-moren-owned='surface'] > div:last-child { gap: 8px; }
+html[data-theme='D'] header[data-moren-owned='surface'] #moren-topbar-actions { gap: 8px; }
+html[data-theme='D'] header[data-moren-owned='surface'] #moren-topbar-actions > div { gap: 8px; }
+html[data-theme='D'] header[data-moren-owned='surface'] :where(
+  #moren-topbar-actions > button,
+  #moren-topbar-actions button[aria-label='Canlı MOREN AI ile konuş'],
+  div[data-moren-owned='surface'] > button[aria-label^='Luca'],
+  div[data-moren-owned='surface'][data-health-state],
+  a[href='/panel/bildirimler']
+) {
+  height: 36px !important;
+  min-width: 36px;
+  border-radius: 10px !important;
+  border: 1px solid #dde3ea !important;
+  background: #ffffff !important;
+  color: #475569 !important;
+  box-shadow: none !important;
+  animation: none !important;
+  transition: background .15s ease, border-color .15s ease;
+}
+html[data-theme='D'] header[data-moren-owned='surface'] :where(
+  #moren-topbar-actions > button,
+  #moren-topbar-actions button[aria-label='Canlı MOREN AI ile konuş'],
+  div[data-moren-owned='surface'] > button[aria-label^='Luca'],
+  a[href='/panel/bildirimler']
+):hover {
+  background: #f4f7fb !important;
+  border-color: #cbd5e1 !important;
+  opacity: 1 !important;
+  filter: none !important;
+}
+html[data-theme='D'] header[data-moren-owned='surface'] :where(
+  #moren-topbar-actions > button,
+  div[data-moren-owned='surface'][data-health-state],
+  a[href='/panel/bildirimler']
+) { width: 36px !important; }
+html[data-theme='D'] header[data-moren-owned='surface'] :where(
+  #moren-topbar-actions > button,
+  #moren-topbar-actions button[aria-label='Canlı MOREN AI ile konuş'],
+  div[data-moren-owned='surface'] > button[aria-label^='Luca'],
+  div[data-moren-owned='surface'][data-health-state],
+  a[href='/panel/bildirimler']
+) svg { color: #475569 !important; opacity: 1 !important; }
+/* Konuş: mikrofon halkası çivit yumuşak, yazı koyu; dinleme noktası kehribar */
+html[data-theme='D'] header[data-moren-owned='surface'] #moren-topbar-actions button[aria-label='Canlı MOREN AI ile konuş'] {
+  padding: 0 12px 0 6px !important;
+  border-radius: 999px !important;
+  gap: 8px !important;
+}
+html[data-theme='D'] header[data-moren-owned='surface'] #moren-topbar-actions button[aria-label='Canlı MOREN AI ile konuş'] > span:first-child > span {
+  background: #edf2ff !important;
+  border: 0 !important;
+}
+html[data-theme='D'] header[data-moren-owned='surface'] #moren-topbar-actions button[aria-label='Canlı MOREN AI ile konuş'] > span:first-child svg { color: #4263eb !important; }
+html[data-theme='D'] header[data-moren-owned='surface'] #moren-topbar-actions button[aria-label='Canlı MOREN AI ile konuş'] span { color: #1e293b !important; font-weight: 600 !important; letter-spacing: 0 !important; }
+html[data-theme='D'] header[data-moren-owned='surface'] #moren-topbar-actions button[aria-label='Canlı MOREN AI ile konuş'] > span:last-child {
+  width: 9px !important; height: 9px !important; right: 2px !important; top: 2px !important;
+  background: #f08c00 !important; border: 2px solid #fff !important; box-shadow: none !important;
+}
+html[data-theme='D'] header[data-moren-owned='surface'] #moren-topbar-actions button[aria-pressed='true'][aria-label='Canlı MOREN AI ile konuş'] {
+  background: #edf2ff !important; border-color: #b9c8ff !important;
+}
+/* Luca: yazılı kapsül; simge deniz yeşili */
+html[data-theme='D'] header[data-moren-owned='surface'] div[data-moren-owned='surface'] > button[aria-label^='Luca'] { padding: 0 12px !important; gap: 8px !important; }
+html[data-theme='D'] header[data-moren-owned='surface'] div[data-moren-owned='surface'] > button[aria-label^='Luca'] svg { color: #0ca678 !important; }
+html[data-theme='D'] header[data-moren-owned='surface'] div[data-moren-owned='surface'] > button[aria-label^='Luca'] span { color: #1e293b !important; font-weight: 600 !important; font-size: 12.5px !important; }
+/* Sistem sağlığı: sorun yoksa nötr; uyarı kehribar; kritik kırmızı */
+html[data-theme='D'] header[data-moren-owned='surface'] div[data-health-state='ok'] svg { color: #94a3b8 !important; }
+html[data-theme='D'] header[data-moren-owned='surface'] div[data-health-state='warning'] { background: #fff4e6 !important; border-color: #ffd8a8 !important; }
+html[data-theme='D'] header[data-moren-owned='surface'] div[data-health-state='warning'] svg { color: #e8590c !important; }
+html[data-theme='D'] header[data-moren-owned='surface'] div[data-health-state='critical'] { background: #fff5f5 !important; border-color: #ffc9c9 !important; }
+html[data-theme='D'] header[data-moren-owned='surface'] div[data-health-state='critical'] svg { color: #e03131 !important; }
+/* Rozetler: 16px, beyaz halka, sağ üst köşeye oturur */
+html[data-theme='D'] header[data-moren-owned='surface'] :where(div[data-health-state], a[href='/panel/bildirimler']) > span {
+  top: -6px !important; right: -6px !important;
+  min-width: 17px !important; height: 17px !important; padding: 0 4px !important;
+  border-radius: 999px !important;
+  border: 2px solid #fff;
+  font-size: 10px !important; font-weight: 700 !important; line-height: 1 !important;
+  color: #fff !important;
+  box-shadow: none !important;
+}
+html[data-theme='D'] header[data-moren-owned='surface'] a[href='/panel/bildirimler'] > span { background: #e03131 !important; }
+html[data-theme='D'] header[data-moren-owned='surface'] div[data-health-state='critical'] > span { background: #e03131 !important; }
+html[data-theme='D'] header[data-moren-owned='surface'] div[data-health-state='warning'] > span { background: #f08c00 !important; }
+/* Tarih yazısı ve mükellef seçici tetikleyicisi aynı dil */
+html[data-theme='D'] header[data-moren-owned='surface'] > div:first-child > p { color: #64748b !important; font-size: 13px; }
+
+/* Muzaffer Bey (2026-09-21): "bunları renklendir" → her simgeye kendi rengi; yumuşak zemin + renkli simge (rozet dili).
+   Mesaj yeşil · Konuş çivit · Luca deniz yeşili · Sistem: sağlıklı yeşil / uyarı kehribar / kritik kırmızı · Bildirim mor. */
+html[data-theme='D'] header[data-moren-owned='surface'] #moren-topbar-actions > button[aria-label='Ofis ici mesajlasma'] { background: #ebfbee !important; border-color: #c6efd0 !important; }
+html[data-theme='D'] header[data-moren-owned='surface'] #moren-topbar-actions > button[aria-label='Ofis ici mesajlasma'] svg { color: #2f9e44 !important; }
+html[data-theme='D'] header[data-moren-owned='surface'] #moren-topbar-actions > button[aria-label='Ofis ici mesajlasma']:hover { background: #d3f9d8 !important; border-color: #8ce99a !important; }
+html[data-theme='D'] header[data-moren-owned='surface'] #moren-topbar-actions button[aria-label='Canlı MOREN AI ile konuş'] { background: #edf2ff !important; border-color: #c9d6ff !important; }
+html[data-theme='D'] header[data-moren-owned='surface'] #moren-topbar-actions button[aria-label='Canlı MOREN AI ile konuş']:hover { background: #dbe4ff !important; border-color: #a5b9ff !important; }
+html[data-theme='D'] header[data-moren-owned='surface'] #moren-topbar-actions button[aria-label='Canlı MOREN AI ile konuş'] > span:first-child > span { background: linear-gradient(135deg, #4263eb, #5c7cfa) !important; }
+html[data-theme='D'] header[data-moren-owned='surface'] #moren-topbar-actions button[aria-label='Canlı MOREN AI ile konuş'] > span:first-child svg { color: #ffffff !important; }
+html[data-theme='D'] header[data-moren-owned='surface'] #moren-topbar-actions button[aria-label='Canlı MOREN AI ile konuş'] span { color: #3b5bdb !important; }
+html[data-theme='D'] header[data-moren-owned='surface'] #moren-topbar-actions button[aria-label='Canlı MOREN AI ile konuş'] > span:last-child { border-color: #edf2ff !important; }
+html[data-theme='D'] header[data-moren-owned='surface'] div[data-moren-owned='surface'] > button[aria-label^='Luca'] { background: #e6fcf5 !important; border-color: #b6ecd9 !important; }
+html[data-theme='D'] header[data-moren-owned='surface'] div[data-moren-owned='surface'] > button[aria-label^='Luca']:hover { background: #c3fae8 !important; border-color: #63e6be !important; }
+html[data-theme='D'] header[data-moren-owned='surface'] div[data-moren-owned='surface'] > button[aria-label^='Luca'] span { color: #099268 !important; }
+html[data-theme='D'] header[data-moren-owned='surface'] div[data-health-state='ok'] { background: #ebfbee !important; border-color: #c6efd0 !important; }
+html[data-theme='D'] header[data-moren-owned='surface'] div[data-health-state='ok'] svg { color: #2f9e44 !important; }
+html[data-theme='D'] header[data-moren-owned='surface'] a[href='/panel/bildirimler'] { background: #f3f0ff !important; border-color: #d9ccff !important; }
+html[data-theme='D'] header[data-moren-owned='surface'] a[href='/panel/bildirimler'] svg { color: #7048e8 !important; }
+html[data-theme='D'] header[data-moren-owned='surface'] a[href='/panel/bildirimler']:hover { background: #e5dbff !important; border-color: #b197fc !important; }
+html[data-theme='D'] header[data-moren-owned='surface'] a[href='/panel/bildirimler'] > span { border-color: #f3f0ff; }
+html[data-theme='D'] header[data-moren-owned='surface'] div[data-health-state] > span { border-color: #fff; }
