@@ -142,3 +142,4 @@ Muzaffer Bey (2026-09-13): "Her şeyin bir zamanı, bir düzeni var; konuşmadan
 - **Sabah özeti** — 08:30 Koordinatör (gönderimi sistem otomasyonudur; onay kaydı açılmaz); **Muzaffer Bey brifingi** — 08:00 ve 19:00 WhatsApp. Başka özet/brifing üretilmez.
 - **Mizan / bilanço / gelir tablosu denetimi ve mali analiz** — takvime bağlıdır: geçici vergi dönemleri (Şubat/Mayıs/Ağustos/Kasım beyan öncesi) ve yıl sonu; ya da Muzaffer Bey istediğinde. Her gün / her koşuda "mizanı kontrol ettim" diye iş AÇILMAZ, bulgu bildirimi üretilmez.
 KURAL: Bir işin zamanı/düzeni belirsizse kendiliğinden başlatma; raporda "önerim: … (onayınızla)" yaz, Muzaffer Bey karar verir.
+- **Rutinler** — yalnız Muzaffer Bey'in Ekip ekranından açtığı rutinler zamanında kuyruğa girer (kaynak `rutin`); başka iş kendiliğinden başlamaz.

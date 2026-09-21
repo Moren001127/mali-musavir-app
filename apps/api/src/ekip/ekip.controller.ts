@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Logger, Param, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Logger, Param, Patch, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { LucaService } from '../luca/luca.service';
 import { EkipRunnerService } from './ekip-runner.service';
@@ -6,6 +6,10 @@ import { KoordinatorService } from './koordinator.service';
 import { EkipOnayService } from './ekip-onay.service';
 import { EkipAkisService } from './ekip-akis.service';
 import { KUTULAR } from './ekip-akis';
+import { EkipKotaService } from './ekip-kota.service';
+import { EkipKuyrukService } from './ekip-kuyruk.service';
+import { EkipRutinService, RutinGovdesi } from './ekip-rutin.service';
+import { personelKapaliMi, receteleriOku } from './ekip-receteler';
 
 /** Prisma cuid kalıbı (body.vakaId doğrulaması). */
 const CUID_KALIBI = /^c[a-z0-9]{20,31}$/;
@@ -29,6 +33,19 @@ const CUID_KALIBI = /^c[a-z0-9]{20,31}$/;
  *  GET  /ekip/akis?gun=7&filtre=tumu|suruyor|onay|istek|bitti&taxpayerId=&limit=100   (PLAN/18) vakalar + üç kutu sayaçları
  *  POST /ekip/istek/:bildirimId/kapat      "Sizden istenen" kalemini yapıldı işaretle
  *  POST /ekip/:ajanId/calistir body.vakaId? (yalnız koordinator; aynı vakada devam)
+ *
+ *  İŞ DÜZENİ (PLAN/20 §D, 2026-09-22):
+ *  GET  /ekip/rutinler                 {rutinler:[{…, bugun:{planlanan,biten,hatali}}]}
+ *  POST /ekip/rutinler                 body {ad, ajanId, sablon, kapsam, taxpayerIds?, zaman, gunlukTavan?, dryRun?, aktif?} → {ok, rutin} | {ok:false, error}
+ *  PATCH /ekip/rutinler/:id            body kısmi → {ok, rutin} | {ok:false, error}
+ *  DELETE /ekip/rutinler/:id           {ok} | {ok:false, error}
+ *  POST /ekip/rutinler/:id/simdi       {ok, eklenen, kuyrukId, aday, neden} — tavana bakmadan (≤20) kuyruk açar
+ *  GET  /ekip/kuyruk                   {kuyruklar:[{…, toplam, biten, hatali, siradaki:{taxpayerId, ad}}]} (aktifler + son 5 bitmiş)
+ *  POST /ekip/kuyruk                   body {ad?, ajanId, sablon, taxpayerIds, dryRun?} → {ok, id, ogeSayisi, atlanan} | {ok:false, error} (kaynak 'toplu')
+ *  POST /ekip/kuyruk/:id/durdur        {ok, id, durum, iptal} — süren koşuya iptal verilir
+ *  POST /ekip/kuyruk/:id/devam         {ok, id, durum}
+ *  GET  /ekip/durum ekleri             kota:{doldu, sifirlanma, sonHata} · kuyruk:{aktif, suruyorId, siradaki} · bugunPlan:{planlanan, suruyor, biten, yarim}
+ *  GET  /ekip/kadro ekleri             her personele receteler:[{kod, baslik}] ve kapali:{neden}|null
  */
 @Controller('ekip')
 @UseGuards(AuthGuard('jwt'))
@@ -41,7 +58,71 @@ export class EkipController {
     private readonly onay: EkipOnayService,
     private readonly luca: LucaService,
     private readonly akis: EkipAkisService,
+    // İş düzeni (PLAN/20 §D) — spec'ler eski 5 parametreyle kurar; bu üçü yalnız yeni uçlarda/durum eklerinde kullanılır.
+    private readonly rutin?: EkipRutinService,
+    private readonly kuyruk?: EkipKuyrukService,
+    private readonly kota?: EkipKotaService,
   ) {}
+
+  // ─── İŞ DÜZENİ: RUTİNLER ───
+
+  @Get('rutinler')
+  rutinler(@Req() req: any) {
+    return this.rutin!.listele(req.user?.tenantId || 'default');
+  }
+
+  @Post('rutinler')
+  rutinOlustur(@Req() req: any, @Body() body: RutinGovdesi) {
+    return this.rutin!.olustur(req.user?.tenantId || 'default', body || {});
+  }
+
+  @Patch('rutinler/:id')
+  rutinGuncelle(@Req() req: any, @Param('id') id: string, @Body() body: RutinGovdesi) {
+    return this.rutin!.guncelle(req.user?.tenantId || 'default', id, body || {});
+  }
+
+  @Delete('rutinler/:id')
+  rutinSil(@Req() req: any, @Param('id') id: string) {
+    return this.rutin!.sil(req.user?.tenantId || 'default', id);
+  }
+
+  /** "Şimdi çalıştır": kapsam hesabı aynı, günlük tavana bakılmaz (≤20 öğe) → kuyruk. */
+  @Post('rutinler/:id/simdi')
+  rutinSimdi(@Req() req: any, @Param('id') id: string) {
+    return this.rutin!.simdiCalistir(req.user?.tenantId || 'default', id);
+  }
+
+  // ─── İŞ DÜZENİ: KUYRUK ───
+
+  @Get('kuyruk')
+  kuyruklar(@Req() req: any) {
+    return this.kuyruk!.listele(req.user?.tenantId || 'default');
+  }
+
+  /** Toplu görev: seçili mükellefler + kalıp → kuyruk (kaynak 'toplu', olusturan = kullanıcı). dryRun varsayılan TRUE. */
+  @Post('kuyruk')
+  kuyrukOlustur(@Req() req: any, @Body() body: { ad?: string; ajanId: string; sablon: string; taxpayerIds: string[]; dryRun?: boolean }) {
+    return this.kuyruk!.olustur({
+      tenantId: req.user?.tenantId || 'default',
+      ad: body?.ad || null,
+      ajanId: String(body?.ajanId || ''),
+      sablon: String(body?.sablon || ''),
+      taxpayerIds: Array.isArray(body?.taxpayerIds) ? body.taxpayerIds.map((x) => String(x || '')) : [],
+      dryRun: body?.dryRun !== false,
+      kaynak: 'toplu',
+      olusturan: req.user?.sub || null,
+    });
+  }
+
+  @Post('kuyruk/:id/durdur')
+  kuyrukDurdur(@Req() req: any, @Param('id') id: string) {
+    return this.kuyruk!.durdur(req.user?.tenantId || 'default', id);
+  }
+
+  @Post('kuyruk/:id/devam')
+  kuyrukDevam(@Req() req: any, @Param('id') id: string) {
+    return this.kuyruk!.devam(req.user?.tenantId || 'default', id);
+  }
 
   /**
    * CANLI AKIŞ (PLAN/18): vakalar (iş dosyası zincirleri) + süzgeçten bağımsız sayaçlar.
@@ -95,7 +176,10 @@ export class EkipController {
   /** Kadro + tenant'a özel koşu alanları (sonKosu / bekleyenOnay / bugunKosu / calisiyor). */
   @Get('kadro')
   async kadro(@Req() req: any) {
-    return { ajanlar: await this.runner.kadroOzeti(req.user?.tenantId || 'default') };
+    const ajanlar = await this.runner.kadroOzeti(req.user?.tenantId || 'default');
+    // PLAN/20 §E-6: reçete başlıkları (kadro/<ajan>/receteler.md "## R1 — …") + kapalı personel (bordro/SGK modülü kapalı)
+    const receteler = await Promise.all(ajanlar.map((a: any) => receteleriOku(a.id).catch(() => [])));
+    return { ajanlar: ajanlar.map((a: any, i: number) => ({ ...a, receteler: receteler[i], kapali: personelKapaliMi(a.id) })) };
   }
 
   /**
@@ -153,7 +237,9 @@ export class EkipController {
   @Get('durum')
   async durum(@Req() req: any) {
     const tenantId = req.user?.tenantId || 'default';
-    const [cihaz, bekleyenOnay, bugunkuKosu, calisan, bugunHata, sonSabahOzeti, akis] = await Promise.all([
+    const bosKuyruk = { aktif: 0, suruyorId: null as string | null, siradaki: null as { taxpayerId: string | null; ad: string | null } | null };
+    const bosPlan = { planlanan: 0, suruyor: 0, biten: 0, yarim: 0, bekleyen: 0 };
+    const [cihaz, bekleyenOnay, bugunkuKosu, calisan, bugunHata, sonSabahOzeti, akis, kuyruk, bugunPlan] = await Promise.all([
       this.luca.getOperatorDeviceStatus(tenantId).catch(() => ({ online: false, deviceId: null })),
       this.runner.bekleyenOnaySayisi(tenantId),
       this.runner.bugunkuKosuSayisi(tenantId),
@@ -161,7 +247,11 @@ export class EkipController {
       this.runner.bugunHataSayisi(tenantId),
       this.runner.sonSabahOzeti(tenantId),
       this.akis.sayaclar(tenantId, 7),
+      // PLAN/20 §D: kuyruk şeridi + bugünün planı (servis yoksa — eski spec kurulumu — boş)
+      this.kuyruk ? this.kuyruk.durumOzeti(tenantId).catch(() => bosKuyruk) : Promise.resolve(bosKuyruk),
+      this.kuyruk ? this.kuyruk.bugunPlan(tenantId).catch(() => bosPlan) : Promise.resolve(bosPlan),
     ]);
+    const kotaDurumu = this.kota ? this.kota.durum() : null;
     return {
       operator: { cevrimici: Boolean((cihaz as any)?.online), cihaz: (cihaz as any)?.deviceId || null },
       bekleyenOnay,
@@ -174,6 +264,10 @@ export class EkipController {
       sonSabahOzeti,
       // PLAN/18: üç kutu sayaçları (7 gün) — başlık şeridi tek istekle dolsun
       akis,
+      // PLAN/20 §D: Max kota bekçisi (kırmızı şerit), kuyruk şeridi, bugünün planı
+      kota: { doldu: Boolean(kotaDurumu?.doldu), sifirlanma: kotaDurumu?.sifirlanma || null, sonHata: kotaDurumu?.sonHata || null },
+      kuyruk,
+      bugunPlan,
     };
   }
 

@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnApplicationShutdown } from '@nestjs/common';
+import { Injectable, Logger, OnApplicationShutdown, Optional } from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import { promises as fs } from 'fs';
 import * as path from 'path';
@@ -16,6 +16,7 @@ import { aracAcikMi, aracKatalogMetni, aracKademesi, ekipMihsapKomutuYasagi } fr
 import { DEVIR_SINIRI, konuBasligi } from './ekip-akis';
 import { SUREC_KIMLIGI } from './ekip-bekci';
 import { meslekiBilgiOku } from './mesleki-bilgi';
+import { EkipKotaService } from './ekip-kota.service';
 
 /**
  * EKİP RUNNER — bir ajanı bir görevle koşturur (PLAN/13-AJAN-KADROSU.md §5).
@@ -58,7 +59,7 @@ export const PORTAL_ARAC_ADLARI = new Set<string>(
 const PANO_ONBELLEK_MS = 60 * 1000;
 /** İş dosyası durumları (AgentCommand.status) — /ekip/isler süzgeci yalnız bunları kabul eder. */
 const IS_DURUMLARI = new Set<string>(['pending', 'running', 'done', 'failed']);
-const KAYNAKLAR = new Set<string>(['portal', 'ses', 'cron', 'koordinator', 'test', 'whatsapp']);
+const KAYNAKLAR = new Set<string>(['portal', 'ses', 'cron', 'koordinator', 'test', 'whatsapp', 'rutin', 'toplu']);
 /** İş dosyası agent öneki: gerçek koşular 'ekip:', test koşuları 'ekiptest:' (tüm 'ekip:' süzgeçleri testi kendiliğinden dışlar). */
 export const ekipAgentAdi = (ajanId: string, kaynak?: string | null) => `${kaynak === 'test' ? 'ekiptest' : 'ekip'}:${ajanId}`;
 /** beceriler.md prompta bu kadar girer (uzun anlatım insan içindir; reçete tam girer) — PLAN/17 §1.3. */
@@ -74,8 +75,9 @@ const GOREV_NOTU_TAVAN = 600;
 const CUID_KALIBI = /^c[a-z0-9]{20,31}$/;
 
 /** 'test' (2026-09-13): geliştirici pilot koşusu — iş dosyası 'ekiptest:' önekiyle açılır (akış/pano/özet görmez), portala/dışarı YAZMAZ.
- *  'whatsapp' (2026-09-14, PLAN/19 §C): Muzaffer Bey WhatsApp botuna yazdı; Koordinatör koşusu, süreç mesajları WhatsApp'a (ekip-whatsapp.service). */
-export type EkipKaynak = 'portal' | 'ses' | 'cron' | 'koordinator' | 'test' | 'whatsapp';
+ *  'whatsapp' (2026-09-14, PLAN/19 §C): Muzaffer Bey WhatsApp botuna yazdı; Koordinatör koşusu, süreç mesajları WhatsApp'a (ekip-whatsapp.service).
+ *  'rutin' | 'toplu' (2026-09-22, PLAN/20 §D): EkipKuyruk sıralı işleyicisi — rutin zamanlayıcısından ya da Muzaffer Bey'in toplu görevinden. */
+export type EkipKaynak = 'portal' | 'ses' | 'cron' | 'koordinator' | 'test' | 'whatsapp' | 'rutin' | 'toplu';
 
 /** /ekip/isler süzgeçleri (hepsi isteğe bağlı; verilmezse eski davranış). */
 export interface IsSuzgeci {
@@ -128,6 +130,8 @@ export interface EkipCalistirParametreleri {
    * Boşsa hiçbir WhatsApp mesajı üretilmez.
    */
   whatsappHedef?: string | null;
+  /** KUYRUK BAĞI (2026-09-22, PLAN/20 §D): ekip_kuyruklar.id — kaynak 'rutin'|'toplu' koşularında payload'a yazılır. */
+  kuyrukId?: string | null;
 }
 
 /** Koşu olaylarında dinleyiciye giden koşu kimliği (payload alanlarının o anki hâli; taxpayerId koşu içinde bağlanmış olabilir). */
@@ -427,7 +431,14 @@ export class EkipRunnerService implements OnApplicationShutdown {
     private readonly dispatcher: ActionDispatcherService,
     private readonly operator: LucaOperatorService,
     private readonly onay: EkipOnayService,
+    /** Kota bekçisi (PLAN/20 §D): koşu hatası kota kalıbına uyarsa işaretlenir; spec'ler vermez (isteğe bağlı). */
+    @Optional() private readonly kota?: EkipKotaService,
   ) {}
+
+  /** Dağıtım drenajı sürüyor mu (kuyruk/rutin yeni koşu açmasın). */
+  kapaniyorMu(): boolean {
+    return this.kapaniyor;
+  }
 
   // ─── KİMLİK DOSYALARI (apps/api/kadro/…) — yoksa boş geçer, hata vermez ───
 
@@ -602,6 +613,8 @@ export class EkipRunnerService implements OnApplicationShutdown {
       gorevId: p.gorevId || null,
       // WhatsApp köprüsü (2026-09-14, PLAN/19 §C): dolu ise koşu olayları bu numaraya yazılır; çocuklara kopyalanır
       whatsappHedef: p.whatsappHedef || null,
+      // Kuyruk bağı (2026-09-22, PLAN/20 §D): rutin/toplu koşunun kuyruğu
+      kuyrukId: p.kuyrukId || null,
     };
     const row = await (this.prisma as any).agentCommand.create({
       data: {
@@ -823,6 +836,7 @@ export class EkipRunnerService implements OnApplicationShutdown {
       gorev: r.payload?.gorev || r.action,
       dryRun: r.payload?.dryRun !== false,
       kaynak: r.payload?.kaynak || null,
+      kuyrukId: r.payload?.kuyrukId || null,
       taxpayerId: r.payload?.taxpayerId || null,
       // VAKA alanları (PLAN/18): eski kayıtta vakaId yok → kendisi
       vakaId: r.payload?.vakaId || r.id,
@@ -1388,6 +1402,8 @@ export class EkipRunnerService implements OnApplicationShutdown {
     let costUsd = 0;
     let isError = false;
     let hata: string | undefined;
+    /** SDK'nın yapısal hata metni (assistant.error / result.errors / rate_limit_event) — akan metin boşsa hata olarak yazılır. */
+    let sdkHata: string | undefined;
 
     // VAKA satırı (PLAN/18 §B): ajan create_pending_action çağrısında vakaId olarak bunu verir; iş dosyası zinciri bozulmaz.
     const vakaId = p.vakaId || isId;
@@ -1441,6 +1457,18 @@ export class EkipRunnerService implements OnApplicationShutdown {
         } else if (m?.type === 'result') {
           isError = Boolean(m.is_error);
           if (typeof m.total_cost_usd === 'number') costUsd = m.total_cost_usd;
+          if (isError && !sdkHata && Array.isArray(m.errors) && m.errors.length) sdkHata = m.errors.map((x: any) => String(x)).join('; ').slice(0, 500);
+        } else if (m?.type === 'rate_limit_event' && m?.rate_limit_info?.status === 'rejected' && m.rate_limit_info.isUsingOverage !== true) {
+          // KOTA (PLAN/20 §D): Max kotası doldu — sıfırlanma yapısal gelir (epoch sn); kota bekçisi ekibi duraklatır.
+          const ra = Number(m.rate_limit_info.resetsAt);
+          const sifirlanma = Number.isFinite(ra) && ra > 0 ? new Date(ra < 1e12 ? ra * 1000 : ra) : null;
+          sdkHata = sdkHata || `Max kotası doldu (rate limit: ${m.rate_limit_info.rateLimitType || 'limit'}${sifirlanma ? `, resets ${sifirlanma.toISOString()}` : ''})`;
+          this.kota?.isaretle({ sifirlanma, mesaj: sdkHata });
+        } else if (m?.type === 'assistant' && m?.error) {
+          // SDK'nın sentetik hata mesajı (rate_limit / billing_error / authentication_failed …): metni hata olarak sakla
+          const parcalar = Array.isArray(m?.message?.content) ? m.message.content : [];
+          const metin = parcalar.map((c: any) => (c && typeof c.text === 'string' ? c.text : '')).join(' ').trim();
+          if (!sdkHata) sdkHata = `${String(m.error)}${metin ? `: ${metin}` : ''}`.slice(0, 500);
         }
       }
     } catch (e: any) {
@@ -1474,7 +1502,9 @@ export class EkipRunnerService implements OnApplicationShutdown {
       durationMs,
     }).catch(() => undefined);
 
-    if (isError && !hata) hata = answer.trim() ? undefined : 'Agent SDK (Max) sonucu hata döndü.';
+    if (isError && !hata) hata = sdkHata || (answer.trim() ? undefined : 'Agent SDK (Max) sonucu hata döndü.');
+    // KOTA (PLAN/20 §D): hata metni kota kalıbına uyarsa bekçi işaretler (kuyruk/rutin/sabah özeti duraklar); uymazsa dokunmaz.
+    if (hata) this.kota?.hatadanIsaretle(hata);
     if (isError && !iptalEdildi && /maximum number of turns|max.*turns/i.test(answer)) {
       answer += '\n\n[Adım sınırına gelindi — iş yarım kaldı.]';
     }

@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
@@ -7,6 +7,7 @@ import { geceOzetSatiri } from '../fatura-muhasebelestirme/gece-cekim';
 import { EkipAkisService } from './ekip-akis.service';
 import { MODEL_KIMLIKLERI, ajanBul } from './ajan-tanimlari';
 import { ogrenmeSatirlariniSuz } from '../moren-ai/ses-koordinator';
+import { EkipKotaService } from './ekip-kota.service';
 
 /**
  * KOORDİNATÖR (Ofis Müdürü) — PLAN/13-AJAN-KADROSU.md §3.1, §8-D.
@@ -34,6 +35,7 @@ export class KoordinatorService {
     private readonly runner: EkipRunnerService,
     private readonly whatsapp: WhatsAppService,
     private readonly akis: EkipAkisService,
+    @Optional() private readonly kota?: EkipKotaService,
   ) {}
 
   private sahipNumaralari(): string[] {
@@ -209,6 +211,7 @@ export class KoordinatorService {
   @Cron('0 30 8 * * *', { timeZone: 'Europe/Istanbul' })
   async sabahCron(): Promise<void> {
     if (String(process.env.EKIP_SABAH_OZETI || '').toLowerCase() !== 'on') return;
+    if (this.kota && !this.kota.acikMi()) return this.logger.warn('[Koordinator] Max kotası dolu; sabah özeti atlandı (PLAN/20 kota bekçisi)');
     let tenants: Array<{ id: string }> = [];
     try {
       tenants = await this.sabahKiracilari();

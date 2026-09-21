@@ -4079,3 +4079,71 @@ model PushToken {
   @@index([tenantId, taxpayerId])
   @@map("push_tokens")
 }
+
+// ============================================================
+// EKİP "İŞ DÜZENİ" — rutin (zamanlı görev kalıbı) + kuyruk (sıralı koşu) — PLAN/20 §D (2026-09-22)
+// ============================================================
+
+/// EKİP RUTİNİ — Muzaffer Bey'in Ekip ekranından açtığı zamanlı görev kalıbı (ör. "KDV kontrolü — kontrol bekleyenler").
+///
+/// Zamanı gelince (EkipRutinService @Cron 5 dk, Europe/Istanbul) kapsamdaki mükellefler hesaplanır ve günlük tavana kadar
+/// EkipKuyruk'a yazılır; kuyruk her mükellef için runner.calistir(kaynak:'rutin') koşturur. Rutin dışı hiçbir iş kendiliğinden
+/// başlamaz (00_ORTAK_KURALLAR §14). İlişki (FK) bilerek yok: mevcut modellere dokunulmaz.
+model EkipRutin {
+  id          String    @id @default(cuid())
+  tenantId    String
+  ad          String
+  /// ajan-tanimlari.ts AjanId (beyanname, fatura, denetci, …)
+  ajanId      String
+  /// Görev metni kalıbı; {mukellef} ve {donem} yer tutucuları kuyrukta doldurulur
+  sablon      String    @db.Text
+  /// pano:kontrol_bekleyen | pano:isleme_bekleyen | pano:hazirlik_bekleyen | ofis | liste
+  kapsam      String
+  /// kapsam=liste: mükellef id dizisi
+  taxpayerIds Json?
+  /// {tur:'haftalik', gunler:[1..7], baslangic:'09:30', bitis:'17:00'} | {tur:'aylik', ayGunu:5, saat:'09:30'}
+  zaman       Json
+  /// Bu rutinden bir günde en çok kaç iş açılır
+  gunlukTavan Int       @default(8)
+  dryRun      Boolean   @default(true)
+  aktif       Boolean   @default(false)
+  sonKosuAt   DateTime?
+  /// {zaman, eklenen, aday, kuyrukId, donem, neden}
+  sonSonuc    Json?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([tenantId, aktif])
+  @@map("ekip_rutinler")
+}
+
+/// EKİP KUYRUĞU — sıralı koşu listesi: rutinden (kaynak 'rutin') ya da Muzaffer Bey'in toplu görevinden (kaynak 'toplu').
+///
+/// EkipKuyrukService (@Interval 15 sn) kiracı başına tek kuyruğu, tek koşu kilidiyle (kiracıda süren başka ekip koşusu yokken)
+/// öğe öğe işler; Max kotası dolunca durum 'kota_bekliyor' olur, sıfırlanınca kendiliğinden sürer.
+model EkipKuyruk {
+  id         String    @id @default(cuid())
+  tenantId   String
+  ad         String
+  ajanId     String
+  sablon     String    @db.Text
+  dryRun     Boolean   @default(true)
+  /// rutin | toplu
+  kaynak     String
+  rutinId    String?
+  /// bekliyor | suruyor | durduruldu | bitti | kota_bekliyor
+  durum      String    @default("bekliyor")
+  /// [{taxpayerId, ad, donem?, durum:'bekliyor'|'suruyor'|'bitti'|'hata'|'atlandi', isId?, hata?, bitisAt?}]
+  ogeler     Json
+  /// Şu an koşan öğenin iş dosyası (agent_commands.id)
+  aktifIsId  String?
+  /// Kuyruğu açan kullanıcı (rutinde null)
+  olusturan  String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  bitisAt    DateTime?
+
+  @@index([tenantId, durum])
+  @@index([tenantId, rutinId, createdAt])
+  @@map("ekip_kuyruklar")
+}

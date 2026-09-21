@@ -9,7 +9,7 @@ import { PORTAL_ARAC_ADLARI } from './ekip-runner.service';
  * Araç defteri + yetki kademesi kilit testleri (PLAN/13-AJAN-KADROSU.md §4):
  *  - resmi_gonderim hiçbir ajana, hiçbir modda açılmaz
  *  - kuru test luca_yaz / disari_gonder / portal_yaz_agir kapatır; oku / portal_yaz açık kalır (PLAN/17 §1.2)
- *  - her ajanın araç listesindeki her ad defterde var; kimlik.md "Kullandığım araçlar" ↔ liste 13 ajanda birebir
+ *  - her ajanın araç listesindeki her ad defterde var; kimlik.md "Kullandığım araçlar" ↔ liste 11 ajanda birebir (Evrak 2026-09-13, Banka/Kasa 2026-09-19 kaldırıldı)
  *  - kdv_kontrol_kilitle / kilit_ac hiçbir ajan listesinde yok (kilit sahipte)
  */
 describe('arac-defteri', () => {
@@ -415,8 +415,8 @@ describe('fm_* araçları ve Mihsap kapanışı (PLAN/15 Faz 5)', () => {
     expect(mdAraclar.has('fm_onayla')).toBe(false);
   });
 
-  // PLAN/17 §3 (2026-09-13): kilit testi 13 ajana genişletildi — araç eklerken/çıkarırken iki yer birlikte güncellenir.
-  it('13 ajanın kimlik.md "Kullandığım araçlar" bölümü ↔ ajan-tanimlari araclar BİREBİR', () => {
+  // PLAN/17 §3 (2026-09-13): kilit testi tüm kadroya genişletildi (o gün 13, bugün 11 ajan) — araç eklerken/çıkarırken iki yer birlikte güncellenir.
+  it('11 ajanın kimlik.md "Kullandığım araçlar" bölümü ↔ ajan-tanimlari araclar BİREBİR', () => {
     for (const ajan of AJAN_TANIMLARI) {
       const mdAraclar = kimlikAraclari(ajan.id);
       const kod = new Set(ajan.araclar);
@@ -428,7 +428,7 @@ describe('fm_* araçları ve Mihsap kapanışı (PLAN/15 Faz 5)', () => {
     }
   });
 
-  it('13 ajanın receteler.md dosyası var ve boş değil (runner "REÇETELERİN" bloğu bunu okur)', () => {
+  it('11 ajanın receteler.md dosyası var ve boş değil (runner "REÇETELERİN" bloğu bunu okur)', () => {
     for (const ajan of AJAN_TANIMLARI) {
       const dosya = path.join(__dirname, `../../kadro/${ajan.id}/receteler.md`);
       const icerik = fs.existsSync(dosya) ? fs.readFileSync(dosya, 'utf8') : '';
