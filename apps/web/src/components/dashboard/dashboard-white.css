@@ -582,3 +582,56 @@ html[data-theme='D'] [data-beyan-panel] [data-beyan-mode-group] { background: rg
 html[data-theme='D'] [data-beyan-table-scroll] { border-color: #d5ddfb !important; }
 html[data-theme='D'] [data-beyan-mini] { border-color: #d5ddfb !important; }
 html[data-theme='D'] [data-dashboard-section-text] { font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-weight: 700; letter-spacing: -0.005em; }
+
+/* ═════════════════════════════════════════════════════════════════════════════════════════════
+   2026-09-21 gece — ÜÇ BÖLÜM AYIRT EDİCİ (Muzaffer Bey: "beyanname takip, iş akışı ve mali takvim ayırt edilmiyor,
+   çok karışık"): dış başlıklar kalktı; her kartın üstünde KENDİ RENGİNDE başlık bandı + 4px üst çizgi + hafif gövde
+   yıkaması. Beyanname çivit · İş Akışı deniz yeşili · Mali Takvim gül. Kart içi düzen aynı. */
+
+/* ── Beyanname Durum Takibi (çivit) ── */
+html[data-theme='D'] [data-beyan-panel][data-dashboard-surface] {
+  --panorama-tint: 1.1;
+  margin-top: 44px; /* Muzaffer Bey: bölümler arasına biraz daha boşluk */
+  border-top: 4px solid #4263eb !important;
+}
+html[data-theme='D'] [data-beyan-panel] [data-beyan-heading] {
+  padding: 14px 18px;
+  background: linear-gradient(90deg, #edf2ff 0%, #f5f7ff 55%, #fbfcff 100%) !important;
+  border-bottom: 1px solid #dbe4ff !important;
+}
+html[data-theme='D'] [data-beyan-panel] [data-beyan-heading-icon] { width: 36px; height: 36px; border-radius: 10px; }
+html[data-theme='D'] [data-beyan-panel] [data-beyan-title] { color: #1e293b !important; font-size: 15px; font-weight: 700; letter-spacing: -0.005em; }
+html[data-theme='D'] [data-beyan-panel] [data-beyan-heading] p { color: #5b6b8a !important; font-size: 12px; }
+
+/* ── Bu Ay İş Akışı (deniz yeşili) ── */
+html[data-theme='D'] [data-workflow-panel][data-dashboard-surface] {
+  margin-top: 44px; /* Muzaffer Bey: bölümler arasına biraz daha boşluk */
+  border-top: 4px solid #0ca678 !important;
+  background:
+    radial-gradient(60% 70% at 100% 0%, rgba(12, 166, 120, 0.06), transparent 55%),
+    linear-gradient(160deg, #f3fdf9 0%, #ffffff 60%) !important;
+}
+html[data-theme='D'] [data-workflow-panel] [data-dashboard-band='mint'] {
+  padding: 14px 18px;
+  background: linear-gradient(90deg, #e6fcf5 0%, #f2fdf9 55%, #fbfefd 100%) !important;
+  border-bottom: 1px solid #c3fae8 !important;
+}
+html[data-theme='D'] [data-workflow-panel] [data-dashboard-band='mint'] > div:first-child { gap: 12px; }
+html[data-theme='D'] [data-workflow-panel] [data-dashboard-band='mint'] > div:first-child > span:first-child {
+  width: 36px; height: 36px; border-radius: 10px;
+  background: linear-gradient(135deg, #0ca678, #20c997) !important;
+  box-shadow: 0 6px 14px -8px #0ca678;
+}
+html[data-theme='D'] [data-workflow-panel] [data-dashboard-band='mint'] h3 { display: block; color: #1e293b !important; font-size: 15px; font-weight: 700; }
+html[data-theme='D'] [data-workflow-panel] [data-dashboard-band='mint'] p { color: #4f6b62 !important; font-size: 12px; margin-top: 2px; }
+
+html[data-theme='D'] [data-workflow-panel] [data-dashboard-band='mint'] > div:first-child > span:first-child {
+  display: inline-flex; align-items: center; justify-content: center;
+}
+html[data-theme='D'] [data-workflow-panel] [data-dashboard-band='mint'] > div:first-child > span:first-child::before {
+  content: '';
+  width: 17px; height: 17px;
+  background: #fff;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='8' height='8' x='3' y='3' rx='2'/%3E%3Cpath d='M7 11v4a2 2 0 0 0 2 2h4'/%3E%3Crect width='8' height='8' x='13' y='13' rx='2'/%3E%3C/svg%3E") center / contain no-repeat;
+          mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='8' height='8' x='3' y='3' rx='2'/%3E%3Cpath d='M7 11v4a2 2 0 0 0 2 2h4'/%3E%3Crect width='8' height='8' x='13' y='13' rx='2'/%3E%3C/svg%3E") center / contain no-repeat;
+}

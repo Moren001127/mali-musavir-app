@@ -15,7 +15,7 @@ fs.mkdirSync(CIKIS, { recursive: true });
   await pg.locator('input[type=email]').fill('muzaffer@morenmusavirlik.com');
   await pg.locator('input[type=password]').fill('sahte-deneme-1');
   await pg.locator('button[type=submit]').click();
-  await pg.waitForURL(/\/panel/, { timeout: 60000 });
+  await pg.waitForURL(/\/panel/, { timeout: 60000, waitUntil: 'commit' });
   await pg.evaluate(() => document.fonts.ready);
   await pg.waitForTimeout(3500);
   const hedefler = [
@@ -53,7 +53,7 @@ fs.mkdirSync(CIKIS, { recursive: true });
     if (k) await pg.screenshot({ path: path.join(CIKIS, `baslik-${i + 1}.png`), clip: { x: Math.max(0, k.x - 8), y: Math.max(0, k.y - 24), width: k.width + 16, height: 200 } });
   }
   // Üçü birlikte (beyan başlığından takvim sonuna) tam sayfa dilimi
-  const bas = pg.locator('[data-dashboard-section-title]').first();
+  const bas = pg.locator('[data-beyan-panel]').first();
   const tak = pg.locator('[data-calendar]').first();
   if (await bas.count() && await tak.count()) {
     const y1 = await bas.evaluate((e) => e.getBoundingClientRect().top + window.scrollY);

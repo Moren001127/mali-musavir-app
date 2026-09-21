@@ -14,7 +14,7 @@ fs.mkdirSync(CIKIS, { recursive: true });
   await pg.locator('input[type=email]').fill('muzaffer@morenmusavirlik.com');
   await pg.locator('input[type=password]').fill('sahte-deneme-1');
   await pg.locator('button[type=submit]').click();
-  await pg.waitForURL(/\/panel/, { timeout: 60000 });
+  await pg.waitForURL(/\/panel/, { timeout: 60000, waitUntil: 'commit' });
   await pg.evaluate(() => document.fonts.ready);
   await pg.waitForTimeout(3000);
   const menu = pg.locator('[data-moren-sidebar]').first();

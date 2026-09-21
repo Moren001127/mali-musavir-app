@@ -74,3 +74,12 @@ Anlam eşlemesi: **onaylanan/tamam yeşil · bekleyen/uyarı kehribar · hatalı
 - Ortak dosyalara dokunma: `Sidebar.tsx`, `TopBar.tsx`, `owned-theme.css`, `dashboard-white.css`, `calendar-white.css`, `portal-theme.ts`, `mock-api.cjs`, `globals.css`, `package.json`.
 - Commit/push YAPMA; `bilgi/PROJE-BILGI.md`'yi DEĞİŞTİRME (birleştirme ve günlük ana oturumda).
 - Rapor: değişen dosyalar, ekran görüntüsü yolları, kaldırılan/öne çıkarılan öğeler, açık noktalar — kısa Türkçe.
+
+## 7. İkinci tur (2026-09-21 akşam): kalan modüller — "genel yapıyı bozmadan" yeniden boyama
+Muzaffer Bey'in isteği: "görselliği, sayaçları, düğmeleri, görünürlüğü **genel yapıyı çok bozmayacak şekilde** profesyonel olarak tasarla". Yani:
+- **Düzen/yerleşim korunur** (sekmeler, sütunlar, tablolar, paneller aynı yerde). Değişen: renkler, yazı hiyerarşisi, başlık bandı, sayaç/çip/düğme/tablo/girdi görünümü, boşluklar. Sayfa başlığındaki bej/altın bant ve serif başlık → rehber sayfa başlığı kalıbı. Pastel/koyu kalıntı kutular → beyaz kart.
+- **Sayaçlar:** rehber (b) tipi beyaz kart + gradyan simge kutusu + koyu sayı (ya da mevcut kutunun renkleri rehber tonlarına çekilir). **Düğmeler:** birincil çivit, ikincil beyaz, tehlikeli yumuşak kırmızı; Luca/GİB/Mihsap gibi "veri çek" düğmeleri ikincil ya da kendi tonunda yumuşak (Luca deniz yeşili, GİB çivit, SGK mavi) — dolu kapsül/altın YOK.
+- **Yöntem tercihi:** modülün mevcut `*-white.css` / `beyaz.css` / `module-white.css` dosyası varsa onu genişlet; yoksa yeni `<modul>-white.css` ekle ve sayfadan içe aktar. TSX'e yalnız `data-*`/sınıf kancası ve başlık bloğu düzenlemesi; iş mantığına, uçlara, tıklamalara dokunma.
+- **KİLİTLİ sayfalar** (`KILITLI_MODULLER.md`: `mizan/page.tsx`, `kdv-kontrol/page.tsx`, `e-arsiv/page.tsx`): `page.tsx` DOKUNULMAZ. Bu sayfalar zaten kendi CSS dosyasını içe aktarıyor (`mizan/beyaz.css`, `kdv-kontrol/kdv-white.css`, `e-arsiv/module-white.css`) → yalnız o CSS dosyasında, mevcut DOM/sınıf yapısına göre `html[data-theme='D']` kurallarıyla boya. Kanca eklemek için sayfayı değiştirme; seçicileri mevcut sınıf/öznitelik/yapıdan kur (`:has()`, `:nth-child`, `[class*='…']` serbest).
+- **Ortak bileşenler** (`src/components/portal-automation/*`, `src/components/kdv/*`, `src/components/luca/*`, `MaliYorumKutusu.tsx`, `TaxpayerStatsCard.tsx`): yalnız görev tanımında sana verilenlere dokun; başkasına verilmiş olanı değiştirme.
+- Görüntüler `_previews/beyaz-modul2/<modul>/`; betikler `apps/web/scripts/onizleme/`. Her modül için en az tam sayfa + bir ayrıntı görüntüsü; Read ile kendin incele.

@@ -22,7 +22,6 @@ import {
   Search as SearchIcon,
   BellRing,
   BrainCircuit,
-  CalendarDays,
   Building2,
   ClipboardCheck,
   DatabaseZap,
@@ -222,27 +221,6 @@ function WorkflowOverview({ counts, total, activeCount }: { counts?: WorkflowCou
   );
 }
 
-/** Bölüm başlığı — sola yaslı: yumuşak tonlu simge kutusu + başlık + sağa uzayan ince çizgi.
- *  (2026-09-21, Muzaffer Bey: "yanda çizgileri olan başlıkları yeniden tasarla" → ortalı kapsül + köprüler kaldırıldı.) */
-function DashboardSectionTitle({ children, tone = 'gold', icon: Icon }: { children: React.ReactNode; tone?: 'mint' | 'gold' | 'rose'; icon?: any }) {
-  const t = {
-    mint: { accent: '#8fd7bd', soft: 'rgba(143,215,189,0.12)', border: 'rgba(143,215,189,0.28)' },
-    gold: { accent: '#d8bd86', soft: 'rgba(216,189,134,0.12)', border: 'rgba(216,189,134,0.28)' },
-    rose: { accent: '#f0a6b6', soft: 'rgba(240,166,182,0.12)', border: 'rgba(240,166,182,0.28)' },
-  }[tone];
-  return (
-    <div data-dashboard-section-title data-tone={tone} className="mt-9 mb-3 flex items-center gap-3 px-1">
-      {Icon && (
-        <span data-dashboard-section-icon className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg" style={portalStyle({ background: t.soft, border: `1px solid ${t.border}`, color: t.accent })}>
-          <Icon size={15} />
-        </span>
-      )}
-      <h2 data-dashboard-section-text className="whitespace-nowrap text-[14px] font-bold tracking-[.01em]" style={portalStyle({ color: '#f8f4ec' })}>{children}</h2>
-      <div data-dashboard-section-rule className="h-px flex-1" style={{ background: `linear-gradient(90deg, ${t.accent}66, transparent)` }} />
-    </div>
-  );
-}
-
 function AgentMini({ href, icon: Icon, name, stat, running }: { href: string; icon: any; name: string; stat: string; running: boolean }) {
   return (
     <Link href={href} className="flex items-center gap-3 p-3 rounded-xl transition-all duration-300" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' })}
@@ -349,10 +327,13 @@ function ToplubeyannamePanel({ donem, setDonem, donemTuru, setDonemTuru }: Panor
         <div className="grid gap-3 xl:grid-cols-[minmax(300px,1fr)_auto] xl:items-center">
           {/* Kart başlığı dışarıdaki ortalı bölüm başlığına taşındı; burada yalnız dönem açıklaması + süzgeçler */}
           <div className="flex min-w-0 items-center gap-2.5">
-            <span data-beyan-heading-icon className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg" style={portalStyle({ background: BEYAN_TONE.bg, border: `1px solid ${BEYAN_TONE.border}`, color: BEYAN_TONE.accentSoft })}>
-              <FileCheck2 size={14} />
+            <span data-beyan-heading-icon className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" style={portalStyle({ background: BEYAN_TONE.bg, border: `1px solid ${BEYAN_TONE.border}`, color: BEYAN_TONE.accentSoft })}>
+              <FileCheck2 size={15} />
             </span>
-            <p className="min-w-0 truncate text-[12px]" style={portalStyle({ color: BEYAN_TONE.muted })}>{modeLabel} · {donemEtiket(selectedDonem)} · {modeNote}</p>
+            <div className="min-w-0">
+              <h3 data-beyan-title className="truncate text-[15px] font-bold leading-tight" style={portalStyle({ color: BEYAN_TONE.title })}>Beyanname Durum Takibi</h3>
+              <p className="mt-0.5 min-w-0 truncate text-[12px]" style={portalStyle({ color: BEYAN_TONE.muted })}>{modeLabel} · {donemEtiket(selectedDonem)} · {modeNote}</p>
+            </div>
           </div>
           <div className="flex flex-wrap items-center justify-start gap-2 xl:justify-end">
             <div data-beyan-mode-group className="inline-flex rounded-lg p-0.5" style={portalStyle({ background: 'rgba(244,239,229,0.03)', border: `1px solid ${BEYAN_TONE.borderSoft}` })}>
@@ -1926,8 +1907,6 @@ export default function DashboardPage() {
 
       <OfisPanoramasi {...panoramaPeriod} />
 
-      <DashboardSectionTitle tone="gold" icon={FileCheck2}>Beyanname Durum Takibi</DashboardSectionTitle>
-
       <div
         data-beyan-panel data-dashboard-surface className="rounded-2xl overflow-hidden"
         style={portalStyle({
@@ -1939,11 +1918,7 @@ export default function DashboardPage() {
         <ToplubeyannameTable {...panoramaPeriod} />
       </div>
 
-      <DashboardSectionTitle tone="mint" icon={Workflow}>Bu Ay İş Akışı</DashboardSectionTitle>
-
       <WorkflowOverview counts={workflowCounts} total={workflowTotal} activeCount={activeCount || totalTx} />
-
-      <DashboardSectionTitle tone="rose" icon={CalendarDays}>Bu Ay Mali Takvim</DashboardSectionTitle>
 
       <BuHaftaTakvim />
       </div>

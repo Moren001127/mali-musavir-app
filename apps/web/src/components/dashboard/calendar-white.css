@@ -347,3 +347,41 @@ html[data-theme='D'] [data-calendar-row][data-calendar-urgency='week'] [data-cal
 html[data-theme='D'] [data-calendar-row][data-calendar-urgency='planned'] [data-calendar-remaining] { background: #ebfbee !important; border-color: #c6efd0 !important; color: #2b8a3e !important; }
 /* Bugün kutusu dolu çivit kalır; bugüne son tarih düşerse rozet beyaz */
 html[data-theme='D'] [data-calendar-day][data-calendar-today='true'][data-calendar-urgency] [data-calendar-day-badge='deadline'] { background: rgba(255, 255, 255, 0.18) !important; border-color: rgba(255, 255, 255, 0.32) !important; color: #fff !important; }
+
+/* ── 2026-09-21 gece — Mali Takvim kartı: gül başlık bandı + 4px üst çizgi (bölümler ayırt edilsin; dashboard-white.css'teki
+   Beyan/İş Akışı bantlarıyla aynı dil). Bu dosya sonda yüklendiği için kurallar burada. */
+/* ── Bu Ay Mali Takvim (gül) ── */
+html[data-theme='D'] [data-calendar][data-dashboard-surface] {
+  margin-top: 44px; /* Muzaffer Bey: bölümler arasına biraz daha boşluk */
+  padding-top: 0;
+  border-top: 4px solid #c2255c !important;
+  background:
+    radial-gradient(60% 70% at 100% 0%, rgba(194, 37, 92, 0.05), transparent 55%),
+    linear-gradient(160deg, #fff7fa 0%, #ffffff 60%) !important;
+}
+html[data-theme='D'] [data-calendar] [data-calendar-header] {
+  margin: 0 -20px 16px;
+  padding: 14px 20px;
+  background: linear-gradient(90deg, #fff0f6 0%, #fff6f9 55%, #fffbfd 100%) !important;
+  border: 0 !important;
+  border-bottom: 1px solid #fcc2d7 !important;
+  border-radius: 0;
+}
+html[data-theme='D'] [data-calendar-header] > span:first-child {
+  width: 36px; height: 36px; border-radius: 10px;
+  background: linear-gradient(135deg, #c2255c, #e64980) !important;
+  box-shadow: 0 6px 14px -8px #c2255c;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+html[data-theme='D'] [data-calendar-header] > span:first-child::before {
+  content: '';
+  width: 16px; height: 16px;
+  background: #fff;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 2v4'/%3E%3Cpath d='M16 2v4'/%3E%3Crect width='18' height='18' x='3' y='4' rx='2'/%3E%3Cpath d='M3 10h18'/%3E%3C/svg%3E") center / contain no-repeat;
+          mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 2v4'/%3E%3Cpath d='M16 2v4'/%3E%3Crect width='18' height='18' x='3' y='4' rx='2'/%3E%3Cpath d='M3 10h18'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+html[data-theme='D'] [data-calendar] [data-calendar-header] h3 { display: flex; color: #1e293b !important; font-size: 15px; font-weight: 700; margin-right: 6px; }
+html[data-theme='D'] [data-calendar-header] h3 svg { display: none; }
+html[data-theme='D'] [data-calendar] [data-calendar-header] > span[data-calendar-chip='deadlines'] { background: #fff0f6 !important; border-color: #fcc2d7 !important; color: #c2255c !important; }
+html[data-theme='D'] [data-calendar] [data-calendar-header] > span[data-calendar-chip='range'] { color: #8a6b78 !important; }
+html[data-theme='D'] [data-calendar-deadlines] { background: #fff; }

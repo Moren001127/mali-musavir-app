@@ -18,7 +18,7 @@ async function giris(pg) {
   await pg.locator('input[type=email]').fill('muzaffer@morenmusavirlik.com');
   await pg.locator('input[type=password]').fill('sahte-deneme-1');
   await pg.locator('button[type=submit]').click();
-  await pg.waitForURL(/\/panel/, { timeout: 60000 });
+  await pg.waitForURL(/\/panel/, { timeout: 60000, waitUntil: 'commit' });
   if (TASARIM !== 'a' || TEMA !== 'nane') { await pg.goto(`${KOK}/panel?tasarim=${TASARIM}&tema=${TEMA}`, { waitUntil: 'networkidle', timeout: 120000 }); }
   await pg.waitForTimeout(2500);
 }
