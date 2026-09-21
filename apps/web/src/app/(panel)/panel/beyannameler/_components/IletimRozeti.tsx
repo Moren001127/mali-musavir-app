@@ -34,7 +34,7 @@ export function IletimSimgesi({ kayit }: { kayit: IletimBilgisi }) {
         ? { bg: 'rgba(212,168,95,0.16)', bd: 'rgba(212,168,95,0.5)', fg: '#d4a85f' }
         : { bg: 'rgba(255,255,255,0.05)', bd: 'rgba(255,255,255,0.14)', fg: 'rgba(250,250,249,0.45)' };
   return (
-    <span className="relative inline-flex h-7 w-7 items-center justify-center rounded-full" title={ipucu} aria-label={ipucu}
+    <span data-beyan-iletim={kayit.status} data-kanal={kayit.channel} className="relative inline-flex h-7 w-7 items-center justify-center rounded-full" title={ipucu} aria-label={ipucu}
       style={portalStyle({ background: renk.bg, border: `1px solid ${renk.bd}`, color: renk.fg })}>
       <Ikon size={13} strokeWidth={2.3} />
       {kayit.testMode && <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full" title="test modu" style={portalStyle({ background: '#d4b876', boxShadow: '0 0 0 2px #0f0d0b' })} />}
@@ -44,7 +44,7 @@ export function IletimSimgesi({ kayit }: { kayit: IletimBilgisi }) {
 
 export function IletimRozeti({ iletim }: { iletim?: IletimBilgisi[] | null }) {
   const kayitlar = kanalBasinaSon(iletim);
-  if (!kayitlar.length) return <span className="text-[11.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.25)' })}>—</span>;
+  if (!kayitlar.length) return <span data-beyan-faint className="text-[11.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.25)' })}>—</span>;
   return (
     <span className="inline-flex items-center gap-1">
       {kayitlar.map((k) => <IletimSimgesi key={k.channel} kayit={k} />)}

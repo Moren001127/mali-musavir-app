@@ -1,5 +1,6 @@
 'use client';
 import { portalStyle } from '@/lib/portal-theme';
+import './portal-automation-white.css';
 
 
 import React, { Suspense, useEffect, useMemo, useState } from 'react';
@@ -28,19 +29,20 @@ const DURUMLAR: Array<{ value: string; label: string }> = [
   { value: 'goruntulenmemis', label: 'Görüntülenmemiş' },
 ];
 
-function Kpi({ icon, label, value, sub, onClick }: { icon: React.ReactNode; label: string; value: React.ReactNode; sub?: string; onClick?: () => void }) {
+function Kpi({ icon, label, value, sub, onClick, ton = 'civit' }: { icon: React.ReactNode; label: string; value: React.ReactNode; sub?: string; onClick?: () => void; /** beyaz tema simge tonu */ ton?: 'civit' | 'mavi' | 'deniz' | 'kirmizi' | 'notr' }) {
   return (
     <div
+      data-pa-kpi={ton}
       onClick={onClick}
       className={`rounded-2xl border p-4 ${onClick ? 'cursor-pointer hover:brightness-125 transition' : ''}`}
       style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' })}
     >
-      <div className="flex items-center gap-2 mb-2">
-        <span className="grid place-items-center rounded-lg flex-shrink-0" style={portalStyle({ width: 30, height: 30, background: 'rgba(212,184,118,0.12)', color: GOLD })}>{icon}</span>
-        <span className="text-[10px] uppercase font-bold tracking-[.12em]" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>{label}</span>
+      <div data-pa-kpi-head className="flex items-center gap-2 mb-2">
+        <span data-pa-kpi-icon className="grid place-items-center rounded-lg flex-shrink-0" style={portalStyle({ width: 30, height: 30, background: 'rgba(212,184,118,0.12)', color: GOLD })}>{icon}</span>
+        <span data-pa-kpi-label className="text-[10px] uppercase font-bold tracking-[.12em]" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>{label}</span>
       </div>
-      <div style={portalStyle({ fontFamily: 'Fraunces, serif', fontSize: 24, fontWeight: 700, color: METIN, lineHeight: 1.1 })}>{value}</div>
-      {sub && <div className="text-[11px] mt-0.5" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>{sub}</div>}
+      <div data-pa-kpi-value style={portalStyle({ fontFamily: 'Fraunces, serif', fontSize: 24, fontWeight: 700, color: METIN, lineHeight: 1.1 })}>{value}</div>
+      {sub && <div data-pa-kpi-sub className="text-[11px] mt-0.5" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>{sub}</div>}
     </div>
   );
 }
@@ -177,27 +179,29 @@ function ETebligatModuleIc() {
   const hataKartiTiklanir = hataSayisi > 0 || sifreBekleyen.length > 0;
 
   return (
-    <div className="space-y-4">
+    <div data-pa-module="tebligat" className="space-y-4">
       {/* ── KPI ── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Kpi icon={<Inbox size={16} />} label="Toplam e-Tebligat" value={String(summary?.stats?.tebligatTotal ?? toplam)} sub="kayıtlı tebligat" />
+      <div data-pa-kpi-grid className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Kpi icon={<Inbox size={16} />} label="Toplam e-Tebligat" value={String(summary?.stats?.tebligatTotal ?? toplam)} sub="kayıtlı tebligat" ton="civit" />
         {/* "Bu hafta yeni" + "Bu hafta tebliğ sayılacak" tek kartta: "8 yeni · 3 tebliğ sayılacak" */}
         <Kpi
+          ton="mavi"
           icon={<Activity size={16} />}
           label="Bu hafta"
           value={(
             <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0">
               <span>{buHaftaYeni} <span className="text-[12px] font-normal" style={portalStyle({ color: 'rgba(250,250,249,0.5)', fontFamily: 'var(--font-body, Inter), system-ui, sans-serif' })}>yeni</span></span>
               <span className="text-[12px] font-normal" style={portalStyle({ color: 'rgba(250,250,249,0.3)' })}>·</span>
-              <span style={portalStyle({ color: buHaftaTeblig > 0 ? TON.sari.fg : METIN })}>
+              <span data-pa-teblig={buHaftaTeblig > 0 ? 'var' : 'yok'} style={portalStyle({ color: buHaftaTeblig > 0 ? TON.sari.fg : METIN })}>
                 {buHaftaTeblig} <span className="text-[12px] font-normal" style={portalStyle({ color: 'rgba(250,250,249,0.5)', fontFamily: 'var(--font-body, Inter), system-ui, sans-serif' })}>tebliğ sayılacak</span>
               </span>
             </span>
           )}
           sub="son 7 gün gönderilen · 7 gün içinde tebliğ sayılacak"
         />
-        <Kpi icon={<ShieldCheck size={16} />} label="Şifreli mükellef" value={String(summary?.credentials?.eTebligatTaxpayerCount ?? 0)} sub="vergi dairesi şifresi" />
+        <Kpi icon={<ShieldCheck size={16} />} label="Şifreli mükellef" value={String(summary?.credentials?.eTebligatTaxpayerCount ?? 0)} sub="vergi dairesi şifresi" ton="deniz" />
         <Kpi
+          ton={hataKartiTiklanir ? 'kirmizi' : 'notr'}
           icon={<AlertTriangle size={16} />}
           label="Gece sorgu hatası"
           value={String(hataSayisi)}
@@ -207,13 +211,14 @@ function ETebligatModuleIc() {
       </div>
 
       {/* ── Tek şerit araç çubuğu: arama · mükellef · durum · sağda düğmeler ── */}
-      <div className="rounded-2xl border p-3.5 flex flex-wrap items-center gap-2" style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' })}>
+      <div data-pa-toolbar className="rounded-2xl border p-3.5 flex flex-wrap items-center gap-2" style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' })}>
         <div className="relative flex-1 min-w-[180px]">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })} />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Belge no, kurum veya mükellef ara…"
+            data-pa-field
             className="w-full h-[38px] pl-9 pr-3 rounded-[10px] text-[13px] outline-none border"
             style={portalStyle(ALAN_STILI)}
           />
@@ -224,6 +229,7 @@ function ETebligatModuleIc() {
             value={durum}
             onChange={(e) => setDurum(e.target.value)}
             aria-label="Durum"
+            data-pa-field
             className="h-[38px] pl-9 pr-8 rounded-[10px] text-[13px] outline-none border appearance-none min-w-[150px]"
             style={portalStyle(ALAN_STILI)}
           >
@@ -237,6 +243,7 @@ function ETebligatModuleIc() {
             onClick={markAll}
             disabled={markAllMut.isPending}
             title="Sayfadaki tüm tebligatları görüntülendi (yeşil) işaretle"
+            data-pa-btn="yesil"
             className="h-[38px] px-3 rounded-[10px] text-[13px] font-semibold flex items-center gap-1.5 border disabled:opacity-50"
             style={portalStyle({ background: 'rgba(95,207,142,0.12)', borderColor: 'rgba(95,207,142,0.35)', color: '#5fcf8e' })}
           >
@@ -244,6 +251,7 @@ function ETebligatModuleIc() {
           </button>
           <button
             onClick={yenile}
+            data-pa-btn="ikincil"
             className="h-[38px] px-3 rounded-[10px] text-[13px] font-semibold flex items-center gap-1.5 border"
             style={portalStyle(ALAN_STILI)}
           >
@@ -252,6 +260,7 @@ function ETebligatModuleIc() {
           <button
             onClick={() => sorgulaMut.mutate()}
             disabled={sorgulaMut.isPending}
+            data-pa-btn="birincil"
             className="h-[38px] px-4 rounded-[10px] text-[13px] font-bold flex items-center gap-2 disabled:opacity-50"
             style={portalStyle({ background: 'linear-gradient(135deg, #d4b876, #b8a06f)', color: '#1a1410' })}
           >
@@ -262,7 +271,7 @@ function ETebligatModuleIc() {
       </div>
 
       {/* ── Tablo ── */}
-      <div className="rounded-2xl border overflow-hidden" style={portalStyle({ background: 'rgba(0,0,0,0.18)', borderColor: 'rgba(255,255,255,0.06)' })}>
+      <div data-pa-table className="rounded-2xl border overflow-hidden" style={portalStyle({ background: 'rgba(0,0,0,0.18)', borderColor: 'rgba(255,255,255,0.06)' })}>
         <div className="overflow-x-auto">
           <table className="w-full text-[12px]" style={portalStyle({ borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: 940 })}>
             <colgroup>
@@ -304,8 +313,8 @@ function ETebligatModuleIc() {
                 return (
                   <tr key={d.id} className="hover:bg-white/[0.02]">
                     <td className="px-2.5 py-2.5 align-top" style={portalStyle({ borderBottom: cellBorder })}>
-                      <div className="font-semibold" style={portalStyle({ color: METIN })}>{mukellefAdi(d.taxpayer)}</div>
-                      {d.taxpayer?.taxNumber && <div className="text-[10.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>{d.taxpayer.taxNumber}</div>}
+                      <div data-pa-ad className="font-semibold" style={portalStyle({ color: METIN })}>{mukellefAdi(d.taxpayer)}</div>
+                      {d.taxpayer?.taxNumber && <div data-pa-vkn className="text-[10.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>{d.taxpayer.taxNumber}</div>}
                     </td>
                     <td className="px-2.5 py-2.5 align-top" style={portalStyle({ borderBottom: cellBorder })}>
                       <div className="flex items-start gap-1.5">
@@ -317,7 +326,7 @@ function ETebligatModuleIc() {
                       </div>
                     </td>
                     <td className="px-2.5 py-2.5 align-top" style={portalStyle({ borderBottom: cellBorder })}>
-                      <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-semibold" style={portalStyle({ background: 'rgba(212,184,118,0.1)', border: '1px solid rgba(212,184,118,0.25)', color: GOLD })}>
+                      <span data-pa-chip="belge" className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-semibold" style={portalStyle({ background: 'rgba(212,184,118,0.1)', border: '1px solid rgba(212,184,118,0.25)', color: GOLD })}>
                         <FileText size={11} /> {d.title}
                       </span>
                     </td>
@@ -335,13 +344,14 @@ function ETebligatModuleIc() {
                           onClick={() => openPdf(d)}
                           title={goruldu ? 'Görüntülendi — tekrar aç' : 'Yeni — henüz görüntülenmedi (aç)'}
                           aria-label="Belgeyi görüntüle"
+                          data-pa-eye={goruldu ? 'goruldu' : 'yeni'}
                           className="inline-flex h-8 w-8 items-center justify-center rounded-full hover:brightness-125 transition"
                           style={portalStyle({ background: renk.bg, border: `1px solid ${renk.bd}`, color: renk.fg })}
                         >
                           <Eye size={14} />
                         </button>
                       ) : (
-                        <span className="text-[10.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.35)' })}>bekliyor</span>
+                        <span data-pa-faint className="text-[10.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.35)' })}>bekliyor</span>
                       )}
                     </td>
                   </tr>
@@ -351,7 +361,7 @@ function ETebligatModuleIc() {
           </table>
         </div>
         {(aktifIs > 0 || summary?.runner) && (
-          <div className="px-4 py-2 flex items-center gap-x-3 flex-wrap text-[11px]" style={portalStyle({ borderTop: cellBorder, color: 'rgba(250,250,249,0.5)' })}>
+          <div data-pa-table-foot className="px-4 py-2 flex items-center gap-x-3 flex-wrap text-[11px]" style={portalStyle({ borderTop: cellBorder, color: 'rgba(250,250,249,0.5)' })}>
             {aktifIs > 0 && <span className="inline-flex items-center gap-1" style={portalStyle({ color: GOLD })}><Loader2 size={11} className="animate-spin" /> {aktifIs} sorgu çalışıyor</span>}
             {summary?.runner && <span className="ml-auto inline-flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full" style={portalStyle({ background: summary.runner.enabled ? '#5fcf8e' : '#ef6b6b' })} /> Sunucu runner {summary.runner.enabled ? 'aktif' : 'kapalı'}</span>}
           </div>

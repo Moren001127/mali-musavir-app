@@ -1,5 +1,6 @@
 'use client';
 import { portalStyle, portalPaint } from '@/lib/portal-theme';
+import './beyannameler-white.css';
 
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type CSSProperties } from 'react';
@@ -524,9 +525,9 @@ function BeyannamelerIcerik() {
   const seciliSayi = selectedIds.size;
 
   return (
-    <div className="max-w-[1500px] space-y-4">
+    <div data-beyan-page className="max-w-[1500px] space-y-4">
       {/* ===================== KOMUT KONSOLU ===================== */}
-      <section data-portal-page-header
+      <section data-beyan-konsol
         className="relative overflow-hidden rounded-2xl"
         style={portalStyle({
           background: 'linear-gradient(135deg, rgba(17,22,28,0.96), rgba(10,12,16,0.99))',
@@ -534,34 +535,35 @@ function BeyannamelerIcerik() {
           boxShadow: '0 24px 60px -32px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.04)',
         })}
       >
-        <div className="absolute inset-x-0 top-0 h-[2px]" style={portalStyle({ background: 'linear-gradient(90deg, transparent, #4cc6f5, #f4c451, transparent)', opacity: 0.8 })} />
-        <div className="pointer-events-none absolute" style={portalStyle({ width: 420, height: 420, left: -60, top: -220, borderRadius: '50%', background: 'radial-gradient(circle, rgba(76,198,245,0.16), transparent 62%)' })} />
-        <div className="pointer-events-none absolute" style={portalStyle({ width: 420, height: 420, right: -80, top: -260, borderRadius: '50%', background: 'radial-gradient(circle, rgba(244,196,81,0.10), transparent 62%)' })} />
+        <div data-beyan-dekor className="absolute inset-x-0 top-0 h-[2px]" style={portalStyle({ background: 'linear-gradient(90deg, transparent, #4cc6f5, #f4c451, transparent)', opacity: 0.8 })} />
+        <div data-beyan-dekor className="pointer-events-none absolute" style={portalStyle({ width: 420, height: 420, left: -60, top: -220, borderRadius: '50%', background: 'radial-gradient(circle, rgba(76,198,245,0.16), transparent 62%)' })} />
+        <div data-beyan-dekor className="pointer-events-none absolute" style={portalStyle({ width: 420, height: 420, right: -80, top: -260, borderRadius: '50%', background: 'radial-gradient(circle, rgba(244,196,81,0.10), transparent 62%)' })} />
 
-        <div className="relative px-4 pt-3 sm:px-5">
+        <div data-beyan-konsol-ic className="relative px-4 pt-3 sm:px-5">
           <div className="flex flex-wrap items-center gap-4">
             <div className="flex min-w-0 items-center gap-3">
-              <div className="grid flex-none place-items-center" style={portalStyle({ width: 38, height: 38, borderRadius: 11, background: 'linear-gradient(150deg, rgba(76,198,245,0.22), rgba(76,198,245,0.05))', border: '1px solid rgba(76,198,245,0.3)' })}>
+              <div data-beyan-konsol-icon className="grid flex-none place-items-center" style={portalStyle({ width: 38, height: 38, borderRadius: 11, background: 'linear-gradient(150deg, rgba(76,198,245,0.22), rgba(76,198,245,0.05))', border: '1px solid rgba(76,198,245,0.3)' })}>
                 <FileText size={19} style={portalStyle({ color: '#bfe9ff' })} />
               </div>
               <div className="min-w-0">
-                <div className="text-[10px] font-extrabold uppercase tracking-[0.2em]" style={portalStyle({ color: '#7fcdee' })}>e-Beyanname · GİB</div>
+                <div data-beyan-eyebrow className="text-[10px] font-extrabold uppercase tracking-[0.2em]" style={portalStyle({ color: '#7fcdee' })}>e-Beyanname · GİB</div>
                 <h1 className="text-[18px] font-bold tracking-[-0.02em]" style={portalStyle({ color: '#f3f5f7' })}>Beyanname İndirme</h1>
+                <p data-beyan-aciklama className="hidden text-[13px]">GİB e-Beyanname sisteminden beyanname ve tahakkuk PDF'leri indirilir; süzülür, mükellefe iletilir.</p>
               </div>
             </div>
 
             <div className="flex-1" />
 
-            <div className="flex flex-col items-end gap-1.5">
+            <div data-beyan-konsol-eylem className="flex flex-col items-end gap-1.5">
               <div className="flex flex-wrap items-stretch justify-end gap-2">
-                <div className="flex items-center overflow-hidden rounded-[11px]" style={portalStyle({ border: '1px solid rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.03)' })}>
+                <div data-beyan-tarih className="flex items-center overflow-hidden rounded-[11px]" style={portalStyle({ border: '1px solid rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.03)' })}>
                   <label className="flex flex-col gap-px px-2.5 py-1">
-                    <span className="text-[9px] font-bold uppercase tracking-[0.14em]" style={portalStyle({ color: 'rgba(243,245,247,0.4)' })}>Başlangıç</span>
+                    <span data-beyan-etiket className="text-[9px] font-bold uppercase tracking-[0.14em]" style={portalStyle({ color: 'rgba(243,245,247,0.4)' })}>Başlangıç</span>
                     <input type="date" value={pullFrom} onChange={(e) => setPullFrom(e.target.value)} onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }} className="bg-transparent text-[13px] font-semibold outline-none cursor-pointer" style={portalStyle({ color: '#f3f5f7', colorScheme: 'dark' })} />
                   </label>
-                  <div className="self-stretch" style={portalStyle({ width: 1, background: 'rgba(255,255,255,0.07)' })} />
+                  <div data-beyan-tarih-ayrac className="self-stretch" style={portalStyle({ width: 1, background: 'rgba(255,255,255,0.07)' })} />
                   <label className="flex flex-col gap-px px-2.5 py-1">
-                    <span className="text-[9px] font-bold uppercase tracking-[0.14em]" style={portalStyle({ color: 'rgba(243,245,247,0.4)' })}>Bitiş</span>
+                    <span data-beyan-etiket className="text-[9px] font-bold uppercase tracking-[0.14em]" style={portalStyle({ color: 'rgba(243,245,247,0.4)' })}>Bitiş</span>
                     <input type="date" value={pullTo} onChange={(e) => setPullTo(e.target.value)} onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }} className="bg-transparent text-[13px] font-semibold outline-none cursor-pointer" style={portalStyle({ color: '#f3f5f7', colorScheme: 'dark' })} />
                   </label>
                 </div>
@@ -570,6 +572,7 @@ function BeyannamelerIcerik() {
                   onClick={() => pullMut.mutate(false)}
                   disabled={pullMut.isPending}
                   title="Eski e-Beyanname sisteminden beyanname + tahakkuk indirir"
+                  data-beyan-btn="birincil"
                   className="inline-flex h-[38px] items-center justify-center gap-2 rounded-[10px] px-4 text-[13px] font-bold"
                   style={portalStyle({ background: 'linear-gradient(135deg, #f4c451, #e0a93c)', color: '#1a1407', boxShadow: '0 12px 26px -12px rgba(244,196,81,0.6)', opacity: pullMut.isPending ? 0.65 : 1 })}
                 >
@@ -581,6 +584,7 @@ function BeyannamelerIcerik() {
                   onClick={() => pullNewMut.mutate(false)}
                   disabled={pullNewMut.isPending}
                   title="Yeni GİB e-Beyan sisteminden (ebeyan.gib.gov.tr) çeker — eski sistemden ayrı"
+                  data-beyan-btn="yesil"
                   className="inline-flex h-[38px] items-center justify-center gap-2 rounded-[10px] px-3.5 text-[13px] font-bold"
                   style={portalStyle({ background: 'rgba(52,211,153,0.08)', border: '1px solid rgba(52,211,153,0.38)', color: '#6ee7b7', opacity: pullNewMut.isPending ? 0.65 : 1 })}
                 >
@@ -596,6 +600,7 @@ function BeyannamelerIcerik() {
                   }}
                   disabled={pullMut.isPending}
                   title="Yenile (force) — var olanları da yeniden indir, Tutar okunamadı / eksik PDF kayıtlarını düzeltir"
+                  data-beyan-btn="ikincil"
                   className="inline-flex h-[38px] w-[38px] items-center justify-center rounded-[10px]"
                   style={portalStyle({ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(243,245,247,0.62)' })}
                 >
@@ -607,20 +612,20 @@ function BeyannamelerIcerik() {
           </div>
 
           {/* canlı durum: son iş + runner/şifre */}
-          <div className="mt-2.5 flex flex-wrap items-center gap-3 py-2" style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.07)' })}>
+          <div data-beyan-durum className="mt-2.5 flex flex-wrap items-center gap-3 py-2" style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.07)' })}>
             <ConsoleJob
               job={latestBeyanJob}
               onCancel={isBeyanJobActive && latestBeyanJob ? () => cancelJobMut.mutate(latestBeyanJob.id) : undefined}
               cancelPending={cancelJobMut.isPending}
             />
             <div className="ml-auto flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-2 text-[12px] font-semibold" style={portalStyle({ color: 'rgba(243,245,247,0.62)' })}>
-                <span className="inline-block h-2 w-2 rounded-full" style={portalStyle({ background: portalSummary?.runner?.enabled ? '#4ade80' : '#fb7185', boxShadow: `0 0 0 3px ${portalSummary?.runner?.enabled ? 'rgba(74,222,128,0.16)' : 'rgba(251,113,133,0.16)'}` })} /> Runner
+              <span data-beyan-durum-madde className="inline-flex items-center gap-2 text-[12px] font-semibold" style={portalStyle({ color: 'rgba(243,245,247,0.62)' })}>
+                <span data-beyan-nokta={portalSummary?.runner?.enabled ? 'acik' : 'kapali'} className="inline-block h-2 w-2 rounded-full" style={portalStyle({ background: portalSummary?.runner?.enabled ? '#4ade80' : '#fb7185', boxShadow: `0 0 0 3px ${portalSummary?.runner?.enabled ? 'rgba(74,222,128,0.16)' : 'rgba(251,113,133,0.16)'}` })} /> Runner
               </span>
-              <span className="inline-flex items-center gap-2 text-[12px] font-semibold" style={portalStyle({ color: 'rgba(243,245,247,0.62)' })}>
-                <span className="inline-block h-2 w-2 rounded-full" style={portalStyle({ background: portalSummary?.credentials.eBeyannameReady ? '#4ade80' : '#fb7185', boxShadow: `0 0 0 3px ${portalSummary?.credentials.eBeyannameReady ? 'rgba(74,222,128,0.16)' : 'rgba(251,113,133,0.16)'}` })} /> Şifre
+              <span data-beyan-durum-madde className="inline-flex items-center gap-2 text-[12px] font-semibold" style={portalStyle({ color: 'rgba(243,245,247,0.62)' })}>
+                <span data-beyan-nokta={portalSummary?.credentials.eBeyannameReady ? 'acik' : 'kapali'} className="inline-block h-2 w-2 rounded-full" style={portalStyle({ background: portalSummary?.credentials.eBeyannameReady ? '#4ade80' : '#fb7185', boxShadow: `0 0 0 3px ${portalSummary?.credentials.eBeyannameReady ? 'rgba(74,222,128,0.16)' : 'rgba(251,113,133,0.16)'}` })} /> Şifre
               </span>
-              <Link href="/panel/ayarlar" className="inline-flex h-[34px] items-center gap-1.5 rounded-[9px] px-3 text-[12px] font-semibold" style={portalStyle({ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(243,245,247,0.62)' })}>
+              <Link href="/panel/ayarlar" data-beyan-btn="ikincil" className="inline-flex h-[34px] items-center gap-1.5 rounded-[9px] px-3 text-[12px] font-semibold" style={portalStyle({ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(243,245,247,0.62)' })}>
                 <KeyRound size={13} /> Şifre Ayarları
               </Link>
             </div>
@@ -628,15 +633,15 @@ function BeyannamelerIcerik() {
         </div>
 
         {isBeyanJobActive && (
-          <div className="relative mt-1 h-[3px] overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.05)' })}>
+          <div data-beyan-ilerleme className="relative mt-1 h-[3px] overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.05)' })}>
             <div className="absolute inset-y-0 left-0 transition-all" style={portalStyle({ width: `${Math.max(6, Math.min(100, portalJobProgress(latestBeyanJob).pct ?? (isBeyanJobRunning ? 45 : 12)))}%`, background: 'linear-gradient(90deg, #4cc6f5, #f4c451)' })} />
           </div>
         )}
       </section>
 
       {/* ===================== LİSTE ===================== */}
-      <section className="rounded-2xl overflow-hidden" style={portalStyle({ background: 'linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.015))', border: '1px solid rgba(255,255,255,0.07)' })}>
-        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.06)' })}>
+      <section data-beyan-liste className="rounded-2xl overflow-hidden" style={portalStyle({ background: 'linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.015))', border: '1px solid rgba(255,255,255,0.07)' })}>
+        <div data-beyan-liste-head className="flex flex-wrap items-center justify-between gap-3 px-4 py-3" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.06)' })}>
           <div>
             <h2 className="text-[15px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>Beyanname Listesi</h2>
             <p className="mt-0.5 text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
@@ -647,6 +652,7 @@ function BeyannamelerIcerik() {
             onClick={exportCsv}
             disabled={csvYaziliyor || toplam === 0}
             title={toplam > CSV_TAVAN ? `Geçerli süzgeçle ilk ${CSV_TAVAN} kayıt` : 'Geçerli süzgeçle CSV indir'}
+            data-beyan-btn="ikincil"
             className="inline-flex h-9 items-center gap-1.5 rounded-[9px] px-3 text-[12px] font-semibold disabled:opacity-50"
             style={portalStyle({ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.72)' })}
           >
@@ -655,10 +661,10 @@ function BeyannamelerIcerik() {
         </div>
 
         {/* Süzgeç bandı — e-Defter seçici bandı dili: küçük büyük-harf etiket üstte + hizalı kutu (hepsi sunucuda) */}
-        <div className="flex flex-wrap items-end gap-x-3 gap-y-3 px-4 py-3.5" style={portalStyle({ background: 'rgba(0,0,0,0.22)', borderBottom: '1px solid rgba(255,255,255,0.07)' })}>
+        <div data-beyan-suzgec className="flex flex-wrap items-end gap-x-3 gap-y-3 px-4 py-3.5" style={portalStyle({ background: 'rgba(0,0,0,0.22)', borderBottom: '1px solid rgba(255,255,255,0.07)' })}>
           <label className="flex min-w-[220px] flex-[1.7] flex-col gap-1.5">
-            <span className="text-[9px] font-bold uppercase tracking-[.16em]" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>Ara</span>
-            <span className="flex items-center gap-2 rounded-xl px-3" style={portalStyle(SUZGEC_KUTU)}>
+            <span data-beyan-etiket className="text-[9px] font-bold uppercase tracking-[.16em]" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>Ara</span>
+            <span data-beyan-kutu className="flex items-center gap-2 rounded-xl px-3" style={portalStyle(SUZGEC_KUTU)}>
               <Search size={14} className="shrink-0" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })} />
               <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Mükellef, VKN, onay no" className="w-full bg-transparent text-[13px] outline-none" style={portalStyle({ color: '#fafaf9' })} />
               {search && (
@@ -667,7 +673,7 @@ function BeyannamelerIcerik() {
             </span>
           </label>
           <div className="flex min-w-[200px] flex-[1.3] flex-col gap-1.5">
-            <span className="text-[9px] font-bold uppercase tracking-[.16em]" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>Mükellef</span>
+            <span data-beyan-etiket className="text-[9px] font-bold uppercase tracking-[.16em]" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>Mükellef</span>
             <SelectBox value={selectedTaxpayer} onChange={suzgec(setSelectedTaxpayer)}>
               <option value="all">Tümü</option>
               {taxpayerOptions.map((t) => (
@@ -676,7 +682,7 @@ function BeyannamelerIcerik() {
             </SelectBox>
           </div>
           <div className="flex min-w-[130px] flex-1 flex-col gap-1.5">
-            <span className="text-[9px] font-bold uppercase tracking-[.16em]" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>Tür</span>
+            <span data-beyan-etiket className="text-[9px] font-bold uppercase tracking-[.16em]" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>Tür</span>
             <SelectBox value={typeFilter} onChange={(v) => suzgec(setTypeFilter)(v as FilterKey)}>
               {FILTER_KEYS.map((f) => (
                 <option key={f.key} value={f.key}>{f.label}</option>
@@ -684,7 +690,7 @@ function BeyannamelerIcerik() {
             </SelectBox>
           </div>
           <div className="flex min-w-[130px] flex-1 flex-col gap-1.5">
-            <span className="text-[9px] font-bold uppercase tracking-[.16em]" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>Belge</span>
+            <span data-beyan-etiket className="text-[9px] font-bold uppercase tracking-[.16em]" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>Belge</span>
             <SelectBox value={docFilter} onChange={(v) => suzgec(setDocFilter)(v as BeyanBelgeSuzgec)}>
               <option value="all">Tümü</option>
               <option value="beyanname">Beyanname</option>
@@ -692,7 +698,7 @@ function BeyannamelerIcerik() {
             </SelectBox>
           </div>
           <div className="flex min-w-[130px] flex-1 flex-col gap-1.5">
-            <span className="text-[9px] font-bold uppercase tracking-[.16em]" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>İletim</span>
+            <span data-beyan-etiket className="text-[9px] font-bold uppercase tracking-[.16em]" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>İletim</span>
             <SelectBox value={iletimFilter} onChange={(v) => suzgec(setIletimFilter)(v as BeyanIletimSuzgec)}>
               <option value="all">Tümü</option>
               <option value="iletildi">İletildi</option>
@@ -701,8 +707,8 @@ function BeyannamelerIcerik() {
             </SelectBox>
           </div>
           <div className="flex flex-col gap-1.5">
-            <span className="text-[9px] font-bold uppercase tracking-[.16em]" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>Dönem</span>
-            <div className="flex items-center gap-1 rounded-xl px-2.5" style={portalStyle(SUZGEC_KUTU)} title="Beyanname dönem aralığı (ay olarak)">
+            <span data-beyan-etiket className="text-[9px] font-bold uppercase tracking-[.16em]" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>Dönem</span>
+            <div data-beyan-kutu className="flex items-center gap-1 rounded-xl px-2.5" style={portalStyle(SUZGEC_KUTU)} title="Beyanname dönem aralığı (ay olarak)">
               <input type="date" value={periodStart ? `${periodStart}-01` : ''} onChange={(e) => suzgec(setPeriodStart)(e.target.value ? e.target.value.slice(0, 7) : '')} onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }} aria-label="Dönem başlangıç" className="bg-transparent text-[12.5px] font-semibold outline-none cursor-pointer" style={portalStyle({ color: periodStart ? '#fafaf9' : 'rgba(250,250,249,0.45)', colorScheme: 'dark', width: 104 })} />
               <span className="shrink-0" style={portalStyle({ color: 'rgba(250,250,249,0.3)' })}>–</span>
               <input type="date" value={periodEnd ? `${periodEnd}-01` : ''} onChange={(e) => suzgec(setPeriodEnd)(e.target.value ? e.target.value.slice(0, 7) : '')} onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }} aria-label="Dönem bitiş" className="bg-transparent text-[12.5px] font-semibold outline-none cursor-pointer" style={portalStyle({ color: periodEnd ? '#fafaf9' : 'rgba(250,250,249,0.45)', colorScheme: 'dark', width: 104 })} />
@@ -712,6 +718,8 @@ function BeyannamelerIcerik() {
             type="button"
             onClick={clearFilters}
             disabled={!suzgecAktif}
+            data-beyan-btn="ikincil"
+            data-aktif={suzgecAktif ? 'evet' : 'hayir'}
             className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-xl px-3 text-[12px] font-semibold transition disabled:opacity-35"
             style={portalStyle({ background: suzgecAktif ? 'rgba(212,184,118,0.10)' : 'transparent', border: `1px solid ${suzgecAktif ? 'rgba(212,184,118,0.35)' : 'rgba(255,255,255,0.10)'}`, color: suzgecAktif ? GOLD : 'rgba(250,250,249,0.5)' })}
             title="Süzgeçleri temizle"
@@ -721,8 +729,8 @@ function BeyannamelerIcerik() {
         </div>
 
         {/* Toplu işlemler — ÜSTTE, tek sayaç */}
-        <div className="flex flex-wrap items-center gap-2 px-4 py-2.5" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.06)', background: seciliSayi ? 'rgba(212,184,118,0.05)' : 'transparent' })}>
-          <span className="mr-1 text-[12.5px] font-semibold tabular-nums" style={portalStyle({ color: seciliSayi ? GOLD : 'rgba(250,250,249,0.45)' })}>
+        <div data-beyan-toplu data-secili={seciliSayi ? 'evet' : 'hayir'} className="flex flex-wrap items-center gap-2 px-4 py-2.5" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.06)', background: seciliSayi ? 'rgba(212,184,118,0.05)' : 'transparent' })}>
+          <span data-beyan-secili-sayi className="mr-1 text-[12.5px] font-semibold tabular-nums" style={portalStyle({ color: seciliSayi ? GOLD : 'rgba(250,250,249,0.45)' })}>
             {seciliSayi ? `Seçili ${seciliSayi.toLocaleString('tr-TR')} kayıt` : 'Seçili kayıt yok'}
           </span>
           <ToolbarButton icon={MessageCircle} label="WhatsApp gönder" tone="whatsapp" disabled={!seciliSayi} onClick={() => gonderimBaslat('WHATSAPP', seciliKayitlar)} />
@@ -737,11 +745,11 @@ function BeyannamelerIcerik() {
         </div>
 
         {isLoading ? (
-          <div className="p-10 text-center text-[13px]" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
+          <div data-beyan-bos className="p-10 text-center text-[13px]" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
             <Loader2 size={18} className="animate-spin mx-auto mb-3" /> Kayıtlar yükleniyor…
           </div>
         ) : rows.length === 0 ? (
-          <div className="p-12 text-center">
+          <div data-beyan-bos className="p-12 text-center">
             <FileQuestion size={34} className="mx-auto mb-3" style={portalStyle({ color: 'rgba(250,250,249,0.24)' })} />
             {suzgecAktif ? (
               <>
@@ -760,7 +768,7 @@ function BeyannamelerIcerik() {
             )}
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div data-beyan-tablo className="overflow-x-auto">
             <table className="w-full text-[13px]" style={portalStyle({ tableLayout: 'fixed', minWidth: 920 })}>
               <colgroup>
                 <col style={portalStyle({ width: 40 })} />
@@ -845,11 +853,12 @@ function BeyannamelerIcerik() {
           onClick={closePdfPreview}
         >
           <div
+            data-beyan-pdf
             className="flex h-[min(92vh,900px)] w-full max-w-[1180px] flex-col overflow-hidden rounded-[10px]"
             style={portalStyle({ background: '#12100d', border: '1px solid rgba(255,255,255,0.12)' })}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between gap-3 px-4 py-3" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.08)' })}>
+            <div data-beyan-pdf-head className="flex items-center justify-between gap-3 px-4 py-3" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.08)' })}>
               <div className="min-w-0">
                 <div className="truncate text-[14px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>{pdfPreview.title}</div>
                 <div className="mt-0.5 truncate text-[11.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.48)' })}>{pdfPreview.subtitle}</div>
@@ -858,6 +867,7 @@ function BeyannamelerIcerik() {
                 <a
                   href={pdfPreview.url}
                   download={dosyaAdiTemizle(`${pdfPreview.title}.pdf`)}
+                  data-beyan-btn="mavi"
                   className="inline-flex h-9 w-9 items-center justify-center rounded-[9px]"
                   title="PDF indir"
                   style={portalStyle({ background: 'rgba(56,189,248,0.12)', border: '1px solid rgba(56,189,248,0.24)', color: '#bae6fd' })}
@@ -870,6 +880,7 @@ function BeyannamelerIcerik() {
                     const frame = document.getElementById('beyan-pdf-preview') as HTMLIFrameElement | null;
                     frame?.contentWindow?.print();
                   }}
+                  data-beyan-btn="ikincil"
                   className="inline-flex h-9 w-9 items-center justify-center rounded-[9px]"
                   title="Yazdır"
                   style={portalStyle({ background: 'rgba(255,255,255,0.045)', border: '1px solid rgba(255,255,255,0.09)', color: 'rgba(250,250,249,0.72)' })}
@@ -879,6 +890,7 @@ function BeyannamelerIcerik() {
                 <button
                   type="button"
                   onClick={closePdfPreview}
+                  data-beyan-btn="tehlike"
                   className="inline-flex h-9 w-9 items-center justify-center rounded-[9px]"
                   title="Kapat"
                   style={portalStyle({ background: 'rgba(244,63,94,0.10)', border: '1px solid rgba(244,63,94,0.24)', color: '#fda4af' })}
@@ -909,6 +921,7 @@ function ToolbarButton({ icon: Icon, label, onClick, disabled, tone }: { icon: a
       type="button"
       onClick={onClick}
       disabled={disabled}
+      data-beyan-tool={tone}
       className="inline-flex h-8 items-center gap-1.5 rounded-[8px] px-2.5 text-[12px] font-semibold disabled:cursor-not-allowed disabled:opacity-40"
       style={portalStyle({ background: c.background, border: `1px solid ${c.border}`, color: c.color })}
     >
@@ -933,23 +946,23 @@ function ConsoleJob({ job, onCancel, cancelPending }: { job?: PortalJob; onCance
     : noRecords ? 'Bu aralıkta indirilecek kayıt yok'
     : `${Number(job.recordCount || 0).toLocaleString('tr-TR')} işlem · ${fmtDateTime(job.createdAt)}`;
   return (
-    <div className="my-1 flex items-center gap-3 rounded-[13px] px-3 py-2" style={portalStyle({ background: 'rgba(76,198,245,0.06)', border: '1px solid rgba(76,198,245,0.18)', minWidth: 230 })}>
-      <div className="grid flex-none place-items-center" style={portalStyle({ width: 34, height: 34, borderRadius: '50%', background: `conic-gradient(${active ? '#4cc6f5' : '#4ade80'} 0 ${pct}%, rgba(255,255,255,0.08) ${pct}% 100%)` })}>
-        <span className="grid place-items-center" style={portalStyle({ width: 26, height: 26, borderRadius: '50%', background: '#0c1117', fontSize: 9.5, fontWeight: 800, color: active ? '#bfe9ff' : '#86efac' })}>
+    <div data-beyan-job={active ? 'aktif' : noRecords ? 'bos' : 'bitti'} className="my-1 flex items-center gap-3 rounded-[13px] px-3 py-2" style={portalStyle({ background: 'rgba(76,198,245,0.06)', border: '1px solid rgba(76,198,245,0.18)', minWidth: 230 })}>
+      <div data-beyan-job-halka className="grid flex-none place-items-center" style={portalStyle({ width: 34, height: 34, borderRadius: '50%', background: `conic-gradient(${active ? '#4cc6f5' : '#4ade80'} 0 ${pct}%, rgba(255,255,255,0.08) ${pct}% 100%)`, ...({ '--beyan-pct': `${pct}%` } as CSSProperties) })}>
+        <span data-beyan-job-ic className="grid place-items-center" style={portalStyle({ width: 26, height: 26, borderRadius: '50%', background: '#0c1117', fontSize: 9.5, fontWeight: 800, color: active ? '#bfe9ff' : '#86efac' })}>
           {active ? `%${Math.round(pct)}` : (noRecords ? '0' : '✓')}
         </span>
       </div>
       <div className="min-w-0">
         <div className="flex items-center gap-2">
-          <b className="text-[12.5px]" style={portalStyle({ color: '#f3f5f7' })}>Son iş</b>
-          <span className="rounded-[6px] px-[7px] py-[2px] text-[9.5px] font-extrabold tracking-[0.06em]" style={portalStyle({ background: status.bg, color: status.color })}>{status.label}</span>
+          <b data-beyan-job-baslik className="text-[12.5px]" style={portalStyle({ color: '#f3f5f7' })}>Son iş</b>
+          <span data-beyan-job-durum={noRecords ? 'bos' : job.status} className="rounded-[6px] px-[7px] py-[2px] text-[9.5px] font-extrabold tracking-[0.06em]" style={portalStyle({ background: status.bg, color: status.color })}>{status.label}</span>
           {onCancel && (
-            <button type="button" onClick={onCancel} disabled={cancelPending} className="inline-flex h-6 items-center gap-1 rounded-[6px] px-1.5 text-[10px] font-bold disabled:opacity-50" style={portalStyle({ background: 'rgba(248,113,113,0.12)', border: '1px solid rgba(248,113,113,0.28)', color: '#fca5a5' })}>
+            <button type="button" onClick={onCancel} disabled={cancelPending} data-beyan-btn="tehlike" className="inline-flex h-6 items-center gap-1 rounded-[6px] px-1.5 text-[10px] font-bold disabled:opacity-50" style={portalStyle({ background: 'rgba(248,113,113,0.12)', border: '1px solid rgba(248,113,113,0.28)', color: '#fca5a5' })}>
               {cancelPending ? <Loader2 size={10} className="animate-spin" /> : <IconX size={10} />} İptal
             </button>
           )}
         </div>
-        <div className="truncate text-[11px]" style={portalStyle({ color: 'rgba(243,245,247,0.42)', maxWidth: 300 })}>
+        <div data-beyan-job-alt className="truncate text-[11px]" style={portalStyle({ color: 'rgba(243,245,247,0.42)', maxWidth: 300 })}>
           {sub}{active && progress.current != null && progress.total != null ? ` · ${progress.current}/${progress.total}` : ''}
         </div>
       </div>
@@ -1006,18 +1019,21 @@ function SelectBox({ icon: Icon, etiket, value, onChange, children }: { icon?: a
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
+        data-beyan-select
+        data-aktif={aktifSecim ? 'evet' : 'hayir'}
         className={`w-full h-10 ${Icon ? 'pl-9' : 'pl-3'} pr-8 rounded-xl text-[13px] font-semibold outline-none text-left flex items-center transition`}
         style={portalStyle({ background: 'rgba(255,255,255,0.05)', border: `1px solid ${aktifSecim ? 'rgba(212,184,118,0.45)' : 'rgba(255,255,255,0.12)'}`, color: aktifSecim ? '#d4b876' : '#fafaf9' })}
       >
         {Icon && <Icon size={14} className="absolute left-3 pointer-events-none" style={portalStyle({ color: aktifSecim ? '#d4b876' : 'rgba(250,250,249,0.4)' })} />}
         {etiket && <span className="mr-1.5 shrink-0 font-semibold" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>{etiket}:</span>}
         <span className="truncate">{currentLabel}</span>
-        <svg className="absolute right-2.5 pointer-events-none" width="12" height="12" viewBox="0 0 12 12" fill="none">
+        <svg data-beyan-select-ok className="absolute right-2.5 pointer-events-none" width="12" height="12" viewBox="0 0 12 12" fill="none">
           <path d="M3 4.5L6 7.5L9 4.5" stroke="#d4b876" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </button>
       {open && (
         <div
+          data-beyan-dropdown
           className="absolute mt-1.5 max-h-[320px] overflow-y-auto rounded-xl py-1"
           style={portalStyle({
             top: '100%',
@@ -1039,6 +1055,7 @@ function SelectBox({ icon: Icon, etiket, value, onChange, children }: { icon?: a
                   key={it.value}
                   type="button"
                   onClick={() => { onChange(it.value); setOpen(false); }}
+                  data-beyan-secenek={active ? 'aktif' : 'pasif'}
                   className="w-full text-left px-3 py-[7px] text-[12.5px] flex items-center justify-between transition"
                   style={portalStyle({
                     background: active ? 'rgba(212,184,118,0.10)' : 'transparent',

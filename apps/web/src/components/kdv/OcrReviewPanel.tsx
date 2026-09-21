@@ -406,22 +406,22 @@ export function OcrReviewPanel({
         style={portalStyle({ borderBottom: '1px solid rgba(245,158,11,0.15)' })}
       >
         <div className="flex items-center gap-2.5">
-          <AlertTriangle size={14} style={portalStyle({ color: '#f59e0b' })} />
+          <AlertTriangle size={14} data-kdv-vurgu="kehribar" style={portalStyle({ color: '#f59e0b' })} />
           <div>
             <h3 className="text-[13.5px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>
               OCR Teyit Paneli
             </h3>
-            <p className="text-[11px] mt-0.5" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
+            <p data-kdv-sec className="text-[11px] mt-0.5" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
               OCR sonuçları tek liste —{' '}
-              <span className="font-semibold" style={portalStyle({ color: '#22c55e' })}>
+              <span className="font-semibold" data-kdv-vurgu="yesil" style={portalStyle({ color: '#22c55e' })}>
                 {summary.success}
               </span>{' '}
               başarılı ·{' '}
-              <span className="font-semibold" style={portalStyle({ color: '#f59e0b' })}>
+              <span className="font-semibold" data-kdv-vurgu="kehribar" style={portalStyle({ color: '#f59e0b' })}>
                 {summary.needsReview + summary.lowConf + summary.failed}
               </span>{' '}
               teyit bekler ·{' '}
-              <span className="font-semibold" style={portalStyle({ color: '#22c55e' })}>
+              <span className="font-semibold" data-kdv-vurgu="yesil" style={portalStyle({ color: '#22c55e' })}>
                 {summary.confirmed}
               </span>{' '}
               teyit edildi · {summary.total} toplam
@@ -435,6 +435,7 @@ export function OcrReviewPanel({
             onClick={() => backfillMut.mutate()}
             disabled={backfillMut.isPending}
             title="OCR'ın okuyamadığı KDV oranlarını, görseli yeniden okumadan kayıtlı veriden (matrah + metin) doldurur"
+            data-kdv-btn="deniz"
             className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[11.5px] font-bold transition disabled:opacity-50"
             style={portalStyle({ background: 'rgba(20,184,166,0.14)', color: '#2dd4bf', border: '1px solid rgba(20,184,166,0.4)' })}
           >
@@ -504,7 +505,7 @@ export function OcrReviewPanel({
             active={filter === 'all'}
             onClick={() => { setFilter('all'); setActiveId(null); }}
           />
-          <div className="text-[11px] font-bold uppercase tracking-wider ml-1" style={portalStyle({ color: '#f59e0b' })}>
+          <div data-kdv-esik className="text-[11px] font-bold uppercase tracking-wider ml-1" style={portalStyle({ color: '#f59e0b' })}>
             Eşik %{Math.round(THRESHOLD * 100)}
           </div>
         </div>
@@ -512,6 +513,7 @@ export function OcrReviewPanel({
 
       {pending.length === 0 ? (
         <div
+          data-kdv-bos-durum
           className="flex items-center justify-center gap-3 py-10 text-[13px]"
           style={portalStyle({
             color:
@@ -584,15 +586,17 @@ export function OcrReviewPanel({
                 >
                   <div className="flex items-center justify-between gap-2 mb-1">
                     <p
+                      data-kdv-doc-ad
                       className="text-[12px] font-medium truncate flex items-center gap-1.5"
                       style={portalStyle({ color: active ? '#fafaf9' : 'rgba(250,250,249,0.75)' })}
                     >
-                      {confirmed && <CheckCircle2 size={11} style={portalStyle({ color: '#22c55e', flexShrink: 0 })} />}
-                      {isSuccess && <CheckCircle2 size={11} style={portalStyle({ color: '#60a5fa', flexShrink: 0 })} />}
+                      {confirmed && <CheckCircle2 size={11} data-kdv-vurgu="yesil" style={portalStyle({ color: '#22c55e', flexShrink: 0 })} />}
+                      {isSuccess && <CheckCircle2 size={11} data-kdv-vurgu="mavi" style={portalStyle({ color: '#60a5fa', flexShrink: 0 })} />}
                       <span className="truncate">{imageDisplayName(img)}</span>
                     </p>
                     {typeof avg === 'number' && (
                       <span
+                        data-kdv-doc-pct={confirmed || isSuccess ? 'yesil' : (typeof avg === 'number' && avg < THRESHOLD ? 'kirmizi' : 'kehribar')}
                         className="text-[10px] font-bold tabular-nums"
                         style={portalStyle({ color: avgColor, marginRight: 28 })}
                       >
@@ -600,9 +604,10 @@ export function OcrReviewPanel({
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center gap-1.5 text-[10px]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
+                  <div data-kdv-doc-alt className="flex items-center gap-1.5 text-[10px]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                     {confirmed ? (
                       <span
+                        data-kdv-tag="CONFIRMED"
                         className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded"
                         style={portalStyle({ background: 'rgba(34,197,94,0.15)', color: '#22c55e' })}
                       >
@@ -610,6 +615,7 @@ export function OcrReviewPanel({
                       </span>
                     ) : isSuccess ? (
                       <span
+                        data-kdv-tag="SUCCESS"
                         className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded"
                         style={portalStyle({ background: 'rgba(96,165,250,0.15)', color: '#60a5fa' })}
                       >
@@ -620,6 +626,7 @@ export function OcrReviewPanel({
                     )}
                     {img.ocrEngine && (
                       <span
+                        data-kdv-tag="engine"
                         className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded"
                         style={portalStyle({ background: engineBadge.bg, color: engineBadge.color })}
                       >
@@ -641,6 +648,7 @@ export function OcrReviewPanel({
                       ? 'OCR işleniyor…'
                       : 'Ucuz yeniden oku (cache/Azure öncelikli)'
                   }
+                  data-kdv-mini-btn
                   className="absolute top-2.5 right-2.5 inline-flex items-center justify-center w-6 h-6 rounded-md transition disabled:opacity-70"
                   style={portalStyle({
                     background: isReocring
@@ -667,12 +675,13 @@ export function OcrReviewPanel({
           <div data-kdv-review-body className="p-5 grid grid-cols-1 md:grid-cols-2 gap-5">
             {/* Fatura görseli — büyüteçli */}
             {previewError ? (
-              <div className="flex flex-col items-center justify-center gap-3 rounded-xl" style={portalStyle({ minHeight: 320, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)' })}>
-                <AlertTriangle size={26} style={portalStyle({ color: '#fbbf24' })} />
-                <p className="text-[13px] text-center px-4" style={portalStyle({ color: 'rgba(250,250,249,0.6)' })}>Fatura görseli yüklenemedi.<br />Bağlantı yavaş olabilir.</p>
+              <div data-kdv-kutu="bos" className="flex flex-col items-center justify-center gap-3 rounded-xl" style={portalStyle({ minHeight: 320, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)' })}>
+                <AlertTriangle size={26} data-kdv-vurgu="kehribar" style={portalStyle({ color: '#fbbf24' })} />
+                <p data-kdv-sec className="text-[13px] text-center px-4" style={portalStyle({ color: 'rgba(250,250,249,0.6)' })}>Fatura görseli yüklenemedi.<br />Bağlantı yavaş olabilir.</p>
                 <button
                   type="button"
                   onClick={() => setPreviewNonce((n) => n + 1)}
+                  data-kdv-btn="ikincil"
                   className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[12.5px] font-semibold"
                   style={portalStyle({ background: 'rgba(212,184,118,0.14)', border: '1px solid rgba(212,184,118,0.3)', color: GOLD })}
                 >
@@ -734,12 +743,13 @@ export function OcrReviewPanel({
               />
               {hasTevkifat && (
                 <div
+                  data-kdv-kutu="kehribar"
                   className="rounded-lg px-3 py-2 text-[11px]"
                   style={portalStyle({ background: 'rgba(251,146,60,0.08)', border: '1px solid rgba(251,146,60,0.24)', color: 'rgba(250,250,249,0.72)' })}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-bold uppercase tracking-wider" style={portalStyle({ color: '#fb923c' })}>Tevkifat kontrolü</span>
-                    <span className="font-mono" style={portalStyle({ color: '#fafaf9' })}>
+                    <span className="font-bold uppercase tracking-wider" data-kdv-vurgu="kehribar" style={portalStyle({ color: '#fb923c' })}>Tevkifat kontrolü</span>
+                    <span className="font-mono" data-kdv-ink style={portalStyle({ color: '#fafaf9' })}>
                       Tam KDV {fmtLooseMoney(netKdvAmount + tevkifatAmount)}
                     </span>
                   </div>
@@ -756,14 +766,14 @@ export function OcrReviewPanel({
               />
 
               {activeImg.ocrBelgeTipi && (
-                <p className="text-[10.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.35)' })}>
-                  Belge tipi: <span className="font-semibold" style={portalStyle({ color: GOLD })}>{activeImg.ocrBelgeTipi}</span>
+                <p data-kdv-muted className="text-[10.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.35)' })}>
+                  Belge tipi: <span className="font-semibold" data-kdv-sec style={portalStyle({ color: GOLD })}>{activeImg.ocrBelgeTipi}</span>
                 </p>
               )}
 
               {activeImg.ocrEngine && (
-                <p className="text-[10.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.35)' })}>
-                  OCR: <span style={portalStyle({ color: 'rgba(250,250,249,0.6)' })}>{activeImg.ocrEngine}</span>
+                <p data-kdv-muted className="text-[10.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.35)' })}>
+                  OCR: <span data-kdv-sec style={portalStyle({ color: 'rgba(250,250,249,0.6)' })}>{activeImg.ocrEngine}</span>
                   {typeof activeImg.ocrValidationScore === 'number' && (
                     <span
                       className="ml-2"
@@ -784,6 +794,7 @@ export function OcrReviewPanel({
 
               {activeImg.isManuallyConfirmed && (
                 <div
+                  data-kdv-kutu="yesil"
                   className="flex items-center gap-2 text-[11.5px] font-semibold px-3 py-2 rounded-lg"
                   style={portalStyle({ background: 'rgba(34,197,94,0.08)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.2)' })}
                 >
@@ -793,6 +804,7 @@ export function OcrReviewPanel({
 
               {!activeImg.isManuallyConfirmed && activeImg.ocrStatus === 'SUCCESS' && (
                 <div
+                  data-kdv-kutu="mavi"
                   className="flex items-center gap-2 text-[11.5px] font-semibold px-3 py-2 rounded-lg"
                   style={portalStyle({ background: 'rgba(96,165,250,0.08)', color: '#60a5fa', border: '1px solid rgba(96,165,250,0.2)' })}
                 >
@@ -804,6 +816,7 @@ export function OcrReviewPanel({
                 <button
                   onClick={handleConfirm}
                   disabled={confirmMut.isPending}
+                  data-kdv-btn={activeImg.isManuallyConfirmed ? 'yesil' : 'birincil'}
                   className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 text-[13px] font-semibold rounded-[9px] transition hover:brightness-110 disabled:opacity-60"
                   style={portalStyle({
                     background: activeImg.isManuallyConfirmed
@@ -834,6 +847,7 @@ export function OcrReviewPanel({
                     reocringIds.has(activeImg.id) ||
                     ['PENDING', 'PROCESSING'].includes(activeImg.ocrStatus)
                   }
+                  data-kdv-btn="ikincil"
                   className="inline-flex items-center justify-center gap-1.5 px-3 py-2.5 text-[12px] rounded-[9px] disabled:opacity-70"
                   style={portalStyle({
                     background: 'rgba(184,160,111,0.1)',
@@ -856,6 +870,7 @@ export function OcrReviewPanel({
                     reocringIds.has(activeImg.id) ||
                     ['PENDING', 'PROCESSING'].includes(activeImg.ocrStatus)
                   }
+                  data-kdv-btn="mor"
                   className="inline-flex items-center justify-center gap-1.5 px-3 py-2.5 text-[12px] rounded-[9px] disabled:opacity-70"
                   style={portalStyle({
                     background: 'rgba(192,132,252,0.1)',
@@ -871,6 +886,7 @@ export function OcrReviewPanel({
                     href={previewUrl}
                     target="_blank"
                     rel="noreferrer"
+                    data-kdv-btn="ikincil"
                     className="inline-flex items-center justify-center gap-1.5 px-3 py-2.5 text-[12px] rounded-[9px]"
                     style={portalStyle({
                       background: 'rgba(255,255,255,0.04)',
@@ -929,11 +945,12 @@ function FieldInput({
   return (
     <div>
       <div className="flex items-center justify-between mb-1.5">
-        <label className="text-[11px] font-bold uppercase tracking-wider" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>
+        <label data-kdv-field-label className="text-[11px] font-bold uppercase tracking-wider" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>
           {label}
         </label>
         {showBadge && (
           <span
+            data-kdv-conf={missing ? 'yok' : low ? 'dusuk' : 'iyi'}
             className="text-[10px] font-bold tabular-nums px-2 py-0.5 rounded"
             style={portalStyle({
               background: color + '1a',
@@ -957,6 +974,7 @@ function FieldInput({
             onEnter();
           }
         }}
+        data-kdv-input={readOnly ? 'salt' : missing ? 'yok' : low ? 'dusuk' : 'normal'}
         className="w-full px-3 py-2 text-[13px] rounded-lg outline-none transition focus:brightness-110"
         style={portalStyle({
           background: readOnly ? 'rgba(34,197,94,0.04)' : 'rgba(255,255,255,0.03)',
@@ -1023,11 +1041,11 @@ function KdvBreakdownEditor({
     <div data-kdv-breakdown className="rounded-lg p-3" style={portalStyle({ background: 'rgba(184,160,111,0.04)', border: '1px solid rgba(184,160,111,0.18)' })}>
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
-          <span className="text-[11px] font-bold uppercase tracking-wider" style={portalStyle({ color: GOLD })}>
+          <span data-kdv-etiket className="text-[11px] font-bold uppercase tracking-wider" style={portalStyle({ color: GOLD })}>
             KDV Kırılımı
           </span>
           {list.length > 0 && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded" style={portalStyle({ background: 'rgba(184,160,111,0.15)', color: GOLD })}>
+            <span data-kdv-chip="notr" className="text-[10px] px-1.5 py-0.5 rounded" style={portalStyle({ background: 'rgba(184,160,111,0.15)', color: GOLD })}>
               {list.length} oran
             </span>
           )}
@@ -1035,6 +1053,7 @@ function KdvBreakdownEditor({
         <button
           type="button"
           onClick={addRow}
+          data-kdv-btn="ikincil"
           className="px-2 py-0.5 rounded text-[10.5px] font-bold"
           style={portalStyle({ background: 'rgba(184,160,111,0.15)', color: GOLD, border: '1px solid rgba(184,160,111,0.3)' })}
         >
@@ -1043,12 +1062,12 @@ function KdvBreakdownEditor({
       </div>
 
       {list.length === 0 ? (
-        <p className="text-[10.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>
+        <p data-kdv-muted className="text-[10.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>
           Çok oranlı belge (Z raporu, karma fatura) değilse boş bırak. Gerekiyorsa "+ Oran Ekle" ile satır ekle.
         </p>
       ) : (
         <>
-          <div className="grid grid-cols-[70px_1fr_28px] gap-2 items-center pb-1 mb-1 text-[9.5px] font-bold uppercase tracking-wider" style={portalStyle({ color: 'rgba(250,250,249,0.45)', borderBottom: '1px solid rgba(255,255,255,0.05)' })}>
+          <div data-kdv-breakdown-head className="grid grid-cols-[70px_1fr_28px] gap-2 items-center pb-1 mb-1 text-[9.5px] font-bold uppercase tracking-wider" style={portalStyle({ color: 'rgba(250,250,249,0.45)', borderBottom: '1px solid rgba(255,255,255,0.05)' })}>
             <span>Oran</span>
             <span>KDV Tutarı</span>
             <span></span>
@@ -1064,10 +1083,11 @@ function KdvBreakdownEditor({
                     const n = parseFloat(e.target.value.replace(',', '.')) || 0;
                     setItem(idx, { oran: n });
                   }}
+                  data-kdv-input="normal"
                   className="w-full px-2 py-1 pr-5 text-[12px] rounded text-right font-mono outline-none"
                   style={portalStyle({ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: GOLD })}
                 />
-                <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] pointer-events-none" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>%</span>
+                <span data-kdv-muted className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] pointer-events-none" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>%</span>
               </div>
               <KirilimTutarInput
                 value={b.tutar}
@@ -1076,6 +1096,7 @@ function KdvBreakdownEditor({
               <button
                 type="button"
                 onClick={() => removeRow(idx)}
+                data-kdv-btn="tehlike"
                 className="w-6 h-6 flex items-center justify-center rounded"
                 style={portalStyle({ background: 'rgba(244,63,94,0.08)', color: '#f43f5e' })}
                 title="Bu satırı sil"
@@ -1084,11 +1105,11 @@ function KdvBreakdownEditor({
               </button>
             </div>
           ))}
-          <div className="grid grid-cols-[70px_1fr_28px] gap-2 items-center pt-1.5 mt-1" style={portalStyle({ borderTop: '1px solid rgba(184,160,111,0.2)' })}>
+          <div data-kdv-breakdown-toplam className="grid grid-cols-[70px_1fr_28px] gap-2 items-center pt-1.5 mt-1" style={portalStyle({ borderTop: '1px solid rgba(184,160,111,0.2)' })}>
             <span></span>
             <div className="col-span-2 flex items-center justify-between gap-3 px-2 py-1">
-              <span className="text-[11px] font-bold" style={portalStyle({ color: GOLD })}>Toplam KDV</span>
-              <span className="text-[12.5px] font-mono font-bold text-right" style={portalStyle({ color: GOLD })}>
+              <span data-kdv-sec className="text-[11px] font-bold" style={portalStyle({ color: GOLD })}>Toplam KDV</span>
+              <span data-kdv-ink className="text-[12.5px] font-mono font-bold text-right" style={portalStyle({ color: GOLD })}>
                 {toplam.toFixed(2).replace('.', ',')}
               </span>
             </div>
@@ -1121,6 +1142,7 @@ function KirilimTutarInput({ value, onCommit }: { value: number | null | undefin
       onFocus={() => setOdak(true)}
       onChange={(e) => { setTxt(e.target.value); onCommit(parse(e.target.value)); }}
       onBlur={() => { setOdak(false); setTxt(fmt(parse(txt))); }}
+      data-kdv-input="normal"
       className="w-full px-2 py-1 text-[12px] rounded text-right font-mono outline-none"
       style={portalStyle({ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(34,197,94,0.2)', color: '#22c55e' })}
     />
@@ -1545,6 +1567,8 @@ function LightboxModal({
   return createPortal(content, document.body);
 }
 
+const CHIP_TON: Record<string, string> = { '#b8a06f': 'notr', '#f59e0b': 'kehribar', '#22c55e': 'yesil', '#f43f5e': 'kirmizi', '#60a5fa': 'mavi', '#a855f7': 'mor' };
+
 function SummaryChip({
   label,
   count,
@@ -1566,6 +1590,8 @@ function SummaryChip({
       type="button"
       onClick={onClick}
       disabled={!clickable}
+      data-kdv-chip={CHIP_TON[color] || 'notr'}
+      data-aktif={active ? 'evet' : 'hayir'}
       className={`inline-flex items-center gap-1 text-[10.5px] font-bold tabular-nums px-2 py-0.5 rounded transition ${
         clickable ? 'hover:brightness-125 cursor-pointer' : 'cursor-default'
       }`}
@@ -1590,6 +1616,7 @@ function StatusTag({ status }: { status: string }) {
   const m = map[status] ?? map.NEEDS_REVIEW;
   return (
     <span
+      data-kdv-tag={map[status] ? status : 'NEEDS_REVIEW'}
       className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded"
       style={portalStyle({ background: m.color + '1a', color: m.color })}
     >

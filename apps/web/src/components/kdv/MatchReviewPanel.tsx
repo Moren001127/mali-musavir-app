@@ -56,6 +56,7 @@ export function MatchReviewPanel({
 
   return (
     <div
+      data-kdv-surface data-kdv-match
       className="rounded-2xl overflow-hidden"
       style={portalStyle({
         background: 'rgba(251,146,60,0.04)',
@@ -65,26 +66,27 @@ export function MatchReviewPanel({
       {/* Başlık */}
       <button
         onClick={() => setExpanded((v) => !v)}
+        data-kdv-match-head
         className="w-full flex items-center justify-between px-5 py-4 transition hover:bg-white/[0.02]"
         style={portalStyle({ borderBottom: expanded ? '1px solid rgba(251,146,60,0.15)' : 'none' })}
       >
         <div className="flex items-center gap-2.5">
-          <AlertTriangle size={14} style={portalStyle({ color: '#fb923c' })} />
+          <AlertTriangle size={14} data-kdv-vurgu="kehribar" style={portalStyle({ color: '#fb923c' })} />
           <div className="text-left">
             <h3 className="text-[13.5px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>
               Eşleşme İnceleme Paneli
             </h3>
-            <p className="text-[11px] mt-0.5" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
-              <span className="font-semibold" style={portalStyle({ color: '#fb923c' })}>{pending.length}</span> eşleşme kullanıcı kararı bekliyor —
+            <p data-kdv-sec className="text-[11px] mt-0.5" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
+              <span className="font-semibold" data-kdv-vurgu="kehribar" style={portalStyle({ color: '#fb923c' })}>{pending.length}</span> eşleşme kullanıcı kararı bekliyor —
               fatura ve Luca kaydı arasında belirsizlik var, onayla ya da reddet
             </p>
           </div>
         </div>
-        {expanded ? <ChevronDown size={16} style={portalStyle({ color: '#fb923c' })} /> : <ChevronRight size={16} style={portalStyle({ color: '#fb923c' })} />}
+        {expanded ? <ChevronDown size={16} data-kdv-vurgu="kehribar" style={portalStyle({ color: '#fb923c' })} /> : <ChevronRight size={16} data-kdv-vurgu="kehribar" style={portalStyle({ color: '#fb923c' })} />}
       </button>
 
       {expanded && (
-        <div className="divide-y" style={portalStyle({ borderColor: 'rgba(255,255,255,0.04)' })}>
+        <div data-kdv-match-liste className="divide-y" style={portalStyle({ borderColor: 'rgba(255,255,255,0.04)' })}>
           {pending.map((r) => (
             <MatchRow
               key={r.id}
@@ -214,24 +216,26 @@ function MatchRow({
         tabIndex={0}
         onClick={onToggle}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(); } }}
+        data-kdv-match-satir={open ? 'acik' : 'kapali'}
         className="w-full text-left px-5 py-3 transition hover:bg-white/[0.02] cursor-pointer"
       >
         <div className="flex items-center gap-3 flex-wrap">
           <span
+            data-kdv-tag="review"
             className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded"
             style={portalStyle({ background: 'rgba(251,146,60,0.15)', color: '#fb923c' })}
           >
             {statusLabel}
           </span>
-          <span className="text-[13px] font-semibold tabular-nums" style={portalStyle({ color: '#fafaf9' })}>
+          <span data-kdv-ink className="text-[13px] font-semibold tabular-nums" style={portalStyle({ color: '#fafaf9' })}>
             {lucaBelgeNo} / {faturaBelgeNo}
           </span>
           {scorePct && (
-            <span className="text-[11px] tabular-nums" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
+            <span data-kdv-muted className="text-[11px] tabular-nums" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
               skor {scorePct}
             </span>
           )}
-          <span className="text-[11.5px] ml-auto" style={portalStyle({ color: 'rgba(250,250,249,0.6)' })}>
+          <span data-kdv-sec className="text-[11.5px] ml-auto" style={portalStyle({ color: 'rgba(250,250,249,0.6)' })}>
             {reasons.length > 0 ? reasons.join(' · ') : 'Alan farkı var'}
           </span>
           {r.image?.id && (
@@ -241,6 +245,7 @@ function MatchRow({
                 e.stopPropagation();
                 window.dispatchEvent(new CustomEvent('kdv-goto-ocr', { detail: { imageId: r.image.id } }));
               }}
+              data-kdv-btn="mavi"
               className="text-[10.5px] font-semibold flex items-center gap-1 px-2.5 py-1 rounded-md"
               style={portalStyle({ background: 'rgba(96,165,250,0.12)', color: '#60a5fa', border: '1px solid rgba(96,165,250,0.3)' })}
               title="Bu belgeyi OCR Teyit Paneli'nde aç"
@@ -248,15 +253,15 @@ function MatchRow({
               <FileText size={11} /> OCR'da aç
             </button>
           )}
-          {open ? <ChevronDown size={14} style={portalStyle({ color: 'rgba(250,250,249,0.4)' })} /> : <ChevronRight size={14} style={portalStyle({ color: 'rgba(250,250,249,0.4)' })} />}
+          {open ? <ChevronDown size={14} data-kdv-muted style={portalStyle({ color: 'rgba(250,250,249,0.4)' })} /> : <ChevronRight size={14} data-kdv-muted style={portalStyle({ color: 'rgba(250,250,249,0.4)' })} />}
         </div>
       </div>
 
       {open && (
         <div className="px-5 pb-4 grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Luca tarafı */}
-          <div className="rounded-lg p-3" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' })}>
-            <div className="text-[10px] font-bold uppercase tracking-wider mb-2" style={portalStyle({ color: GOLD })}>Luca Kaydı</div>
+          <div data-kdv-match-kutu="luca" className="rounded-lg p-3" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' })}>
+            <div data-kdv-etiket="luca" className="text-[10px] font-bold uppercase tracking-wider mb-2" style={portalStyle({ color: GOLD })}>Luca Kaydı</div>
             <Row label="Belge No" value={lucaBelgeNo} />
             <Row label="Tarih" value={lucaTarih} />
             <Row label="KDV Oranı" value={lucaKdvOrani} />
@@ -264,14 +269,15 @@ function MatchRow({
           </div>
 
           {/* Fatura tarafı — görsel önizlemeli */}
-          <div className="rounded-lg p-3" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' })}>
+          <div data-kdv-match-kutu="fatura" className="rounded-lg p-3" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' })}>
             <div className="flex items-center justify-between mb-2">
-              <div className="text-[10px] font-bold uppercase tracking-wider" style={portalStyle({ color: '#a855f7' })}>Fatura / Görsel</div>
+              <div data-kdv-etiket="fatura" className="text-[10px] font-bold uppercase tracking-wider" style={portalStyle({ color: '#a855f7' })}>Fatura / Görsel</div>
               {imageUrl && !isXmlFile && (
                 <button
                   type="button"
                   onPointerDown={(e) => e.stopPropagation()}
                   onClick={openLightbox}
+                  data-kdv-btn="mor"
                   className="text-[10px] font-semibold flex items-center gap-1 px-2 py-0.5 rounded"
                   style={portalStyle({ background: 'rgba(168,85,247,0.1)', color: '#a855f7', border: '1px solid rgba(168,85,247,0.25)' })}
                 >
@@ -283,7 +289,7 @@ function MatchRow({
             {/* Görsel önizleme — XML e-faturada da BELGE GÖSTERİLİR (Drive yedeği).
                 XML notu yalnız bilgi amaçlı; görselin yerini ALMAZ. */}
             {isXmlFile && (
-              <div className="mb-2 flex items-center gap-2 px-3 py-2 rounded" style={portalStyle({ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.2)' })}>
+              <div data-kdv-kutu="yesil" className="mb-2 flex items-center gap-2 px-3 py-2 rounded" style={portalStyle({ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.2)' })}>
                 <FileText size={14} style={portalStyle({ color: '#22c55e' })} />
                 <span className="text-[11px]" style={portalStyle({ color: '#22c55e' })}>
                   XML e-Fatura — tutarlar XML'den doğrudan okundu (OCR yok)
@@ -292,6 +298,7 @@ function MatchRow({
             )}
             {imageUrl ? (
               <div
+                data-kdv-match-gorsel
                 className="mb-3 rounded overflow-hidden cursor-zoom-in"
                 style={portalStyle({ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.05)', maxHeight: 200 })}
                 onClick={openLightbox}
@@ -305,7 +312,7 @@ function MatchRow({
                 />
               </div>
             ) : open && r.image?.id ? (
-              <div className="mb-3 flex items-center justify-center rounded" style={portalStyle({ height: 80, background: 'rgba(0,0,0,0.2)', border: '1px dashed rgba(255,255,255,0.1)' })}>
+              <div data-kdv-kutu="bos" className="mb-3 flex items-center justify-center rounded" style={portalStyle({ height: 80, background: 'rgba(0,0,0,0.2)', border: '1px dashed rgba(255,255,255,0.1)' })}>
                 <Loader2 size={16} className="animate-spin" style={portalStyle({ color: GOLD })} />
               </div>
             ) : null}
@@ -315,9 +322,9 @@ function MatchRow({
             <Row label="Tarih" value={faturaTarih} highlight={isLikelyOcrDateMisread(lucaTarih, faturaTarih)} />
             <Row label="KDV" value={faturaKdv} />
             {hasTevkifat && (
-              <div className="mt-2 rounded-md px-2.5 py-2" style={portalStyle({ background: 'rgba(251,146,60,0.08)', border: '1px solid rgba(251,146,60,0.22)' })}>
+              <div data-kdv-kutu="kehribar" className="mt-2 rounded-md px-2.5 py-2" style={portalStyle({ background: 'rgba(251,146,60,0.08)', border: '1px solid rgba(251,146,60,0.22)' })}>
                 <div className="flex items-center justify-between gap-2 text-[11px]">
-                  <span className="font-bold uppercase tracking-wider" style={portalStyle({ color: '#fb923c' })}>Tevkifatlı</span>
+                  <span className="font-bold uppercase tracking-wider" data-kdv-vurgu="kehribar" style={portalStyle({ color: '#fb923c' })}>Tevkifatlı</span>
                   <span className="font-mono font-semibold" style={portalStyle({ color: '#fafaf9' })}>
                     Tevkifat {fmtMoney(faturaTevkifat)}
                   </span>
@@ -331,7 +338,7 @@ function MatchRow({
               <KdvBreakdownSummary rows={faturaBreakdown} lucaRate={r.kdvRecord?.kdvOrani} />
             )}
             {isLikelyOcrDateMisread(lucaTarih, faturaTarih) && (
-              <p className="text-[10.5px] mt-2 px-2 py-1.5 rounded" style={portalStyle({ background: 'rgba(251,146,60,0.1)', color: '#fb923c', border: '1px solid rgba(251,146,60,0.25)' })}>
+              <p data-kdv-kutu="kehribar" className="text-[10.5px] mt-2 px-2 py-1.5 rounded" style={portalStyle({ background: 'rgba(251,146,60,0.1)', color: '#fb923c', border: '1px solid rgba(251,146,60,0.25)' })}>
                 ⚠ OCR muhtemelen yıl hanesini yanlış okudu ({lucaTarih} vs {faturaTarih}) — "6"↔"4" / "0"↔"8" gibi benzer rakamlar. Luca tarihi doğruysa Onayla.
               </p>
             )}
@@ -345,6 +352,7 @@ function MatchRow({
             <button
               onClick={onConfirm}
               disabled={loading}
+              data-kdv-btn="yesil-dolu"
               className="inline-flex items-center gap-2 px-4 py-2 text-[13px] font-semibold rounded-lg disabled:opacity-50"
               style={portalStyle({
                 background: 'linear-gradient(135deg, #22c55e, #16a34a)',
@@ -357,6 +365,7 @@ function MatchRow({
             <button
               onClick={onReject}
               disabled={loading}
+              data-kdv-btn="tehlike"
               className="inline-flex items-center gap-2 px-4 py-2 text-[13px] font-semibold rounded-lg disabled:opacity-50"
               style={portalStyle({
                 background: 'rgba(244,63,94,0.12)',
@@ -367,7 +376,7 @@ function MatchRow({
               <XCircle size={14} />
               Reddet (eşleşme yanlış)
             </button>
-            <p className="text-[10.5px] ml-2" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>
+            <p data-kdv-muted className="text-[10.5px] ml-2" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>
               Onay = doğru eşleşme; Reddet = ayrı kayıtlar, her biri tekil kalır
             </p>
           </div>
@@ -380,8 +389,9 @@ function MatchRow({
 function Row({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
   return (
     <div className="flex items-start gap-2 mb-1 text-[12px]">
-      <span className="uppercase tracking-wider font-semibold" style={portalStyle({ color: 'rgba(250,250,249,0.45)', minWidth: 72, fontSize: 10 })}>{label}</span>
+      <span data-kdv-row-label className="uppercase tracking-wider font-semibold" style={portalStyle({ color: 'rgba(250,250,249,0.45)', minWidth: 72, fontSize: 10 })}>{label}</span>
       <span
+        data-kdv-row-value={highlight ? 'vurgu' : 'normal'}
         className="flex-1 break-words"
         style={portalStyle({
           color: highlight ? '#fb923c' : '#fafaf9',
@@ -404,10 +414,10 @@ function KdvBreakdownSummary({
   const expectedRate = lucaRate != null ? Number(lucaRate) : null;
   const total = rows.reduce((sum, r) => sum + (Number(r.tutar) || 0), 0);
   return (
-    <div className="mt-2 rounded-md px-2.5 py-2" style={portalStyle({ background: 'rgba(184,160,111,0.06)', border: '1px solid rgba(184,160,111,0.18)' })}>
+    <div data-kdv-kutu="notr" className="mt-2 rounded-md px-2.5 py-2" style={portalStyle({ background: 'rgba(184,160,111,0.06)', border: '1px solid rgba(184,160,111,0.18)' })}>
       <div className="flex items-center justify-between gap-2 mb-1.5">
-        <span className="text-[10px] font-bold uppercase tracking-wider" style={portalStyle({ color: GOLD })}>KDV Kırılımı</span>
-        <span className="text-[10.5px] font-mono font-semibold" style={portalStyle({ color: GOLD })}>{fmtNumber(total)}</span>
+        <span data-kdv-etiket className="text-[10px] font-bold uppercase tracking-wider" style={portalStyle({ color: GOLD })}>KDV Kırılımı</span>
+        <span data-kdv-ink className="text-[10.5px] font-mono font-semibold" style={portalStyle({ color: GOLD })}>{fmtNumber(total)}</span>
       </div>
       <div className="flex flex-wrap gap-1.5">
         {rows.map((row, idx) => {
@@ -415,6 +425,7 @@ function KdvBreakdownSummary({
           return (
             <span
               key={`${row.oran}-${idx}`}
+              data-kdv-chip={rateMatches ? 'yesil' : 'notr'}
               className="inline-flex items-center gap-1 rounded px-2 py-1 text-[10.5px] font-semibold"
               style={portalStyle({
                 background: rateMatches ? 'rgba(34,197,94,0.12)' : 'rgba(255,255,255,0.04)',
@@ -429,7 +440,7 @@ function KdvBreakdownSummary({
         })}
       </div>
       {expectedRate != null && !rows.some((row) => Math.abs(Number(row.oran) - expectedRate) < 0.5) && (
-        <p className="mt-1.5 text-[10.5px]" style={portalStyle({ color: '#fb923c' })}>
+        <p data-kdv-vurgu="kehribar" className="mt-1.5 text-[10.5px]" style={portalStyle({ color: '#fb923c' })}>
           LUCA bu satırda %{expectedRate.toLocaleString('tr-TR')} bekliyor; faturadaki kırılımda bu oran görünmüyor.
         </p>
       )}

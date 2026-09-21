@@ -45,27 +45,27 @@ export function BeyanSatiri({
   const epostaEngel = gonderimEngeli(row, 'EMAIL');
 
   return (
-    <tr style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.055)', background: secili ? 'rgba(212,184,118,0.05)' : undefined })}>
+    <tr data-beyan-satir data-secili={secili ? 'evet' : 'hayir'} style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.055)', background: secili ? 'rgba(212,184,118,0.05)' : undefined })}>
       <td className="px-3 py-2.5">
         <input type="checkbox" checked={secili} onChange={(e) => onSecim(e.target.checked)} aria-label="Kaydı seç" />
       </td>
       <td className="px-3 py-2.5 overflow-hidden">
         <button type="button" onClick={onMukellefSec} className="block w-full min-w-0 text-left" title="Bu mükellefe süz">
-          <div className="truncate font-semibold" style={portalStyle({ color: METIN })}>{beyanKaydiMukellefAdi(row)}</div>
-          <div className="mt-0.5 font-mono text-[11.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.38)' })}>{row.taxpayer?.taxNumber || '—'}</div>
+          <div data-beyan-ad className="truncate font-semibold" style={portalStyle({ color: METIN })}>{beyanKaydiMukellefAdi(row)}</div>
+          <div data-beyan-vkn className="mt-0.5 font-mono text-[11.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.38)' })}>{row.taxpayer?.taxNumber || '—'}</div>
         </button>
       </td>
-      <td className="px-3 py-2.5 whitespace-nowrap font-semibold tabular-nums" style={portalStyle({ color: METIN })}>{fmtDonemKisa(row.donem)}</td>
+      <td data-beyan-metin className="px-3 py-2.5 whitespace-nowrap font-semibold tabular-nums" style={portalStyle({ color: METIN })}>{fmtDonemKisa(row.donem)}</td>
       <td className="px-3 py-2.5">
-        <div className="font-semibold" style={portalStyle({ color: METIN })}>{declarationTypeCode(row)}</div>
-        <div className="mt-0.5 text-[11px]" style={portalStyle({ color: IKINCIL })}>{declarationTypeLabel(row)}</div>
+        <div data-beyan-metin className="font-semibold" style={portalStyle({ color: METIN })}>{declarationTypeCode(row)}</div>
+        <div data-beyan-alt className="mt-0.5 text-[11px]" style={portalStyle({ color: IKINCIL })}>{declarationTypeLabel(row)}</div>
       </td>
       <td className="px-3 py-2.5">
-        <span className="text-[12px] font-semibold" style={portalStyle({ color: mahiyet === 'DUZELTME' ? '#fcd34d' : 'rgba(250,250,249,0.7)' })}>
+        <span data-beyan-mahiyet={mahiyet === 'DUZELTME' ? 'duzeltme' : 'asil'} className="text-[12px] font-semibold" style={portalStyle({ color: mahiyet === 'DUZELTME' ? '#fcd34d' : 'rgba(250,250,249,0.7)' })}>
           {mahiyet === 'DUZELTME' ? 'DÜZELTME' : 'ASIL'}
         </span>
       </td>
-      <td className="px-3 py-2.5 whitespace-nowrap text-right font-semibold tabular-nums" style={portalStyle({ color: row.tahakkukTutari != null ? METIN : tahakkukVar ? '#fcd34d' : IKINCIL })}>
+      <td data-beyan-tutar={row.tahakkukTutari != null ? 'var' : tahakkukVar ? 'okunamadi' : 'yok'} className="px-3 py-2.5 whitespace-nowrap text-right font-semibold tabular-nums" style={portalStyle({ color: row.tahakkukTutari != null ? METIN : tahakkukVar ? '#fcd34d' : IKINCIL })}>
         {row.tahakkukTutari != null ? fmtCurrency(row.tahakkukTutari) : tahakkukVar ? <span title="Tahakkuk fişinden tutar okunamadı">okunamadı</span> : '—'}
       </td>
       <td className="px-3 py-2.5 whitespace-nowrap overflow-hidden">
@@ -112,7 +112,7 @@ function BelgeCipi({ harf, etiket, var: mevcut, goruntulendi, onClick }: { harf:
   const taban = 'inline-flex h-7 w-7 items-center justify-center rounded-[7px] text-[12px] font-extrabold leading-none';
   if (!mevcut) {
     return (
-      <span className={taban} title={`${etiket} PDF yok`} aria-label={`${etiket} yok`}
+      <span data-beyan-belge="yok" className={taban} title={`${etiket} PDF yok`} aria-label={`${etiket} yok`}
         style={portalStyle({ border: '1px dashed rgba(255,255,255,0.14)', color: 'rgba(250,250,249,0.28)' })}>
         {harf}
       </span>
@@ -122,6 +122,7 @@ function BelgeCipi({ harf, etiket, var: mevcut, goruntulendi, onClick }: { harf:
     <button type="button" onClick={onClick}
       title={goruntulendi ? `${etiket} — görüntülendi (yeniden aç)` : `${etiket} PDF önizle`}
       aria-label={`${etiket} PDF önizle`}
+      data-beyan-belge={goruntulendi ? 'goruldu' : 'yeni'}
       className={`${taban} transition hover:brightness-125`}
       style={portalStyle(goruntulendi
         ? { background: 'rgba(92,191,138,0.14)', border: '1px solid rgba(92,191,138,0.45)', color: '#5cbf8a' }
@@ -154,6 +155,7 @@ function EylemDugmesi({
       aria-label={etiket}
       onClick={onClick}
       disabled={disabled}
+      data-beyan-eylem={ton}
       className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px]"
       style={portalStyle({
         background: c.background,

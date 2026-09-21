@@ -1,5 +1,6 @@
 'use client';
 import '@/app/(panel)/panel/ajanlar/_components/operations-white.css';
+import '@/components/portal-automation/portal-automation-white.css';
 
 import { portalStyle } from '@/lib/portal-theme';
 
@@ -9,9 +10,9 @@ import ETebligatModule from '@/components/portal-automation/ETebligatModule';
 
 export default function TebligatAutomationPage() {
   return (
-    <div data-ops-page="ajanlar" className="space-y-4 max-w-7xl">
-      {/* Header — Fiş Yazdırma imzası: kart + üst renk şeridi + radial parıltı + degrade ikon kutusu */}
-      <div data-ops-header="true"
+    <div data-ops-page="ajanlar" data-pa-page="tebligat" className="space-y-4 max-w-7xl">
+      {/* Başlık — koyu temada (A) kart + altın şerit; beyaz temada (D) portal-automation-white.css sade sayfa başlığına çevirir */}
+      <div data-pa-header
         className="relative overflow-hidden rounded-2xl border p-5"
         style={portalStyle({
           borderColor: 'rgba(255,255,255,0.06)',
@@ -20,15 +21,17 @@ export default function TebligatAutomationPage() {
         })}
       >
         <div
+          data-pa-header-line
           className="absolute inset-x-0 top-0 h-1"
           style={portalStyle({ background: 'linear-gradient(90deg, #8b7649, #b8a06f, #d4b876, #e7cf95, #d4b876, #b8a06f)' })}
         />
-        <div className="flex items-center gap-2.5 mb-3">
+        <div data-pa-eyebrow className="flex items-center gap-2.5 mb-3">
           <span className="w-[26px] h-px" style={portalStyle({ background: '#d4b876' })} />
           <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={portalStyle({ color: '#b8a06f' })}>GİB · e-Tebligat</span>
         </div>
-        <div className="flex items-center gap-3.5">
+        <div data-pa-header-body className="flex items-center gap-3.5">
           <span
+            data-pa-header-icon
             className="grid place-items-center rounded-xl flex-shrink-0"
             style={portalStyle({ width: 46, height: 46, background: 'linear-gradient(135deg, #d4b876, #b8a06f)', boxShadow: '0 8px 22px rgba(212,184,118,0.32)' })}
           >

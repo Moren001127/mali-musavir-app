@@ -1,5 +1,6 @@
 'use client';
 import { portalStyle } from '@/lib/portal-theme';
+import './portal-automation-white.css';
 
 
 import { useMemo, useState } from 'react';
@@ -124,8 +125,8 @@ export default function PortalAutomationPanel({ focus = 'all' }: { focus?: Focus
   const needsTaxpayerTarget = showTebligat || showSgk;
 
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+    <div data-pa-module="panel" className="space-y-4">
+      <div data-pa-kpi-grid className="grid grid-cols-2 lg:grid-cols-6 gap-3">
         <Metric icon={Clock} label="Gece akisi" value={summary?.nightly?.time || '02:15'} sub="Her gece otomatik" />
         <Metric icon={ServerCog} label="Sunucu runner" value={summary?.runner?.enabled ? 'Aktif' : 'Pasif'} sub={summary?.runner?.includeNightly ? 'Gece + manuel' : 'Manuel'} danger={!summary?.runner?.enabled} />
         <Metric icon={FileCheck2} label="e-Beyanname" value={summary?.credentials.eBeyannameReady ? 'Hazir' : 'Sifre yok'} sub="Mali musavir hesabi" danger={!summary?.credentials.eBeyannameReady} />
@@ -135,6 +136,7 @@ export default function PortalAutomationPanel({ focus = 'all' }: { focus?: Focus
       </div>
 
       <div
+        data-pa-card
         className="rounded-xl p-4 space-y-4"
         style={portalStyle({ background: 'rgba(255,255,255,0.025)', border: `1px solid ${LINE}` })}
       >
@@ -148,6 +150,7 @@ export default function PortalAutomationPanel({ focus = 'all' }: { focus?: Focus
           <div className="flex items-center gap-2 flex-wrap justify-end">
             <Link
               href="/panel/ayarlar"
+              data-pa-btn="ikincil"
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-[9px] text-[12.5px] font-semibold"
               style={portalStyle({ background: 'rgba(255,255,255,.04)', border: `1px solid ${LINE}`, color: 'rgba(250,250,249,.78)' })}
             >
@@ -156,6 +159,7 @@ export default function PortalAutomationPanel({ focus = 'all' }: { focus?: Focus
             {selectedTaxpayer !== '__ALL__' && (
               <Link
                 href={`/panel/mukellefler/${selectedTaxpayer}`}
+                data-pa-btn="ikincil"
                 className="inline-flex items-center gap-1.5 px-3 py-2 rounded-[9px] text-[12.5px] font-semibold"
                 style={portalStyle({ background: 'rgba(255,255,255,.04)', border: `1px solid ${LINE}`, color: 'rgba(250,250,249,.78)' })}
               >
@@ -166,6 +170,7 @@ export default function PortalAutomationPanel({ focus = 'all' }: { focus?: Focus
               type="button"
               disabled={nightlyMut.isPending}
               onClick={() => nightlyMut.mutate()}
+              data-pa-btn="birincil"
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-[9px] text-[12.5px] font-bold disabled:opacity-50"
               style={portalStyle({ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' })}
             >
@@ -239,14 +244,14 @@ export default function PortalAutomationPanel({ focus = 'all' }: { focus?: Focus
 
 function Metric({ icon: Icon, label, value, sub, danger }: { icon: any; label: string; value: string | number; sub: string; danger?: boolean }) {
   return (
-    <div className="rounded-xl p-3 flex items-center gap-3" style={portalStyle({ background: 'rgba(255,255,255,.025)', border: `1px solid ${danger ? 'rgba(239,68,68,.25)' : LINE}` })}>
-      <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={portalStyle({ background: danger ? 'rgba(239,68,68,.10)' : 'rgba(212,184,118,.10)', color: danger ? '#ef4444' : GOLD })}>
+    <div data-pa-kpi={danger ? 'kirmizi' : 'civit'} data-pa-kpi-yatay className="rounded-xl p-3 flex items-center gap-3" style={portalStyle({ background: 'rgba(255,255,255,.025)', border: `1px solid ${danger ? 'rgba(239,68,68,.25)' : LINE}` })}>
+      <div data-pa-kpi-icon className="w-9 h-9 rounded-lg flex items-center justify-center" style={portalStyle({ background: danger ? 'rgba(239,68,68,.10)' : 'rgba(212,184,118,.10)', color: danger ? '#ef4444' : GOLD })}>
         <Icon size={17} />
       </div>
       <div className="min-w-0">
-        <div className="text-[10.5px] uppercase tracking-[.12em]" style={portalStyle({ color: 'rgba(250,250,249,.45)' })}>{label}</div>
-        <div className="text-[17px] font-semibold tabular-nums truncate" style={portalStyle({ color: danger ? '#fca5a5' : '#fafaf9' })}>{value}</div>
-        <div className="text-[11px] truncate" style={portalStyle({ color: 'rgba(250,250,249,.42)' })}>{sub}</div>
+        <div data-pa-kpi-label className="text-[10.5px] uppercase tracking-[.12em]" style={portalStyle({ color: 'rgba(250,250,249,.45)' })}>{label}</div>
+        <div data-pa-kpi-value className="text-[17px] font-semibold tabular-nums truncate" style={portalStyle({ color: danger ? '#fca5a5' : '#fafaf9' })}>{value}</div>
+        <div data-pa-kpi-sub className="text-[11px] truncate" style={portalStyle({ color: 'rgba(250,250,249,.42)' })}>{sub}</div>
       </div>
     </div>
   );
@@ -262,6 +267,7 @@ function DateField({ label, value, onChange }: { label: string; value: string; o
         type="date"
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        data-pa-field
         className="w-full h-10 rounded-[9px] px-3 text-[13px] font-semibold outline-none"
         style={portalStyle({
           background: 'rgba(0,0,0,.18)',
@@ -280,6 +286,7 @@ function ActionButton({ icon: Icon, title, desc, loading, onClick }: { icon: any
       type="button"
       disabled={loading}
       onClick={onClick}
+      data-pa-action
       className="text-left rounded-xl p-3 transition-all disabled:opacity-50"
       style={portalStyle({ background: 'rgba(255,255,255,.035)', border: `1px solid ${LINE}`, color: '#fafaf9' })}
     >
@@ -294,8 +301,8 @@ function ActionButton({ icon: Icon, title, desc, loading, onClick }: { icon: any
 
 function JobList({ jobs, isLoading }: { jobs: PortalJob[]; isLoading: boolean }) {
   return (
-    <div className="rounded-xl overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,.025)', border: `1px solid ${LINE}` })}>
-      <div className="px-4 py-3 flex items-center justify-between" style={portalStyle({ borderBottom: `1px solid ${LINE}` })}>
+    <div data-pa-card className="rounded-xl overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,.025)', border: `1px solid ${LINE}` })}>
+      <div data-pa-card-head className="px-4 py-3 flex items-center justify-between" style={portalStyle({ borderBottom: `1px solid ${LINE}` })}>
         <h3 className="text-[13.5px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>Son isler</h3>
         {isLoading && <Loader2 size={14} className="animate-spin" style={portalStyle({ color: GOLD })} />}
       </div>
@@ -335,8 +342,8 @@ function JobList({ jobs, isLoading }: { jobs: PortalJob[]; isLoading: boolean })
 
 function DocumentList({ docs }: { docs: any[] }) {
   return (
-    <div className="rounded-xl overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,.025)', border: `1px solid ${LINE}` })}>
-      <div className="px-4 py-3" style={portalStyle({ borderBottom: `1px solid ${LINE}` })}>
+    <div data-pa-card className="rounded-xl overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,.025)', border: `1px solid ${LINE}` })}>
+      <div data-pa-card-head className="px-4 py-3" style={portalStyle({ borderBottom: `1px solid ${LINE}` })}>
         <h3 className="text-[13.5px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>Son indirilen belgeler</h3>
       </div>
       <div className="divide-y" style={portalStyle({ borderColor: LINE })}>

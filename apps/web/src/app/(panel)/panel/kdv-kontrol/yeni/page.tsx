@@ -62,12 +62,13 @@ export default function YeniKdvKontrolPage() {
 
   return (
     <div className="space-y-5 max-w-xl">
-      <div data-portal-page-header className="flex items-center gap-3">
+      {/* Beyaz tema: bant/serif yok — sade sayfa başlığı (bilgi/BEYAZ-TEMA-TASARIM-DILI.md) */}
+      <div className="flex items-center gap-3">
         <Link href="/panel/kdv-kontrol" className="p-2 rounded-lg hover:bg-gray-100">
           <ArrowLeft size={18} className="text-gray-500" />
         </Link>
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Yeni KDV / İşletme Kontrolü</h1>
+          <h1 className="text-[22px] font-bold text-gray-900" style={{ fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', letterSpacing: '-0.01em' }}>Yeni KDV / İşletme Kontrolü</h1>
           <p className="text-sm text-gray-500">Mükellef, dönem ve kontrol türü seçin</p>
         </div>
       </div>

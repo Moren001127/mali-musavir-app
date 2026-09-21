@@ -1,5 +1,6 @@
 'use client';
 import { portalStyle } from '@/lib/portal-theme';
+import './portal-automation-white.css';
 
 
 import { useEffect, useMemo, useState } from 'react';
@@ -77,7 +78,7 @@ export function AdvisorPortalCredentialCard() {
   );
 
   return (
-    <section className="rounded-lg border bg-[#0f0d0b]/80 p-5" style={portalStyle({ borderColor: LINE })}>
+    <section data-pa-cred="advisor" className="rounded-lg border bg-[#0f0d0b]/80 p-5" style={portalStyle({ borderColor: LINE })}>
       <CardHeader
         icon={KeyRound}
         title="Mali Müşavir e-Beyanname Şifresi"
@@ -110,7 +111,7 @@ export function TaxpayerPortalCredentialsCard({ taxpayerId, provider }: { taxpay
   }
 
   return (
-    <section>
+    <section data-pa-cred="taxpayer">
       <CardHeader
         icon={ShieldCheck}
         accent="steel"
@@ -291,16 +292,16 @@ function CredentialEditor({
 
   return (
     <>
-      <div className="rounded-xl border p-4" style={portalStyle({ background: compact ? 'rgba(255,255,255,0.025)' : SOFT, borderColor: LINE })}>
+      <div data-pa-cred-card className="rounded-xl border p-4" style={portalStyle({ background: compact ? 'rgba(255,255,255,0.025)' : SOFT, borderColor: LINE })}>
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
           <h3 className="text-sm font-semibold" style={portalStyle({ color: TEXT })}>{PROVIDER_TITLES[provider]}</h3>
-          <p className="mt-0.5 text-[11.5px]" style={portalStyle({ color: credential ? '#86efac' : MUTED })}>
+          <p data-pa-cred-durum={credential ? 'var' : 'yok'} className="mt-0.5 text-[11.5px]" style={portalStyle({ color: credential ? '#86efac' : MUTED })}>
             {credential ? 'Kayıtlı' : 'Kayıt yok'}
           </p>
         </div>
         {credential?.lastSuccessAt && (
-          <span className="rounded-md border px-2 py-1 text-[10.5px] font-semibold" style={portalStyle({ borderColor: 'rgba(134,239,172,0.25)', background: 'rgba(34,197,94,0.10)', color: '#86efac' })}>
+          <span data-pa-hap="yesil" className="rounded-md border px-2 py-1 text-[10.5px] font-semibold" style={portalStyle({ borderColor: 'rgba(134,239,172,0.25)', background: 'rgba(34,197,94,0.10)', color: '#86efac' })}>
             Çalışıyor
           </span>
         )}
@@ -362,6 +363,7 @@ function CredentialEditor({
         type="button"
         disabled={disabled}
         onClick={() => saveMut.mutate()}
+        data-pa-btn="birincil"
         className="mt-4 inline-flex h-9 items-center gap-1.5 rounded-lg px-4 text-[12.5px] font-bold transition disabled:opacity-50"
         style={portalStyle({ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DEEP})`, color: '#0f0d0b' })}
       >
@@ -406,6 +408,7 @@ function CredentialValidationNoticeDialog({
       onClick={onClose}
     >
       <div
+        data-pa-modal="dogrulama"
         className="w-full max-w-[520px] overflow-hidden rounded-[8px]"
         style={portalStyle({
           background: 'linear-gradient(180deg, rgba(25,24,22,0.98), rgba(10,10,10,0.98))',
@@ -414,9 +417,10 @@ function CredentialValidationNoticeDialog({
         })}
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="flex items-start justify-between gap-3 px-5 py-4" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.08)' })}>
+        <div data-pa-modal-head className="flex items-start justify-between gap-3 px-5 py-4" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.08)' })}>
           <div className="flex items-start gap-3">
             <div
+              data-pa-uyari-ikon
               className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[8px]"
               style={portalStyle({ background: 'rgba(239,68,68,0.14)', border: '1px solid rgba(248,113,113,0.28)', color: '#f87171' })}
             >
@@ -444,6 +448,7 @@ function CredentialValidationNoticeDialog({
 
         <div className="px-5 py-4">
           <div
+            data-pa-uyari
             className="rounded-[8px] px-3.5 py-3 text-[13px] font-semibold leading-relaxed"
             style={portalStyle({
               background: 'rgba(239,68,68,0.09)',
@@ -457,6 +462,7 @@ function CredentialValidationNoticeDialog({
             <button
               type="button"
               onClick={onClose}
+              data-pa-btn="birincil"
               className="inline-flex h-9 items-center gap-1.5 rounded-[8px] px-4 text-[12.5px] font-black transition hover:brightness-110"
               style={portalStyle({ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DEEP})`, color: '#0f0d0b' })}
             >
@@ -475,8 +481,8 @@ function CardHeader({ icon: Icon, title, subtitle, accent = 'gold' }: { icon: Re
   const aBg = accent === 'steel' ? STEEL_SF : 'rgba(212,184,118,0.09)';
   const aLine = accent === 'steel' ? STEEL_LN : LINE_GOLD;
   return (
-    <div className="mb-5 flex items-center gap-3">
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border" style={portalStyle({ borderColor: aLine, background: aBg, color: aColor })}>
+    <div data-pa-cred-head className="mb-5 flex items-center gap-3">
+      <div data-pa-cred-icon={accent} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border" style={portalStyle({ borderColor: aLine, background: aBg, color: aColor })}>
         <Icon size={18} />
       </div>
       <div className="min-w-0">
@@ -506,6 +512,7 @@ function TextInput({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
+        data-pa-field
         className="h-10 w-full rounded-lg border px-3 text-sm outline-none"
         style={portalStyle({ background: SOFT, borderColor: LINE, color: TEXT })}
       />
@@ -534,6 +541,7 @@ function PasswordInput({
           value={value}
           onChange={(event) => onChange(event.target.value)}
           placeholder={hasSaved ? 'Kayitli - degistirmek icin yaz' : ''}
+          data-pa-field
           className="h-10 w-full rounded-lg border px-3 pr-10 text-sm outline-none placeholder:text-transparent"
           style={portalStyle({ background: SOFT, borderColor: LINE, color: TEXT })}
         />
