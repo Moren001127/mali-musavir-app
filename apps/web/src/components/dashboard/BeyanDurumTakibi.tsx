@@ -126,9 +126,8 @@ export function BeyanDurumTakibi({
           <dl className="bd-tile-stats">
             <Sayac etiket="Toplam" deger={toplam.toplam} ton="total" />
             <Sayac etiket="Onaylanan" deger={toplam.onaylanan} ton="ok" />
-            <Sayac etiket="Bekleyen" deger={toplam.bekleyen} ton="wait" />
-            <Sayac etiket="Hatalı" deger={toplam.hatali} ton="err" />
-            <Sayac etiket="Kalan" deger={toplam.kalan} ton="left" wide />
+            <Sayac etiket="Kalan" deger={toplam.kalan} ton="left" />
+            <Sayac etiket="Bekleyen · Hatalı" deger={toplam.bekleyen + toplam.hatali} ton={toplam.hatali > 0 ? 'err' : 'wait'} />
           </dl>
         </aside>
 
@@ -175,6 +174,8 @@ function Sayac({ etiket, deger, ton, wide }: { etiket: string; deger: number; to
 function BeyanSatiri({ row, onNumberClick, onayLabel = 'onaylanan' }: { row: OzetRow; onNumberClick: (tip: BeyanTipi, filter: BeyanFilter) => void; onayLabel?: string }) {
   const { family, icon: Icon } = aile(row.beyanTipi);
   const d = durum(row);
+  // Bildirge ve E-Defter'de "bekleyen" / "hatalı" kavramı yok (Muzaffer Bey); diğerlerinde sıfırsa çip gösterilmez
+  const yardimci = row.beyanTipi === 'BILDIRGE' || row.beyanTipi === 'EDEFTER';
   const pct = Math.max(0, Math.min(100, row.yuzde));
   const pay = (v: number) => (row.toplam > 0 ? (v / row.toplam) * 100 : 0);
   const label = BEYAN_ETIKETLER[row.beyanTipi];
@@ -195,14 +196,14 @@ function BeyanSatiri({ row, onNumberClick, onayLabel = 'onaylanan' }: { row: Oze
         </div>
         <div className="bd-chips">
           <Cip deger={row.onaylanan} etiket={onayLabel} ton="ok" onClick={() => onNumberClick(row.beyanTipi, 'onaylanan')} />
-          <Cip deger={row.bekleyen} etiket="bekleyen" ton="wait" onClick={() => onNumberClick(row.beyanTipi, 'bekleyen')} />
-          <Cip deger={row.hatali} etiket="hatalı" ton="err" onClick={() => onNumberClick(row.beyanTipi, 'hatali')} />
+          {!yardimci && row.bekleyen > 0 && <Cip deger={row.bekleyen} etiket="bekleyen" ton="wait" onClick={() => onNumberClick(row.beyanTipi, 'bekleyen')} />}
+          {!yardimci && row.hatali > 0 && <Cip deger={row.hatali} etiket="hatalı" ton="err" onClick={() => onNumberClick(row.beyanTipi, 'hatali')} />}
           <Cip deger={row.kalan} etiket="kalan" ton="left" onClick={() => onNumberClick(row.beyanTipi, 'kalan')} />
         </div>
       </div>
       <div className="bd-row-status">
         <b className="bd-pct">%{pct}</b>
-        <span className="bd-status" data-state={d.key}>{d.label}</span>
+        {d.key === 'pending' ? <span className="bd-status-text">{d.label}</span> : <span className="bd-status" data-state={d.key}>{d.label}</span>}
       </div>
     </li>
   );
