@@ -80,7 +80,7 @@ export class BotEvalService {
   buildRetryPrompt(originalReply: string, reasons: string[], context: BotEvalContext, lastOutgoing: string[]): string {
     return [
       'Onceki WhatsApp cevabin kalite kontrolunden gecemedi.',
-      'Sadece mukellefe gidecek nihai cevabi yeniden yaz.',
+      'Sadece mukellefe gidecek nihai cevabi yeniden yaz. Cevabin disinda HICBIR SEY yazma: aciklama, gerekce, not, parantez ici yorum, "---" ayirici, "bu cevap onceki cevap yerine" gibi ifadeler YASAK (bunlar dogrudan musteriye gider).',
       'GERCEK BIR INSAN gibi, dogal ve sicak yaz; musterinin tonuna uy. Robotik/kurumsal kalip ("ilgili kisiye aktarildi", "kayda alindi") KULLANMA.',
       'En fazla 2-3 kisa cumle, markdown yok, kesin tarih/garanti taahhudu verme. Bot/yapay zeka oldugunu ima etme.',
       'Son cevaplari tekrar etme; ayni kaliplari kullanma.',

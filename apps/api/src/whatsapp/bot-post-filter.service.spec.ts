@@ -15,6 +15,20 @@ describe('WhatsAppBotPostFilterService', () => {
     expect(out).toContain('kalın');
   });
 
+  it('modelin cevap hakkındaki notunu keser (2026-09-21 canlı olay: --- *(Bu cevap önceki … yerine …)*)', () => {
+    const ham = ['Harika! Herhangi ihtiyacın olursa yine yazarsın bize, Eyüp Bey.', '', '---', '', '*(Bu cevap önceki "Tamam, sağol!" yerine; müşterinin mesajını (işleri bitirdim) doğru şekilde onaylarken, sıcak bir kapanış yapıyor.)*'].join(String.fromCharCode(10));
+    const out = svc.filterTaxpayerReply(ham, {});
+    expect(out).toContain('Eyüp Bey');
+    expect(out).not.toMatch(/Bu cevap|yerine|kapanış|---/);
+  });
+
+  it('parantezli açıklama ayırıcı olmadan da kesilir; gerçek parantez korunur', () => {
+    const ham2 = ['Beyannameniz verildi.', '', '(Not: bu cevap önceki cevap yerine daha sıcak bir tonda yazıldı.)'].join(String.fromCharCode(10));
+    expect(svc.filterTaxpayerReply(ham2, {})).not.toMatch(/Not:|yerine/);
+    const out = svc.filterTaxpayerReply('KDV beyannamesi (Ağustos) verildi, tahakkuk 12.500 TL.', {});
+    expect(out).toContain('(Ağustos)');
+  });
+
   it('boş girdide bile anlamlı (boş olmayan) cevap döner', () => {
     const out = svc.filterTaxpayerReply('', {});
     expect(out.trim().length).toBeGreaterThan(0);

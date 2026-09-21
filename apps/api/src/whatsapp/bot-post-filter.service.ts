@@ -167,6 +167,12 @@ export class WhatsAppBotPostFilterService {
       return t.trim() || 'Bir bakıp size döneyim.';
     }
 
+    // 0. Modelin KENDİ CEVABI HAKKINDAKİ NOTU sil (2026-09-21 canlı olay: kalite yeniden-deneme
+    //    cevabı "Harika! ... Eyüp Bey. --- *(Bu cevap önceki "Tamam, sağol!" yerine; ... sıcak bir
+    //    kapanış yapıyor.)*" hâlinde MÜŞTERİYE GİTTİ). Markdown temizliğinden ÖNCE: "---" ayırıcısı
+    //    sonrası ve parantez içi meta-yorum paragrafları atılır.
+    text = this.stripSelfCommentary(text);
+
     // 1. Code block + markdown formatting sil
     text = text
       .replace(/```[\s\S]*?```/g, '')
@@ -346,5 +352,30 @@ export class WhatsAppBotPostFilterService {
       .replace(/ş/g, 's')
       .replace(/ö/g, 'o')
       .replace(/ç/g, 'c');
+  }
+
+  /**
+   * Modelin cevabın altına düştüğü açıklama/gerekçe notunu keser. İki kalıp:
+   *   a) "---" / "***" yatay çizgiden sonrası (yalnız meta-yorum gibi görünüyorsa)
+   *   b) "(Bu cevap … )", "*(… önceki cevap … yerine …)*" gibi parantezli son paragraf
+   * Mükellefe giden metinde asla "cevap/önceki/yerine/ton/kapanış" gibi kendine-atıf olmamalı.
+   * (2026-09-21 canlı olay: kalite yeniden-deneme cevabına eklenen not müşteriye gitti.)
+   */
+  stripSelfCommentary(raw: string): string {
+    let text = String(raw || '');
+    const META = /\b(bu\s+cevap|[öo]nceki\s+cevap|cevab[ıi]m|yerine|kapan[ıi][şs]|tonu?na\s+uy|kalite\s+kontrol|m[üu][şs]terinin\s+mesaj[ıi]n[ıi]|not\s*:|a[çc][ıi]klama\s*:)/i;
+    // a) yatay çizgi ayırıcı: sonrası meta ise (ya da parantezle başlıyorsa) at
+    const parcalar = text.split(/\n\s*(?:-{3,}|\*{3,}|_{3,})\s*\n?/);
+    if (parcalar.length > 1) {
+      const sonrasi = parcalar.slice(1).join('\n').trim();
+      if (!sonrasi || META.test(sonrasi) || /^\*?\s*[([]/.test(sonrasi)) text = parcalar[0];
+    }
+    // b) sondaki parantezli meta paragraf(lar)
+    for (let i = 0; i < 3; i++) {
+      const m = text.match(/(?:^|\n)\s*\*?_?\s*[([]([^()[\]]*(?:[([][^()[\]]*[)\]][^()[\]]*)*)[)\]]\s*\*?_?\s*$/);
+      if (!m || m.index === undefined || !META.test(m[1])) break;
+      text = text.slice(0, m.index).trimEnd();
+    }
+    return text.trim();
   }
 }
