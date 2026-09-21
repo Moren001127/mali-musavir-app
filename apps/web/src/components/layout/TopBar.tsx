@@ -102,7 +102,7 @@ function TopbarTaxpayerPicker({ taxpayers }: { taxpayers: TopbarTaxpayer[] }) {
 
       {open && (
         <div
-          className="absolute left-0 top-[calc(100%+8px)] z-50 w-full overflow-hidden rounded-[12px] border"
+          className="absolute left-0 top-[calc(100%+8px)] z-50 w-[640px] max-w-[70vw] overflow-hidden rounded-[12px] border"
           style={ownedThemeStyle({
             background: 'rgba(13,13,12,0.98)',
             borderColor: 'rgba(212,184,118,0.24)',

@@ -63,8 +63,11 @@ html[data-theme='D'] [data-moren-owned='navigation'] img[src^='/brand/moren-logo
   filter: brightness(0) invert(1) !important;
 }
 
+/* Giriş sayfaları: altın logoyu süzgeçle laciverte boyamak daire içindeki "Mm" harflerini yutuyordu
+   (Muzaffer Bey, 2026-09-21). Artık orijinal lacivert logo (logo.jpg'den saydam PNG) doğrudan gösterilir. */
 html[data-theme='D'] [data-moren-owned='auth'] img[src^='/brand/moren-logo'] {
-  filter: brightness(0) saturate(100%) invert(16%) sepia(22%) saturate(1256%) hue-rotate(173deg) brightness(94%) contrast(94%) !important;
+  content: url('/brand/moren-logo-navy.png');
+  filter: drop-shadow(0 6px 18px rgba(14, 42, 88, 0.16)) !important;
 }
 
 html[data-theme='D'] [data-moren-owned] input::placeholder {
@@ -151,7 +154,7 @@ html[data-theme='D'] [data-moren-sidebar] {
 /* Muzaffer Bey (2026-09-21): "yazılar sola yaslı, şeritte lüzumsuz genişlik olmayacak" →
    224px (en uzun ad "Fatura İşleme Merkezi" yazı tipi yüklenince de sığar), ince yazı; grup başlıkları küçük büyük harf. */
 html[data-theme='D'] [data-moren-sidebar][data-collapsed='false'] {
-  width: 224px !important;
+  width: 210px !important; /* 2026-09-21 akşam: 224 → 210; en uzun ad (Fatura İşleme Merkezi) 186px'te bitiyor, sağda 38px boşluk kalıyordu */
 }
 
 /* Madde listesi girintisi ve madde iç boşlukları sıkı: uzun adlar (Fatura İşleme Merkezi) kesilmesin */

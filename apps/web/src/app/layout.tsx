@@ -19,11 +19,16 @@ export const metadata: Metadata = {
     title: 'Moren',
   },
   icons: {
+    // 2026-09-21: sekme simgesi eski siyah/altın logodan lacivert işarete (beyaz kare) geçti — ?v=2 önbelleği kırar
     icon: [
-      { url: '/icons/moren-pwa-192.png', sizes: '192x192', type: 'image/png' },
-      { url: '/icons/moren-pwa-512.png', sizes: '512x512', type: 'image/png' },
+      { url: '/favicon.ico?v=2', sizes: '48x48 32x32 16x16', type: 'image/x-icon' },
+      { url: '/icons/favicon-32.png?v=2', sizes: '32x32', type: 'image/png' },
+      { url: '/icons/favicon-48.png?v=2', sizes: '48x48', type: 'image/png' },
+      { url: '/icons/moren-pwa-192.png?v=2', sizes: '192x192', type: 'image/png' },
+      { url: '/icons/moren-pwa-512.png?v=2', sizes: '512x512', type: 'image/png' },
     ],
-    apple: [{ url: '/icons/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
+    shortcut: [{ url: '/favicon.ico?v=2' }],
+    apple: [{ url: '/icons/apple-touch-icon.png?v=2', sizes: '180x180', type: 'image/png' }],
   },
   formatDetection: {
     telephone: false,
@@ -31,7 +36,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: '#d4b876',
+  themeColor: '#0e2a58',
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
