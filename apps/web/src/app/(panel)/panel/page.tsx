@@ -1086,7 +1086,12 @@ export default function DashboardPage() {
 
       <OfisPanoramasi {...panoramaPeriod} />
 
+      {/* Bloklar arası ayraç (2026-09-22): nefes + sönen çizgi + blok renginde işaret; stil dashboard-white.css */}
+      <div data-dashboard-divider data-tone="kursuni" aria-hidden="true" />
+
       <ToplubeyannameTable {...panoramaPeriod} />
+
+      <div data-dashboard-divider data-tone="mor" aria-hidden="true" />
 
       <MaliTakvim />
       </div>

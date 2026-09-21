@@ -262,3 +262,34 @@ html[data-theme='D'] [data-dashboard-section-title][data-tone='rose'] [data-dash
 
 html[data-theme='D'] [data-dashboard-section-text] { font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-weight: 700; letter-spacing: -0.005em; }
 
+
+/* ── 2026-09-22 Büyük bloklar arası NEFES + AYRAÇ (Muzaffer Bey: "tablolar arası boşluk neredeyse hiç yok") ──
+   Sayaçlar → panorama 24px; panorama → Beyanname Durum Takibi → Mali Takvim arasında [data-dashboard-divider] öğesi:
+   40px (+16px kök boşluğu) yükseklik, içinde soldan sağa sönen ince çizgi + blok renginde küçük işaret. Yalnız masaüstü kökü. */
+html[data-theme='D'] [data-dashboard-root] .ofis-panorama { margin-top: 24px !important; }
+html[data-theme='D'] [data-dashboard-root] [data-dashboard-divider] {
+  position: relative;
+  height: 40px; /* + kökün 16px boşluğu = 56px */
+  margin: 0 !important;
+  pointer-events: none;
+}
+html[data-theme='D'] [data-dashboard-root] [data-dashboard-divider]::before {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; top: 58%;
+  height: 1px;
+  background: linear-gradient(90deg, #cbd5e1 0%, #e2e8f0 45%, transparent 100%);
+}
+html[data-theme='D'] [data-dashboard-root] [data-dashboard-divider]::after {
+  content: '';
+  position: absolute;
+  left: 0; top: calc(58% - 4px);
+  width: 34px; height: 9px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--divider-a, #4263eb), var(--divider-b, #5c7cfa));
+  box-shadow: 0 4px 10px -4px var(--divider-shadow, rgba(66, 99, 235, 0.55));
+}
+html[data-theme='D'] [data-dashboard-root] [data-dashboard-divider][data-tone='mor'] { --divider-a: #7048e8; --divider-b: #9775fa; --divider-shadow: rgba(112, 72, 232, 0.55); }
+html[data-theme='D'] [data-dashboard-root] [data-dashboard-divider][data-tone='kursuni'] { --divider-a: #5c6b7f; --divider-b: #8494a7; --divider-shadow: rgba(92, 107, 127, 0.45); }
+/* Koyu temada (A) yalnız boşluk: çizgi/işaret yok */
+html:not([data-theme='D']) [data-dashboard-root] [data-dashboard-divider] { height: 28px; }
