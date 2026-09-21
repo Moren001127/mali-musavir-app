@@ -1686,13 +1686,13 @@ export default function DashboardPage() {
 
   // e-Tebligat sayacı (2026-09-21): gece sorgusuyla gelen ve henüz okunmamış tebligatlar.
   // Kaynak = /bugun konusu 'tb' (BugunMasasi ile aynı sorgu anahtarı → tek istek, 3 dk önbellek).
-  const { data: bugunData } = useQuery<{ konular?: Array<{ id: string; sayac?: { okunmamis: number; yeni: number; mukellef: number } }> }>({
+  const { data: bugunData } = useQuery<{ konular?: Array<{ id: string; sayac?: { okunmamis: number; yeni: number; mukellef: number; suresiIcinde?: number } }> }>({
     queryKey: ['bugun'],
     queryFn: () => api.get('/bugun').then((r) => r.data),
     staleTime: 3 * 60 * 1000,
     refetchInterval: 5 * 60 * 1000,
   });
-  const tebligat = bugunData?.konular?.find((k) => k.id === 'tb')?.sayac ?? { okunmamis: 0, yeni: 0, mukellef: 0 };
+  const tebligat = bugunData?.konular?.find((k) => k.id === 'tb')?.sayac ?? { okunmamis: 0, yeni: 0, mukellef: 0, suresiIcinde: 0 };
 
   // v1.36.74: Görevler artık backend'den geliyor (Görevler & Notlar modülüyle ortak veri).
   // Eskiden localStorage tabanlıydı — yeni `/panel/gorevler` sayfasıyla senkron olsun diye API'ye geçildi.
@@ -1960,10 +1960,12 @@ export default function DashboardPage() {
           href="/panel/ajanlar/tebligat"
           sub={
             tebligat.okunmamis === 0
-              ? 'Okunmamış tebligat yok'
+              ? 'Mükelleflerin okumadığı tebligat yok'
               : tebligat.yeni > 0
                 ? `Bu gece ${tebligat.yeni} yeni · ${tebligat.mukellef} mükellef`
-                : `${tebligat.mukellef} mükellefte okunmamış`
+                : (tebligat.suresiIcinde ?? 0) > 0
+                  ? `${tebligat.suresiIcinde} tebliğ süresi içinde · ${tebligat.mukellef} mükellef`
+                  : `${tebligat.mukellef} mükellef henüz okumadı`
           }
           trend={tebligat.yeni > 0 ? `${tebligat.yeni} yeni` : undefined}
           trendKind={tebligat.yeni > 0 ? 'down' : 'flat'}
