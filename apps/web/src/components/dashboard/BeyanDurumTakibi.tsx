@@ -145,12 +145,13 @@ export function BeyanDurumTakibi({
   );
 }
 
-function Durum({ pct, state }: { pct: number; state: 'done' | 'error' | 'pending' }) {
+function Durum({ pct, state, etiket }: { pct: number; state: 'done' | 'error' | 'pending'; etiket?: string }) {
   const p = Math.max(0, Math.min(100, pct));
   return (
     <span className="bd-durum" data-state={state}>
       <span className="bd-bar" role="img" aria-label={`Yüzde ${p}`}><i style={{ width: `${p}%` }} /></span>
       <b>%{p}</b>
+      {etiket && <em>{etiket}</em>}
     </span>
   );
 }
@@ -162,8 +163,7 @@ function BeyanSatiri({ row, onNumberClick, yardimci }: { row: OzetRow; onNumberC
     <tr className="bd-row" data-state={d.key}>
       <th scope="row" className="bd-th-left">
         <button type="button" className="bd-name" onClick={() => onNumberClick(row.beyanTipi, 'toplam')} title="Mükellef listesini göster">
-          <b>{BEYAN_ETIKETLER[row.beyanTipi]}</b>
-          <small>{donemEtiket(row.vergiDonem)}</small>
+          <b>{BEYAN_ETIKETLER[row.beyanTipi]}</b> <small>{donemEtiket(row.vergiDonem)}</small>
         </button>
       </th>
       <Sayi deger={row.toplam} ton="total" onClick={() => onNumberClick(row.beyanTipi, 'toplam')} />
@@ -171,7 +171,7 @@ function BeyanSatiri({ row, onNumberClick, yardimci }: { row: OzetRow; onNumberC
       {yardimci ? <td className="bd-na" aria-label="Bu türde yok">—</td> : <Sayi deger={row.bekleyen} ton="wait" onClick={() => onNumberClick(row.beyanTipi, 'bekleyen')} />}
       {yardimci ? <td className="bd-na" aria-label="Bu türde yok">—</td> : <Sayi deger={row.hatali} ton="err" onClick={() => onNumberClick(row.beyanTipi, 'hatali')} />}
       <Sayi deger={row.kalan} ton="left" onClick={() => onNumberClick(row.beyanTipi, 'kalan')} />
-      <td className="bd-td-durum"><Durum pct={pct} state={d.key} /><span className="bd-durum-text">{d.label}</span></td>
+      <td className="bd-td-durum"><Durum pct={pct} state={d.key} etiket={d.label} /></td>
     </tr>
   );
 }
