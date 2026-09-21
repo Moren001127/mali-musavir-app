@@ -3,6 +3,7 @@ import { portalStyle } from '@/lib/portal-theme';
 
 
 import React, { Suspense, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -57,7 +58,12 @@ function ETebligatModuleIc() {
   const qc = useQueryClient();
   const [taxpayerId, setTaxpayerId] = useState<string>('');
   const [search, setSearch] = useState('');
-  const [durum, setDurum] = useState<string>('');
+  // Gösterge paneli e-Tebligat sayacı ?durum=goruntulenmemis ile gelir → liste doğrudan süzülü açılır (2026-09-21)
+  const adresParams = useSearchParams();
+  const [durum, setDurum] = useState<string>(() => {
+    const d = adresParams?.get('durum') || '';
+    return DURUMLAR.some((o) => o.value === d) ? d : '';
+  });
   const [pdfModal, setPdfModal] = useState<PdfModalDurumu>(null);
   const [showErrors, setShowErrors] = useState(false);
   // Bu oturumda görüntülenenler (buton anında yeşile dönsün; kalıcısı backend viewedAt)

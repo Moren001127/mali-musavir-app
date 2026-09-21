@@ -1957,7 +1957,7 @@ export default function DashboardPage() {
           title="E-Tebligat"
           value={tebligat.okunmamis}
           icon={Mailbox}
-          href="/panel/ajanlar/tebligat"
+          href="/panel/ajanlar/tebligat?durum=goruntulenmemis"
           sub={
             tebligat.okunmamis === 0
               ? 'Görüntülenmemiş tebligat yok'

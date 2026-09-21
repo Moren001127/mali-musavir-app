@@ -283,7 +283,7 @@ export class BugunService {
           id: 'tb', bolum: 'bugun', kaynak: 'e-Tebligat',
           baslik: yeni.length ? `${yeni.length} yeni e-Tebligat geldi` : `${rows.length} görüntülenmemiş e-Tebligat`,
           aciklama: `${perTp.size} mükellef · toplam ${rows.length} görüntülenmemiş${suresiIcinde ? ` · ${suresiIcinde} tebliğ süresi içinde` : ''} · ${detay.slice(0, 3).map((d) => kisaAd(d.metin)).join(' · ')}`,
-          sayi: rows.length, vurgu: yeni.length || suresiIcinde ? 'kritik' : 'uyari', href: '/panel/ajanlar/tebligat', detay, sira: 5,
+          sayi: rows.length, vurgu: yeni.length || suresiIcinde ? 'kritik' : 'uyari', href: '/panel/ajanlar/tebligat?durum=goruntulenmemis', detay, sira: 5,
           sayac: { okunmamis: rows.length, yeni: yeni.length, mukellef: perTp.size, suresiIcinde },
         });
       }),
