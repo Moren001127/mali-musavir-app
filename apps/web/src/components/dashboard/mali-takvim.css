@@ -4,7 +4,7 @@
 .mt {
   --mt-bg: #18232d;
   --mt-edge: #334553;
-  --mt-top: linear-gradient(90deg, #7048e8, #e64980);
+  --mt-top: linear-gradient(90deg, #7048e8, #b197fc);
   --mt-card: #1e2c3d;
   --mt-card-edge: #354456;
   --mt-soft: #2f2a4d;
@@ -165,8 +165,8 @@ html[data-theme='D'] .mt {
   --mt-shadow: 0 6px 18px rgba(160, 77, 255, 0.10);
   /* Panorama Fatura kartıyla aynı yıkama formülü (mor→gül): köşe ışımaları + üstten alta açılan mor yıkama */
   background:
-    radial-gradient(120% 90% at 100% 0%, rgba(160, 77, 255, 0.16), transparent 55%),
-    radial-gradient(90% 70% at 0% 100%, rgba(230, 73, 128, 0.10), transparent 55%),
+    radial-gradient(120% 90% at 100% 0%, rgba(160, 77, 255, 0.15), transparent 55%),
+    radial-gradient(90% 70% at 0% 100%, rgba(112, 72, 232, 0.08), transparent 55%),
     linear-gradient(160deg, #f1ecff 0%, #f7f4ff 45%, #fff 100%);
 }
 html[data-theme='D'] .mt [data-urgency='past'] { --u-accent: #c6d1e2; --u-soft: #f4f7fb; --u-ink: #93a3bd; --u-edge: #e1e7ef; }

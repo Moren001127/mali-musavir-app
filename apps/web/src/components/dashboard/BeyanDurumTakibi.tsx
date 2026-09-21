@@ -62,6 +62,7 @@ export function BeyanDurumTakibi({
   const yardimciRows = aktif.filter((r) => r.beyanTipi === 'BILDIRGE' || r.beyanTipi === 'EDEFTER');
   const modeNote = donemTuru === 'VERILME' ? 'Seçilen ayda verilmesi gerekenler' : 'Seçilen vergi dönemine ait olanlar';
   const bos = !isLoading && aktif.length === 0;
+  const vergiDonemleri = Array.from(new Set(aktif.map((r) => r.vergiDonem).filter(Boolean)));
 
   return (
     <section className="bd" data-beyan-panel aria-label="Beyanname durum takibi">
@@ -70,6 +71,7 @@ export function BeyanDurumTakibi({
         <div className="bd-heading">
           <p>BEYANNAME TAKİBİ</p>
           <h3>Beyanname Durum Takibi <span className="bd-donem">{donemEtiket(selectedDonem)}</span> <span className="bd-help" title={modeNote}><HelpCircle size={13} /></span></h3>
+          {vergiDonemleri.length > 0 && <p className="bd-vergi-donem">Vergi dönemi: {vergiDonemleri.map(donemEtiket).join(' · ')}</p>}
         </div>
         <ul className="bd-legend" aria-label="Renk açıklaması">
           <li data-ton="ok">Onaylanan</li>
@@ -120,7 +122,7 @@ export function BeyanDurumTakibi({
             <tbody>
               {beyanRows.map((row) => <BeyanSatiri key={row.beyanTipi} row={row} onNumberClick={onNumberClick} />)}
               {yardimciRows.length > 0 && (
-                <tr className="bd-subhead"><th scope="rowgroup" colSpan={7}>Bildirge ve E-Defter <em>{donemEtiket(selectedDonem)}</em></th></tr>
+                <tr className="bd-subhead"><th scope="rowgroup" colSpan={7}>Bildirge ve E-Defter</th></tr>
               )}
               {yardimciRows.map((row) => <BeyanSatiri key={row.beyanTipi} row={row} onNumberClick={onNumberClick} yardimci />)}
             </tbody>
@@ -149,7 +151,7 @@ function BeyanSatiri({ row, onNumberClick, yardimci }: { row: OzetRow; onNumberC
     <tr className="bd-row" data-state={d.key}>
       <th scope="row" className="bd-th-left">
         <button type="button" className="bd-name" onClick={() => onNumberClick(row.beyanTipi, 'toplam')} title="Mükellef listesini göster">
-          <b>{BEYAN_ETIKETLER[row.beyanTipi]}</b> <small>{donemEtiket(row.vergiDonem)}</small>
+          <b>{BEYAN_ETIKETLER[row.beyanTipi]}</b>
         </button>
       </th>
       <Sayi deger={row.toplam} ton="total" onClick={() => onNumberClick(row.beyanTipi, 'toplam')} />

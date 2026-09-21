@@ -3,7 +3,7 @@
 .bd {
   --bd-bg: #18232d;
   --bd-edge: #334553;
-  --bd-top: linear-gradient(90deg, #e8590c, #f5a623);
+  --bd-top: linear-gradient(90deg, #475569, #94a3b8);
   --bd-card: #1e2c3d;
   --bd-card-edge: #354456;
   --bd-soft: #25395c;
@@ -37,6 +37,7 @@
 .bd-icon { display: grid; place-items: center; width: 32px; height: 32px; flex-shrink: 0; border-radius: 10px; background: var(--bd-soft); color: var(--bd-accent); }
 .bd-heading { min-width: 0; }
 .bd-heading p { margin: 0 0 2px; font-size: 9px; letter-spacing: 0.055em; line-height: 1.25; color: var(--bd-muted); white-space: nowrap; }
+.bd-heading p.bd-vergi-donem { margin: 3px 0 0; font-size: 11px; letter-spacing: 0; color: var(--bd-muted); }
 .bd-heading h3 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 16px; line-height: 1.2; font-weight: 650; letter-spacing: -0.15px; color: var(--bd-text); }
 .bd-donem { padding: 2px 8px; border-radius: 6px; background: var(--bd-soft); color: var(--bd-accent); font-size: 11px; font-weight: 600; letter-spacing: 0; }
 .bd-help { display: inline-flex; color: var(--bd-faint); cursor: help; }
@@ -52,8 +53,8 @@
 .bd-mode button[data-active='true'] { background: var(--bd-soft); color: var(--bd-accent); }
 .bd-period { display: inline-flex; align-items: center; gap: 5px; height: 30px; padding: 0 6px 0 9px; border: 1px solid var(--bd-card-edge); border-radius: 20px; background: color-mix(in srgb, var(--bd-track) 25%, var(--bd-card)); color: var(--bd-muted); }
 .bd-period select, .bd .bd-period select { width: auto; height: 100%; padding: 0 2px; border: 0; background: transparent; color: var(--bd-text); font: inherit; font-size: 10.5px; font-weight: 600; cursor: pointer; outline: none; box-shadow: none; }
-.bd-query { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px 0 10px; flex-shrink: 0; border: 0; border-radius: 20px; background: linear-gradient(135deg, #e8590c, #f59f00); color: #fff; font: inherit; font-size: 10.5px; font-weight: 650; cursor: pointer; box-shadow: 0 6px 12px -8px #e8590c; transition: transform 0.15s ease, box-shadow 0.15s ease; }
-.bd-query:hover { transform: translateY(-1px); box-shadow: 0 9px 16px -8px #e8590c; }
+.bd-query { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px 0 10px; flex-shrink: 0; border: 0; border-radius: 20px; background: linear-gradient(135deg, #475569, #64748b); color: #fff; font: inherit; font-size: 10.5px; font-weight: 650; cursor: pointer; box-shadow: 0 6px 12px -8px #475569; transition: transform 0.15s ease, box-shadow 0.15s ease; }
+.bd-query:hover { transform: translateY(-1px); box-shadow: 0 9px 16px -8px #475569; }
 
 /* ── Tablo ── */
 .bd-table-wrap { overflow-x: auto; }
@@ -102,41 +103,41 @@ td[data-ton='err'] .bd-num:not(:disabled) { color: var(--err); }
 /* ═══ Beyaz tema (D): serin çivit yıkama ═══ */
 html[data-theme='D'] .bd {
   --bd-bg: #fff;
-  --bd-edge: #f3d3b3;
+  --bd-edge: #d3dae6;
   --bd-card: #fff;
-  --bd-card-edge: #eadfd0;
-  --bd-soft: #ffeedb;
-  --bd-accent: #d9480f;
+  --bd-card-edge: #dfe5ee;
+  --bd-soft: #e6ebf3;
+  --bd-accent: #475569;
   --bd-text: #0e234c;
   --bd-muted: #52668c;
   --bd-faint: #a0adc2;
   --bd-track: #e5ebf4;
   --bd-hover: #f5f7ff;
   --bd-thead: #f3f5fd;
-  --bd-shadow: 0 10px 28px rgba(232, 89, 12, 0.10);
+  --bd-shadow: 0 10px 28px rgba(71, 85, 105, 0.10);
   --ok: #0b8a5c; --ok-bar: linear-gradient(90deg, #0ca678, #20c997);
   --wait: #d9480f;
   --err: #c92a2a;
   --left: #c6d1e2;
   /* Panorama yan kartlarıyla (e-Defter kartı) aynı yıkama formülü: köşe ışıması + üstten alta açılan çivit yıkama */
   background:
-    radial-gradient(120% 90% at 100% 0%, rgba(245, 166, 35, 0.24), transparent 58%),
-    radial-gradient(90% 70% at 0% 100%, rgba(232, 89, 12, 0.13), transparent 58%),
-    linear-gradient(160deg, #fdebd6 0%, #fff3e6 50%, #fff9f2 100%);
+    radial-gradient(120% 90% at 100% 0%, rgba(100, 116, 139, 0.15), transparent 58%),
+    radial-gradient(90% 70% at 0% 100%, rgba(71, 85, 105, 0.08), transparent 58%),
+    linear-gradient(160deg, #eef1f6 0%, #f4f6fa 50%, #fff 100%);
 }
-html[data-theme='D'] .bd { --bd-card-edge: #ecd6bf; --bd-hover: rgba(255, 255, 255, 0.55); }
-html[data-theme='D'] .bd-table thead th { border-bottom-color: #e6c9a8; }
-html[data-theme='D'] .bd-mode, html[data-theme='D'] .bd-period { background: #fff; border-color: #f0d2b4; }
+html[data-theme='D'] .bd { --bd-card-edge: #dfe5ee; --bd-hover: rgba(255, 255, 255, 0.55); }
+html[data-theme='D'] .bd-table thead th { border-bottom-color: #c4cedc; }
+html[data-theme='D'] .bd-mode, html[data-theme='D'] .bd-period { background: #fff; border-color: #d3dae6; }
 html[data-theme='D'] .bd-legend li[data-ton='wait']::before { background: #f59f00; }
 html[data-theme='D'] .bd-legend li[data-ton='err']::before { background: #e03131; }
-html[data-theme='D'] .bd-table tbody td, html[data-theme='D'] .bd-table tbody th { border-bottom-color: #efdcc6; }
+html[data-theme='D'] .bd-table tbody td, html[data-theme='D'] .bd-table tbody th { border-bottom-color: #dfe5ee; }
 
 /* dashboard-white.css'teki genel [data-dashboard-root] table kuralları (beyaz zemin, gri başlık, zebra) bu tabloda GEÇERSİZ:
    tablo şeffaf, kartın çivit yıkaması satırların içinden geçer (Muzaffer Bey: "dışına değil içine renklendirme"). */
 html[data-theme='D'] [data-dashboard-root] .bd-table { border: 0; border-radius: 0; background: transparent; overflow: visible; }
-html[data-theme='D'] [data-dashboard-root] .bd-table thead th { background: transparent !important; color: var(--bd-muted) !important; border-bottom: 1px solid #e6c9a8; font-weight: 600; }
-html[data-theme='D'] [data-dashboard-root] .bd-table tbody td, html[data-theme='D'] [data-dashboard-root] .bd-table tbody th { border-bottom: 1px solid #efdcc6; }
-html[data-theme='D'] [data-dashboard-root] .bd-table tbody tr:last-child td, html[data-theme='D'] [data-dashboard-root] .bd-table tbody tr:last-child th { border-bottom: 1px solid #efdcc6; }
+html[data-theme='D'] [data-dashboard-root] .bd-table thead th { background: transparent !important; color: var(--bd-muted) !important; border-bottom: 1px solid #c4cedc; font-weight: 600; }
+html[data-theme='D'] [data-dashboard-root] .bd-table tbody td, html[data-theme='D'] [data-dashboard-root] .bd-table tbody th { border-bottom: 1px solid #dfe5ee; }
+html[data-theme='D'] [data-dashboard-root] .bd-table tbody tr:last-child td, html[data-theme='D'] [data-dashboard-root] .bd-table tbody tr:last-child th { border-bottom: 1px solid #dfe5ee; }
 html[data-theme='D'] [data-dashboard-root] .bd-table tbody tr:nth-child(even):not(:hover):not([aria-selected='true']) { background: transparent; }
 html[data-theme='D'] [data-dashboard-root] .bd-table tbody tr.bd-row:hover { background: rgba(255, 255, 255, 0.5); }
 html[data-theme='D'] [data-dashboard-root] .bd-table .bd-subhead th { background: transparent !important; color: var(--bd-muted) !important; }
