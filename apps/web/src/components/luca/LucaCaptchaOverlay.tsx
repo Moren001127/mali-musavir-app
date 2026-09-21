@@ -1,4 +1,5 @@
 'use client';
+import './luca-captcha-white.css';
 import { portalStyle } from '@/lib/portal-theme';
 
 
@@ -70,7 +71,7 @@ export function LucaCaptchaOverlay() {
 
   // Captcha formu doğrudan overlay'de — kullanıcı modüle gitmeden çözebilsin.
   return (
-    <div
+    <div data-luca-captcha-overlay
       className="fixed bottom-4 right-6 z-[80] w-[420px] max-w-[calc(100vw-2rem)] rounded-xl p-4 shadow-2xl"
       style={portalStyle({
         background: 'rgba(20,17,13,0.98)',
@@ -78,26 +79,26 @@ export function LucaCaptchaOverlay() {
         boxShadow: '0 22px 70px rgba(0,0,0,0.55)',
       })}
     >
-      <div className="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[.12em]" style={portalStyle({ color: '#d4b876' })}>
+      <div data-lk-baslik className="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[.12em]" style={portalStyle({ color: '#d4b876' })}>
         <AlertTriangle size={14} />
         Luca güvenlik kodu
       </div>
 
       {challenge.captchaImage ? (
-        <img
+        <img data-lk-gorsel
           src={challenge.captchaImage}
           alt="Luca güvenlik kodu"
           className="h-16 w-full rounded-md object-contain mb-3"
           style={portalStyle({ background: '#fff', border: '1px solid rgba(255,255,255,0.22)' })}
         />
       ) : (
-        <div className="flex h-16 items-center justify-center rounded-md text-xs mb-3" style={portalStyle({ background: 'rgba(255,255,255,0.06)', color: 'rgba(250,250,249,0.65)' })}>
+        <div data-lk-bekliyor className="flex h-16 items-center justify-center rounded-md text-xs mb-3" style={portalStyle({ background: 'rgba(255,255,255,0.06)', color: 'rgba(250,250,249,0.65)' })}>
           Kod görseli bekleniyor...
         </div>
       )}
 
       {autoOcr && (
-        <div className="mb-3 rounded-md px-3 py-2 text-[11.5px]" style={portalStyle({ background: 'rgba(245,158,11,0.10)', color: 'rgba(250,250,249,0.72)', border: '1px solid rgba(245,158,11,0.22)' })}>
+        <div data-lk-not className="mb-3 rounded-md px-3 py-2 text-[11.5px]" style={portalStyle({ background: 'rgba(245,158,11,0.10)', color: 'rgba(250,250,249,0.72)', border: '1px solid rgba(245,158,11,0.22)' })}>
           {autoOcr.skippedReason
             ? autoOcr.skippedReason
             : autoOcr.ocrKapali
@@ -113,6 +114,7 @@ export function LucaCaptchaOverlay() {
           if (e.key === 'Enter' && answer.trim()) answerMut.mutate();
         }}
         autoFocus
+        data-lk-girdi
         placeholder="Kodu yazın..."
         className="h-11 w-full rounded-lg border px-3 text-base font-bold outline-none mb-3"
         style={portalStyle({
@@ -124,7 +126,7 @@ export function LucaCaptchaOverlay() {
       />
 
       <div className="flex gap-2">
-        <button
+        <button data-lk-birincil
           type="button"
           onClick={() => answerMut.mutate()}
           disabled={answerMut.isPending || !answer.trim()}
@@ -133,7 +135,7 @@ export function LucaCaptchaOverlay() {
         >
           {answerMut.isPending ? 'Gönderiliyor...' : 'Kodu Gönder'}
         </button>
-        <button
+        <button data-lk-ikincil
           type="button"
           onClick={() => cancelMut.mutate()}
           disabled={cancelMut.isPending}

@@ -1,5 +1,6 @@
 'use client';
 import '@/app/(panel)/panel/ajanlar/_components/operations-white.css';
+import './otomasyonlar-white.css';
 
 import { portalStyle } from '@/lib/portal-theme';
 
@@ -55,6 +56,17 @@ const GREEN = '#4ade80';
 const RED = '#f87171';
 const AMBER = '#fbbf24';
 const BLUE = '#60a5fa';
+
+// Beyaz temada renk ailesi kancası (CSS `data-ton`); A temasında etkisiz.
+function tonAdi(color: string): string {
+  const c = color.toLowerCase();
+  if (c === '#4ade80') return 'yesil';
+  if (c === '#f87171') return 'kirmizi';
+  if (c === '#fbbf24') return 'kehribar';
+  if (c === '#60a5fa') return 'mavi';
+  if (c === '#a855f7' || c === '#c084fc') return 'mor';
+  return 'kursuni';
+}
 
 export default function OtomasyonlarPage() {
   const qc = useQueryClient();
@@ -189,7 +201,7 @@ export default function OtomasyonlarPage() {
             </span>
             Otomasyonlarım
           </h1>
-          <Link
+          <Link data-oto-birincil
             href="/panel/otomasyonlar/yeni"
             className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-[13px] font-semibold"
             style={portalStyle({ background: 'linear-gradient(135deg, #a855f7, #c084fc)', color: '#1a1410' })}
@@ -205,7 +217,7 @@ export default function OtomasyonlarPage() {
 
       {/* ── Özet bandı ── */}
       {summary && (
-        <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <section data-oto-sayaclar className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <Stat
             color={GREEN}
             icon={<Activity size={15} />}
@@ -232,10 +244,10 @@ export default function OtomasyonlarPage() {
       )}
 
       {/* ── Arama + filtre (kompakt tek satır) ── */}
-      <section className="flex flex-col gap-2 sm:flex-row sm:items-center">
+      <section data-oto-arac-cubugu className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <div className="relative flex-1">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={portalStyle({ color: MUTED })} />
-          <input
+          <input data-oto-girdi
             type="text"
             placeholder="Otomasyonlarda ara…"
             value={search}
@@ -265,7 +277,7 @@ export default function OtomasyonlarPage() {
       {/* ── Son çalışmalar (varsayılan gizli — tıkla aç) ── */}
       {recentRuns && recentRuns.length > 0 && (
         <section>
-          <button
+          <button data-oto-son-dugme
             onClick={() => setShowRecent((v) => !v)}
             className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider transition-colors"
             style={portalStyle({ color: MUTED })}
@@ -282,7 +294,7 @@ export default function OtomasyonlarPage() {
               {recentRuns.slice(0, 12).map((run) => {
                 const c = run.status === 'success' ? GREEN : run.status === 'failure' ? RED : BLUE;
                 return (
-                  <button
+                  <button data-oto-son-cip data-ton={run.status === 'success' ? 'yesil' : run.status === 'failure' ? 'kirmizi' : 'mavi'}
                     key={run.id}
                     onClick={() => router.push(`/panel/otomasyonlar/${run.automation.id}`)}
                     className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] transition-colors"
@@ -307,23 +319,23 @@ export default function OtomasyonlarPage() {
 
       {/* ── Durumlar ── */}
       {isLoading && (
-        <div className="rounded-2xl border p-12 text-center text-[13px]" style={portalStyle({ borderColor: LINE, color: MUTED, background: CARD })}>
+        <div data-oto-kutu="bos" className="rounded-2xl border p-12 text-center text-[13px]" style={portalStyle({ borderColor: LINE, color: MUTED, background: CARD })}>
           Yükleniyor…
         </div>
       )}
       {error && (
-        <div className="rounded-2xl border p-4 text-[13px]" style={portalStyle({ borderColor: `${RED}55`, background: `${RED}14`, color: RED })}>
+        <div data-oto-kutu="hata" className="rounded-2xl border p-4 text-[13px]" style={portalStyle({ borderColor: `${RED}55`, background: `${RED}14`, color: RED })}>
           Liste yüklenemedi: {(error as any)?.message}
         </div>
       )}
       {data && data.items.length === 0 && (
-        <div className="rounded-2xl border-2 border-dashed p-12 text-center" style={portalStyle({ borderColor: LINE, background: CARD })}>
+        <div data-oto-kutu="bos" className="rounded-2xl border-2 border-dashed p-12 text-center" style={portalStyle({ borderColor: LINE, background: CARD })}>
           <Inbox size={40} className="mx-auto mb-3" style={portalStyle({ color: MUTED })} />
           <h3 className="text-[16px] font-medium">Henüz otomasyonun yok</h3>
           <p className="mt-1 text-[13px]" style={portalStyle({ color: MUTED })}>
             "Yeni Otomasyon" diyerek bir cümleyle ilk otomasyonunu kurabilirsin.
           </p>
-          <Link
+          <Link data-oto-birincil
             href="/panel/otomasyonlar/yeni"
             className="mt-4 inline-flex items-center gap-2 rounded-lg px-4 py-2 text-[13px] font-semibold"
             style={portalStyle({ background: 'linear-gradient(135deg, #a855f7, #c084fc)', color: '#1a1410' })}
@@ -335,7 +347,7 @@ export default function OtomasyonlarPage() {
 
       {/* ── Otomasyon kart-listesi ── */}
       {data && data.items.length > 0 && (
-        <section className="space-y-2.5">
+        <section data-oto-liste className="space-y-2.5">
           {data.items.map((auto) => (
             <AutomationRow
               key={auto.id}
@@ -394,21 +406,21 @@ function AutomationRow({
         {/* Sol: başlık + cümle + meta */}
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="truncate text-[15px] font-semibold" style={portalStyle({ color: TEXT })}>
+            <span data-oto-baslik className="truncate text-[15px] font-semibold" style={portalStyle({ color: TEXT })}>
               {auto.title}
             </span>
             <StatusBadge status={auto.status} />
           </div>
-          <p className="mt-0.5 line-clamp-1 text-[12px]" style={portalStyle({ color: MUTED })}>
+          <p data-oto-cumle className="mt-0.5 line-clamp-1 text-[12px]" style={portalStyle({ color: MUTED })}>
             {auto.prompt}
           </p>
-          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11.5px]" style={portalStyle({ color: MUTED })}>
+          <div data-oto-meta className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11.5px]" style={portalStyle({ color: MUTED })}>
             <span className="inline-flex items-center gap-1.5">
               <TriggerIcon t={auto.triggerType} />
               {triggerShort(auto.triggerType, auto.triggerConfig)}
             </span>
             {auto.status === 'ACTIVE' && auto.nextRunAt && (
-              <span className="inline-flex items-center gap-1.5" style={portalStyle({ color: VIOLET_SOFT })}>
+              <span data-oto-siradaki className="inline-flex items-center gap-1.5" style={portalStyle({ color: VIOLET_SOFT })}>
                 <CalendarClock size={13} /> Sıradaki: {new Date(auto.nextRunAt).toLocaleString('tr-TR')}
               </span>
             )}
@@ -426,7 +438,7 @@ function AutomationRow({
         </div>
 
         {/* Sağ: aksiyonlar */}
-        <div className="flex shrink-0 items-center gap-1" onClick={stop}>
+        <div data-oto-eylemler className="flex shrink-0 items-center gap-1" onClick={stop}>
           {auto.status === 'ACTIVE' && (
             <IconBtn title="Şimdi Çalıştır (gerçek)" color={AMBER} disabled={runNowPending} onClick={() => onRunNow(auto.id)}>
               <Zap size={15} />
@@ -492,13 +504,13 @@ function Stat({
   sub?: string;
 }) {
   return (
-    <div data-ops-stat="true" className="rounded-xl border p-3" style={portalStyle({ '--ops-tone': portalStyle({ color: color }).color, borderColor: LINE, background: CARD } as React.CSSProperties)}>
+    <div data-ops-stat="true" data-ton={tonAdi(color)} className="rounded-xl border p-3" style={portalStyle({ '--ops-tone': portalStyle({ color: color }).color, borderColor: LINE, background: CARD } as React.CSSProperties)}>
       <div data-ops-label="true" className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider" style={portalStyle({ color: MUTED })}>
-        <span style={portalStyle({ color })}>{icon}</span>
+        <span data-oto-sayac-simge style={portalStyle({ color })}>{icon}</span>
         {label}
       </div>
       <div data-ops-value="true" className="mt-1 text-[20px] font-semibold" style={portalStyle({ color: TEXT })}>{value}</div>
-      {sub && <div className="text-[11px]" style={portalStyle({ color: MUTED })}>{sub}</div>}
+      {sub && <div data-oto-sayac-alt className="text-[11px]" style={portalStyle({ color: MUTED })}>{sub}</div>}
     </div>
   );
 }
@@ -508,23 +520,23 @@ function BudgetStat({ monthly, weekly, budget }: { monthly: number; weekly: numb
   const pct = budget && budget > 0 ? Math.min(100, Math.round((monthly / budget) * 100)) : null;
   const barColor = pct === null ? VIOLET : pct >= 90 ? RED : pct >= 70 ? AMBER : VIOLET;
   return (
-    <div data-ops-stat="true" className="rounded-xl border p-3" style={portalStyle({ '--ops-tone': portalStyle({ color: barColor }).color, borderColor: LINE, background: CARD } as React.CSSProperties)}>
-      <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider" style={portalStyle({ color: MUTED })}>
-        <span style={portalStyle({ color: VIOLET_SOFT })}><Wallet size={15} /></span>
+    <div data-ops-stat="true" data-ton={tonAdi(barColor)} className="rounded-xl border p-3" style={portalStyle({ '--ops-tone': portalStyle({ color: barColor }).color, borderColor: LINE, background: CARD } as React.CSSProperties)}>
+      <div data-ops-label="true" className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider" style={portalStyle({ color: MUTED })}>
+        <span data-oto-sayac-simge style={portalStyle({ color: VIOLET_SOFT })}><Wallet size={15} /></span>
         Bu ay maliyet
       </div>
       <div data-ops-value="true" className="mt-1 text-[20px] font-semibold" style={portalStyle({ color: VIOLET_SOFT })}>{usd(monthly)}</div>
       {budget && budget > 0 ? (
         <>
-          <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full" style={portalStyle({ background: 'rgba(255,255,255,0.08)' })}>
+          <div data-oto-cubuk className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full" style={portalStyle({ background: 'rgba(255,255,255,0.08)' })}>
             <div className="h-full rounded-full" style={portalStyle({ width: `${pct}%`, background: barColor })} />
           </div>
-          <div data-ops-value="true" className="mt-1 text-[11px]" style={portalStyle({ color: MUTED })}>
+          <div data-oto-sayac-alt className="mt-1 text-[11px]" style={portalStyle({ color: MUTED })}>
             {usd(monthly)} / {usd(budget)} bütçe (%{pct})
           </div>
         </>
       ) : (
-        <div className="text-[11px]" style={portalStyle({ color: MUTED })}>Bu hafta {usd(weekly)} · limitsiz</div>
+        <div data-oto-sayac-alt className="text-[11px]" style={portalStyle({ color: MUTED })}>Bu hafta {usd(weekly)} · limitsiz</div>
       )}
     </div>
   );
@@ -544,7 +556,7 @@ function IconBtn({
   children: React.ReactNode;
 }) {
   return (
-    <button
+    <button data-oto-ikon data-ton={tonAdi(color)}
       title={title}
       disabled={disabled}
       onClick={onClick}
@@ -566,7 +578,7 @@ function FilterSelect({
   children: React.ReactNode;
 }) {
   return (
-    <select
+    <select data-oto-girdi
       value={value}
       onChange={(e) => onChange(e.target.value)}
       className="rounded-lg border bg-transparent px-3 py-2 text-[13px] outline-none"
@@ -600,7 +612,7 @@ function StatusBadge({ status }: { status: AutomationStatus }) {
   };
   const s = map[status];
   return (
-    <span
+    <span data-oto-rozet data-ton={tonAdi(s.c)}
       className="inline-flex shrink-0 rounded-full px-2 py-0.5 text-[10.5px] font-semibold"
       style={portalStyle({ background: `${s.c}1f`, color: s.c })}
     >

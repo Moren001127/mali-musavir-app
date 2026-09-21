@@ -1,6 +1,7 @@
 
 
 import '@/app/(panel)/panel/ajanlar/_components/operations-white.css';
+import './luca-operator-white.css';
 import { portalStyle } from '@/lib/portal-theme';
 import { BotMessageSquare } from 'lucide-react';
 import { LucaOperatorChat } from './_components/LucaOperatorChat';
@@ -20,8 +21,8 @@ export const metadata = {
 export default function LucaOperatorPage() {
   return (
     <div data-ops-page="luca-operator" className="flex h-full flex-col gap-3">
-      {/* Üst renk şeridi */}
-      <div
+      {/* Üst renk şeridi (beyaz temada gizli) */}
+      <div data-lo-serit
         className="h-1 w-full flex-shrink-0 rounded-full"
         style={portalStyle({ background: `linear-gradient(90deg, ${ACCENT}, ${ACCENT}33 40%, transparent)` })}
       />
@@ -35,14 +36,14 @@ export default function LucaOperatorPage() {
           boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04), 0 18px 40px rgba(0,0,0,0.28)',
         })}
       >
-        <div
+        <div data-ops-header-decoration
           className="pointer-events-none absolute inset-0 opacity-70"
           style={portalStyle({
             background: `radial-gradient(circle at 10% 0%, ${ACCENT}24, transparent 38%), radial-gradient(circle at 100% 120%, ${ACCENT}12, transparent 42%)`,
           })}
         />
         <div className="relative flex items-center gap-3">
-          <div
+          <div data-lo-simge
             className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl"
             style={portalStyle({
               background: `linear-gradient(135deg, ${ACCENT}, #8b7649)`,
@@ -60,7 +61,7 @@ export default function LucaOperatorPage() {
               Luca işlerini yapan, konuşulan ve öğrenen çalışan
             </p>
           </div>
-          <span
+          <span data-lo-rozet
             className="hidden flex-shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold sm:inline-flex"
             style={portalStyle({ background: 'rgba(52,211,153,0.12)', border: '1px solid rgba(52,211,153,0.3)', color: '#86efac' })}
             title="Max aboneliğiyle çalışır — ek API maliyeti yok"

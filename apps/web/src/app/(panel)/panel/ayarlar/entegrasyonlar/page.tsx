@@ -1,5 +1,6 @@
 'use client';
 import '@/app/(panel)/panel/ajanlar/_components/operations-white.css';
+import '../ayarlar-white.css';
 
 import { portalStyle } from '@/lib/portal-theme';
 
@@ -17,6 +18,7 @@ import {
   LogOut,
   Mail,
   MessageCircle,
+  Plug,
   QrCode,
   RefreshCw,
   Save,
@@ -79,14 +81,15 @@ export default function EntegrasyonlarPage() {
   return (
     <div data-ops-page="ayarlar" className="mx-auto max-w-6xl space-y-5 pb-12">
       <header data-ops-header="true" className="rounded-lg border bg-[#0f0d0b]/80 p-5" style={portalStyle({ borderColor: LINE })}>
-        <Link
+        <Link data-ay-geri
           href="/panel/ayarlar"
           className="inline-flex items-center gap-1.5 text-[12px] font-medium"
           style={portalStyle({ color: MUTED })}
         >
           <ArrowLeft size={14} /> Ayarlar
         </Link>
-        <h1 className="mt-2 text-[28px] font-semibold leading-tight" style={portalStyle({ color: TEXT })}>
+        <h1 className="mt-2 flex items-center gap-2.5 text-[28px] font-semibold leading-tight" style={portalStyle({ color: TEXT })}>
+          <span data-ay-simge className="hidden h-10 w-10 place-items-center rounded-xl"><Plug size={20} /></span>
           Entegrasyonlar
         </h1>
         <p className="mt-2 max-w-3xl text-[13px]" style={portalStyle({ color: MUTED })}>
@@ -176,19 +179,19 @@ function EmailCard() {
   });
 
   return (
-    <section data-ops-card="true" className="rounded-lg border bg-[#0f0d0b]/80 p-5" style={portalStyle({ borderColor: LINE })}>
+    <section data-ops-card="true" data-ay-kart className="rounded-lg border bg-[#0f0d0b]/80 p-5" style={portalStyle({ borderColor: LINE })}>
       <div className="flex items-start gap-3">
-        <div
+        <div data-ay-kart-simge
           className="flex h-11 w-11 items-center justify-center rounded-lg border"
           style={portalStyle({ borderColor: LINE, color: GOLD, background: SOFT })}
         >
           <Mail size={20} />
         </div>
         <div className="flex-1">
-          <h2 className="text-[17px] font-semibold" style={portalStyle({ color: TEXT })}>
+          <h2 data-ay-kart-baslik className="text-[17px] font-semibold" style={portalStyle({ color: TEXT })}>
             E-posta (SMTP)
           </h2>
-          <p className="mt-1 text-[12px]" style={portalStyle({ color: MUTED })}>
+          <p data-ay-metin className="mt-1 text-[12px]" style={portalStyle({ color: MUTED })}>
             Otomasyon ve bildirimlerde kullanılacak SMTP sağlayıcısı.
           </p>
         </div>
@@ -201,12 +204,12 @@ function EmailCard() {
       <div className="mt-4 space-y-3">
         {/* Provider seçici */}
         <div>
-          <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wider" style={portalStyle({ color: MUTED })}>
+          <label data-ay-etiket className="mb-1.5 block text-[11px] font-medium uppercase tracking-wider" style={portalStyle({ color: MUTED })}>
             Sağlayıcı
           </label>
-          <div className="grid grid-cols-4 gap-2">
+          <div data-ay-secici className="grid grid-cols-4 gap-2">
             {(['gmail', 'yandex', 'office365', 'custom'] as const).map((p) => (
-              <button
+              <button data-ay-secenek data-on={provider === p ? 'true' : 'false'}
                 key={p}
                 onClick={() => applyPreset(p)}
                 className="rounded-md border px-3 py-2 text-[12px] font-medium transition"
@@ -220,7 +223,7 @@ function EmailCard() {
               </button>
             ))}
           </div>
-          <p className="mt-1.5 text-[11px]" style={portalStyle({ color: MUTED })}>
+          <p data-ay-yardim className="mt-1.5 text-[11px]" style={portalStyle({ color: MUTED })}>
             {EMAIL_PRESETS[provider].help}
           </p>
           {provider === 'gmail' && (
@@ -228,6 +231,7 @@ function EmailCard() {
               href="https://myaccount.google.com/apppasswords"
               target="_blank"
               rel="noreferrer"
+              data-ay-baglanti
               className="mt-1 inline-block text-[11px] underline"
               style={portalStyle({ color: BLUE })}
             >
@@ -257,11 +261,11 @@ function EmailCard() {
         </div>
 
         <div>
-          <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wider" style={portalStyle({ color: MUTED })}>
-            Şifre {data?.config?.hasPassword && <span className="ml-1 normal-case" style={portalStyle({ color: GREEN })}>(kayıtlı — boş bırakılabilir)</span>}
+          <label data-ay-etiket className="mb-1.5 block text-[11px] font-medium uppercase tracking-wider" style={portalStyle({ color: MUTED })}>
+            Şifre {data?.config?.hasPassword && <span data-ay-basari className="ml-1 normal-case" style={portalStyle({ color: GREEN })}>(kayıtlı — boş bırakılabilir)</span>}
           </label>
           <div className="relative">
-            <input
+            <input data-ay-girdi
               type={showPass ? 'text' : 'password'}
               value={pass}
               onChange={(e) => setPass(e.target.value)}
@@ -269,7 +273,7 @@ function EmailCard() {
               className="w-full rounded-md border bg-transparent px-3 py-2 pr-10 text-[13px]"
               style={portalStyle({ borderColor: LINE, color: TEXT })}
             />
-            <button
+            <button data-ay-goz
               type="button"
               onClick={() => setShowPass((v) => !v)}
               className="absolute right-2 top-1/2 -translate-y-1/2"
@@ -280,7 +284,7 @@ function EmailCard() {
           </div>
         </div>
 
-        <label className="flex items-center gap-2 text-[12px]" style={portalStyle({ color: TEXT })}>
+        <label data-ay-onay className="flex items-center gap-2 text-[12px]" style={portalStyle({ color: TEXT })}>
           <input
             type="checkbox"
             checked={secure}
@@ -291,7 +295,7 @@ function EmailCard() {
         </label>
 
         <div className="flex flex-wrap gap-2 pt-1">
-          <button
+          <button data-ay-birincil
             onClick={() => saveMut.mutate()}
             disabled={saveMut.isPending}
             className="inline-flex h-9 items-center gap-1.5 rounded-md px-4 text-[12px] font-bold"
@@ -299,7 +303,7 @@ function EmailCard() {
           >
             {saveMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Kaydet
           </button>
-          <button
+          <button data-ay-ikincil
             onClick={() => verifyMut.mutate()}
             disabled={verifyMut.isPending || !data?.configured}
             className="inline-flex h-9 items-center gap-1.5 rounded-md border px-4 text-[12px] font-medium"
@@ -309,19 +313,19 @@ function EmailCard() {
           </button>
         </div>
 
-        <div className="rounded-md border p-3" style={portalStyle({ borderColor: LINE, background: SOFT })}>
-          <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wider" style={portalStyle({ color: MUTED })}>
+        <div data-ay-alt-kutu className="rounded-md border p-3" style={portalStyle({ borderColor: LINE, background: SOFT })}>
+          <label data-ay-etiket className="mb-1.5 block text-[11px] font-medium uppercase tracking-wider" style={portalStyle({ color: MUTED })}>
             Test E-postası
           </label>
           <div className="flex gap-2">
-            <input
+            <input data-ay-girdi
               value={testTo}
               onChange={(e) => setTestTo(e.target.value)}
               placeholder="ornek@gmail.com (boş bırak = kendine gönder)"
               className="flex-1 rounded-md border bg-transparent px-3 py-2 text-[13px]"
               style={portalStyle({ borderColor: LINE, color: TEXT })}
             />
-            <button
+            <button data-ay-ikincil
               onClick={() => sendTestMut.mutate()}
               disabled={sendTestMut.isPending || !data?.configured}
               className="inline-flex items-center gap-1.5 rounded-md border px-3 text-[12px] font-medium"
@@ -394,23 +398,23 @@ function WhatsAppCard() {
   }, [connected, polling]);
 
   return (
-    <section data-ops-card="true" className="rounded-lg border bg-[#0f0d0b]/80 p-5" style={portalStyle({ borderColor: LINE })}>
+    <section data-ops-card="true" data-ay-kart className="rounded-lg border bg-[#0f0d0b]/80 p-5" style={portalStyle({ borderColor: LINE })}>
       <div className="flex items-start gap-3">
-        <div
+        <div data-ay-kart-simge data-ton="yesil"
           className="flex h-11 w-11 items-center justify-center rounded-lg border"
           style={portalStyle({ borderColor: LINE, color: GREEN, background: SOFT })}
         >
           <MessageCircle size={20} />
         </div>
         <div className="flex-1">
-          <h2 className="text-[17px] font-semibold" style={portalStyle({ color: TEXT })}>
+          <h2 data-ay-kart-baslik className="text-[17px] font-semibold" style={portalStyle({ color: TEXT })}>
             WhatsApp
           </h2>
-          <p className="mt-1 text-[12px]" style={portalStyle({ color: MUTED })}>
+          <p data-ay-metin className="mt-1 text-[12px]" style={portalStyle({ color: MUTED })}>
             Numaranızı QR okutarak bağlayın; gönderimler tek anahtarla açılıp kapanır.
           </p>
         </div>
-        <div
+        <div data-ay-durum-rozet data-ok={connected ? 'true' : 'false'}
           className="flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-semibold"
           style={portalStyle({
             borderColor: connected ? 'rgba(74,222,128,0.4)' : 'rgba(248,113,113,0.4)',
@@ -424,7 +428,7 @@ function WhatsAppCard() {
 
       <div className="mt-4 space-y-3">
         {/* Master switch */}
-        <div
+        <div data-ay-anahtar-kutu data-ok={data?.automationActive ? 'true' : 'false'}
           className="flex items-center justify-between gap-3 rounded-md border p-3"
           style={portalStyle({
             borderColor: data?.automationActive ? 'rgba(74,222,128,0.28)' : 'rgba(248,113,113,0.28)',
@@ -432,12 +436,12 @@ function WhatsAppCard() {
           })}
         >
           <div>
-            <div className="text-[12.5px] font-semibold" style={portalStyle({ color: TEXT })}>Gönderim Anahtarı</div>
-            <div className="text-[11px]" style={portalStyle({ color: MUTED })}>
+            <div data-ay-koyu className="text-[12.5px] font-semibold" style={portalStyle({ color: TEXT })}>Gönderim Anahtarı</div>
+            <div data-ay-metin className="text-[11px]" style={portalStyle({ color: MUTED })}>
               Tüm WhatsApp gönderimlerini tek yerden açar/kapatır.
             </div>
           </div>
-          <button
+          <button data-ay-anahtar data-on={data?.automationActive ? 'true' : 'false'}
             type="button"
             onClick={() => toggleMut.mutate(!data?.automationActive)}
             disabled={toggleMut.isPending}
@@ -454,15 +458,15 @@ function WhatsAppCard() {
         </div>
 
         {/* QR / bağlantı durumu */}
-        <div
+        <div data-ay-qr-kutu data-ok={connected ? 'true' : 'false'}
           className="flex min-h-[190px] flex-col items-center justify-center rounded-md border p-4 text-center"
           style={portalStyle({ borderColor: LINE, background: SOFT })}
         >
           {connected ? (
             <>
-              <CheckCircle2 size={36} style={portalStyle({ color: GREEN })} />
-              <div className="mt-3 text-[14px] font-semibold" style={portalStyle({ color: TEXT })}>WhatsApp bağlı</div>
-              <div className="mt-1 text-[12px]" style={portalStyle({ color: MUTED })}>
+              <CheckCircle2 data-ay-basari size={36} style={portalStyle({ color: GREEN })} />
+              <div data-ay-koyu className="mt-3 text-[14px] font-semibold" style={portalStyle({ color: TEXT })}>WhatsApp bağlı</div>
+              <div data-ay-metin className="mt-1 text-[12px]" style={portalStyle({ color: MUTED })}>
                 Bot artık bu numara üzerinden mesaj alıp gönderiyor.
               </div>
             </>
@@ -470,19 +474,19 @@ function WhatsAppCard() {
             <>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={qr.qrDataUrl} alt="WhatsApp QR" className="h-[200px] w-[200px] rounded bg-white p-2" />
-              <div className="mt-2 text-[11px]" style={portalStyle({ color: MUTED })}>
+              <div data-ay-metin className="mt-2 text-[11px]" style={portalStyle({ color: MUTED })}>
                 Telefon → WhatsApp → Ayarlar → Bağlı Cihazlar → Cihaz Bağla
               </div>
             </>
           ) : connectMut.isPending || qr?.connecting || polling ? (
             <>
-              <Loader2 size={30} className="animate-spin" style={portalStyle({ color: GOLD })} />
-              <div className="mt-3 text-[12px]" style={portalStyle({ color: MUTED })}>QR hazırlanıyor…</div>
+              <Loader2 data-ay-vurgu size={30} className="animate-spin" style={portalStyle({ color: GOLD })} />
+              <div data-ay-metin className="mt-3 text-[12px]" style={portalStyle({ color: MUTED })}>QR hazırlanıyor…</div>
             </>
           ) : (
             <>
-              <Smartphone size={32} style={portalStyle({ color: MUTED })} />
-              <div className="mt-3 text-[12px]" style={portalStyle({ color: MUTED })}>
+              <Smartphone data-ay-soluk size={32} style={portalStyle({ color: MUTED })} />
+              <div data-ay-metin className="mt-3 text-[12px]" style={portalStyle({ color: MUTED })}>
                 Başlatmak için "QR ile Bağlan"a basın. Bağlantı kalıcıdır; deploy sonrası yeniden okutmaya gerek yok.
               </div>
             </>
@@ -491,7 +495,7 @@ function WhatsAppCard() {
 
         <div className="flex flex-wrap gap-2">
           {!connected && (
-            <button
+            <button data-ay-birincil
               onClick={() => connectMut.mutate()}
               disabled={connectMut.isPending}
               className="inline-flex items-center gap-1.5 rounded-md px-3.5 py-2 text-[12.5px] font-semibold"
@@ -501,7 +505,7 @@ function WhatsAppCard() {
               QR ile Bağlan
             </button>
           )}
-          <button
+          <button data-ay-ikincil
             onClick={() => qc.invalidateQueries({ queryKey: ['integration-whatsapp-qr'] })}
             className="inline-flex items-center gap-1.5 rounded-md border px-3.5 py-2 text-[12.5px] font-semibold"
             style={portalStyle({ borderColor: LINE, color: TEXT })}
@@ -509,7 +513,7 @@ function WhatsAppCard() {
             <RefreshCw size={14} /> Yenile
           </button>
           {(connected || qr?.hasQr) && (
-            <button
+            <button data-ay-tehlikeli
               onClick={() => logoutMut.mutate()}
               disabled={logoutMut.isPending}
               className="inline-flex items-center gap-1.5 rounded-md border px-3.5 py-2 text-[12.5px] font-semibold"
@@ -522,7 +526,7 @@ function WhatsAppCard() {
         </div>
 
         {qr?.error && !connected && (
-          <p className="text-[11px]" style={portalStyle({ color: RED })}>Son durum: {qr.error}</p>
+          <p data-ay-hata className="text-[11px]" style={portalStyle({ color: RED })}>Son durum: {qr.error}</p>
         )}
       </div>
     </section>
@@ -546,10 +550,10 @@ function FieldText({
 }) {
   return (
     <div>
-      <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wider" style={portalStyle({ color: MUTED })}>
+      <label data-ay-etiket className="mb-1.5 block text-[11px] font-medium uppercase tracking-wider" style={portalStyle({ color: MUTED })}>
         {label}
       </label>
-      <input
+      <input data-ay-girdi
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
@@ -563,7 +567,7 @@ function FieldText({
 function StatusBadge({ ok, source }: { ok: boolean; source: 'db' | 'env' | 'none' }) {
   const sourceLabel = source === 'db' ? 'Veritabanı' : source === 'env' ? 'ENV (eski)' : '—';
   return (
-    <div
+    <div data-ay-durum-rozet data-ok={ok ? 'true' : 'false'}
       className="flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-semibold"
       style={portalStyle({
         borderColor: ok ? 'rgba(74,222,128,0.4)' : 'rgba(248,113,113,0.4)',
@@ -572,7 +576,7 @@ function StatusBadge({ ok, source }: { ok: boolean; source: 'db' | 'env' | 'none
       })}
     >
       {ok ? <CheckCircle2 size={12} /> : <XCircle size={12} />} {ok ? 'Bağlı' : 'Bağlı değil'}
-      <span style={portalStyle({ color: MUTED })}>· {sourceLabel}</span>
+      <span data-ay-soluk style={portalStyle({ color: MUTED })}>· {sourceLabel}</span>
     </div>
   );
 }

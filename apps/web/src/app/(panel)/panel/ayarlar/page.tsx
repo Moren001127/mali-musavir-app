@@ -1,5 +1,6 @@
 'use client';
 import '@/app/(panel)/panel/ajanlar/_components/operations-white.css';
+import './ayarlar-white.css';
 
 import { portalStyle, portalPaint } from '@/lib/portal-theme';
 
@@ -88,16 +89,16 @@ function PageHeader() {
       })}
     >
       {/* üst renk şeridi */}
-      <div
+      <div data-ay-serit
         className="absolute inset-x-0 top-0 h-1"
         style={portalStyle({ background: 'linear-gradient(90deg, #d4b876, #e0b878, #d9a06c, #b8863a)' })}
       />
-      <Link href="/panel" className="inline-flex items-center gap-1.5 text-[12px] font-medium" style={portalStyle({ color: MUTED })}>
+      <Link data-ay-geri href="/panel" className="inline-flex items-center gap-1.5 text-[12px] font-medium" style={portalStyle({ color: MUTED })}>
         <ArrowLeft size={14} /> Panel
       </Link>
       <div className="mt-2 flex items-center gap-2.5">
         <h1 className="flex items-center gap-2.5 text-[28px] font-semibold leading-tight" style={portalStyle({ color: TEXT })}>
-          <span
+          <span data-ay-simge
             className="grid h-10 w-10 place-items-center rounded-xl"
             style={portalStyle({ background: 'linear-gradient(135deg, #d4b876, #8b7649)', boxShadow: '0 6px 18px rgba(212,184,118,0.35)' })}
           >
@@ -167,7 +168,7 @@ function SettingsGrid() {
   ];
 
   return (
-    <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+    <div data-ay-kutucuklar className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
       {links.map((item) => (
         <SettingsTile key={item.href} {...item} />
       ))}
@@ -204,35 +205,35 @@ function SettingsTile({
   const idle = `linear-gradient(135deg, ${t.fg}1f, rgba(255,255,255,0.02)), ${CARD}`;
   const hover = `linear-gradient(135deg, ${t.fg}2e, rgba(255,255,255,0.03)), ${CARD_HOVER}`;
   return (
-    <Link data-ops-card="true"
+    <Link data-ops-card="true" data-ay-kutucuk data-ton={tone}
       href={href}
       className="group relative overflow-hidden rounded-xl border p-4 transition"
       style={portalStyle({ borderColor: t.bd, background: idle })}
       onMouseEnter={(e) => (e.currentTarget.style.background = portalPaint(hover, 'background'))}
       onMouseLeave={(e) => (e.currentTarget.style.background = portalPaint(idle, 'background'))}
     >
-      <div
+      <div data-ay-serit
         className="absolute inset-x-0 top-0 h-[3px]"
         style={portalStyle({ background: `linear-gradient(90deg, ${t.fg}, ${t.fg}33)` })}
       />
       <div className="flex items-center gap-3">
-        <div
+        <div data-ay-kutucuk-simge
           className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
           style={portalStyle({ color: '#0f0d0b', background: `linear-gradient(135deg, ${t.fg}, ${t.fg}aa)`, boxShadow: `0 4px 12px ${t.fg}33` })}
         >
           <Icon size={18} />
         </div>
         <div className="min-w-0 flex-1">
-          <h2 className="truncate text-[14.5px] font-semibold" style={portalStyle({ color: TEXT })}>
+          <h2 data-ay-kutucuk-baslik className="truncate text-[14.5px] font-semibold" style={portalStyle({ color: TEXT })}>
             {title}
           </h2>
-          <p className="mt-0.5 truncate text-[12px]" style={portalStyle({ color: MUTED })}>
+          <p data-ay-kutucuk-metin className="mt-0.5 truncate text-[12px]" style={portalStyle({ color: MUTED })}>
             {text}
           </p>
           {status && status.length > 0 && (
             <div className="mt-1.5 flex flex-wrap items-center gap-3">
               {status.map((s) => (
-                <span key={s.label} className="inline-flex items-center gap-1.5 text-[11px]" style={portalStyle({ color: s.ok ? GREEN : RED })}>
+                <span data-ay-durum data-ok={s.ok ? 'true' : 'false'} key={s.label} className="inline-flex items-center gap-1.5 text-[11px]" style={portalStyle({ color: s.ok ? GREEN : RED })}>
                   <span
                     className="h-1.5 w-1.5 rounded-full"
                     style={portalStyle({ background: s.ok ? GREEN : RED, boxShadow: `0 0 6px ${s.ok ? GREEN : RED}66` })}
@@ -243,7 +244,7 @@ function SettingsTile({
             </div>
           )}
         </div>
-        <ArrowRight size={15} className="transition group-hover:translate-x-0.5" style={portalStyle({ color: t.fg })} />
+        <ArrowRight data-ay-ok size={15} className="transition group-hover:translate-x-0.5" style={portalStyle({ color: t.fg })} />
       </div>
     </Link>
   );
@@ -283,43 +284,43 @@ function CollapsibleSection({
   const t = TONES[tone] || TONES.gold;
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <section data-ops-card="true"
+    <section data-ops-card="true" data-ay-bolum data-acik={open ? 'true' : 'false'}
       id={id}
       className="relative rounded-xl border overflow-hidden"
       style={portalStyle({ borderColor: t.bd, background: `linear-gradient(135deg, ${t.fg}14, rgba(255,255,255,0.015)), ${CARD}` })}
     >
-      <div
+      <div data-ay-serit
         className="absolute inset-x-0 top-0 h-[3px]"
         style={portalStyle({ background: `linear-gradient(90deg, ${t.fg}, ${t.fg}33)` })}
       />
-      <button
+      <button data-ay-bolum-dugme
         type="button"
         onClick={() => setOpen((v) => !v)}
         className="flex w-full items-center gap-3 p-5 text-left transition"
         onMouseEnter={(e) => (e.currentTarget.style.background = portalPaint('rgba(255,255,255,0.02)', 'background'))}
         onMouseLeave={(e) => (e.currentTarget.style.background = portalPaint('transparent', 'background'))}
       >
-        <div
+        <div data-ay-kutucuk-simge
           className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
           style={portalStyle({ background: `linear-gradient(135deg, ${t.fg}, ${t.fg}aa)`, color: '#0f0d0b', boxShadow: `0 4px 12px ${t.fg}33` })}
         >
           <Icon size={18} />
         </div>
         <div className="min-w-0 flex-1">
-          <h2 className="text-[15px] font-semibold" style={portalStyle({ color: TEXT })}>
+          <h2 data-ay-kutucuk-baslik className="text-[15px] font-semibold" style={portalStyle({ color: TEXT })}>
             {title}
           </h2>
-          <p className="mt-0.5 text-[12px]" style={portalStyle({ color: MUTED })}>
+          <p data-ay-kutucuk-metin className="mt-0.5 text-[12px]" style={portalStyle({ color: MUTED })}>
             {subtitle}
           </p>
         </div>
-        <span
+        <span data-ay-ac-kapa
           className="text-[11px] font-medium uppercase tracking-wider"
           style={portalStyle({ color: open ? GOLD : MUTED })}
         >
           {open ? 'Gizle' : 'Aç'}
         </span>
-        <ArrowRight
+        <ArrowRight data-ay-ok
           size={16}
           className="transition"
           style={portalStyle({ color: GOLD, transform: open ? 'rotate(90deg)' : 'none' })}
@@ -327,7 +328,7 @@ function CollapsibleSection({
       </button>
 
       {open && (
-        <div className="border-t px-5 pb-5 pt-4" style={portalStyle({ borderColor: LINE })}>
+        <div data-ay-bolum-icerik className="border-t px-5 pb-5 pt-4" style={portalStyle({ borderColor: LINE })}>
           {children}
         </div>
       )}
@@ -375,7 +376,7 @@ function TwoFactorSection() {
   });
 
   const codeInput = (
-    <input
+    <input data-ay-girdi
       value={code}
       onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
       inputMode="numeric"
@@ -394,16 +395,16 @@ function TwoFactorSection() {
       tone="gold"
     >
       {isLoading ? (
-        <p className="text-[13px]" style={portalStyle({ color: MUTED })}>Yükleniyor…</p>
+        <p data-ay-metin className="text-[13px]" style={portalStyle({ color: MUTED })}>Yükleniyor…</p>
       ) : enabled ? (
         <div className="space-y-3">
-          <div className="flex items-center gap-2 text-[13.5px]" style={portalStyle({ color: GREEN })}>
+          <div data-ay-basari className="flex items-center gap-2 text-[13.5px]" style={portalStyle({ color: GREEN })}>
             <CheckCircle2 size={16} /> Açık — girişte authenticator kodu istenir.
           </div>
-          <p className="text-[12.5px]" style={portalStyle({ color: MUTED })}>Kapatmak için uygulamadaki güncel kodu girin:</p>
+          <p data-ay-metin className="text-[12.5px]" style={portalStyle({ color: MUTED })}>Kapatmak için uygulamadaki güncel kodu girin:</p>
           <div className="flex flex-wrap items-center gap-2">
             {codeInput}
-            <button
+            <button data-ay-tehlikeli
               type="button"
               onClick={() => disableMut.mutate()}
               disabled={code.length !== 6 || disableMut.isPending}
@@ -416,14 +417,14 @@ function TwoFactorSection() {
         </div>
       ) : setup ? (
         <div className="space-y-4">
-          <p className="text-[13px]" style={portalStyle({ color: MUTED })}>
-            <strong style={portalStyle({ color: TEXT })}>1)</strong> Authenticator uygulamanıza (Google Authenticator, Authy vb.) aşağıdaki anahtarı elle ekleyin:
+          <p data-ay-metin className="text-[13px]" style={portalStyle({ color: MUTED })}>
+            <strong data-ay-koyu style={portalStyle({ color: TEXT })}>1)</strong> Authenticator uygulamanıza (Google Authenticator, Authy vb.) aşağıdaki anahtarı elle ekleyin:
           </p>
           <div className="flex flex-wrap items-center gap-2">
-            <code className="rounded-lg px-3 py-2 text-[14px] tracking-widest" style={portalStyle({ background: SOFT, border: `1px solid ${LINE}`, color: GOLD })}>
+            <code data-ay-kod className="rounded-lg px-3 py-2 text-[14px] tracking-widest" style={portalStyle({ background: SOFT, border: `1px solid ${LINE}`, color: GOLD })}>
               {setup.secret}
             </code>
-            <button
+            <button data-ay-ikincil
               type="button"
               onClick={() => { navigator.clipboard?.writeText(setup.secret.replace(/\s/g, '')); toast.success('Anahtar kopyalandı'); }}
               className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12.5px]"
@@ -432,12 +433,12 @@ function TwoFactorSection() {
               <Copy size={13} /> Kopyala
             </button>
           </div>
-          <p className="text-[13px]" style={portalStyle({ color: MUTED })}>
-            <strong style={portalStyle({ color: TEXT })}>2)</strong> Uygulamadaki 6 haneli kodu girip etkinleştirin:
+          <p data-ay-metin className="text-[13px]" style={portalStyle({ color: MUTED })}>
+            <strong data-ay-koyu style={portalStyle({ color: TEXT })}>2)</strong> Uygulamadaki 6 haneli kodu girip etkinleştirin:
           </p>
           <div className="flex flex-wrap items-center gap-2">
             {codeInput}
-            <button
+            <button data-ay-birincil
               type="button"
               onClick={() => enableMut.mutate()}
               disabled={code.length !== 6 || enableMut.isPending}
@@ -446,17 +447,17 @@ function TwoFactorSection() {
             >
               {enableMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Etkinleştir
             </button>
-            <button type="button" onClick={() => { setSetup(null); setCode(''); }} className="text-[12.5px]" style={portalStyle({ color: MUTED })}>
+            <button data-ay-baglanti type="button" onClick={() => { setSetup(null); setCode(''); }} className="text-[12.5px]" style={portalStyle({ color: MUTED })}>
               Vazgeç
             </button>
           </div>
         </div>
       ) : (
         <div className="space-y-3">
-          <p className="text-[13px]" style={portalStyle({ color: MUTED })}>
+          <p data-ay-metin className="text-[13px]" style={portalStyle({ color: MUTED })}>
             Şifrenize ek olarak telefondaki authenticator uygulamasından 6 haneli kod ister. Şifreniz çalınsa bile giriş engellenir.
           </p>
-          <button
+          <button data-ay-birincil
             type="button"
             onClick={() => setupMut.mutate()}
             disabled={setupMut.isPending}
@@ -514,7 +515,7 @@ function AgentContent() {
 
   return (
     <div className="space-y-3">
-      <a
+      <a data-ay-birincil
         href={bookmarkletCode}
         onClick={(event) => event.preventDefault()}
         className="inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-[12.5px] font-bold"
@@ -529,6 +530,7 @@ function AgentContent() {
             type="text"
             readOnly
             value={info?.token || ''}
+            data-ay-girdi
             className="h-9 flex-1 rounded-md border px-2.5 font-mono text-[11.5px] outline-none"
             style={portalStyle({ background: SOFT, borderColor: LINE, color: TEXT })}
             onFocus={(event) => event.currentTarget.select()}
@@ -546,6 +548,7 @@ function AgentContent() {
             type="text"
             readOnly
             value={bookmarkletCode}
+            data-ay-girdi
             className="h-9 flex-1 rounded-md border px-2.5 font-mono text-[11.5px] outline-none"
             style={portalStyle({ background: SOFT, borderColor: LINE, color: TEXT })}
             onFocus={(event) => event.currentTarget.select()}
@@ -567,7 +570,7 @@ function AgentContent() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-[11px] font-medium uppercase tracking-wider" style={portalStyle({ color: MUTED })}>
+      <span data-ay-etiket className="mb-1 block text-[11px] font-medium uppercase tracking-wider" style={portalStyle({ color: MUTED })}>
         {label}
       </span>
       {children}
@@ -585,7 +588,7 @@ function SmallButton({
   active?: boolean;
 }) {
   return (
-    <button
+    <button data-ay-ikincil data-on={active ? 'true' : 'false'}
       type="button"
       onClick={onClick}
       className="inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-[12px] font-medium transition hover:bg-white/[0.06]"

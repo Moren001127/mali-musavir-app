@@ -1,5 +1,6 @@
 'use client';
 import '@/app/(panel)/panel/ajanlar/_components/operations-white.css';
+import '../otomasyonlar-white.css';
 
 import { portalStyle } from '@/lib/portal-theme';
 
@@ -59,6 +60,17 @@ const GREEN = '#4ade80';
 const RED = '#f87171';
 const AMBER = '#fbbf24';
 const BLUE = '#60a5fa';
+
+// Beyaz temada renk ailesi kancası (CSS `data-ton`); A temasında etkisiz.
+function tonAdi(color: string): string {
+  const c = color.toLowerCase();
+  if (c === '#4ade80') return 'yesil';
+  if (c === '#f87171') return 'kirmizi';
+  if (c === '#fbbf24') return 'kehribar';
+  if (c === '#60a5fa') return 'mavi';
+  if (c === '#a855f7' || c === '#c084fc') return 'mor';
+  return 'kursuni';
+}
 
 type Tab = 'definition' | 'history' | 'logs';
 
@@ -175,7 +187,7 @@ export default function OtomasyonDetayPage() {
         >
           <ChevronLeft size={16} /> Geri
         </button>
-        <div className="rounded-lg border p-4 text-[13px]" style={portalStyle({ borderColor: `${RED}55`, background: `${RED}14`, color: '#fecaca' })}>
+        <div data-oto-kutu="hata" className="rounded-lg border p-4 text-[13px]" style={portalStyle({ borderColor: `${RED}55`, background: `${RED}14`, color: '#fecaca' })}>
           Otomasyon yüklenemedi: {(error as any)?.message || 'Bulunamadı'}
         </div>
       </div>
@@ -201,7 +213,7 @@ export default function OtomasyonDetayPage() {
           className="absolute inset-x-0 top-0 h-1"
           style={portalStyle({ background: 'linear-gradient(90deg, #a855f7, #c084fc, #60a5fa, #4ade80, #d4b876)' })}
         />
-        <button
+        <button data-oto-geri
           onClick={() => router.push('/panel/otomasyonlar')}
           className="inline-flex items-center gap-1.5 text-[12px] font-medium"
           style={portalStyle({ color: MUTED })}
@@ -212,7 +224,7 @@ export default function OtomasyonDetayPage() {
         <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <span
+              <span data-oto-baslik-simge
                 className="grid h-9 w-9 place-items-center rounded-xl"
                 style={portalStyle({ background: 'linear-gradient(135deg, #a855f7, #c084fc)', boxShadow: '0 6px 18px rgba(168,85,247,0.40)' })}
               >
@@ -222,13 +234,13 @@ export default function OtomasyonDetayPage() {
               <StatusBadge status={auto.status} />
             </div>
             {auto.description && <p className="mt-1.5 text-[13px]" style={portalStyle({ color: MUTED })}>{auto.description}</p>}
-            <p className="mt-1.5 text-[12px]" style={portalStyle({ color: MUTED })}>
+            <p data-oto-cumle className="mt-1.5 text-[12px]" style={portalStyle({ color: MUTED })}>
               <span className="font-medium">Cümle:</span> "{auto.prompt}"
             </p>
           </div>
 
           {/* Aksiyon butonları */}
-          <div className="flex flex-wrap items-center gap-1.5">
+          <div data-oto-eylemler className="flex flex-wrap items-center gap-1.5">
             {auto.status === 'ACTIVE' && (
               <ActionBtn color={AMBER} onClick={() => runNow.mutate()} disabled={runNow.isPending}>
                 {runNow.isPending ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />} Şimdi Çalıştır
@@ -265,7 +277,7 @@ export default function OtomasyonDetayPage() {
       </header>
 
       {/* ── Özet istatistik ── */}
-      <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <section data-oto-sayaclar className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat color={VIOLET_SOFT} icon={<Activity size={15} />} label="Toplam Çalışma" value={String(auto.totalRuns)} />
         <Stat color={GREEN} icon={<CheckCircle2 size={15} />} label="Başarılı" value={String(auto.successRuns)} />
         <Stat color={RED} icon={<XCircle size={15} />} label="Başarısız" value={String(auto.failureRuns)} />
@@ -278,7 +290,7 @@ export default function OtomasyonDetayPage() {
       </section>
 
       {/* ── Sekmeler ── */}
-      <div className="flex gap-1 border-b" style={portalStyle({ borderColor: LINE })}>
+      <div data-oto-sekmeler className="flex gap-1 border-b" style={portalStyle({ borderColor: LINE })}>
         <TabBtn active={tab === 'definition'} onClick={() => setTab('definition')} icon={<FileText size={15} />}>Tanım</TabBtn>
         <TabBtn active={tab === 'history'} onClick={() => setTab('history')} icon={<Activity size={15} />}>
           Çalışma Geçmişi ({runs?.length ?? 0})
@@ -371,11 +383,11 @@ function DefinitionTab({ auto, stepList }: { auto: Automation; stepList: any[] }
       </div>
 
       {/* Düzenleme bloğu */}
-      <div className="rounded-xl border p-4" style={portalStyle({ borderColor: LINE, background: CARD })}>
+      <div data-oto-kart className="rounded-xl border p-4" style={portalStyle({ borderColor: LINE, background: CARD })}>
         <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-[13px] font-medium" style={portalStyle({ color: TEXT })}>Tanım</h3>
+          <h3 data-oto-etiket className="text-[13px] font-medium" style={portalStyle({ color: TEXT })}>Tanım</h3>
           {!editing ? (
-            <button
+            <button data-oto-ikincil
               onClick={() => setEditing(true)}
               className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12px] font-medium"
               style={portalStyle({ borderColor: `${VIOLET}55`, background: `${VIOLET}14`, color: VIOLET_SOFT })}
@@ -384,7 +396,7 @@ function DefinitionTab({ auto, stepList }: { auto: Automation; stepList: any[] }
             </button>
           ) : (
             <div className="flex items-center gap-1.5">
-              <button
+              <button data-oto-birincil
                 onClick={() => update.mutate()}
                 disabled={update.isPending}
                 className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-semibold disabled:opacity-50"
@@ -392,7 +404,7 @@ function DefinitionTab({ auto, stepList }: { auto: Automation; stepList: any[] }
               >
                 {update.isPending ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} Kaydet
               </button>
-              <button
+              <button data-oto-ikincil
                 onClick={() => {
                   setEditing(false);
                   setTitle(auto.title);
@@ -417,6 +429,7 @@ function DefinitionTab({ auto, stepList }: { auto: Automation; stepList: any[] }
               <input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
+                data-oto-girdi
                 className="w-full rounded-lg border bg-transparent px-3 py-2 text-[13px] outline-none"
                 style={portalStyle({ borderColor: LINE, color: TEXT })}
               />
@@ -425,6 +438,7 @@ function DefinitionTab({ auto, stepList }: { auto: Automation; stepList: any[] }
               <input
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
+                data-oto-girdi
                 className="w-full rounded-lg border bg-transparent px-3 py-2 text-[13px] outline-none"
                 style={portalStyle({ borderColor: LINE, color: TEXT })}
               />
@@ -435,6 +449,7 @@ function DefinitionTab({ auto, stepList }: { auto: Automation; stepList: any[] }
                   value={cron}
                   onChange={(e) => setCron(e.target.value)}
                   placeholder="0 10 22 * *"
+                  data-oto-girdi
                   className="w-full rounded-lg border bg-transparent px-3 py-2 font-mono text-[13px] outline-none"
                   style={portalStyle({ borderColor: LINE, color: TEXT })}
                 />
@@ -444,6 +459,7 @@ function DefinitionTab({ auto, stepList }: { auto: Automation; stepList: any[] }
               <select
                 value={failurePolicy}
                 onChange={(e) => setFailurePolicy(e.target.value)}
+                data-oto-girdi
                 className="w-full rounded-lg border bg-transparent px-3 py-2 text-[13px] outline-none"
                 style={portalStyle({ borderColor: LINE, color: TEXT })}
               >
@@ -457,12 +473,13 @@ function DefinitionTab({ auto, stepList }: { auto: Automation; stepList: any[] }
                 value={stepsText}
                 onChange={(e) => setStepsText(e.target.value)}
                 spellCheck={false}
+                data-oto-girdi
                 className="min-h-[220px] w-full resize-y rounded-lg border p-3 font-mono text-[11.5px] outline-none"
                 style={portalStyle({ borderColor: LINE, background: CARD2, color: TEXT })}
               />
             </Field>
             {stepsError && (
-              <div className="rounded-lg border p-2 text-[12px]" style={portalStyle({ borderColor: `${RED}55`, background: `${RED}14`, color: '#fecaca' })}>
+              <div data-oto-kutu="hata" className="rounded-lg border p-2 text-[12px]" style={portalStyle({ borderColor: `${RED}55`, background: `${RED}14`, color: '#fecaca' })}>
                 {stepsError}
               </div>
             )}
@@ -470,7 +487,7 @@ function DefinitionTab({ auto, stepList }: { auto: Automation; stepList: any[] }
         ) : (
           <ol className="space-y-2 text-[12px]">
             {stepList.length === 0 && (
-              <li className="rounded-lg border p-3" style={portalStyle({ borderColor: LINE, background: CARD2, color: MUTED })}>
+              <li data-oto-adim className="rounded-lg border p-3" style={portalStyle({ borderColor: LINE, background: CARD2, color: MUTED })}>
                 Bu otomasyonda hiç adım yok.
               </li>
             )}
@@ -488,13 +505,13 @@ function DefinitionTab({ auto, stepList }: { auto: Automation; stepList: any[] }
 function HistoryTab({ runs, onSelect }: { runs: AutomationRun[]; onSelect: (id: string) => void }) {
   if (runs.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed p-8 text-center text-[13px]" style={portalStyle({ borderColor: LINE, background: CARD, color: MUTED })}>
+      <div data-oto-kutu="bos" className="rounded-xl border border-dashed p-8 text-center text-[13px]" style={portalStyle({ borderColor: LINE, background: CARD, color: MUTED })}>
         Henüz çalışma geçmişi yok. "Şimdi Çalıştır" veya tetikleyici ateşlenince burada listelenir.
       </div>
     );
   }
   return (
-    <div className="overflow-hidden rounded-xl border" style={portalStyle({ borderColor: LINE, background: CARD })}>
+    <div data-oto-tablo className="overflow-hidden rounded-xl border" style={portalStyle({ borderColor: LINE, background: CARD })}>
       <table data-ops-table="true" className="w-full text-[13px]">
         <thead style={portalStyle({ background: CARD2 })}>
           <tr style={portalStyle({ color: MUTED })} className="text-left text-[11px] uppercase tracking-wider">
@@ -512,7 +529,7 @@ function HistoryTab({ runs, onSelect }: { runs: AutomationRun[]; onSelect: (id: 
               ? new Date(run.finishedAt).getTime() - new Date(run.startedAt).getTime()
               : null;
             return (
-              <tr
+              <tr data-oto-satir
                 key={run.id}
                 onClick={() => onSelect(run.id)}
                 className="cursor-pointer border-t"
@@ -546,7 +563,7 @@ function LogsTab({
   const run = selectedRunId ? runs.find((r) => r.id === selectedRunId) ?? runs[0] : runs[0];
   if (!run) {
     return (
-      <div className="rounded-xl border border-dashed p-8 text-center text-[13px]" style={portalStyle({ borderColor: LINE, background: CARD, color: MUTED })}>
+      <div data-oto-kutu="bos" className="rounded-xl border border-dashed p-8 text-center text-[13px]" style={portalStyle({ borderColor: LINE, background: CARD, color: MUTED })}>
         Henüz çalışma kaydı yok.
       </div>
     );
@@ -557,7 +574,7 @@ function LogsTab({
     <div className="grid grid-cols-1 gap-4 md:grid-cols-[260px_1fr]">
       <div className="max-h-[600px] space-y-1.5 overflow-auto">
         {runs.map((r) => (
-          <button
+          <button data-oto-kosu data-secili={r.id === run.id ? 'true' : 'false'}
             key={r.id}
             onClick={() => onSelect(r.id)}
             className="w-full rounded-lg border p-2 text-left text-[11.5px] transition-colors"
@@ -576,27 +593,27 @@ function LogsTab({
       </div>
 
       <div className="space-y-3">
-        <div className="rounded-xl border p-4" style={portalStyle({ borderColor: LINE, background: CARD })}>
+        <div data-oto-kart className="rounded-xl border p-4" style={portalStyle({ borderColor: LINE, background: CARD })}>
           <div className="mb-2 flex items-center justify-between">
             <div>
-              <div className="text-[11px] uppercase tracking-wider" style={portalStyle({ color: MUTED })}>Çalışma</div>
+              <div data-oto-bilgi-etiket className="text-[11px] uppercase tracking-wider" style={portalStyle({ color: MUTED })}>Çalışma</div>
               <code className="text-[12px]" style={portalStyle({ color: TEXT })}>{run.id}</code>
             </div>
             <RunStatusBadge status={run.status} />
           </div>
-          <div className="grid grid-cols-2 gap-2 text-[12px] sm:grid-cols-4">
+          <div data-oto-mini className="grid grid-cols-2 gap-2 text-[12px] sm:grid-cols-4">
             <Mini label="Başlangıç" value={new Date(run.startedAt).toLocaleString('tr-TR')} />
             <Mini label="Bitiş" value={run.finishedAt ? new Date(run.finishedAt).toLocaleString('tr-TR') : 'Devam'} />
             <Mini label="Maliyet" value={run.costUsd ? `$${run.costUsd.toFixed(4)}` : '$0'} />
             <Mini label="Adım" value={String(stepLogs.length)} />
           </div>
           {run.summary && (
-            <div className="mt-3 rounded-lg p-2 text-[12px]" style={portalStyle({ background: CARD2, color: TEXT })}>
+            <div data-oto-kutu="notr" className="mt-3 rounded-lg p-2 text-[12px]" style={portalStyle({ background: CARD2, color: TEXT })}>
               <span className="font-medium">Özet:</span> {run.summary}
             </div>
           )}
           {run.errorMessage && (
-            <div className="mt-3 rounded-lg border p-2 text-[12px]" style={portalStyle({ borderColor: `${RED}55`, background: `${RED}14`, color: '#fecaca' })}>
+            <div data-oto-kutu="hata" className="mt-3 rounded-lg border p-2 text-[12px]" style={portalStyle({ borderColor: `${RED}55`, background: `${RED}14`, color: '#fecaca' })}>
               <span className="font-medium">Hata:</span> {run.errorMessage}
             </div>
           )}
@@ -616,35 +633,35 @@ function StepLogEntry({ log, index }: { log: any; index: number }) {
   const [open, setOpen] = useState(!!log.error);
   const hasError = !!log.error;
   return (
-    <div className="rounded-lg border" style={portalStyle({ borderColor: hasError ? `${RED}55` : LINE, background: hasError ? `${RED}0f` : CARD })}>
-      <button onClick={() => setOpen(!open)} className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12px]">
+    <div data-oto-log data-hata={hasError ? 'true' : 'false'} className="rounded-lg border" style={portalStyle({ borderColor: hasError ? `${RED}55` : LINE, background: hasError ? `${RED}0f` : CARD })}>
+      <button data-oto-log-dugme onClick={() => setOpen(!open)} className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12px]">
         {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-        <span
+        <span data-oto-adim-no data-akis={hasError ? 'hata' : 'false'}
           className="grid h-5 w-5 shrink-0 place-items-center rounded-full text-[10px] font-semibold"
           style={portalStyle({ background: hasError ? RED : VIOLET, color: '#1a1410' })}
         >
           {index}
         </span>
-        <code className="font-medium" style={portalStyle({ color: TEXT })}>{log.tool}</code>
-        <span className="ml-auto text-[10px]" style={portalStyle({ color: MUTED })}>{log.ms}ms</span>
+        <code data-oto-kod className="font-medium" style={portalStyle({ color: TEXT })}>{log.tool}</code>
+        <span data-oto-sure className="ml-auto text-[10px]" style={portalStyle({ color: MUTED })}>{log.ms}ms</span>
         {hasError && <AlertTriangle size={14} style={portalStyle({ color: RED })} />}
       </button>
       {open && (
-        <div className="space-y-2 border-t p-3 text-[11px]" style={portalStyle({ borderColor: LINE })}>
+        <div data-oto-log-govde className="space-y-2 border-t p-3 text-[11px]" style={portalStyle({ borderColor: LINE })}>
           {log.input !== undefined && (
             <details>
-              <summary className="cursor-pointer" style={portalStyle({ color: MUTED })}>input</summary>
-              <pre className="mt-1 max-h-48 overflow-auto rounded p-2" style={portalStyle({ background: CARD2, color: TEXT })}>{JSON.stringify(log.input, null, 2)}</pre>
+              <summary data-oto-ozet className="cursor-pointer" style={portalStyle({ color: MUTED })}>input</summary>
+              <pre data-oto-pre className="mt-1 max-h-48 overflow-auto rounded p-2" style={portalStyle({ background: CARD2, color: TEXT })}>{JSON.stringify(log.input, null, 2)}</pre>
             </details>
           )}
           {log.output !== undefined && (
             <details>
-              <summary className="cursor-pointer" style={portalStyle({ color: MUTED })}>output</summary>
-              <pre className="mt-1 max-h-48 overflow-auto rounded p-2" style={portalStyle({ background: CARD2, color: TEXT })}>{JSON.stringify(log.output, null, 2)}</pre>
+              <summary data-oto-ozet className="cursor-pointer" style={portalStyle({ color: MUTED })}>output</summary>
+              <pre data-oto-pre className="mt-1 max-h-48 overflow-auto rounded p-2" style={portalStyle({ background: CARD2, color: TEXT })}>{JSON.stringify(log.output, null, 2)}</pre>
             </details>
           )}
           {log.error && (
-            <div className="rounded p-2" style={portalStyle({ background: `${RED}14`, color: '#fecaca' })}>
+            <div data-oto-kutu="hata" className="rounded p-2" style={portalStyle({ background: `${RED}14`, color: '#fecaca' })}>
               <span className="font-medium">Hata:</span> {log.error}
             </div>
           )}
@@ -667,7 +684,7 @@ function ActionBtn({
   children: React.ReactNode;
 }) {
   return (
-    <button
+    <button data-oto-eylem data-ton={tonAdi(color)}
       onClick={onClick}
       disabled={disabled}
       className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12px] font-medium transition-colors disabled:opacity-50"
@@ -680,9 +697,9 @@ function ActionBtn({
 
 function Stat({ color, icon, label, value }: { color: string; icon: React.ReactNode; label: string; value: string }) {
   return (
-    <div data-ops-stat="true" className="rounded-xl border p-3" style={portalStyle({ '--ops-tone': portalStyle({ color: color }).color, borderColor: LINE, background: CARD } as React.CSSProperties)}>
+    <div data-ops-stat="true" data-ton={tonAdi(color)} className="rounded-xl border p-3" style={portalStyle({ '--ops-tone': portalStyle({ color: color }).color, borderColor: LINE, background: CARD } as React.CSSProperties)}>
       <div data-ops-label="true" className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider" style={portalStyle({ color: MUTED })}>
-        <span style={portalStyle({ color })}>{icon}</span>
+        <span data-oto-sayac-simge style={portalStyle({ color })}>{icon}</span>
         {label}
       </div>
       <div data-ops-value="true" className="mt-1 text-[18px] font-semibold" style={portalStyle({ color: TEXT })}>{value}</div>
@@ -692,12 +709,12 @@ function Stat({ color, icon, label, value }: { color: string; icon: React.ReactN
 
 function Info({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
-    <div className="rounded-xl border p-3" style={portalStyle({ borderColor: LINE, background: CARD })}>
-      <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider" style={portalStyle({ color: MUTED })}>
+    <div data-oto-bilgi className="rounded-xl border p-3" style={portalStyle({ borderColor: LINE, background: CARD })}>
+      <div data-oto-bilgi-etiket className="flex items-center gap-2 text-[11px] uppercase tracking-wider" style={portalStyle({ color: MUTED })}>
         {icon}
         {label}
       </div>
-      <div className="mt-1 text-[13px]" style={portalStyle({ color: TEXT })}>{value}</div>
+      <div data-oto-bilgi-deger className="mt-1 text-[13px]" style={portalStyle({ color: TEXT })}>{value}</div>
     </div>
   );
 }
@@ -705,8 +722,8 @@ function Info({ icon, label, value }: { icon: React.ReactNode; label: string; va
 function Mini({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <div style={portalStyle({ color: MUTED })}>{label}</div>
-      <div style={portalStyle({ color: TEXT })}>{value}</div>
+      <div data-oto-bilgi-etiket style={portalStyle({ color: MUTED })}>{label}</div>
+      <div data-oto-bilgi-deger style={portalStyle({ color: TEXT })}>{value}</div>
     </div>
   );
 }
@@ -714,7 +731,7 @@ function Mini({ label, value }: { label: string; value: string }) {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-[11.5px] font-medium" style={portalStyle({ color: MUTED })}>{label}</span>
+      <span data-oto-alan-etiket className="mb-1 block text-[11.5px] font-medium" style={portalStyle({ color: MUTED })}>{label}</span>
       {children}
     </label>
   );
@@ -732,7 +749,7 @@ function TabBtn({
   icon: React.ReactNode;
 }) {
   return (
-    <button
+    <button data-oto-sekme data-secili={active ? 'true' : 'false'}
       onClick={onClick}
       className="-mb-px inline-flex items-center gap-1.5 border-b-2 px-3 py-2 text-[13px] font-medium transition-colors"
       style={portalStyle({
@@ -749,16 +766,16 @@ function TabBtn({
 function StepItem({ step, depth, index }: { step: any; depth: number; index: number }) {
   const isFlow = ['for_each', 'branch_if', 'parallel', 'wait', 'format_list'].includes(step.tool);
   return (
-    <li className="rounded-lg border p-3" style={portalStyle({ borderColor: LINE, background: CARD2, marginLeft: depth * 14 })}>
+    <li data-oto-adim className="rounded-lg border p-3" style={portalStyle({ borderColor: LINE, background: CARD2, marginLeft: depth * 14 })}>
       <div className="flex items-start gap-2">
-        <span
+        <span data-oto-adim-no data-akis={isFlow ? 'true' : 'false'}
           className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full text-[10px] font-semibold"
           style={portalStyle({ background: isFlow ? '#64748b' : VIOLET, color: '#1a1410' })}
         >
           {index}
         </span>
         <div className="flex-1">
-          <code className="rounded px-1.5 py-0.5 text-[11px] font-medium" style={portalStyle({ background: '#0b0907', color: VIOLET_SOFT })}>
+          <code data-oto-kod className="rounded px-1.5 py-0.5 text-[11px] font-medium" style={portalStyle({ background: '#0b0907', color: VIOLET_SOFT })}>
             {step.tool}
           </code>
           {step.outputAs && (
@@ -812,7 +829,7 @@ function StatusBadge({ status }: { status: AutomationStatus }) {
   };
   const s = map[status];
   return (
-    <span className="inline-flex rounded-full px-2 py-0.5 text-[10.5px] font-semibold" style={portalStyle({ background: `${s.c}1f`, color: s.c })}>
+    <span data-oto-rozet data-ton={tonAdi(s.c)} className="inline-flex rounded-full px-2 py-0.5 text-[10.5px] font-semibold" style={portalStyle({ background: `${s.c}1f`, color: s.c })}>
       {s.label}
     </span>
   );
@@ -827,7 +844,7 @@ function RunStatusBadge({ status }: { status: string }) {
   };
   const s = map[status] || { c: MUTED, label: status };
   return (
-    <span className="inline-flex rounded-full px-2 py-0.5 text-[10.5px] font-semibold" style={portalStyle({ background: `${s.c}1f`, color: s.c })}>
+    <span data-oto-rozet data-ton={tonAdi(s.c)} className="inline-flex rounded-full px-2 py-0.5 text-[10.5px] font-semibold" style={portalStyle({ background: `${s.c}1f`, color: s.c })}>
       {s.label}
     </span>
   );

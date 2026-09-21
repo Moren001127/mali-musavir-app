@@ -1,5 +1,6 @@
 'use client';
 import '@/app/(panel)/panel/ajanlar/_components/operations-white.css';
+import './luca-white.css';
 
 import { portalStyle } from '@/lib/portal-theme';
 
@@ -125,13 +126,13 @@ export default function LucaSessionPage() {
         })}
       >
         {/* ust renk seridi */}
-        <div
+        <div data-lc-serit
           className="absolute inset-x-0 top-0 h-1"
           style={portalStyle({ background: 'linear-gradient(90deg, #2dd4bf, #22d3ee, #5eead4, #d4b876)' })}
         />
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <h1 className="flex items-center gap-2.5 text-[28px] font-semibold leading-tight" style={portalStyle({ color: '#fafaf9' })}>
-            <span
+            <span data-lc-simge
               className="grid h-10 w-10 place-items-center rounded-xl"
               style={portalStyle({ background: 'linear-gradient(135deg, #2dd4bf, #0d9488)', boxShadow: '0 6px 18px rgba(45,212,191,0.35)' })}
             >
@@ -139,7 +140,7 @@ export default function LucaSessionPage() {
             </span>
             Luca Oturum Yöneticisi
           </h1>
-          <button
+          <button data-lc-ikincil
             onClick={() => refetch()}
             className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12px] font-semibold transition-colors"
             title="Yenile"
@@ -153,7 +154,7 @@ export default function LucaSessionPage() {
         </p>
       </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+      <div data-lc-durumlar className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         <StatusCard
           icon={KeyRound}
           title="Luca Şifresi"
@@ -192,17 +193,17 @@ export default function LucaSessionPage() {
           onCancel={() => cancelMut.mutate(activeChallenge.id)}
         />
       ) : (
-        <div
+        <div data-lc-kart data-lc-kod-hazir
           className="rounded-lg border p-5 flex items-center justify-between gap-4"
           style={portalStyle({ background: 'rgba(255,255,255,0.025)', borderColor: 'rgba(255,255,255,0.06)' })}
         >
           <div>
-            <div className="text-sm font-semibold" style={portalStyle({ color: '#fafaf9' })}>Portal içinde güvenlik kodu hazır</div>
-            <div className="text-xs mt-1" style={portalStyle({ color: 'rgba(250,250,249,0.52)' })}>
+            <div data-lc-baslik className="text-sm font-semibold" style={portalStyle({ color: '#fafaf9' })}>Portal içinde güvenlik kodu hazır</div>
+            <div data-lc-alt className="text-xs mt-1" style={portalStyle({ color: 'rgba(250,250,249,0.52)' })}>
               Fatura, mizan veya hesap planı çekiminde Luca kod isterse görsel burada açılacak.
             </div>
           </div>
-          <button
+          <button data-lc-ikincil
             onClick={() => refetch()}
             className="px-3 py-2 rounded-md text-xs font-semibold flex items-center gap-2"
             style={portalStyle({ background: 'rgba(45,212,191,0.16)', color: '#5eead4', border: '1px solid rgba(45,212,191,0.35)' })}
@@ -214,10 +215,10 @@ export default function LucaSessionPage() {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <section className="relative overflow-hidden rounded-2xl border p-4" style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' })}>
-          <div className="absolute inset-x-0 top-0 h-[3px]" style={portalStyle({ background: 'linear-gradient(90deg, #2dd4bf, rgba(45,212,191,0.2))' })} />
-          <h2 className="text-sm font-bold mb-3 flex items-center gap-2" style={portalStyle({ color: '#fafaf9' })}>
-            <span className="grid h-7 w-7 place-items-center rounded-lg" style={portalStyle({ background: 'linear-gradient(135deg, #2dd4bf, #0d9488)', boxShadow: '0 4px 12px rgba(45,212,191,0.30)' })}>
+        <section data-lc-kart className="relative overflow-hidden rounded-2xl border p-4" style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' })}>
+          <div data-lc-serit className="absolute inset-x-0 top-0 h-[3px]" style={portalStyle({ background: 'linear-gradient(90deg, #2dd4bf, rgba(45,212,191,0.2))' })} />
+          <h2 data-lc-kart-baslik className="text-sm font-bold mb-3 flex items-center gap-2" style={portalStyle({ color: '#fafaf9' })}>
+            <span data-lc-kart-simge className="grid h-7 w-7 place-items-center rounded-lg" style={portalStyle({ background: 'linear-gradient(135deg, #2dd4bf, #0d9488)', boxShadow: '0 4px 12px rgba(45,212,191,0.30)' })}>
               <Monitor size={14} style={portalStyle({ color: '#07201c' })} />
             </span>
             Bağlı Cihazlar
@@ -227,14 +228,14 @@ export default function LucaSessionPage() {
               <EmptyLine text="Henüz Luca agent ping'i yok" />
             ) : (
               devices.map((d, i) => (
-                <div key={`${d.id || 'unknown'}-${i}`} className="rounded-md px-3 py-2" style={portalStyle({ background: 'rgba(255,255,255,0.03)' })}>
+                <div data-lc-satir key={`${d.id || 'unknown'}-${i}`} className="rounded-md px-3 py-2" style={portalStyle({ background: 'rgba(255,255,255,0.03)' })}>
                   <div className="flex items-center justify-between gap-3">
-                    <span className="font-mono text-xs" style={portalStyle({ color: d.id === currentDeviceId ? GOLD : '#fafaf9' })}>{d.id || 'cihaz kimliği yok'}</span>
-                    <span className="text-[11px]" style={portalStyle({ color: deviceStatusColor(d) })}>
+                    <span data-lc-satir-ad data-bu-cihaz={d.id === currentDeviceId ? 'true' : 'false'} className="font-mono text-xs" style={portalStyle({ color: d.id === currentDeviceId ? GOLD : '#fafaf9' })}>{d.id || 'cihaz kimliği yok'}</span>
+                    <span data-lc-cihaz-durum data-durum={!d.running ? 'pasif' : isClassicLucaUrl(d.url) ? 'hazir' : isLucaLoginUrl(d.url) ? 'giris' : 'diger'} className="text-[11px]" style={portalStyle({ color: deviceStatusColor(d) })}>
                       {deviceStatusLabel(d)}
                     </span>
                   </div>
-                  <div className="text-[11px] mt-1 truncate" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
+                  <div data-lc-satir-alt className="text-[11px] mt-1 truncate" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                     Son ping: {new Date(d.lastPing).toLocaleTimeString('tr-TR')} · {d.url || 'url yok'}
                   </div>
                 </div>
@@ -243,15 +244,15 @@ export default function LucaSessionPage() {
           </div>
         </section>
 
-        <section className="relative overflow-hidden rounded-2xl border p-4" style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' })}>
-          <div className="absolute inset-x-0 top-0 h-[3px]" style={portalStyle({ background: 'linear-gradient(90deg, #d4b876, rgba(212,184,118,0.2))' })} />
-          <h2 className="text-sm font-bold mb-3 flex items-center gap-2" style={portalStyle({ color: '#fafaf9' })}>
-            <span className="grid h-7 w-7 place-items-center rounded-lg" style={portalStyle({ background: 'linear-gradient(135deg, #d4b876, #b8863a)', boxShadow: '0 4px 12px rgba(212,184,118,0.30)' })}>
+        <section data-lc-kart className="relative overflow-hidden rounded-2xl border p-4" style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' })}>
+          <div data-lc-serit className="absolute inset-x-0 top-0 h-[3px]" style={portalStyle({ background: 'linear-gradient(90deg, #d4b876, rgba(212,184,118,0.2))' })} />
+          <h2 data-lc-kart-baslik className="text-sm font-bold mb-3 flex items-center gap-2" style={portalStyle({ color: '#fafaf9' })}>
+            <span data-lc-kart-simge className="grid h-7 w-7 place-items-center rounded-lg" style={portalStyle({ background: 'linear-gradient(135deg, #d4b876, #b8863a)', boxShadow: '0 4px 12px rgba(212,184,118,0.30)' })}>
               <CheckCircle2 size={14} style={portalStyle({ color: '#1a1410' })} />
             </span>
             Son Güvenlik Kodları
           </h2>
-          <p className="mb-3 text-[11px] leading-relaxed" style={portalStyle({ color: 'rgba(250,250,249,0.50)' })}>
+          <p data-lc-alt className="mb-3 text-[11px] leading-relaxed" style={portalStyle({ color: 'rgba(250,250,249,0.50)' })}>
             Bunlar girilecek kod degil; Luca'nin actigi guvenlik kodu istek kayitlaridir.
             Aktif olan kod ustte "Aktif Kod" olarak, gorseliyle birlikte acilir.
           </p>
@@ -260,14 +261,14 @@ export default function LucaSessionPage() {
               <EmptyLine text="Henüz güvenlik kodu isteği yok" />
             ) : (
               challenges.slice(0, 8).map((ch) => (
-                <div key={ch.id} className="rounded-md px-3 py-2 flex items-center justify-between gap-3" style={portalStyle({ background: 'rgba(255,255,255,0.03)' })}>
+                <div data-lc-satir key={ch.id} className="rounded-md px-3 py-2 flex items-center justify-between gap-3" style={portalStyle({ background: 'rgba(255,255,255,0.03)' })}>
                   <div className="min-w-0">
-                    <div className="text-xs font-mono truncate" style={portalStyle({ color: '#fafaf9' })}>{ch.jobId || ch.id}</div>
-                    <div className="text-[11px] mt-1" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
+                    <div data-lc-satir-ad className="text-xs font-mono truncate" style={portalStyle({ color: '#fafaf9' })}>{ch.jobId || ch.id}</div>
+                    <div data-lc-satir-alt className="text-[11px] mt-1" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                       {new Date(ch.createdAt).toLocaleString('tr-TR')}
                     </div>
                   </div>
-                  <span className="text-[11px] font-semibold px-2 py-1 rounded" style={portalStyle(statusPill(ch.status))}>
+                  <span data-lc-rozet data-durum={ch.status} className="text-[11px] font-semibold px-2 py-1 rounded" style={portalStyle(statusPill(ch.status))}>
                     {statusLabel(ch.status)}
                   </span>
                 </div>
@@ -327,26 +328,26 @@ function LucaCredentialEditor({
   };
 
   return (
-    <section
+    <section data-lc-kart
       className="relative overflow-hidden rounded-2xl border p-4"
       style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' })}
     >
-      <div className="absolute inset-x-0 top-0 h-[3px]" style={portalStyle({ background: 'linear-gradient(90deg, #2dd4bf, #d4b876)' })} />
+      <div data-lc-serit className="absolute inset-x-0 top-0 h-[3px]" style={portalStyle({ background: 'linear-gradient(90deg, #2dd4bf, #d4b876)' })} />
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2">
-          <span className="grid h-7 w-7 place-items-center rounded-lg" style={portalStyle({ background: 'linear-gradient(135deg, #2dd4bf, #0d9488)' })}>
+          <span data-lc-kart-simge className="grid h-7 w-7 place-items-center rounded-lg" style={portalStyle({ background: 'linear-gradient(135deg, #2dd4bf, #0d9488)' })}>
             <KeyRound size={14} style={portalStyle({ color: '#07201c' })} />
           </span>
           <div>
-            <h2 className="text-sm font-bold" style={portalStyle({ color: '#fafaf9' })}>Luca Giriş Bilgileri</h2>
-            <div className="text-[11px] mt-0.5" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
+            <h2 data-lc-kart-baslik className="text-sm font-bold" style={portalStyle({ color: '#fafaf9' })}>Luca Giriş Bilgileri</h2>
+            <div data-lc-alt className="text-[11px] mt-0.5" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
               {credential?.saved
                 ? `Kayıtlı — Üye no: ${credential.uyeNo || '-'} · Kullanıcı: ${credential.username || '-'}`
                 : 'Henüz tanımlı değil'}
             </div>
           </div>
         </div>
-        <button
+        <button data-lc-ikincil
           onClick={() => setOpen((v) => !v)}
           className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12px] font-semibold"
           style={portalStyle({ background: 'rgba(212,184,118,0.14)', color: GOLD, border: '1px solid rgba(212,184,118,0.35)' })}
@@ -357,10 +358,10 @@ function LucaCredentialEditor({
       </div>
 
       {open ? (
-        <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div data-lc-form className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
           <label className="block">
-            <span className="text-[11px] font-semibold" style={portalStyle({ color: 'rgba(250,250,249,0.6)' })}>Üye No</span>
-            <input
+            <span data-lc-etiket className="text-[11px] font-semibold" style={portalStyle({ color: 'rgba(250,250,249,0.6)' })}>Üye No</span>
+            <input data-lc-girdi
               value={uyeNo}
               onChange={(e) => setUyeNo(e.target.value)}
               className="mt-1 w-full rounded-lg border px-3 py-2 text-sm outline-none"
@@ -368,8 +369,8 @@ function LucaCredentialEditor({
             />
           </label>
           <label className="block">
-            <span className="text-[11px] font-semibold" style={portalStyle({ color: 'rgba(250,250,249,0.6)' })}>Kullanıcı Adı</span>
-            <input
+            <span data-lc-etiket className="text-[11px] font-semibold" style={portalStyle({ color: 'rgba(250,250,249,0.6)' })}>Kullanıcı Adı</span>
+            <input data-lc-girdi
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               className="mt-1 w-full rounded-lg border px-3 py-2 text-sm outline-none"
@@ -377,9 +378,9 @@ function LucaCredentialEditor({
             />
           </label>
           <label className="block">
-            <span className="text-[11px] font-semibold" style={portalStyle({ color: 'rgba(250,250,249,0.6)' })}>Yeni Şifre</span>
-            <div className="mt-1 flex items-center rounded-lg border" style={portalStyle({ ...inputStyle, padding: 0 })}>
-              <input
+            <span data-lc-etiket className="text-[11px] font-semibold" style={portalStyle({ color: 'rgba(250,250,249,0.6)' })}>Yeni Şifre</span>
+            <div data-lc-girdi data-lc-girdi-grup className="mt-1 flex items-center rounded-lg border" style={portalStyle({ ...inputStyle, padding: 0 })}>
+              <input data-lc-ic-girdi
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 type={showPassword ? 'text' : 'password'}
@@ -388,7 +389,7 @@ function LucaCredentialEditor({
                 style={portalStyle({ color: '#fafaf9', minWidth: 0 })}
                 onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
               />
-              <button
+              <button data-lc-goz
                 type="button"
                 onClick={() => setShowPassword((v) => !v)}
                 className="px-2"
@@ -399,7 +400,7 @@ function LucaCredentialEditor({
             </div>
           </label>
           <div className="sm:col-span-3 flex items-center gap-2">
-            <button
+            <button data-lc-birincil
               onClick={submit}
               disabled={saveMut.isPending}
               className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-[12px] font-semibold disabled:opacity-60"
@@ -408,7 +409,7 @@ function LucaCredentialEditor({
               {saveMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
               Kaydet
             </button>
-            <span className="text-[11px]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
+            <span data-lc-alt className="text-[11px]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
               Şifre sunucuda şifrelenir; veri çekerken otomatik kullanılır.
             </span>
           </div>
@@ -438,24 +439,24 @@ function LucaWorkerAccountsPanel() {
   }, [accounts]);
 
   return (
-    <section
+    <section data-lc-kart
       className="relative overflow-hidden rounded-2xl border p-4"
       style={portalStyle({ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' })}
     >
-      <div className="absolute inset-x-0 top-0 h-[3px]" style={portalStyle({ background: 'linear-gradient(90deg, #2dd4bf, #d4b876)' })} />
+      <div data-lc-serit className="absolute inset-x-0 top-0 h-[3px]" style={portalStyle({ background: 'linear-gradient(90deg, #2dd4bf, #d4b876)' })} />
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-3">
         <div>
-          <h2 className="text-sm font-bold flex items-center gap-2" style={portalStyle({ color: '#fafaf9' })}>
-            <span className="grid h-7 w-7 place-items-center rounded-lg" style={portalStyle({ background: 'linear-gradient(135deg, #2dd4bf, #0d9488)', boxShadow: '0 4px 12px rgba(45,212,191,0.30)' })}>
+          <h2 data-lc-kart-baslik className="text-sm font-bold flex items-center gap-2" style={portalStyle({ color: '#fafaf9' })}>
+            <span data-lc-kart-simge className="grid h-7 w-7 place-items-center rounded-lg" style={portalStyle({ background: 'linear-gradient(135deg, #2dd4bf, #0d9488)', boxShadow: '0 4px 12px rgba(45,212,191,0.30)' })}>
               <Users size={14} style={portalStyle({ color: '#07201c' })} />
             </span>
             Luca Kullanici Havuzu
           </h2>
-          <div className="text-[11px] mt-1" style={portalStyle({ color: 'rgba(250,250,249,0.48)' })}>
+          <div data-lc-alt className="text-[11px] mt-1" style={portalStyle({ color: 'rgba(250,250,249,0.48)' })}>
             5 Luca kullanicisini buradan tanimla; sifreler kaydedilirken sifreli tutulur.
           </div>
         </div>
-        <span
+        <span data-lc-rozet data-durum="sayac"
           className="px-2.5 py-1 rounded-full text-[11px] font-semibold"
           style={portalStyle({ background: 'rgba(212,184,118,0.12)', color: GOLD })}
         >
@@ -543,7 +544,7 @@ function LucaWorkerAccountRow({
   });
 
   return (
-    <div
+    <div data-lc-havuz-satir data-dolu={account ? 'true' : 'false'}
       className="rounded-md border px-3 py-3"
       style={portalStyle({ background: account ? 'rgba(255,255,255,0.025)' : 'rgba(255,255,255,0.014)', borderColor: 'rgba(255,255,255,0.06)' })}
     >
@@ -554,6 +555,7 @@ function LucaWorkerAccountRow({
             onChange={(e) => setDisplayName(e.target.value)}
             autoComplete="off"
             name={`luca-worker-name-${slotIndex}`}
+            data-lc-girdi
             className="w-full px-2.5 py-2 rounded-md text-xs outline-none"
             style={portalStyle(inputStyle())}
           />
@@ -564,6 +566,7 @@ function LucaWorkerAccountRow({
             onChange={(e) => setUyeNo(e.target.value)}
             autoComplete="off"
             name={`luca-worker-uyeno-${slotIndex}`}
+            data-lc-girdi
             className="w-full px-2.5 py-2 rounded-md text-xs outline-none"
             style={portalStyle(inputStyle())}
           />
@@ -576,6 +579,7 @@ function LucaWorkerAccountRow({
             onChange={(e) => setUsername(e.target.value)}
             autoComplete="off"
             name={`luca-worker-user-${slotIndex}`}
+            data-lc-girdi
             className="w-full px-2.5 py-2 rounded-md text-xs outline-none"
             style={portalStyle(inputStyle())}
           />
@@ -589,10 +593,11 @@ function LucaWorkerAccountRow({
               autoComplete="new-password"
               name={`luca-worker-pass-${slotIndex}`}
               placeholder={account?.hasPassword ? 'mevcut korunur' : ''}
+              data-lc-girdi
               className="w-full px-2.5 py-2 rounded-l-md text-xs outline-none"
               style={portalStyle(inputStyle())}
             />
-            <button
+            <button data-lc-girdi data-lc-goz
               type="button"
               onClick={() => setShowPassword((v) => !v)}
               className="px-2 rounded-r-md"
@@ -605,7 +610,7 @@ function LucaWorkerAccountRow({
         </CompactField>
 
         <div className="flex items-center gap-2 xl:justify-end">
-          <button
+          <button data-lc-anahtar data-on={isActive ? 'true' : 'false'}
             type="button"
             onClick={() => setIsActive((v) => !v)}
             className="h-9 px-3 rounded-md text-xs font-semibold"
@@ -617,7 +622,7 @@ function LucaWorkerAccountRow({
           >
             {isActive ? 'Aktif' : 'Pasif'}
           </button>
-          <button
+          <button data-lc-birincil="yumusak"
             type="button"
             disabled={saveMut.isPending}
             onClick={() => saveMut.mutate()}
@@ -628,7 +633,7 @@ function LucaWorkerAccountRow({
             Kaydet
           </button>
           {account ? (
-            <button
+            <button data-lc-tehlikeli
               type="button"
               disabled={deleteMut.isPending}
               onClick={() => {
@@ -645,7 +650,7 @@ function LucaWorkerAccountRow({
       </div>
 
       {account?.lastError ? (
-        <div className="mt-2 text-[11px]" style={portalStyle({ color: '#fca5a5' })}>
+        <div data-lc-hata className="mt-2 text-[11px]" style={portalStyle({ color: '#fca5a5' })}>
           Son hata: {account.lastError}
         </div>
       ) : null}
@@ -656,7 +661,7 @@ function LucaWorkerAccountRow({
 function CompactField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="block text-[10px] uppercase font-bold tracking-[.10em] mb-1" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>
+      <span data-lc-etiket className="block text-[10px] uppercase font-bold tracking-[.10em] mb-1" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>
         {label}
       </span>
       {children}
@@ -690,9 +695,9 @@ function CaptchaPanel({
   isCancelling: boolean;
 }) {
   return (
-    <div className="rounded-xl border p-5" style={portalStyle({ background: 'rgba(212,184,118,0.075)', borderColor: 'rgba(212,184,118,0.32)' })}>
+    <div data-lc-kod className="rounded-xl border p-5" style={portalStyle({ background: 'rgba(212,184,118,0.075)', borderColor: 'rgba(212,184,118,0.32)' })}>
       <div className="flex flex-col lg:flex-row gap-5 lg:items-center">
-        <div className="rounded-lg p-3 inline-flex items-center justify-center" style={portalStyle({ background: '#f8fafc', minWidth: 220 })}>
+        <div data-lc-kod-gorsel className="rounded-lg p-3 inline-flex items-center justify-center" style={portalStyle({ background: '#f8fafc', minWidth: 220 })}>
           {challenge.captchaImage ? (
             <img src={challenge.captchaImage} alt="Luca güvenlik kodu" style={portalStyle({ maxWidth: 260, maxHeight: 120, objectFit: 'contain' })} />
           ) : (
@@ -700,8 +705,8 @@ function CaptchaPanel({
           )}
         </div>
         <div className="flex-1">
-          <div className="text-sm font-bold" style={portalStyle({ color: '#fafaf9' })}>Luca güvenlik kodu gerekiyor</div>
-          <div className="text-xs mt-1" style={portalStyle({ color: 'rgba(250,250,249,0.62)' })}>
+          <div data-lc-baslik className="text-sm font-bold" style={portalStyle({ color: '#fafaf9' })}>Luca güvenlik kodu gerekiyor</div>
+          <div data-lc-alt className="text-xs mt-1" style={portalStyle({ color: 'rgba(250,250,249,0.62)' })}>
             Kod Luca sekmesinde değil, burada girilecek. Agent cevabı alıp arka plandaki Luca ekranına uygulayacak.
           </div>
           <div className="mt-4 flex flex-col sm:flex-row gap-2">
@@ -712,11 +717,12 @@ function CaptchaPanel({
                 if (e.key === 'Enter' && value.trim().length >= 3) onSubmit();
               }}
               autoFocus
+              data-lc-girdi
               placeholder="Güvenlik kodu"
               className="px-3 py-2 rounded-md text-sm outline-none"
               style={portalStyle({ background: 'rgba(15,13,11,0.9)', color: '#fafaf9', border: '1px solid rgba(255,255,255,0.1)' })}
             />
-            <button
+            <button data-lc-birincil
               disabled={isSubmitting || value.trim().length < 3}
               onClick={onSubmit}
               className="px-4 py-2 rounded-md text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
@@ -725,7 +731,7 @@ function CaptchaPanel({
               {isSubmitting ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
               Devam Et
             </button>
-            <button
+            <button data-lc-ikincil
               disabled={isCancelling}
               onClick={onCancel}
               className="px-3 py-2 rounded-md text-sm font-semibold flex items-center justify-center gap-2"
@@ -756,25 +762,25 @@ function StatusCard({
 }) {
   const color = tone === 'ok' ? '#4ade80' : '#fbbf24';
   return (
-    <div data-ops-stat="true"
+    <div data-ops-stat="true" data-lc-durum data-ton={tone}
       className="relative overflow-hidden rounded-2xl border p-4"
       style={portalStyle({ '--ops-tone': portalStyle({ color: color }).color, borderColor: `${color}40`, background: `linear-gradient(135deg, ${color}26, ${color}0a 58%, rgba(255,255,255,0.02))` } as React.CSSProperties)}
     >
       <div className="flex items-center justify-between">
         <span data-ops-label="true" className="text-[11px] uppercase font-bold tracking-[.12em]" style={portalStyle({ color })}>{title}</span>
-        <span className="grid h-7 w-7 place-items-center rounded-lg" style={portalStyle({ background: `${color}22`, border: `1px solid ${color}40` })}>
+        <span data-lc-durum-simge className="grid h-7 w-7 place-items-center rounded-lg" style={portalStyle({ background: `${color}22`, border: `1px solid ${color}40` })}>
           <Icon size={14} style={portalStyle({ color })} />
         </span>
       </div>
       <div data-ops-value="true" className="mt-3 text-sm font-semibold truncate" style={portalStyle({ color: '#fafaf9' })}>{value}</div>
-      <div className="mt-1 text-xs truncate" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>{detail}</div>
+      <div data-lc-durum-alt className="mt-1 text-xs truncate" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>{detail}</div>
     </div>
   );
 }
 
 function EmptyLine({ text }: { text: string }) {
   return (
-    <div className="rounded-md px-3 py-3 text-xs" style={portalStyle({ background: 'rgba(255,255,255,0.025)', color: 'rgba(250,250,249,0.45)' })}>
+    <div data-lc-bos className="rounded-md px-3 py-3 text-xs" style={portalStyle({ background: 'rgba(255,255,255,0.025)', color: 'rgba(250,250,249,0.45)' })}>
       {text}
     </div>
   );

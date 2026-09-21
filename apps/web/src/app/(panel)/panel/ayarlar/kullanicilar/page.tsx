@@ -1,5 +1,6 @@
 'use client';
 import '@/app/(panel)/panel/ajanlar/_components/operations-white.css';
+import '../ayarlar-white.css';
 
 import { portalStyle } from '@/lib/portal-theme';
 
@@ -45,23 +46,24 @@ export default function KullanicilarPage() {
   });
 
   return (
-    <div data-ops-page="ayarlar" className="p-6 space-y-5">
-      <div data-portal-page-header className="flex flex-wrap items-center justify-between gap-4 p-5">
+    <div data-ops-page="ayarlar" data-ay-kullanicilar className="p-6 space-y-5">
+      <div data-portal-page-header data-ops-header="true" className="flex flex-wrap items-center justify-between gap-4 p-5">
         <div className="flex items-center gap-3">
-          <Link href="/panel/ayarlar" className="p-2 rounded-lg hover:bg-stone-800/40 text-stone-400 hover:text-stone-200 transition">
+          <Link data-ay-geri-simge href="/panel/ayarlar" className="p-2 rounded-lg hover:bg-stone-800/40 text-stone-400 hover:text-stone-200 transition">
             <ArrowLeft size={18} />
           </Link>
           <div>
             <h1 className="text-2xl font-semibold flex items-center gap-2" style={portalStyle({ color: '#d4b876' })}>
-              <UsersRound className="w-6 h-6" /> Kullanıcılar &amp; Erişim
+              <span data-ay-simge className="hidden h-10 w-10 place-items-center rounded-xl"><UsersRound size={20} /></span>
+              <UsersRound data-ay-eski-simge className="w-6 h-6" /> Kullanıcılar &amp; Erişim
             </h1>
-            <p className="text-sm text-stone-400 mt-1">
+            <p data-ay-metin className="text-sm text-stone-400 mt-1">
               Portala giriş yapabilen personel hesapları. Rol: <strong>ADMIN</strong> tam yetki, <strong>STAFF</strong> işlem yapar,
               {' '}<strong>READONLY</strong> sadece görüntüler. WhatsApp telefonu kayıtlı olanlara görev hatırlatmaları WhatsApp&apos;tan da gider.
             </p>
           </div>
         </div>
-        <button
+        <button data-ay-birincil
           onClick={() => setAddOpen(true)}
           className="inline-flex items-center gap-1.5 px-4 py-2 text-[13px] font-bold rounded-lg transition"
           style={portalStyle({ background: 'linear-gradient(135deg, #d4b876, #b8a06f)', color: '#0f0d0b' })}
@@ -70,17 +72,17 @@ export default function KullanicilarPage() {
         </button>
       </div>
 
-      {isLoading && <div className="text-stone-400 text-sm">Yükleniyor...</div>}
+      {isLoading && <div data-ay-metin className="text-stone-400 text-sm">Yükleniyor...</div>}
 
       {!isLoading && users.length === 0 && (
-        <div className="rounded-lg p-12 text-center" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' })}>
+        <div data-ay-bos className="rounded-lg p-12 text-center" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' })}>
           <UsersRound className="w-10 h-10 mx-auto mb-3" style={portalStyle({ color: 'rgba(250,250,249,0.2)' })} />
           <p className="text-stone-400">Henüz kullanıcı yok.</p>
         </div>
       )}
 
       {users.length > 0 && (
-        <div className="rounded-xl overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' })}>
+        <div data-ay-tablo className="rounded-xl overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' })}>
           <table data-ops-table="true" className="w-full text-[13px]" style={portalStyle({ color: 'rgba(250,250,249,0.85)' })}>
             <thead style={portalStyle({ background: 'rgba(184,160,111,0.08)' })}>
               <tr className="text-left text-[10.5px] uppercase tracking-wider font-semibold" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>
@@ -97,16 +99,16 @@ export default function KullanicilarPage() {
               {users.map((u) => {
                 const roles = rolesOf(u);
                 return (
-                  <tr key={u.id} className="group" style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.04)' })}>
-                    <td className="px-4 py-2.5 font-medium" style={portalStyle({ color: '#fafaf9' })}>{fullName(u)}</td>
-                    <td className="px-4 py-2.5 font-mono text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.75)' })}>{u.email}</td>
+                  <tr data-ay-satir key={u.id} className="group" style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.04)' })}>
+                    <td data-ay-koyu className="px-4 py-2.5 font-medium" style={portalStyle({ color: '#fafaf9' })}>{fullName(u)}</td>
+                    <td data-ay-eposta className="px-4 py-2.5 font-mono text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.75)' })}>{u.email}</td>
                     <td className="px-4 py-2.5">
                       {roles.length === 0 ? (
-                        <span className="text-[11px] italic" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>—</span>
+                        <span data-ay-soluk className="text-[11px] italic" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>—</span>
                       ) : (
                         <div className="flex gap-1 flex-wrap">
                           {roles.map((r) => (
-                            <span key={r} className="text-[10.5px] font-bold uppercase tracking-wider px-2 py-[2px] rounded" style={portalStyle({
+                            <span data-ay-rol data-rol={r} key={r} className="text-[10.5px] font-bold uppercase tracking-wider px-2 py-[2px] rounded" style={portalStyle({
                               background: r === 'ADMIN' ? 'rgba(244,63,94,0.1)' : r === 'STAFF' ? 'rgba(212,184,118,0.12)' : 'rgba(250,250,249,0.05)',
                               color: r === 'ADMIN' ? '#f43f5e' : r === 'STAFF' ? '#d4b876' : 'rgba(250,250,249,0.6)',
                               border: `1px solid ${r === 'ADMIN' ? 'rgba(244,63,94,0.3)' : r === 'STAFF' ? 'rgba(212,184,118,0.3)' : 'rgba(250,250,249,0.1)'}`,
@@ -118,12 +120,12 @@ export default function KullanicilarPage() {
                     <td className="px-4 py-2.5" style={portalStyle({ minWidth: 236 })}>
                       <TelefonHucresi user={u} />
                     </td>
-                    <td className="px-4 py-2.5 text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.6)' })}>{fmtDate(u.lastLoginAt)}</td>
+                    <td data-ay-metin className="px-4 py-2.5 text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.6)' })}>{fmtDate(u.lastLoginAt)}</td>
                     <td className="px-4 py-2.5">
                       {u.isActive ? (
-                        <span className="text-[10.5px] font-semibold uppercase tracking-wider px-2 py-[2px] rounded" style={portalStyle({ background: 'rgba(34,197,94,0.1)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.3)' })}>Aktif</span>
+                        <span data-ay-rozet data-ok="true" className="text-[10.5px] font-semibold uppercase tracking-wider px-2 py-[2px] rounded" style={portalStyle({ background: 'rgba(34,197,94,0.1)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.3)' })}>Aktif</span>
                       ) : (
-                        <span className="text-[10.5px] font-semibold uppercase tracking-wider px-2 py-[2px] rounded" style={portalStyle({ background: 'rgba(250,250,249,0.05)', color: 'rgba(250,250,249,0.5)', border: '1px solid rgba(250,250,249,0.1)' })}>Pasif</span>
+                        <span data-ay-rozet data-ok="false" className="text-[10.5px] font-semibold uppercase tracking-wider px-2 py-[2px] rounded" style={portalStyle({ background: 'rgba(250,250,249,0.05)', color: 'rgba(250,250,249,0.5)', border: '1px solid rgba(250,250,249,0.1)' })}>Pasif</span>
                       )}
                     </td>
                     <td className="px-4 py-2.5 text-right">
@@ -132,6 +134,7 @@ export default function KullanicilarPage() {
                           onClick={() => {
                             if (confirm(`${fullName(u)} pasife alınacak. Devam?`)) deactivateMut.mutate(u.id);
                           }}
+                          data-ay-sil
                           className="opacity-0 group-hover:opacity-100 p-1.5 rounded-md hover:bg-rose-500/10 transition"
                           style={portalStyle({ color: 'rgba(244,63,94,0.7)' })}
                           title="Pasife al"
@@ -186,7 +189,7 @@ function TelefonHucresi({ user }: { user: PortalUser }) {
 
   if (!duzenle) {
     return (
-      <button
+      <button data-ay-telefon data-var={user.phone ? 'true' : 'false'}
         type="button"
         onClick={ac}
         disabled={!user.isActive}
@@ -214,10 +217,11 @@ function TelefonHucresi({ user }: { user: PortalUser }) {
         aria-label={`${fullName(user)} WhatsApp telefonu`}
         autoFocus
         inputMode="tel"
+        data-ay-girdi
         className="w-[150px] px-2 py-1 rounded-md text-[12px] font-mono outline-none"
         style={portalStyle({ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(212,184,118,0.4)', color: '#fafaf9' })}
       />
-      <button
+      <button data-ay-birincil
         type="button"
         onClick={kaydet}
         disabled={mut.isPending}
@@ -227,7 +231,7 @@ function TelefonHucresi({ user }: { user: PortalUser }) {
       >
         {mut.isPending ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
       </button>
-      <button type="button" onClick={() => setDuzenle(false)} disabled={mut.isPending} title="Vazgeç (Esc)" className="p-1.5 rounded-md hover:bg-white/5 transition text-stone-400 hover:text-stone-200">
+      <button data-ay-ikincil type="button" onClick={() => setDuzenle(false)} disabled={mut.isPending} title="Vazgeç (Esc)" className="p-1.5 rounded-md hover:bg-white/5 transition text-stone-400 hover:text-stone-200">
         <IconX size={12} />
       </button>
     </div>
@@ -282,42 +286,42 @@ function AddUserModal({ onClose, onDone }: { onClose: () => void; onDone: () => 
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={portalStyle({ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' })} onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md rounded-2xl overflow-hidden" style={portalStyle({ background: '#11100c', border: '1px solid rgba(184,160,111,0.3)' })}>
-        <div className="px-5 py-4 flex items-center justify-between" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.06)' })}>
-          <h3 style={portalStyle({ fontFamily: 'Fraunces, serif', fontSize: 20, fontWeight: 600, color: '#fafaf9' })}>Yeni Kullanıcı</h3>
-          <button onClick={onClose} className="text-stone-400 hover:text-stone-200"><IconX size={18} /></button>
+    <div data-ay-perde className="fixed inset-0 z-50 flex items-center justify-center p-4" style={portalStyle({ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' })} onClick={onClose}>
+      <div data-ay-pencere onClick={(e) => e.stopPropagation()} className="w-full max-w-md rounded-2xl overflow-hidden" style={portalStyle({ background: '#11100c', border: '1px solid rgba(184,160,111,0.3)' })}>
+        <div data-ay-pencere-ust className="px-5 py-4 flex items-center justify-between" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.06)' })}>
+          <h3 data-ay-pencere-baslik style={portalStyle({ fontFamily: 'Fraunces, serif', fontSize: 20, fontWeight: 600, color: '#fafaf9' })}>Yeni Kullanıcı</h3>
+          <button data-ay-kapat onClick={onClose} className="text-stone-400 hover:text-stone-200"><IconX size={18} /></button>
         </div>
 
         {tempPassword ? (
           <div className="p-5 space-y-4">
             <div className="text-center">
-              <div className="w-14 h-14 mx-auto rounded-full flex items-center justify-center mb-3" style={portalStyle({ background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.35)' })}>
+              <div data-ay-basari-daire className="w-14 h-14 mx-auto rounded-full flex items-center justify-center mb-3" style={portalStyle({ background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.35)' })}>
                 <Check size={24} style={portalStyle({ color: '#22c55e' })} />
               </div>
-              <div className="text-[15px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>Kullanıcı oluşturuldu</div>
-              <div className="text-[12px] mt-1" style={portalStyle({ color: 'rgba(250,250,249,0.6)' })}>
+              <div data-ay-koyu className="text-[15px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>Kullanıcı oluşturuldu</div>
+              <div data-ay-metin className="text-[12px] mt-1" style={portalStyle({ color: 'rgba(250,250,249,0.6)' })}>
                 {email} — geçici şifre aşağıda
               </div>
             </div>
 
-            <div className="rounded-xl p-4" style={portalStyle({ background: 'rgba(212,184,118,0.08)', border: '1px solid rgba(212,184,118,0.3)' })}>
-              <div className="text-[10px] uppercase tracking-wider mb-2" style={portalStyle({ color: '#d4b876' })}>Geçici Şifre</div>
+            <div data-ay-alt-kutu className="rounded-xl p-4" style={portalStyle({ background: 'rgba(212,184,118,0.08)', border: '1px solid rgba(212,184,118,0.3)' })}>
+              <div data-ay-etiket className="text-[10px] uppercase tracking-wider mb-2" style={portalStyle({ color: '#d4b876' })}>Geçici Şifre</div>
               <div className="flex items-center gap-2">
-                <code className="flex-1 text-[14px] font-bold tabular-nums p-2 rounded" style={portalStyle({ background: 'rgba(0,0,0,0.4)', color: '#fafaf9', fontFamily: 'JetBrains Mono, monospace' })}>
+                <code data-ay-kod className="flex-1 text-[14px] font-bold tabular-nums p-2 rounded" style={portalStyle({ background: 'rgba(0,0,0,0.4)', color: '#fafaf9', fontFamily: 'JetBrains Mono, monospace' })}>
                   {tempPassword}
                 </code>
-                <button onClick={copyPassword} className="px-3 py-2 rounded-md text-[12px] font-medium inline-flex items-center gap-1.5"
+                <button data-ay-ikincil onClick={copyPassword} className="px-3 py-2 rounded-md text-[12px] font-medium inline-flex items-center gap-1.5"
                   style={portalStyle({ background: 'rgba(212,184,118,0.15)', color: '#d4b876', border: '1px solid rgba(212,184,118,0.4)' })}>
                   {copied ? <Check size={13} /> : <Copy size={13} />} {copied ? 'Kopyalandı' : 'Kopyala'}
                 </button>
               </div>
-              <p className="text-[11px] mt-2.5" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>
+              <p data-ay-metin className="text-[11px] mt-2.5" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>
                 Bu şifreyi kullanıcıya güvenli bir kanaldan ilet. İlk girişten sonra profil sayfasından değiştirmesi önerilir.
               </p>
             </div>
 
-            <button onClick={onClose} className="w-full py-2.5 rounded-md text-[13px] font-bold"
+            <button data-ay-birincil onClick={onClose} className="w-full py-2.5 rounded-md text-[13px] font-bold"
               style={portalStyle({ background: `linear-gradient(135deg, #d4b876, #b8a06f)`, color: '#0f0d0b' })}>
               Kapat
             </button>
@@ -325,13 +329,13 @@ function AddUserModal({ onClose, onDone }: { onClose: () => void; onDone: () => 
         ) : (
           <>
             {/* Mod seçici */}
-            <div className="flex" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.06)' })}>
-              <button onClick={() => setMode('password')}
+            <div data-ay-mod-secici className="flex" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.06)' })}>
+              <button data-ay-mod data-on={mode === 'password' ? 'true' : 'false'} onClick={() => setMode('password')}
                 className="flex-1 py-3 text-[12.5px] font-semibold inline-flex items-center justify-center gap-2"
                 style={portalStyle({ background: mode === 'password' ? 'rgba(212,184,118,0.1)' : 'transparent', color: mode === 'password' ? '#d4b876' : 'rgba(250,250,249,0.5)' })}>
                 <KeyRound size={14} /> Şifre Belirle
               </button>
-              <button onClick={() => setMode('invite')}
+              <button data-ay-mod data-on={mode === 'invite' ? 'true' : 'false'} onClick={() => setMode('invite')}
                 className="flex-1 py-3 text-[12.5px] font-semibold inline-flex items-center justify-center gap-2"
                 style={portalStyle({ background: mode === 'invite' ? 'rgba(212,184,118,0.1)' : 'transparent', color: mode === 'invite' ? '#d4b876' : 'rgba(250,250,249,0.5)', borderLeft: '1px solid rgba(255,255,255,0.06)' })}>
                 <Mail size={14} /> Davet Gönder
@@ -341,6 +345,7 @@ function AddUserModal({ onClose, onDone }: { onClose: () => void; onDone: () => 
             <div className="p-5 space-y-3">
               <Field label="E-posta *">
                 <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="personel@morenmusavirlik.com" autoFocus
+                  data-ay-girdi
                   className="w-full px-3 py-2 rounded-md text-[14px] font-mono outline-none"
                   style={portalStyle({ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' })} />
               </Field>
@@ -348,11 +353,13 @@ function AddUserModal({ onClose, onDone }: { onClose: () => void; onDone: () => 
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Ad">
                   <input value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="Ali"
+                    data-ay-girdi
                     className="w-full px-3 py-2 rounded-md text-[13px] outline-none"
                     style={portalStyle({ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' })} />
                 </Field>
                 <Field label="Soyad">
                   <input value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Yılmaz"
+                    data-ay-girdi
                     className="w-full px-3 py-2 rounded-md text-[13px] outline-none"
                     style={portalStyle({ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' })} />
                 </Field>
@@ -361,7 +368,7 @@ function AddUserModal({ onClose, onDone }: { onClose: () => void; onDone: () => 
               <Field label="Rol *">
                 <div className="flex gap-1">
                   {(['STAFF', 'ADMIN', 'READONLY'] as const).map((r) => (
-                    <button key={r} type="button" onClick={() => setRoleName(r)}
+                    <button data-ay-secenek data-on={roleName === r ? 'true' : 'false'} key={r} type="button" onClick={() => setRoleName(r)}
                       className="flex-1 px-3 py-2 text-[12px] font-semibold rounded-md transition"
                       style={portalStyle({
                         background: roleName === r ? 'rgba(212,184,118,0.16)' : 'rgba(255,255,255,0.03)',
@@ -372,7 +379,7 @@ function AddUserModal({ onClose, onDone }: { onClose: () => void; onDone: () => 
                     </button>
                   ))}
                 </div>
-                <p className="text-[10.5px] mt-1.5" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
+                <p data-ay-yardim className="text-[10.5px] mt-1.5" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                   {roleName === 'ADMIN' && 'Tam yetki: kullanıcı ekleme, silme, tüm ayarlar.'}
                   {roleName === 'STAFF' && 'Ofis personeli: mükellef, beyanname, fatura işlemleri yapar.'}
                   {roleName === 'READONLY' && 'Sadece görüntüleme: verileri görür, değişiklik yapamaz.'}
@@ -382,25 +389,26 @@ function AddUserModal({ onClose, onDone }: { onClose: () => void; onDone: () => 
               {mode === 'password' && (
                 <Field label="Şifre * (min 8 karakter)">
                   <input type="text" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="güçlü-şifre-belirle"
+                    data-ay-girdi
                     className="w-full px-3 py-2 rounded-md text-[14px] outline-none font-mono"
                     style={portalStyle({ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' })} />
-                  <p className="text-[10.5px] mt-1" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
+                  <p data-ay-yardim className="text-[10.5px] mt-1" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                     Şifreyi kullanıcıya güvenli bir kanaldan ilet.
                   </p>
                 </Field>
               )}
 
               {mode === 'invite' && (
-                <div className="rounded-lg p-3 text-[11.5px]" style={portalStyle({ background: 'rgba(212,184,118,0.06)', border: '1px solid rgba(212,184,118,0.2)', color: 'rgba(250,250,249,0.7)' })}>
+                <div data-ay-bilgi className="rounded-lg p-3 text-[11.5px]" style={portalStyle({ background: 'rgba(212,184,118,0.06)', border: '1px solid rgba(212,184,118,0.2)', color: 'rgba(250,250,249,0.7)' })}>
                   Sistem rastgele güçlü bir geçici şifre oluşturacak. Şifreyi kopyalayıp kullanıcıya iletirsin.
                 </div>
               )}
             </div>
 
-            <div className="px-5 py-3 flex justify-end gap-2" style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.06)' })}>
-              <button onClick={onClose} className="px-4 py-2 text-[12.5px] font-medium rounded-md"
+            <div data-ay-pencere-alt className="px-5 py-3 flex justify-end gap-2" style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.06)' })}>
+              <button data-ay-ikincil onClick={onClose} className="px-4 py-2 text-[12.5px] font-medium rounded-md"
                 style={portalStyle({ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.75)' })}>İptal</button>
-              <button onClick={handleSubmit} disabled={!email || createMut.isPending || inviteMut.isPending || (mode === 'password' && password.length < 8)}
+              <button data-ay-birincil onClick={handleSubmit} disabled={!email || createMut.isPending || inviteMut.isPending || (mode === 'password' && password.length < 8)}
                 className="px-5 py-2 text-[12.5px] font-bold rounded-md disabled:opacity-40"
                 style={portalStyle({ background: `linear-gradient(135deg, #d4b876, #b8a06f)`, color: '#0f0d0b' })}>
                 {(createMut.isPending || inviteMut.isPending) ? 'Oluşturuluyor...' : mode === 'password' ? 'Oluştur' : 'Davet Et'}
@@ -416,7 +424,7 @@ function AddUserModal({ onClose, onDone }: { onClose: () => void; onDone: () => 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="block text-[10.5px] font-semibold uppercase tracking-wider mb-1.5" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>{label}</label>
+      <label data-ay-etiket className="block text-[10.5px] font-semibold uppercase tracking-wider mb-1.5" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>{label}</label>
       {children}
     </div>
   );

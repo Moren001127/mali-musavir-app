@@ -35,17 +35,17 @@ function Bolum({
 }) {
   const [acik, setAcik] = useState(varsayilanAcik);
   return (
-    <div className="border-b last:border-b-0" style={portalStyle({ borderColor: 'rgba(255,255,255,0.06)' })}>
-      <button
+    <div data-lo-bolum data-acik={acik ? 'true' : 'false'} className="border-b last:border-b-0" style={portalStyle({ borderColor: 'rgba(255,255,255,0.06)' })}>
+      <button data-lo-bolum-dugme
         onClick={() => setAcik((a) => !a)}
         className="flex w-full items-center gap-2 px-4 py-3 text-left transition-colors hover:bg-white/[0.03]"
       >
-        <span style={portalStyle({ color: ACCENT })}>{ikon}</span>
-        <span className="text-[11px] font-bold uppercase tracking-[.14em]" style={portalStyle({ color: 'rgba(250,250,249,0.82)' })}>
+        <span data-lo-bolum-simge style={portalStyle({ color: ACCENT })}>{ikon}</span>
+        <span data-lo-bolum-baslik className="text-[11px] font-bold uppercase tracking-[.14em]" style={portalStyle({ color: 'rgba(250,250,249,0.82)' })}>
           {baslik}
         </span>
         {typeof sayi === 'number' && (
-          <span
+          <span data-lo-sayac
             className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold"
             style={portalStyle({ background: `${ACCENT}1f`, color: ACCENT })}
           >
@@ -58,7 +58,7 @@ function Bolum({
           style={portalStyle({ color: 'rgba(250,250,249,0.35)', transform: acik ? 'rotate(0deg)' : 'rotate(-90deg)' })}
         />
       </button>
-      {acik && <div className="px-4 pb-3">{children}</div>}
+      {acik && <div data-lo-bolum-icerik className="px-4 pb-3">{children}</div>}
     </div>
   );
 }
@@ -97,7 +97,7 @@ export function LucaYanPanel() {
   const kurallar = durum?.kurallar || [];
 
   return (
-    <aside data-ops-card="true"
+    <aside data-ops-card="true" data-lo-panel
       className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl"
       style={portalStyle({
         background: 'linear-gradient(180deg, rgba(24,20,12,0.72), rgba(10,9,7,0.72))',
@@ -106,11 +106,11 @@ export function LucaYanPanel() {
       })}
     >
       {/* Durum — panelin tepesinde, katlanmaz (en kritik bilgi) */}
-      <div
+      <div data-lo-durum data-acik={acik ? 'true' : 'false'}
         className="flex flex-shrink-0 items-start gap-2.5 px-4 py-3"
         style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.06)' })}
       >
-        <span
+        <span data-lo-durum-simge
           className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
           style={
             portalStyle(acik
@@ -121,10 +121,10 @@ export function LucaYanPanel() {
           {acik ? <Monitor size={14} /> : <MonitorOff size={14} />}
         </span>
         <div className="min-w-0">
-          <div className="text-xs font-semibold" style={portalStyle({ color: acik ? '#86efac' : '#fca5a5' })}>
+          <div data-lo-durum-baslik className="text-xs font-semibold" style={portalStyle({ color: acik ? '#86efac' : '#fca5a5' })}>
             {acik ? 'Operatör tarayıcısı açık' : 'Operatör tarayıcısı kapalı'}
           </div>
-          <div className="text-[11px] leading-snug" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
+          <div data-lo-durum-alt className="text-[11px] leading-snug" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
             {acik
               ? 'Komut verebilirsin; işi kendi penceresinde yapar.'
               : 'Bilgisayarında operator-baslat.bat çalıştır.'}
@@ -141,7 +141,7 @@ export function LucaYanPanel() {
           ) : (
             <div className="flex flex-col gap-1.5">
               {haritalar.map((h) => (
-                <div
+                <div data-lo-satir
                   key={h.baslik}
                   className="rounded-lg px-2.5 py-1.5"
                   style={portalStyle({ background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(255,255,255,0.05)' })}
@@ -166,7 +166,7 @@ export function LucaYanPanel() {
           ) : (
             <div className="flex flex-col gap-1.5">
               {kurallar.map((k) => (
-                <div
+                <div data-lo-satir
                   key={k.id}
                   className="group flex items-start gap-2 rounded-lg px-2.5 py-2"
                   style={portalStyle({ background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(255,255,255,0.05)' })}
@@ -179,7 +179,7 @@ export function LucaYanPanel() {
                       {k.kural}
                     </div>
                   </div>
-                  <button
+                  <button data-lo-sil
                     onClick={() => kuralSil.mutate(k.id)}
                     className="flex-shrink-0 rounded p-1 opacity-60 transition hover:bg-white/10 hover:opacity-100"
                     title="Kuralı sil"
@@ -201,7 +201,7 @@ export function LucaYanPanel() {
           ) : (
             <div className="flex flex-col gap-1.5">
               {beceriler.map((b) => (
-                <div
+                <div data-lo-satir
                   key={b.id}
                   className="flex items-center gap-2 rounded-lg px-2.5 py-1.5"
                   style={portalStyle({ background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(255,255,255,0.05)' })}
@@ -214,7 +214,7 @@ export function LucaYanPanel() {
                       {b.adimSayisi} adım
                     </div>
                   </div>
-                  <button
+                  <button data-lo-sil
                     onClick={() => beceriSil.mutate(b.id)}
                     className="flex-shrink-0 rounded p-1 opacity-60 transition hover:bg-white/10 hover:opacity-100"
                     title="Beceriyi sil"
@@ -229,7 +229,7 @@ export function LucaYanPanel() {
         </Bolum>
 
         <Bolum ikon={<Info size={13} />} baslik="Nasıl Çalışır">
-          <ul className="flex flex-col gap-1.5 text-[11px] leading-snug" style={portalStyle({ color: 'rgba(250,250,249,0.6)' })}>
+          <ul data-lo-liste className="flex flex-col gap-1.5 text-[11px] leading-snug" style={portalStyle({ color: 'rgba(250,250,249,0.6)' })}>
             <li>Senin bilgisayarında kendi Chrome penceresini açar; günlük tarayıcına karışmaz.</li>
             <li>Luca menüsünü kendi keşfeder, ekranı bulup açar, okur ve doldurur.</li>
             <li>Bilmediği işi önce ekrandan ve geçen dönemin kaydından öğrenmeye çalışır.</li>

@@ -1,5 +1,6 @@
 'use client';
 import '@/app/(panel)/panel/ajanlar/_components/operations-white.css';
+import '../otomasyonlar-white.css';
 
 import { portalStyle } from '@/lib/portal-theme';
 
@@ -151,7 +152,7 @@ export default function YeniOtomasyonPage() {
           className="absolute inset-x-0 top-0 h-1"
           style={portalStyle({ background: 'linear-gradient(90deg, #a855f7, #c084fc, #60a5fa, #4ade80, #d4b876)' })}
         />
-        <button
+        <button data-oto-geri
           onClick={() => router.push('/panel/otomasyonlar')}
           className="inline-flex items-center gap-1.5 text-[12px] font-medium"
           style={portalStyle({ color: MUTED })}
@@ -174,14 +175,14 @@ export default function YeniOtomasyonPage() {
       </header>
 
       {/* ── Yetenek kartı ── */}
-      <details className="rounded-xl border p-3 text-[12px]" style={portalStyle({ borderColor: LINE, background: CARD })}>
-        <summary className="cursor-pointer font-medium" style={portalStyle({ color: TEXT })}>
+      <details data-oto-kart className="rounded-xl border p-3 text-[12px]" style={portalStyle({ borderColor: LINE, background: CARD })}>
+        <summary data-oto-ozet className="cursor-pointer font-medium" style={portalStyle({ color: TEXT })}>
           Moren AI Otomasyon ne yapabilir, ne yapamaz?
         </summary>
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <div>
-            <div className="mb-1 font-semibold" style={portalStyle({ color: GREEN })}>YAPABİLİR</div>
-            <ul className="space-y-1" style={portalStyle({ color: MUTED })}>
+            <div data-oto-yapar="evet" className="mb-1 font-semibold" style={portalStyle({ color: GREEN })}>YAPABİLİR</div>
+            <ul data-oto-yetenek className="space-y-1" style={portalStyle({ color: MUTED })}>
               <li>• Mükellef / mizan / fatura / beyan verisi sorgular</li>
               <li>• In-app bildirim, e-posta, WhatsApp şablon mesajı gönderir</li>
               <li>• Fişi MIHSAP'tan çekip Word üretir, yazıcıya gönderir</li>
@@ -192,8 +193,8 @@ export default function YeniOtomasyonPage() {
             </ul>
           </div>
           <div>
-            <div className="mb-1 font-semibold" style={portalStyle({ color: RED })}>YAPAMAZ (henüz)</div>
-            <ul className="space-y-1" style={portalStyle({ color: MUTED })}>
+            <div data-oto-yapar="hayir" className="mb-1 font-semibold" style={portalStyle({ color: RED })}>YAPAMAZ (henüz)</div>
+            <ul data-oto-yetenek className="space-y-1" style={portalStyle({ color: MUTED })}>
               <li>• Luca'ya doğrudan fiş atma</li>
               <li>• PDF/Resim OCR (belge metne çevirme)</li>
               <li>• SMS gönderme (sağlayıcı bağlı değil)</li>
@@ -204,7 +205,7 @@ export default function YeniOtomasyonPage() {
             </ul>
           </div>
         </div>
-        <div
+        <div data-oto-kutu="uyari"
           className="mt-3 rounded-lg border p-2"
           style={portalStyle({ borderColor: `${AMBER}40`, background: `${AMBER}12`, color: TEXT })}
         >
@@ -214,11 +215,11 @@ export default function YeniOtomasyonPage() {
       </details>
 
       {/* ── Cümle girişi ── */}
-      <section className="rounded-2xl border p-5" style={portalStyle({ borderColor: LINE, background: CARD })}>
-        <label className="mb-2 block text-[13px] font-medium" style={portalStyle({ color: TEXT })}>
+      <section data-oto-kart className="rounded-2xl border p-5" style={portalStyle({ borderColor: LINE, background: CARD })}>
+        <label data-oto-etiket className="mb-2 block text-[13px] font-medium" style={portalStyle({ color: TEXT })}>
           Ne yapmasını istiyorsun?
         </label>
-        <textarea
+        <textarea data-oto-girdi
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           placeholder="Örn: Her ayın 22'sinde KDV beyannamesi gecikenlere WhatsApp at…"
@@ -227,13 +228,13 @@ export default function YeniOtomasyonPage() {
           maxLength={2000}
           disabled={parseMutation.isPending}
         />
-        <div className="mt-1 flex justify-between text-[11px]" style={portalStyle({ color: MUTED })}>
+        <div data-oto-yardim className="mt-1 flex justify-between text-[11px]" style={portalStyle({ color: MUTED })}>
           <span>{prompt.length} / 2000</span>
           <span>Daha açık yazarsan daha doğru kurar.</span>
         </div>
 
         <div className="mt-4 flex flex-wrap items-center gap-2">
-          <button
+          <button data-oto-birincil
             onClick={() => parseMutation.mutate(prompt)}
             disabled={prompt.trim().length < 5 || parseMutation.isPending}
             className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-[13px] font-semibold disabled:opacity-50"
@@ -243,7 +244,7 @@ export default function YeniOtomasyonPage() {
             {parseMutation.isPending ? 'Cümle çevriliyor…' : 'Önizle'}
           </button>
           {parsed && (
-            <button
+            <button data-oto-ikincil
               onClick={() => {
                 setParsed(null);
                 parseMutation.mutate(prompt);
@@ -258,20 +259,20 @@ export default function YeniOtomasyonPage() {
         </div>
 
         {/* Örnekler */}
-        <details className="mt-5" open>
-          <summary className="cursor-pointer text-[13px] font-medium" style={portalStyle({ color: MUTED })}>
+        <details data-oto-ornekler className="mt-5" open>
+          <summary data-oto-ozet className="cursor-pointer text-[13px] font-medium" style={portalStyle({ color: MUTED })}>
             Örnek cümleler (tıklayınca kullanılır)
           </summary>
           <div className="mt-3 space-y-4">
             {Object.entries(grouped).map(([cat, items]) => (
               <div key={cat}>
-                <h4 className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider" style={portalStyle({ color: VIOLET_SOFT })}>
+                <h4 data-oto-grup className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider" style={portalStyle({ color: VIOLET_SOFT })}>
                   {cat}
                 </h4>
                 <ul className="space-y-1.5">
                   {items.map((ex, i) => (
                     <li key={i}>
-                      <button
+                      <button data-oto-ornek
                         onClick={() => setPrompt(ex.cumle)}
                         className="block w-full rounded-lg border p-3 text-left text-[12px] transition-colors"
                         style={portalStyle({ borderColor: LINE, background: CARD2, color: TEXT })}
@@ -315,9 +316,9 @@ function PreviewPanel({
   const lowConfidence = parsed.confidence < 0.6;
 
   return (
-    <section className="overflow-hidden rounded-2xl border-2" style={portalStyle({ borderColor: `${VIOLET}66`, background: CARD })}>
-      <div className="border-b px-5 py-4" style={portalStyle({ borderColor: LINE })}>
-        <div className="flex items-center gap-2 text-[12px] font-medium uppercase tracking-wider" style={portalStyle({ color: VIOLET_SOFT })}>
+    <section data-oto-onizleme className="overflow-hidden rounded-2xl border-2" style={portalStyle({ borderColor: `${VIOLET}66`, background: CARD })}>
+      <div data-oto-onizleme-baslik className="border-b px-5 py-4" style={portalStyle({ borderColor: LINE })}>
+        <div data-oto-grup className="flex items-center gap-2 text-[12px] font-medium uppercase tracking-wider" style={portalStyle({ color: VIOLET_SOFT })}>
           <CheckCircle2 size={15} /> Önizleme
         </div>
         <h2 className="mt-1 text-[19px] font-semibold" style={portalStyle({ color: TEXT })}>{parsed.title}</h2>
@@ -326,7 +327,7 @@ function PreviewPanel({
 
       <div className="space-y-4 px-5 py-5">
         {/* İnsan-okur açıklama */}
-        <div
+        <div data-oto-kutu="bilgi"
           className="rounded-lg border p-4 text-[13px] leading-relaxed"
           style={portalStyle({ borderColor: `${VIOLET}33`, background: `${VIOLET}10`, color: TEXT })}
         >
@@ -354,7 +355,7 @@ function PreviewPanel({
         {/* Adımlar */}
         {hasSteps && (
           <div>
-            <h3 className="mb-2 text-[13px] font-medium" style={portalStyle({ color: TEXT })}>Adımlar</h3>
+            <h3 data-oto-etiket className="mb-2 text-[13px] font-medium" style={portalStyle({ color: TEXT })}>Adımlar</h3>
             <ol className="space-y-2 text-[12px]">
               {parsed.steps.steps.map((step: any, i: number) => (
                 <StepItem key={step.id ?? i} step={step} depth={0} index={i + 1} />
@@ -365,7 +366,7 @@ function PreviewPanel({
 
         {/* Yapamıyorum */}
         {!hasSteps && (
-          <div className="flex gap-2 rounded-lg border p-3 text-[13px]" style={portalStyle({ borderColor: `${RED}55`, background: `${RED}14`, color: '#fecaca' })}>
+          <div data-oto-kutu="hata" className="flex gap-2 rounded-lg border p-3 text-[13px]" style={portalStyle({ borderColor: `${RED}55`, background: `${RED}14`, color: '#fecaca' })}>
             <AlertTriangle size={18} className="shrink-0" />
             <div>
               Bu cümleyi mevcut araçlarımla bir otomasyon olarak kuramadım. Açıklamaya bak; cümleyi daha
@@ -376,7 +377,7 @@ function PreviewPanel({
 
         {/* Düşük güven */}
         {lowConfidence && hasSteps && (
-          <div className="flex gap-2 rounded-lg border p-3 text-[13px]" style={portalStyle({ borderColor: `${AMBER}55`, background: `${AMBER}14`, color: '#fde68a' })}>
+          <div data-oto-kutu="uyari" className="flex gap-2 rounded-lg border p-3 text-[13px]" style={portalStyle({ borderColor: `${AMBER}55`, background: `${AMBER}14`, color: '#fde68a' })}>
             <AlertTriangle size={18} className="shrink-0" />
             <div>
               <b>Güven puanı düşük (%{Math.round(parsed.confidence * 100)}).</b> Cümlende bazı belirsizlikler
@@ -387,7 +388,7 @@ function PreviewPanel({
 
         {/* Gizlilik */}
         {parsed.privacyNotice && (
-          <div className="flex gap-2 rounded-lg border p-3 text-[13px]" style={portalStyle({ borderColor: `${BLUE}55`, background: `${BLUE}14`, color: '#bfdbfe' })}>
+          <div data-oto-kutu="bilgi" className="flex gap-2 rounded-lg border p-3 text-[13px]" style={portalStyle({ borderColor: `${BLUE}55`, background: `${BLUE}14`, color: '#bfdbfe' })}>
             <ShieldAlert size={18} className="shrink-0" />
             <div>{parsed.privacyNotice}</div>
           </div>
@@ -395,10 +396,10 @@ function PreviewPanel({
 
         {/* Aksiyonlar */}
         {hasSteps && (
-          <div className="flex flex-wrap items-center gap-2 border-t pt-4" style={portalStyle({ borderColor: LINE })}>
+          <div data-oto-eylem-satiri className="flex flex-wrap items-center gap-2 border-t pt-4" style={portalStyle({ borderColor: LINE })}>
             {lowConfidence ? (
               <>
-                <button
+                <button data-oto-birincil
                   onClick={() => onConfirm(false)}
                   disabled={confirming}
                   className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-[13px] font-semibold disabled:opacity-50"
@@ -407,7 +408,7 @@ function PreviewPanel({
                   {confirming && <Loader2 size={16} className="animate-spin" />}
                   <FileText size={15} /> Taslak Kaydet
                 </button>
-                <button
+                <button data-oto-ikincil
                   onClick={() => onConfirm(true)}
                   disabled={confirming}
                   className="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-[13px] font-medium disabled:opacity-50"
@@ -418,7 +419,7 @@ function PreviewPanel({
               </>
             ) : (
               <>
-                <button
+                <button data-oto-birincil
                   onClick={() => onConfirm(true)}
                   disabled={confirming}
                   className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-[13px] font-semibold disabled:opacity-50"
@@ -426,7 +427,7 @@ function PreviewPanel({
                 >
                   {confirming && <Loader2 size={16} className="animate-spin" />} Kur ve Aktif Et
                 </button>
-                <button
+                <button data-oto-ikincil
                   onClick={() => onConfirm(false)}
                   disabled={confirming}
                   className="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-[13px] font-medium disabled:opacity-50"
@@ -445,12 +446,12 @@ function PreviewPanel({
 
 function Info({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
-    <div className="rounded-lg border p-3" style={portalStyle({ borderColor: LINE, background: CARD2 })}>
-      <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider" style={portalStyle({ color: MUTED })}>
+    <div data-oto-bilgi className="rounded-lg border p-3" style={portalStyle({ borderColor: LINE, background: CARD2 })}>
+      <div data-oto-bilgi-etiket className="flex items-center gap-2 text-[11px] uppercase tracking-wider" style={portalStyle({ color: MUTED })}>
         {icon}
         {label}
       </div>
-      <div className="mt-1 text-[13px]" style={portalStyle({ color: TEXT })}>{value}</div>
+      <div data-oto-bilgi-deger className="mt-1 text-[13px]" style={portalStyle({ color: TEXT })}>{value}</div>
     </div>
   );
 }
@@ -458,16 +459,16 @@ function Info({ icon, label, value }: { icon: React.ReactNode; label: string; va
 function StepItem({ step, depth, index }: { step: any; depth: number; index: number }) {
   const isFlow = ['for_each', 'branch_if', 'parallel', 'wait', 'format_list'].includes(step.tool);
   return (
-    <li className="rounded-lg border p-3" style={portalStyle({ borderColor: LINE, background: CARD2, marginLeft: depth * 14 })}>
+    <li data-oto-adim className="rounded-lg border p-3" style={portalStyle({ borderColor: LINE, background: CARD2, marginLeft: depth * 14 })}>
       <div className="flex items-start gap-2">
-        <span
+        <span data-oto-adim-no data-akis={isFlow ? 'true' : 'false'}
           className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full text-[10px] font-semibold"
           style={portalStyle({ background: isFlow ? '#64748b' : VIOLET, color: '#1a1410' })}
         >
           {index}
         </span>
         <div className="flex-1">
-          <code className="rounded px-1.5 py-0.5 text-[11px] font-medium" style={portalStyle({ background: '#0b0907', color: VIOLET_SOFT })}>
+          <code data-oto-kod className="rounded px-1.5 py-0.5 text-[11px] font-medium" style={portalStyle({ background: '#0b0907', color: VIOLET_SOFT })}>
             {step.tool}
           </code>
           {step.outputAs && (

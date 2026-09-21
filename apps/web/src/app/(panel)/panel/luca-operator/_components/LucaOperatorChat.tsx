@@ -232,16 +232,16 @@ export function LucaOperatorChat() {
   };
 
   return (
-    <div data-ops-card="true"
+    <div data-ops-card="true" data-lo-sohbet
       className="flex h-full flex-col overflow-hidden rounded-2xl"
       style={portalStyle({ background: 'rgba(15,13,9,0.85)', border: `1px solid ${ACCENT}26`, backdropFilter: 'blur(10px)' })}
     >
       {/* Başlık — modül adı üstteki başlıkta zaten var; burada yalnız DURUM ve KONTROLLER */}
-      <div
+      <div data-lo-ust
         className="flex flex-shrink-0 flex-wrap items-center gap-2 border-b px-4 py-2.5"
         style={portalStyle({ borderColor: 'rgba(255,255,255,0.06)' })}
       >
-        <span className="text-xs" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>
+        <span data-lo-durum-metni className="text-xs" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>
           {voiceMode
             ? 'Sohbet modu açık — konuş, cevap versin'
             : messages.length === 0
@@ -250,7 +250,7 @@ export function LucaOperatorChat() {
         </span>
 
         <div className="ml-auto flex items-center gap-1.5">
-          <button
+          <button data-lo-dugme data-on={speakEnabled ? 'true' : 'false'}
             onClick={toggleSpeak}
             className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] transition-colors"
             style={portalStyle({
@@ -263,7 +263,7 @@ export function LucaOperatorChat() {
             {speakEnabled ? <Volume2 size={11} /> : <VolumeX size={11} />}
             {speakEnabled ? 'Sesli' : 'Sessiz'}
           </button>
-          <button
+          <button data-lo-dugme data-on={voiceMode ? 'true' : 'false'}
             onClick={toggleVoiceMode}
             className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-semibold transition-colors"
             style={portalStyle({
@@ -277,7 +277,7 @@ export function LucaOperatorChat() {
             {voiceMode ? 'Sohbet açık' : 'Sohbet modu'}
           </button>
           {sending && (
-            <button
+            <button data-lo-dur
               onClick={durdur}
               className="rounded-lg px-2 py-1 text-[11px] font-semibold transition-colors"
               style={portalStyle({ background: 'rgba(248,113,113,0.14)', border: '1px solid rgba(248,113,113,0.32)', color: '#fca5a5' })}
@@ -287,7 +287,7 @@ export function LucaOperatorChat() {
             </button>
           )}
           {messages.length > 0 && (
-            <button
+            <button data-lo-dugme data-on="false"
               onClick={clearChat}
               className="rounded-lg px-2 py-1 text-[11px] transition-colors hover:bg-white/5"
               style={portalStyle({ color: 'rgba(250,250,249,0.45)', border: '1px solid rgba(255,255,255,0.07)' })}
@@ -300,15 +300,15 @@ export function LucaOperatorChat() {
       </div>
 
       {/* Mesajlar */}
-      <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
+      <div ref={scrollRef} data-lo-mesajlar className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
         {messages.length === 0 ? (
-          <div className="space-y-4 py-10">
+          <div data-lo-bos className="space-y-4 py-10">
             <div className="text-center text-sm" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
               Henüz konuşma yok
             </div>
             <div className="flex flex-col items-center gap-2">
               {ORNEKLER.map((o) => (
-                <button
+                <button data-lo-ornek
                   key={o}
                   onClick={() => send(o)}
                   className="rounded-lg px-3 py-1.5 text-xs transition-colors"
@@ -324,7 +324,7 @@ export function LucaOperatorChat() {
             if (m.role === 'user') {
               return (
                 <div key={i} className="flex justify-end">
-                  <div
+                  <div data-lo-balon="kullanici"
                     className="max-w-[80%] rounded-lg px-3 py-2 text-sm"
                     style={portalStyle({ background: `${ACCENT}1f`, border: `1px solid ${ACCENT}3a`, color: '#fafaf9' })}
                   >
@@ -336,17 +336,17 @@ export function LucaOperatorChat() {
             const empty = !m.content;
             return (
               <div key={i} className="flex flex-col gap-1">
-                <span className="text-[11px] font-bold tracking-wider" style={portalStyle({ color: ACCENT })}>
+                <span data-lo-etiket className="text-[11px] font-bold tracking-wider" style={portalStyle({ color: ACCENT })}>
                   LUCA OPERATÖRÜ
                 </span>
                 {m.tools && m.tools.length > 0 && (
-                  <div className="flex items-center gap-1 text-[10px]" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>
+                  <div data-lo-arac className="flex items-center gap-1 text-[10px]" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>
                     <Wrench size={10} />
                     {m.tools.length} veri sorgusu
                   </div>
                 )}
                 {!empty && (
-                  <div
+                  <div data-lo-balon="operator"
                     className="whitespace-pre-wrap rounded-lg px-3 py-2 text-sm leading-relaxed"
                     style={portalStyle({ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(250,250,249,0.92)' })}
                   >
@@ -358,7 +358,7 @@ export function LucaOperatorChat() {
           })
         )}
         {sending && (
-          <div className="flex items-center gap-2 px-2 py-1 text-xs" style={portalStyle({ color: ACCENT })}>
+          <div data-lo-calisiyor className="flex items-center gap-2 px-2 py-1 text-xs" style={portalStyle({ color: ACCENT })}>
             <Loader2 size={12} className="animate-spin" />
             {currentTool ? `${currentTool} çalışıyor...` : 'Düşünüyor...'}
           </div>
@@ -366,9 +366,9 @@ export function LucaOperatorChat() {
       </div>
 
       {/* Girdi + ses */}
-      <div className="flex-shrink-0 border-t px-3 py-3" style={portalStyle({ borderColor: 'rgba(255,255,255,0.06)' })}>
+      <div data-lo-girdi-alani className="flex-shrink-0 border-t px-3 py-3" style={portalStyle({ borderColor: 'rgba(255,255,255,0.06)' })}>
         <div className="flex gap-2">
-          <button
+          <button data-lo-mik data-on={listening ? 'true' : 'false'}
             onClick={toggleMic}
             disabled={sending}
             className="rounded-lg px-3 transition-colors disabled:opacity-50"
@@ -381,7 +381,7 @@ export function LucaOperatorChat() {
           >
             {listening ? <MicOff size={16} className="animate-pulse" /> : <Mic size={16} />}
           </button>
-          <input
+          <input data-lo-girdi
             value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
@@ -406,7 +406,7 @@ export function LucaOperatorChat() {
               color: '#fafaf9',
             })}
           />
-          <button
+          <button data-lo-gonder
             onClick={submit}
             disabled={!text.trim()}
             className="rounded-lg px-3 disabled:opacity-50"

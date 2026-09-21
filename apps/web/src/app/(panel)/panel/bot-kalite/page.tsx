@@ -1,4 +1,5 @@
 'use client';
+import './bot-kalite-white.css';
 import { portalStyle } from '@/lib/portal-theme';
 
 
@@ -29,6 +30,16 @@ const GOLD_SOFT = '#b8a06f';
 const GREEN = '#5fcf8e';
 const AMBER = '#f0b755';
 const RED = '#ef6b6b';
+
+// Beyaz temada renk ailesi kancası (CSS `data-ton`); A temasında etkisiz.
+function tonAdi(renk: string): string {
+  if (renk === GREEN) return 'yesil';
+  if (renk === AMBER) return 'kehribar';
+  if (renk === RED) return 'kirmizi';
+  if (renk === TEAL || renk === TEAL_BR) return 'deniz';
+  if (renk === GOLD || renk === GOLD_SOFT) return 'civit';
+  return 'kursuni';
+}
 
 // Backend'den gelen İngilizce durumları Türkçeye çevir
 function durumTurkce(status: string): string {
@@ -161,35 +172,35 @@ export default function BotKalitePage() {
   const puanRengi = puan >= 7 ? GREEN : puan >= 5 ? AMBER : RED;
 
   return (
-    <div className="space-y-5">
+    <div data-bot-kalite className="space-y-5">
       {/* Başlık */}
-      <header data-portal-page-header
+      <header data-portal-page-header data-bk-baslik
         className="relative overflow-hidden rounded-[18px] border px-5 py-5"
         style={portalStyle({
           background: 'radial-gradient(120% 140% at 0% 0%, rgba(20,184,166,0.13), transparent 46%), radial-gradient(120% 140% at 100% 0%, rgba(45,212,191,0.08), transparent 48%), #0f0d0b',
           borderColor: 'rgba(255,255,255,0.07)',
         })}
       >
-        <div className="absolute inset-x-0 top-0 h-[3px]" style={portalStyle({ background: `linear-gradient(90deg, ${TEAL}, ${TEAL_BR}, ${TEAL})` })} />
+        <div data-bk-serit className="absolute inset-x-0 top-0 h-[3px]" style={portalStyle({ background: `linear-gradient(90deg, ${TEAL}, ${TEAL_BR}, ${TEAL})` })} />
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex min-w-0 items-center gap-3.5">
-            <span
+            <span data-bk-simge
               className="grid shrink-0 place-items-center rounded-xl"
               style={portalStyle({ width: 46, height: 46, background: `linear-gradient(135deg, ${TEAL}, ${TEAL_BR})`, boxShadow: '0 8px 22px rgba(20,184,166,0.28)' })}
             >
               <Bot size={24} style={portalStyle({ color: '#0f0d0b' })} />
             </span>
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-[.18em]" style={portalStyle({ color: TEAL_BR })}>WhatsApp Bot</p>
+              <p data-bk-ust-etiket className="text-[10px] font-bold uppercase tracking-[.18em]" style={portalStyle({ color: TEAL_BR })}>WhatsApp Bot</p>
               <h1 className="text-[28px] font-semibold leading-none tracking-tight" style={portalStyle({ color: '#fafaf9', fontFamily: 'Fraunces, Georgia, serif' })}>
                 Kalite Takip
               </h1>
-              <p className="mt-1 text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
+              <p data-bk-alt className="mt-1 text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                 Botun verdiği cevaplar otomatik puanlanır — düşük puan, test ve maliyet burada izlenir
               </p>
             </div>
           </div>
-          <button
+          <button data-bk-birincil
             onClick={() => testCalistir.mutate()}
             disabled={testCalistir.isPending}
             className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-[10px] px-4 text-[12.5px] font-bold transition-all disabled:opacity-50"
@@ -202,7 +213,7 @@ export default function BotKalitePage() {
       </header>
 
       {/* Sayaçlar */}
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <section data-bk-sayaclar className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <SayacKarti
           icon={<Activity size={18} />}
           baslik="Bu Hafta Cevap"
@@ -235,13 +246,13 @@ export default function BotKalitePage() {
       </section>
 
       {/* Sekmeler */}
-      <div className="inline-flex overflow-hidden rounded-xl border" style={portalStyle({ borderColor: 'rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)' })}>
+      <div data-bk-sekmeler className="inline-flex overflow-hidden rounded-xl border" style={portalStyle({ borderColor: 'rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)' })}>
         {([
           ['dusuk', 'Düşük Kaliteli Cevaplar', dusukKayitlar.length],
           ['testler', 'Test Senaryoları', testler?.results?.length || 0],
           ['rapor', 'Haftalık Rapor', null],
         ] as const).map(([anahtar, etiket, sayi]) => (
-          <button
+          <button data-bk-sekme data-secili={sekme === anahtar ? 'true' : 'false'}
             key={anahtar}
             onClick={() => setSekme(anahtar)}
             className="flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-semibold transition"
@@ -253,7 +264,7 @@ export default function BotKalitePage() {
           >
             {etiket}
             {sayi != null && sayi > 0 && (
-              <span
+              <span data-bk-sekme-sayac
                 className="rounded-full px-1.5 py-0.5 text-[10px] font-bold"
                 style={portalStyle({ background: sekme === anahtar ? 'rgba(20,184,166,0.25)' : 'rgba(255,255,255,0.09)', color: sekme === anahtar ? TEAL_BR : 'rgba(250,250,249,0.55)' })}
               >
@@ -266,21 +277,21 @@ export default function BotKalitePage() {
 
       {/* Düşük Kaliteli Cevaplar */}
       {sekme === 'dusuk' && (
-        <section className="rounded-xl border" style={portalStyle({ borderColor: 'rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.02)' })}>
+        <section data-bk-kart className="rounded-xl border" style={portalStyle({ borderColor: 'rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.02)' })}>
           {kayitlarYukleniyor ? (
             <Yukleniyor />
           ) : dusukKayitlar.length === 0 ? (
             <Bos icon={<CheckCircle2 size={34} />} metin="Bu hafta düşük kaliteli cevap yok — bot iyi performans gösteriyor." />
           ) : (
             <div>
-              <div className="border-b px-4 py-3" style={portalStyle({ borderColor: 'rgba(255,255,255,0.07)' })}>
-                <span className="text-[12px] font-semibold" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
+              <div data-bk-kart-ust className="border-b px-4 py-3" style={portalStyle({ borderColor: 'rgba(255,255,255,0.07)' })}>
+                <span data-bk-kart-ozet className="text-[12px] font-semibold" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                   {dusukKayitlar.length} kayıt — puan &lt;6 veya yedek/başarısız durumdaki cevaplar
                 </span>
               </div>
-              <div className="divide-y" style={portalStyle({ '--tw-divide-opacity': 1 } as any)}>
+              <div data-bk-liste className="divide-y" style={portalStyle({ '--tw-divide-opacity': 1 } as any)}>
                 {dusukKayitlar.map((kayit) => (
-                  <article key={kayit.id} className="grid gap-4 p-4 xl:grid-cols-[1fr_240px]" style={portalStyle({ borderColor: 'rgba(255,255,255,0.06)' })}>
+                  <article data-bk-kayit key={kayit.id} className="grid gap-4 p-4 xl:grid-cols-[1fr_240px]" style={portalStyle({ borderColor: 'rgba(255,255,255,0.06)' })}>
                     <div className="min-w-0">
                       <div className="mb-2.5 flex flex-wrap items-center gap-2">
                         <Etiket renk={durumRengi(kayit.status)}>{durumTurkce(kayit.status)}</Etiket>
@@ -288,21 +299,21 @@ export default function BotKalitePage() {
                         {kayit.intent && (
                           <Etiket renk="rgba(250,250,249,0.3)">{kayit.intent}</Etiket>
                         )}
-                        <span className="text-[11px]" style={portalStyle({ color: 'rgba(250,250,249,0.35)' })}>
+                        <span data-bk-zaman className="text-[11px]" style={portalStyle({ color: 'rgba(250,250,249,0.35)' })}>
                           {new Date(kayit.createdAt).toLocaleString('tr-TR')}
                         </span>
                       </div>
-                      <p className="text-[13px] font-medium leading-relaxed" style={portalStyle({ color: 'rgba(250,250,249,0.82)' })}>
+                      <p data-bk-cevap className="text-[13px] font-medium leading-relaxed" style={portalStyle({ color: 'rgba(250,250,249,0.82)' })}>
                         {kayit.finalReply || kayit.originalReply || '(cevap metni yok)'}
                       </p>
                       {(kayit.reasons || []).length > 0 && (
-                        <p className="mt-2 text-[11px]" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>
+                        <p data-bk-sorunlar className="mt-2 text-[11px]" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>
                           Tespit edilen sorunlar: {kayit.reasons!.join(', ')}
                         </p>
                       )}
                     </div>
                     <div className="flex flex-col gap-2">
-                      <select
+                      <select data-bk-girdi
                         value={nedenler[kayit.id] || ''}
                         onChange={(e) => setNedenler((prev) => ({ ...prev, [kayit.id]: e.target.value }))}
                         className="h-10 w-full rounded-lg px-3 text-[13px] outline-none"
@@ -314,14 +325,14 @@ export default function BotKalitePage() {
                         ))}
                       </select>
                       <div className="grid grid-cols-2 gap-2">
-                        <button
+                        <button data-bk-oy="iyi"
                           onClick={() => geribildirim.mutate({ logId: kayit.id, rating: 'UP', reason: nedenler[kayit.id] })}
                           className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg text-[12px] font-semibold"
                           style={portalStyle({ background: 'rgba(95,207,142,0.12)', color: GREEN })}
                         >
                           <ThumbsUp size={14} /> İyi
                         </button>
-                        <button
+                        <button data-bk-oy="kotu"
                           onClick={() => geribildirim.mutate({ logId: kayit.id, rating: 'DOWN', reason: nedenler[kayit.id] })}
                           className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg text-[12px] font-semibold"
                           style={portalStyle({ background: 'rgba(239,107,107,0.12)', color: RED })}
@@ -340,14 +351,14 @@ export default function BotKalitePage() {
 
       {/* Test Senaryoları */}
       {sekme === 'testler' && (
-        <section className="rounded-xl border" style={portalStyle({ borderColor: 'rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.02)' })}>
+        <section data-bk-kart className="rounded-xl border" style={portalStyle({ borderColor: 'rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.02)' })}>
           {testlerYukleniyor ? (
             <Yukleniyor />
           ) : !testler?.results?.length ? (
             <Bos icon={<ClipboardList size={34} />} metin='Henüz test senaryosu sonucu yok. "Test Çalıştır" butonunu kullanarak başlatabilirsiniz.' />
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[700px] text-left">
+              <table data-bk-tablo className="w-full min-w-[700px] text-left">
                 <thead style={portalStyle({ borderBottom: '2px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)' })}>
                   <tr className="text-[11px] font-bold uppercase tracking-wider" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                     <th className="px-4 py-3">Senaryo</th>
@@ -363,14 +374,14 @@ export default function BotKalitePage() {
                       key={satir.id}
                       style={portalStyle({ borderTop: idx === 0 ? 'none' : '1px solid rgba(255,255,255,0.06)' })}
                     >
-                      <td className="px-4 py-3.5 text-[13px] font-semibold" style={portalStyle({ color: 'rgba(250,250,249,0.82)' })}>
+                      <td data-bk-hucre="ad" className="px-4 py-3.5 text-[13px] font-semibold" style={portalStyle({ color: 'rgba(250,250,249,0.82)' })}>
                         {satir.metadata?.title || satir.scenarioKey || 'Senaryo'}
                       </td>
                       <td className="px-4 py-3.5">
                         <Etiket renk={durumRengi(satir.status)}>{durumTurkce(satir.status)}</Etiket>
                       </td>
                       <td className="px-4 py-3.5 text-center">
-                        <span
+                        <span data-bk-puan data-ton={satir.score >= 7 ? 'yesil' : satir.score >= 5 ? 'kehribar' : 'kirmizi'}
                           className="inline-block min-w-[42px] rounded-md px-2 py-1 text-[12px] font-bold tabular-nums"
                           style={portalStyle({
                             background: satir.score >= 7 ? 'rgba(95,207,142,0.13)' : satir.score >= 5 ? 'rgba(240,183,85,0.13)' : 'rgba(239,107,107,0.13)',
@@ -380,10 +391,10 @@ export default function BotKalitePage() {
                           {satir.score}/10
                         </span>
                       </td>
-                      <td className="px-4 py-3.5 text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
+                      <td data-bk-hucre="sorun" className="px-4 py-3.5 text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
                         {(satir.reasons || []).join(', ') || '—'}
                       </td>
-                      <td className="px-4 py-3.5 text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.35)' })}>
+                      <td data-bk-hucre="tarih" className="px-4 py-3.5 text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.35)' })}>
                         {new Date(satir.createdAt).toLocaleDateString('tr-TR')}
                       </td>
                     </tr>
@@ -398,33 +409,33 @@ export default function BotKalitePage() {
       {/* Haftalık Rapor */}
       {sekme === 'rapor' && (
         <section className="grid gap-4 xl:grid-cols-[340px_1fr]">
-          <div className="rounded-xl border p-5" style={portalStyle({ borderColor: 'rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.02)' })}>
-            <h2 className="mb-4 text-[11px] font-bold uppercase tracking-[.15em]" style={portalStyle({ color: TEAL_BR })}>Haftalık Özet</h2>
+          <div data-bk-kart className="rounded-xl border p-5" style={portalStyle({ borderColor: 'rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.02)' })}>
+            <h2 data-bk-bolum-baslik className="mb-4 text-[11px] font-bold uppercase tracking-[.15em]" style={portalStyle({ color: TEAL_BR })}>Haftalık Özet</h2>
             {raporYukleniyor ? <Yukleniyor kucuk /> : (
               <div className="space-y-3">
                 <SatirKarti etiket="Toplam kayıt" deger={rapor?.totalLogs || 0} />
                 <SatirKarti etiket="Düşük puanlı cevap" deger={rapor?.lowScore || 0} tehlike={(rapor?.lowScore || 0) > 0} />
                 <SatirKarti etiket="Olumsuz geri bildirim" deger={rapor?.negativeFeedback || 0} tehlike={(rapor?.negativeFeedback || 0) > 0} />
                 <div className="pt-2">
-                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>Sık görülen sorunlar</p>
+                  <p data-bk-bolum-baslik className="mb-2 text-[11px] font-semibold uppercase tracking-wider" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>Sık görülen sorunlar</p>
                   <div className="flex flex-wrap gap-1.5">
                     {(rapor?.topReasons || []).map((item) => (
                       <Etiket key={item.reason} renk={AMBER}>{item.reason} ({item.count})</Etiket>
                     ))}
                     {(rapor?.topReasons || []).length === 0 && (
-                      <span className="text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.35)' })}>Bu hafta kayıt yok</span>
+                      <span data-bk-soluk className="text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.35)' })}>Bu hafta kayıt yok</span>
                     )}
                   </div>
                 </div>
               </div>
             )}
           </div>
-          <div className="rounded-xl border p-5" style={portalStyle({ borderColor: 'rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.02)' })}>
-            <h2 className="mb-4 text-[11px] font-bold uppercase tracking-[.15em]" style={portalStyle({ color: TEAL_BR })}>Otomatik İyileştirme Önerileri</h2>
+          <div data-bk-kart className="rounded-xl border p-5" style={portalStyle({ borderColor: 'rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.02)' })}>
+            <h2 data-bk-bolum-baslik className="mb-4 text-[11px] font-bold uppercase tracking-[.15em]" style={portalStyle({ color: TEAL_BR })}>Otomatik İyileştirme Önerileri</h2>
             {raporYukleniyor ? <Yukleniyor kucuk /> : (
               <ul className="space-y-3">
                 {(rapor?.suggestions?.length ? rapor.suggestions : ['Bu hafta henüz iyileştirme önerisi oluşmadı.']).map((oneri, i) => (
-                  <li key={i} className="flex items-start gap-2.5 rounded-lg p-3" style={portalStyle({ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' })}>
+                  <li data-bk-oneri key={i} className="flex items-start gap-2.5 rounded-lg p-3" style={portalStyle({ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' })}>
                     <RefreshCw size={13} className="mt-0.5 shrink-0" style={portalStyle({ color: TEAL_BR })} />
                     <span className="text-[13px]" style={portalStyle({ color: 'rgba(250,250,249,0.72)' })}>{oneri}</span>
                   </li>
@@ -442,7 +453,7 @@ function SayacKarti({ icon, baslik, deger, alt, renk, tehlike }: {
   icon: ReactNode; baslik: string; deger: string; alt: string; renk: string; tehlike?: boolean;
 }) {
   return (
-    <div
+    <div data-bk-sayac data-ton={tonAdi(renk)} data-tehlike={tehlike ? 'true' : 'false'}
       className="rounded-xl border p-4"
       style={portalStyle({
         borderColor: tehlike ? `${renk}44` : 'rgba(255,255,255,0.08)',
@@ -450,28 +461,28 @@ function SayacKarti({ icon, baslik, deger, alt, renk, tehlike }: {
       })}
     >
       <div className="mb-3 flex items-center justify-between">
-        <span style={portalStyle({ color: renk })}>{icon}</span>
-        {tehlike && <XCircle size={14} style={portalStyle({ color: renk, opacity: 0.7 })} />}
+        <span data-bk-sayac-simge style={portalStyle({ color: renk })}>{icon}</span>
+        {tehlike && <XCircle data-bk-sayac-uyari size={14} style={portalStyle({ color: renk, opacity: 0.7 })} />}
       </div>
-      <div className="text-[26px] font-bold tabular-nums" style={portalStyle({ color: '#fafaf9' })}>{deger}</div>
-      <div className="mt-0.5 text-[11px] font-bold uppercase tracking-wider" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>{baslik}</div>
-      <div className="mt-2 text-[11px]" style={portalStyle({ color: 'rgba(250,250,249,0.35)' })}>{alt}</div>
+      <div data-bk-sayac-deger className="text-[26px] font-bold tabular-nums" style={portalStyle({ color: '#fafaf9' })}>{deger}</div>
+      <div data-bk-sayac-baslik className="mt-0.5 text-[11px] font-bold uppercase tracking-wider" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>{baslik}</div>
+      <div data-bk-sayac-alt className="mt-2 text-[11px]" style={portalStyle({ color: 'rgba(250,250,249,0.35)' })}>{alt}</div>
     </div>
   );
 }
 
 function SatirKarti({ etiket, deger, tehlike }: { etiket: string; deger: number; tehlike?: boolean }) {
   return (
-    <div className="flex items-center justify-between border-b pb-2.5" style={portalStyle({ borderColor: 'rgba(255,255,255,0.06)' })}>
-      <span className="text-[13px]" style={portalStyle({ color: 'rgba(250,250,249,0.62)' })}>{etiket}</span>
-      <span className="text-[14px] font-bold tabular-nums" style={portalStyle({ color: tehlike && deger > 0 ? RED : '#fafaf9' })}>{deger}</span>
+    <div data-bk-satir className="flex items-center justify-between border-b pb-2.5" style={portalStyle({ borderColor: 'rgba(255,255,255,0.06)' })}>
+      <span data-bk-satir-etiket className="text-[13px]" style={portalStyle({ color: 'rgba(250,250,249,0.62)' })}>{etiket}</span>
+      <span data-bk-satir-deger data-tehlike={tehlike && deger > 0 ? 'true' : 'false'} className="text-[14px] font-bold tabular-nums" style={portalStyle({ color: tehlike && deger > 0 ? RED : '#fafaf9' })}>{deger}</span>
     </div>
   );
 }
 
 function Etiket({ children, renk }: { children: ReactNode; renk: string }) {
   return (
-    <span
+    <span data-bk-etiket data-ton={tonAdi(renk)}
       className="inline-flex rounded-md border px-2 py-0.5 text-[11px] font-bold"
       style={portalStyle({ borderColor: `${renk}44`, color: renk, background: `${renk}18` })}
     >
@@ -482,7 +493,7 @@ function Etiket({ children, renk }: { children: ReactNode; renk: string }) {
 
 function Yukleniyor({ kucuk }: { kucuk?: boolean }) {
   return (
-    <div className={kucuk ? 'flex items-center gap-2 text-[13px]' : 'flex items-center justify-center gap-2 p-10 text-[13px]'} style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>
+    <div data-bk-soluk className={kucuk ? 'flex items-center gap-2 text-[13px]' : 'flex items-center justify-center gap-2 p-10 text-[13px]'} style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>
       <Loader2 size={15} className="animate-spin" /> Yükleniyor…
     </div>
   );
@@ -490,7 +501,7 @@ function Yukleniyor({ kucuk }: { kucuk?: boolean }) {
 
 function Bos({ icon, metin }: { icon: ReactNode; text?: string; metin: string }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-3 p-14 text-center" style={portalStyle({ color: 'rgba(250,250,249,0.38)' })}>
+    <div data-bk-bos className="flex flex-col items-center justify-center gap-3 p-14 text-center" style={portalStyle({ color: 'rgba(250,250,249,0.38)' })}>
       {icon}
       <span className="text-[13px] font-medium max-w-xs">{metin}</span>
     </div>

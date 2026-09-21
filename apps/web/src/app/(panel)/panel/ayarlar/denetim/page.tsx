@@ -1,5 +1,6 @@
 'use client';
 import '@/app/(panel)/panel/ajanlar/_components/operations-white.css';
+import '../ayarlar-white.css';
 
 import { portalStyle } from '@/lib/portal-theme';
 
@@ -89,11 +90,11 @@ export default function DenetimPage() {
         })}
       >
         {/* üst renk şeridi */}
-        <div
+        <div data-ay-serit
           className="absolute inset-x-0 top-0 h-1"
           style={portalStyle({ background: 'linear-gradient(90deg, #fbbf24, #f59e0b, #fb923c, #d4b876)' })}
         />
-        <Link
+        <Link data-ay-geri
           href="/panel/ayarlar"
           className="inline-flex items-center gap-1.5 text-[12px] font-medium"
           style={portalStyle({ color: 'rgba(250,250,249,0.58)' })}
@@ -105,7 +106,7 @@ export default function DenetimPage() {
             className="flex items-center gap-2.5 text-[28px] font-semibold leading-tight"
             style={portalStyle({ color: '#fafaf9' })}
           >
-            <span
+            <span data-ay-simge
               className="grid h-10 w-10 place-items-center rounded-xl"
               style={portalStyle({ background: 'linear-gradient(135deg, #fbbf24, #d97706)', boxShadow: '0 6px 18px rgba(251,191,36,0.35)' })}
             >
@@ -114,14 +115,14 @@ export default function DenetimPage() {
             Denetim Günlüğü
           </h1>
         </div>
-        <p className="mt-2 max-w-2xl text-[13px]" style={portalStyle({ color: 'rgba(250,250,249,0.6)' })}>
+        <p data-ay-metin className="mt-2 max-w-2xl text-[13px]" style={portalStyle({ color: 'rgba(250,250,249,0.6)' })}>
           Sistemde yapılan tüm yazma işlemleri (oluşturma, güncelleme, silme, giriş)
           buradan izlenir. Sadece ADMIN kullanıcılar görebilir.
         </p>
       </header>
 
       {/* Mini bar chart — son 30 gün */}
-      <div data-ops-card="true"
+      <div data-ops-card="true" data-ay-kart data-denetim-grafik
         className="rounded-2xl border p-5"
         style={portalStyle({
           background: 'linear-gradient(135deg, rgba(251,191,36,0.07), rgba(245,158,11,0.03) 60%, rgba(255,255,255,0.02))',
@@ -129,8 +130,8 @@ export default function DenetimPage() {
         })}
       >
         <div className="flex items-center gap-2 mb-3">
-          <Activity size={14} style={portalStyle({ color: AMBER })} />
-          <span
+          <Activity data-ay-vurgu size={14} style={portalStyle({ color: AMBER })} />
+          <span data-ay-etiket
             className="text-[11px] uppercase font-bold tracking-[.12em]"
             style={portalStyle({ color: 'rgba(250,250,249,0.6)' })}
           >
@@ -139,7 +140,7 @@ export default function DenetimPage() {
         </div>
         <div className="flex items-end gap-1 h-20">
           {stats.length === 0 ? (
-            <div
+            <div data-ay-soluk
               className="text-[12px] italic w-full text-center self-center"
               style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}
             >
@@ -147,7 +148,7 @@ export default function DenetimPage() {
             </div>
           ) : (
             stats.map((s) => (
-              <div
+              <div data-denetim-cubuk
                 key={s.day}
                 className="flex-1 rounded-t-sm relative group"
                 style={portalStyle({
@@ -157,7 +158,7 @@ export default function DenetimPage() {
                 })}
                 title={`${s.day}: ${s.count}`}
               >
-                <span
+                <span data-denetim-cubuk-deger
                   className="absolute -top-5 left-1/2 -translate-x-1/2 text-[10px] opacity-0 group-hover:opacity-100 transition"
                   style={portalStyle({ color: AMBER, whiteSpace: 'nowrap' })}
                 >
@@ -170,7 +171,7 @@ export default function DenetimPage() {
       </div>
 
       {/* Filtre barı */}
-      <div data-ops-card="true"
+      <div data-ops-card="true" data-ay-kart data-denetim-suzgec
         className="rounded-2xl border p-4"
         style={portalStyle({
           background: 'linear-gradient(135deg, rgba(251,191,36,0.05), rgba(255,255,255,0.02) 55%)',
@@ -179,7 +180,7 @@ export default function DenetimPage() {
       >
         <div className="flex flex-wrap gap-3 items-end">
           <div className="flex-1 min-w-[260px]">
-            <label
+            <label data-ay-etiket
               className="text-[11px] uppercase font-bold tracking-[.12em] block mb-1.5"
               style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}
             >
@@ -192,14 +193,15 @@ export default function DenetimPage() {
                 onChange={(e) => setSearchInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && applySearch()}
                 placeholder="örn: taxpayers veya cltxxx..."
-                className="flex-1 px-3 py-2.5 rounded-lg text-sm border outline-none"
+                data-ay-girdi
+              className="flex-1 px-3 py-2.5 rounded-lg text-sm border outline-none"
                 style={portalStyle({
                   background: 'rgba(255,255,255,0.03)',
                   borderColor: 'rgba(255,255,255,0.08)',
                   color: '#fafaf9',
                 })}
               />
-              <button
+              <button data-ay-birincil
                 onClick={applySearch}
                 className="px-3 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-1.5"
                 style={portalStyle({
@@ -214,7 +216,7 @@ export default function DenetimPage() {
           </div>
 
           <div>
-            <label
+            <label data-ay-etiket
               className="text-[11px] uppercase font-bold tracking-[.12em] block mb-1.5"
               style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}
             >
@@ -229,6 +231,7 @@ export default function DenetimPage() {
                   offset: 0,
                 }))
               }
+              data-ay-girdi
               className="px-3 py-2.5 rounded-lg text-sm border outline-none"
               style={portalStyle({
                 background: 'rgba(255,255,255,0.03)',
@@ -249,7 +252,7 @@ export default function DenetimPage() {
           </div>
 
           <div>
-            <label
+            <label data-ay-etiket
               className="text-[11px] uppercase font-bold tracking-[.12em] block mb-1.5"
               style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}
             >
@@ -264,6 +267,7 @@ export default function DenetimPage() {
                   offset: 0,
                 }))
               }
+              data-ay-girdi
               className="px-3 py-2.5 rounded-lg text-sm border outline-none"
               style={portalStyle({
                 background: 'rgba(255,255,255,0.03)',
@@ -284,7 +288,7 @@ export default function DenetimPage() {
           </div>
 
           <div>
-            <label
+            <label data-ay-etiket
               className="text-[11px] uppercase font-bold tracking-[.12em] block mb-1.5"
               style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}
             >
@@ -299,6 +303,7 @@ export default function DenetimPage() {
                   offset: 0,
                 }))
               }
+              data-ay-girdi
               className="px-3 py-2.5 rounded-lg text-sm border outline-none"
               style={portalStyle({
                 background: 'rgba(255,255,255,0.03)',
@@ -319,7 +324,7 @@ export default function DenetimPage() {
           </div>
 
           <div>
-            <label
+            <label data-ay-etiket
               className="text-[11px] uppercase font-bold tracking-[.12em] block mb-1.5"
               style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}
             >
@@ -335,6 +340,7 @@ export default function DenetimPage() {
                   offset: 0,
                 }))
               }
+              data-ay-girdi
               className="px-3 py-2.5 rounded-lg text-sm border outline-none"
               style={portalStyle({
                 background: 'rgba(255,255,255,0.03)',
@@ -345,7 +351,7 @@ export default function DenetimPage() {
           </div>
 
           <div>
-            <label
+            <label data-ay-etiket
               className="text-[11px] uppercase font-bold tracking-[.12em] block mb-1.5"
               style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}
             >
@@ -361,6 +367,7 @@ export default function DenetimPage() {
                   offset: 0,
                 }))
               }
+              data-ay-girdi
               className="px-3 py-2.5 rounded-lg text-sm border outline-none"
               style={portalStyle({
                 background: 'rgba(255,255,255,0.03)',
@@ -370,7 +377,7 @@ export default function DenetimPage() {
             />
           </div>
 
-          <button
+          <button data-ay-ikincil
             onClick={reset}
             className="px-3 py-2.5 rounded-lg text-sm flex items-center gap-1.5"
             style={portalStyle({
@@ -386,7 +393,7 @@ export default function DenetimPage() {
       </div>
 
       {/* Liste */}
-      <div
+      <div data-ay-tablo
         className="rounded-2xl border overflow-hidden"
         style={portalStyle({
           background: 'rgba(255,255,255,0.02)',
@@ -394,11 +401,11 @@ export default function DenetimPage() {
         })}
       >
         {isLoading ? (
-          <div className="p-12 flex items-center justify-center gap-2 text-sm" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
+          <div data-ay-metin className="p-12 flex items-center justify-center gap-2 text-sm" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
             <Loader2 size={14} className="animate-spin" /> Yükleniyor…
           </div>
         ) : logs.length === 0 ? (
-          <div className="p-12 text-center text-sm" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>
+          <div data-ay-bos className="p-12 text-center text-sm" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>
             <ShieldCheck size={32} className="mx-auto mb-2 opacity-40" />
             Bu kriterlerde kayıt bulunamadı.
           </div>
@@ -406,34 +413,34 @@ export default function DenetimPage() {
           <table data-ops-table="true" className="w-full text-sm">
             <thead>
               <tr style={portalStyle({ background: 'rgba(251,191,36,0.06)' })}>
-                <th className="px-3 py-2.5 text-left text-[11px] uppercase tracking-wider" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
+                <th data-ay-baslik-hucre className="px-3 py-2.5 text-left text-[11px] uppercase tracking-wider" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
                   Tarih
                 </th>
-                <th className="px-3 py-2.5 text-left text-[11px] uppercase tracking-wider" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
+                <th data-ay-baslik-hucre className="px-3 py-2.5 text-left text-[11px] uppercase tracking-wider" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
                   Kullanıcı
                 </th>
-                <th className="px-3 py-2.5 text-left text-[11px] uppercase tracking-wider" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
+                <th data-ay-baslik-hucre className="px-3 py-2.5 text-left text-[11px] uppercase tracking-wider" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
                   Aksiyon
                 </th>
-                <th className="px-3 py-2.5 text-left text-[11px] uppercase tracking-wider" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
+                <th data-ay-baslik-hucre className="px-3 py-2.5 text-left text-[11px] uppercase tracking-wider" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
                   Kaynak
                 </th>
-                <th className="px-3 py-2.5 text-left text-[11px] uppercase tracking-wider" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
+                <th data-ay-baslik-hucre className="px-3 py-2.5 text-left text-[11px] uppercase tracking-wider" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
                   Kayıt ID
                 </th>
-                <th className="px-3 py-2.5 text-left text-[11px] uppercase tracking-wider" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
+                <th data-ay-baslik-hucre className="px-3 py-2.5 text-left text-[11px] uppercase tracking-wider" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
                   IP
                 </th>
               </tr>
             </thead>
             <tbody>
               {logs.map((log) => (
-                <tr
+                <tr data-ay-satir
                   key={log.id}
                   className="border-t hover:bg-white/[0.02] transition"
                   style={portalStyle({ borderColor: 'rgba(255,255,255,0.04)' })}
                 >
-                  <td className="px-3 py-2.5 whitespace-nowrap" style={portalStyle({ color: 'rgba(250,250,249,0.7)' })}>
+                  <td data-ay-metin className="px-3 py-2.5 whitespace-nowrap" style={portalStyle({ color: 'rgba(250,250,249,0.7)' })}>
                     {new Date(log.createdAt).toLocaleString('tr-TR', {
                       day: '2-digit',
                       month: '2-digit',
@@ -443,13 +450,13 @@ export default function DenetimPage() {
                       second: '2-digit',
                     })}
                   </td>
-                  <td className="px-3 py-2.5" style={portalStyle({ color: '#fafaf9' })}>
+                  <td data-ay-koyu className="px-3 py-2.5" style={portalStyle({ color: '#fafaf9' })}>
                     {log.user
                       ? `${log.user.firstName} ${log.user.lastName}`
-                      : <span style={portalStyle({ color: 'rgba(250,250,249,0.3)' })}>Sistem</span>}
+                      : <span data-ay-soluk style={portalStyle({ color: 'rgba(250,250,249,0.3)' })}>Sistem</span>}
                   </td>
                   <td className="px-3 py-2.5">
-                    <span
+                    <span data-denetim-aksiyon data-aksiyon={log.action}
                       className="inline-block px-2 py-0.5 rounded text-[11px] font-semibold"
                       style={portalStyle({
                         background: actionColor(log.action) + '20',
@@ -460,13 +467,13 @@ export default function DenetimPage() {
                       {actionLabel(log.action)}
                     </span>
                   </td>
-                  <td className="px-3 py-2.5" style={portalStyle({ color: 'rgba(250,250,249,0.85)' })}>
+                  <td data-ay-koyu className="px-3 py-2.5" style={portalStyle({ color: 'rgba(250,250,249,0.85)' })}>
                     {resourceLabel(log.resource)}
                   </td>
-                  <td className="px-3 py-2.5 font-mono text-[11px]" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
+                  <td data-ay-kod-hucre className="px-3 py-2.5 font-mono text-[11px]" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
                     {log.resourceId ? log.resourceId.slice(0, 12) + '…' : '—'}
                   </td>
-                  <td className="px-3 py-2.5 font-mono text-[11px]" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>
+                  <td data-ay-kod-hucre className="px-3 py-2.5 font-mono text-[11px]" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>
                     {log.ipAddress || '—'}
                   </td>
                 </tr>
@@ -478,12 +485,12 @@ export default function DenetimPage() {
 
       {/* Pagination */}
       {logs.length > 0 && (
-        <div className="flex items-center justify-between">
-          <span className="text-xs" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
+        <div data-denetim-sayfalama className="flex items-center justify-between">
+          <span data-ay-metin className="text-xs" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
             Toplam {total.toLocaleString('tr-TR')} kayıt · Sayfa {page}/{totalPages}
           </span>
           <div className="flex gap-2">
-            <button
+            <button data-ay-ikincil
               onClick={() => setFilters((f) => ({ ...f, offset: Math.max(0, (f.offset ?? 0) - limit) }))}
               disabled={offset === 0 || isFetching}
               className="px-3 py-1.5 rounded-md text-xs disabled:opacity-30"
@@ -495,7 +502,7 @@ export default function DenetimPage() {
             >
               Önceki
             </button>
-            <button
+            <button data-ay-ikincil
               onClick={() => setFilters((f) => ({ ...f, offset: (f.offset ?? 0) + limit }))}
               disabled={page >= totalPages || isFetching}
               className="px-3 py-1.5 rounded-md text-xs disabled:opacity-30"

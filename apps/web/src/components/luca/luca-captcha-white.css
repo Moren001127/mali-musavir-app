@@ -1,0 +1,58 @@
+/* Luca güvenlik kodu pencereleri (sağ alt pencere + sayfa içi panel) — beyaz tema (D) görünümü.
+   Captcha/oturum mantığı, uçlar ve kısayollar aynı; yalnız renkler. A teması etkilenmez. */
+
+/* Sağ alt pencere */
+html[data-theme='D'] [data-luca-captcha-overlay] {
+  background: #fff !important;
+  border: 1px solid #e3e8ef !important;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.22) !important;
+  color: #1e293b;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  border-radius: 14px !important;
+}
+html[data-theme='D'] :is([data-luca-captcha-overlay], [data-luca-inline-captcha]) [data-lk-baslik] { color: #d9480f !important; font-size: 11px !important; letter-spacing: 0.06em !important; }
+html[data-theme='D'] :is([data-luca-captcha-overlay], [data-luca-inline-captcha]) [data-lk-gorsel] { background: #fff !important; border: 1px solid #dde3ea !important; border-radius: 8px !important; }
+html[data-theme='D'] :is([data-luca-captcha-overlay], [data-luca-inline-captcha]) [data-lk-bekliyor] { background: #f8fafc !important; border: 1px dashed #dbe2ea; color: #94a3b8 !important; border-radius: 8px !important; }
+html[data-theme='D'] :is([data-luca-captcha-overlay], [data-luca-inline-captcha]) [data-lk-not] { background: #fff4e6 !important; border: 1px solid #ffd8a8 !important; color: #7c2d12 !important; border-radius: 8px !important; }
+html[data-theme='D'] :is([data-luca-captcha-overlay], [data-luca-inline-captcha]) [data-lk-etiket] { color: #64748b !important; font-size: 11px !important; letter-spacing: 0.06em !important; }
+html[data-theme='D'] :is([data-luca-captcha-overlay], [data-luca-inline-captcha]) [data-lk-alt] { color: #64748b !important; }
+html[data-theme='D'] :is([data-luca-captcha-overlay], [data-luca-inline-captcha]) [data-lk-girdi] {
+  background: #fff !important;
+  border: 1px solid #dde3ea !important;
+  border-radius: 10px !important;
+  color: #1e293b !important;
+  letter-spacing: 0.08em;
+}
+html[data-theme='D'] :is([data-luca-captcha-overlay], [data-luca-inline-captcha]) [data-lk-girdi]::placeholder { color: #94a3b8 !important; letter-spacing: 0; font-weight: 500; }
+html[data-theme='D'] :is([data-luca-captcha-overlay], [data-luca-inline-captcha]) [data-lk-girdi]:focus { border-color: #4263eb !important; box-shadow: 0 0 0 3px #dbe4ff !important; outline: none !important; }
+html[data-theme='D'] :is([data-luca-captcha-overlay], [data-luca-inline-captcha]) [data-lk-birincil] {
+  background: linear-gradient(135deg, #4263eb, #5c7cfa) !important;
+  color: #fff !important;
+  border-radius: 10px !important;
+  box-shadow: 0 8px 16px -10px #4263eb;
+  font-weight: 600 !important;
+}
+html[data-theme='D'] :is([data-luca-captcha-overlay], [data-luca-inline-captcha]) [data-lk-birincil]:hover:not(:disabled) { filter: brightness(1.05); }
+html[data-theme='D'] :is([data-luca-captcha-overlay], [data-luca-inline-captcha]) [data-lk-ikincil] {
+  background: #fff !important;
+  border: 1px solid #dde3ea !important;
+  color: #475569 !important;
+  border-radius: 10px !important;
+  font-weight: 600 !important;
+}
+html[data-theme='D'] :is([data-luca-captcha-overlay], [data-luca-inline-captcha]) [data-lk-ikincil]:hover:not(:disabled) { background: #f8fafc !important; color: #1e293b !important; }
+
+/* Sayfa içi panel */
+html[data-theme='D'] [data-luca-inline-captcha] {
+  background: #edf2ff !important;
+  border: 1px solid #dbe4ff !important;
+  border-radius: 12px !important;
+  color: #1e293b;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+html[data-theme='D'] [data-luca-inline-captcha] [data-lk-baslik] { color: #3b5bdb !important; }
+html[data-theme='D'] [data-luca-inline-durum] { border-radius: 10px !important; color: #1e293b !important; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+html[data-theme='D'] [data-luca-inline-durum][data-ajan='acik'] { background: #ebfbee !important; border: 1px solid #c6efd0 !important; }
+html[data-theme='D'] [data-luca-inline-durum][data-ajan='acik'] svg { color: #2f9e44 !important; }
+html[data-theme='D'] [data-luca-inline-durum][data-ajan='kapali'] { background: #fff5f5 !important; border: 1px solid #ffc9c9 !important; }
+html[data-theme='D'] [data-luca-inline-durum][data-ajan='kapali'] svg { color: #e03131 !important; }

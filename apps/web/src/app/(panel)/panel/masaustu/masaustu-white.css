@@ -1,0 +1,78 @@
+/* Masaüstü Uygulaması — beyaz tema (D) ikinci tur yeniden boyama (bilgi/BEYAZ-TEMA-TASARIM-DILI.md §7).
+   Altın kahve kart, serif başlık ve altın düğme kalkar; kart düzeni, indirme bağlantısı ve metinler aynı. */
+
+html[data-theme='D'] body [data-panel-main] [data-masaustu] {
+  color: #1e293b;
+  color-scheme: light;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+html[data-theme='D'] body [data-panel-main] [data-masaustu] :is(h1, h2, h3) { font-family: Inter, ui-sans-serif, system-ui, sans-serif !important; }
+
+/* Üst kart: beyaz, sakin */
+html[data-theme='D'] body [data-panel-main] [data-masaustu] [data-md-ust] {
+  background: #fff !important;
+  border: 1px solid #e3e8ef !important;
+  border-radius: 16px !important;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+}
+html[data-theme='D'] body [data-panel-main] [data-masaustu] [data-md-simge] {
+  width: 44px !important;
+  height: 44px !important;
+  border-radius: 12px !important;
+  background: #edf2ff !important;
+  border: 1px solid #dbe4ff;
+  color: #4263eb !important;
+}
+html[data-theme='D'] body [data-panel-main] [data-masaustu] [data-md-simge] svg { width: 24px; height: 24px; }
+html[data-theme='D'] body [data-panel-main] [data-masaustu] [data-md-ust] h1 {
+  font-size: 22px !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.01em;
+  color: #1e293b !important;
+}
+html[data-theme='D'] body [data-panel-main] [data-masaustu] [data-md-alt] { color: #64748b !important; font-size: 13.5px !important; line-height: 1.55; }
+html[data-theme='D'] body [data-panel-main] [data-masaustu] [data-md-cipler] { color: #475569 !important; }
+html[data-theme='D'] body [data-panel-main] [data-masaustu] [data-md-cip] {
+  background: #f1f5f9 !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #475569 !important;
+  font-size: 11.5px !important;
+  font-weight: 600;
+}
+html[data-theme='D'] body [data-panel-main] [data-masaustu] [data-md-cip='surum'] { background: #edf2ff !important; border-color: #dbe4ff !important; color: #3b5bdb !important; }
+html[data-theme='D'] body [data-panel-main] [data-masaustu] [data-md-indir] {
+  background: linear-gradient(135deg, #4263eb, #5c7cfa) !important;
+  color: #fff !important;
+  border-radius: 12px !important;
+  box-shadow: 0 10px 20px -12px #4263eb !important;
+  font-weight: 600 !important;
+  font-size: 15px !important;
+}
+html[data-theme='D'] body [data-panel-main] [data-masaustu] [data-md-indir-notu] { color: #94a3b8 !important; font-size: 12px !important; }
+
+/* Özellik ve adım kartları */
+html[data-theme='D'] body [data-panel-main] [data-masaustu] [data-md-kart] {
+  background: #fff !important;
+  border: 1px solid #e3e8ef !important;
+  border-radius: 14px !important;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+}
+html[data-theme='D'] body [data-panel-main] [data-masaustu] [data-md-kart-simge] {
+  background: #edf2ff !important;
+  border: 1px solid #dbe4ff;
+  color: #4263eb !important;
+  border-radius: 10px !important;
+}
+html[data-theme='D'] body [data-panel-main] [data-masaustu] [data-md-kart-baslik] { color: #1e293b !important; font-size: 15px !important; font-weight: 650 !important; }
+html[data-theme='D'] body [data-panel-main] [data-masaustu] [data-md-kart-metin] { color: #64748b !important; font-size: 13px !important; }
+html[data-theme='D'] body [data-panel-main] [data-masaustu] [data-md-adimlar-baslik] svg { color: #4263eb !important; }
+html[data-theme='D'] body [data-panel-main] [data-masaustu] [data-md-adimlar-baslik] h2 { color: #1e293b !important; font-size: 15px !important; font-weight: 650 !important; }
+html[data-theme='D'] body [data-panel-main] [data-masaustu] [data-md-adim-no] {
+  background: #edf2ff !important;
+  border: 1px solid #dbe4ff !important;
+  color: #3b5bdb !important;
+}
+html[data-theme='D'] body [data-panel-main] [data-masaustu] [data-md-adim-metin] { color: #475569 !important; font-size: 13.5px !important; }
+html[data-theme='D'] body [data-panel-main] [data-masaustu] [data-md-not] { background: #ebfbee !important; border: 1px solid #c6efd0 !important; border-radius: 12px !important; }
+html[data-theme='D'] body [data-panel-main] [data-masaustu] [data-md-not] svg { color: #2f9e44 !important; }
+html[data-theme='D'] body [data-panel-main] [data-masaustu] [data-md-not] p { color: #1e293b !important; font-size: 13px !important; }
