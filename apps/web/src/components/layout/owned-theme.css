@@ -66,7 +66,8 @@ html[data-theme='D'] [data-moren-owned='navigation'] img[src^='/brand/moren-logo
 /* Giriş sayfaları: altın logoyu süzgeçle laciverte boyamak daire içindeki "Mm" harflerini yutuyordu
    (Muzaffer Bey, 2026-09-21). Artık orijinal lacivert logo (logo.jpg'den saydam PNG) doğrudan gösterilir. */
 html[data-theme='D'] [data-moren-owned='auth'] img[src^='/brand/moren-logo'] {
-  content: url('/brand/moren-logo-navy.png');
+  /* ton: giriş başlığı "Bugünü düzenler," ile aynı koyu füme (#2b333b) — saf lacivert sayfada sırıtıyordu (2026-09-21) */
+  content: url('/brand/moren-logo-ink.png');
   filter: drop-shadow(0 6px 18px rgba(14, 42, 88, 0.16)) !important;
 }
 

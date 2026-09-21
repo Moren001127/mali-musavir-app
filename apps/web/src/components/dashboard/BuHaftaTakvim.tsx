@@ -304,6 +304,7 @@ function CalendarDayTile({ day }: { day: ReturnType<typeof buildCalendarDays>[nu
   return (
     <div
       data-calendar-day={hasDeadline ? (day.gunFark <= 3 ? 'urgent' : 'deadline') : hasTask ? 'task' : 'quiet'}
+      data-calendar-urgency={hasDeadline ? (day.gunFark < 0 ? 'past' : day.gunFark <= 1 ? 'immediate' : day.gunFark <= 3 ? 'soon' : day.gunFark <= 7 ? 'week' : 'planned') : undefined}
       data-calendar-today={day.gunFark === 0 ? 'true' : undefined}
       className="min-h-[76px] rounded-xl p-2.5 transition-all"
       title={titleParts.join('\n')}
@@ -353,7 +354,7 @@ function DeadlineRowItem({ row, dayTasks }: { row: DeadlineRow; dayTasks: string
     <div
       data-calendar-row
       data-calendar-kind={row.title.startsWith('KDV') ? 'vat' : row.title.includes('MUHSGK') ? 'payroll' : row.title.startsWith('e-Defter') ? 'ledger' : /Gelir|Kurumlar|Geçici/.test(row.title) ? 'income' : row.title.startsWith('Damga') ? 'stamp' : 'tourism'}
-      data-calendar-urgency={row.gunFark <= 1 ? 'immediate' : row.gunFark <= 3 ? 'soon' : 'planned'}
+      data-calendar-urgency={row.gunFark < 0 ? 'past' : row.gunFark <= 1 ? 'immediate' : row.gunFark <= 3 ? 'soon' : row.gunFark <= 7 ? 'week' : 'planned'}
       className="rounded-xl flex items-center gap-3 pl-1 pr-3 py-2 transition-all hover:translate-x-[2px] relative"
       style={portalStyle({
         background: tone.bg,

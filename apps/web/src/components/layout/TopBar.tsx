@@ -196,12 +196,6 @@ export default function TopBar() {
     };
   }, [qc]);
 
-  const today = new Date().toLocaleDateString('tr-TR', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
 
   return (
     <header data-moren-owned="surface"
@@ -212,10 +206,8 @@ export default function TopBar() {
         boxShadow: '0 1px 0 rgba(0,0,0,0.55)',
       })}
     >
-      <div className="flex min-w-0 items-center gap-3">
-        <p className="shrink-0 text-sm capitalize" style={ownedThemeStyle({ color: 'rgba(250,250,249,0.42)' })}>
-          {today}
-        </p>
+      {/* Tarih yazısı kaldırıldı; mükellef seçici sola yaslı (Muzaffer Bey, 2026-09-21) */}
+      <div className="flex min-w-0 items-center">
         <TopbarTaxpayerPicker taxpayers={taxpayers} />
       </div>
 
