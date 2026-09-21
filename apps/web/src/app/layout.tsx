@@ -19,16 +19,16 @@ export const metadata: Metadata = {
     title: 'Moren',
   },
   icons: {
-    // 2026-09-21: sekme simgesi eski siyah/altın logodan lacivert işarete (beyaz kare) geçti — ?v=2 önbelleği kırar
+    // 2026-09-21: sekme simgesi eski siyah/altın logodan lacivert işarete (beyaz kare) geçti — ?v=3 önbelleği kırar
     icon: [
-      { url: '/favicon.ico?v=2', sizes: '48x48 32x32 16x16', type: 'image/x-icon' },
-      { url: '/icons/favicon-32.png?v=2', sizes: '32x32', type: 'image/png' },
-      { url: '/icons/favicon-48.png?v=2', sizes: '48x48', type: 'image/png' },
-      { url: '/icons/moren-pwa-192.png?v=2', sizes: '192x192', type: 'image/png' },
-      { url: '/icons/moren-pwa-512.png?v=2', sizes: '512x512', type: 'image/png' },
+      { url: '/favicon.ico?v=3', sizes: '48x48 32x32 16x16', type: 'image/x-icon' },
+      { url: '/icons/favicon-32.png?v=3', sizes: '32x32', type: 'image/png' },
+      { url: '/icons/favicon-48.png?v=3', sizes: '48x48', type: 'image/png' },
+      { url: '/icons/moren-pwa-192.png?v=3', sizes: '192x192', type: 'image/png' },
+      { url: '/icons/moren-pwa-512.png?v=3', sizes: '512x512', type: 'image/png' },
     ],
-    shortcut: [{ url: '/favicon.ico?v=2' }],
-    apple: [{ url: '/icons/apple-touch-icon.png?v=2', sizes: '180x180', type: 'image/png' }],
+    shortcut: [{ url: '/favicon.ico?v=3' }],
+    apple: [{ url: '/icons/apple-touch-icon.png?v=3', sizes: '180x180', type: 'image/png' }],
   },
   formatDetection: {
     telephone: false,

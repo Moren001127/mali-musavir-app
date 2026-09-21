@@ -24,6 +24,17 @@ const { iletimRaporuUclari } = require('./mock-iletim-raporu.cjs');
 const { edefterUclari, edefterMukellefler } = require('./mock-edefter.cjs');
 // Ekip uçları ayrı modülde (SSE canlı koşu taklidi dahil)
 const { ekipUclari, ekipMukellefler } = require('./mock-ekip.cjs');
+// Modül eklentileri (2026-09-21): scripts/mock/*.cjs — her dosya `uclar(yol, yontem, q, govde, jsonGonder, res)` dışa aktarır,
+// eşleşmezse false döner. Paralel çalışan tasarım ajanları bu dosyaya dokunmadan kendi sahte verisini ekler.
+const EKLENTILER = (() => {
+  const fs = require('fs');
+  const path = require('path');
+  const dizin = path.join(__dirname, 'mock');
+  if (!fs.existsSync(dizin)) return [];
+  return fs.readdirSync(dizin).filter((f) => f.endsWith('.cjs')).sort().map((f) => {
+    try { const m = require(path.join(dizin, f)); return typeof m.uclar === 'function' ? m.uclar : null; } catch (e) { console.warn(`[mock] eklenti yüklenemedi: ${f}: ${e.message}`); return null; }
+  }).filter(Boolean);
+})();
 
 const PORT = Number(process.env.PORT || 3001);
 const ON_EK = '/api/v1';
@@ -1011,6 +1022,11 @@ async function isle(req, res) {
       satir('g6', 'GELEN_EARSIV', '2026-08', '3 gelen e-Arşiv faturası', { faturalar: [{ no: 'EAR2026000001', tarih: '2026-08-04', unvan: 'ABC Yapı Malz.', tutar: 12000 }, { no: 'EAR2026000002', tarih: '2026-08-15', unvan: 'Delta Nakliyat', tutar: 4800 }, { no: 'EAR2026000003', tarih: '2026-08-29', unvan: 'Omega Hırdavat', tutar: 2350.6 }] }, 1),
     ].filter((r) => (!q.tur || r.tur === q.tur) && (!q.taxpayerId || r.taxpayerId === q.taxpayerId) && (!q.donem || !r.donem || r.donem === q.donem));
     return jsonGonder(res, 200, { rows: hepsi, total: hepsi.length, page: 1, pageSize: 50 });
+  }
+
+  // ── Modül eklentileri (scripts/mock/*.cjs) — yerleşik uçlardan sonra, 404'ten önce ──
+  for (const uclar of EKLENTILER) {
+    if (uclar(yol, yontem, q, govde, jsonGonder, res) !== false) return;
   }
 
   console.log(`[mock] 404 ${yontem} ${yol}`);
