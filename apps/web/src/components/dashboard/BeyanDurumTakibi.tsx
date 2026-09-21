@@ -60,9 +60,6 @@ export function BeyanDurumTakibi({
   const aktif = rows.filter((r) => r.toplam > 0);
   const beyanRows = aktif.filter((r) => BEYAN_TIPLERI.includes(r.beyanTipi));
   const yardimciRows = aktif.filter((r) => r.beyanTipi === 'BILDIRGE' || r.beyanTipi === 'EDEFTER');
-  const toplam = aktif.reduce((a, r) => ({ toplam: a.toplam + r.toplam, onaylanan: a.onaylanan + r.onaylanan, bekleyen: a.bekleyen + r.bekleyen, hatali: a.hatali + r.hatali, kalan: a.kalan + r.kalan }), { toplam: 0, onaylanan: 0, bekleyen: 0, hatali: 0, kalan: 0 });
-  const yuzde = toplam.toplam > 0 ? Math.round((toplam.onaylanan / toplam.toplam) * 100) : 0;
-  const modeLabel = donemTuru === 'VERILME' ? 'Verilme dönemi' : 'Vergi dönemi';
   const modeNote = donemTuru === 'VERILME' ? 'Seçilen ayda verilmesi gerekenler' : 'Seçilen vergi dönemine ait olanlar';
   const bos = !isLoading && aktif.length === 0;
 
@@ -127,17 +124,6 @@ export function BeyanDurumTakibi({
               )}
               {yardimciRows.map((row) => <BeyanSatiri key={row.beyanTipi} row={row} onNumberClick={onNumberClick} yardimci />)}
             </tbody>
-            <tfoot>
-              <tr>
-                <th scope="row" className="bd-th-left">Toplam <em>{aktif.length} kalem · {modeLabel}</em></th>
-                <td><b>{toplam.toplam}</b></td>
-                <td data-ton="ok" data-zero={toplam.onaylanan === 0 ? 'true' : undefined}><b>{toplam.onaylanan}</b></td>
-                <td data-ton="wait" data-zero={toplam.bekleyen === 0 ? 'true' : undefined}><b>{toplam.bekleyen}</b></td>
-                <td data-ton="err" data-zero={toplam.hatali === 0 ? 'true' : undefined}><b>{toplam.hatali}</b></td>
-                <td data-ton="left" data-zero={toplam.kalan === 0 ? 'true' : undefined}><b>{toplam.kalan}</b></td>
-                <td className="bd-td-durum"><Durum pct={yuzde} state={toplam.hatali > 0 ? 'error' : toplam.kalan <= 0 ? 'done' : 'pending'} /></td>
-              </tr>
-            </tfoot>
           </table>
         </div>
       )}

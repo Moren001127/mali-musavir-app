@@ -56,17 +56,16 @@
 .bd-query:hover { transform: translateY(-1px); box-shadow: 0 9px 16px -8px #3264ed; }
 
 /* ── Tablo ── */
-.bd-table-wrap { overflow-x: auto; border-radius: 10px; }
+.bd-table-wrap { overflow-x: auto; }
 .bd-table { width: 100%; min-width: 760px; border-collapse: separate; border-spacing: 0; font-size: 12.5px; color: var(--bd-text); font-variant-numeric: tabular-nums; }
 .bd-table th, .bd-table td { padding: 7px 12px; text-align: right; vertical-align: middle; white-space: nowrap; line-height: 1.25; }
 .bd-table .bd-th-left { text-align: left; }
-.bd-table thead th { padding: 6px 12px; background: var(--bd-thead); border-bottom: 1px solid var(--bd-card-edge); font-size: 9.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--bd-muted); }
-.bd-table thead th:first-child { border-top-left-radius: 10px; }
-.bd-table thead th:last-child { border-top-right-radius: 10px; }
+.bd-table thead th { padding: 6px 12px; background: transparent; border-bottom: 1px solid var(--bd-card-edge); font-size: 9.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--bd-muted); }
 .bd-table tbody td, .bd-table tbody th { border-bottom: 1px solid var(--bd-card-edge); }
 .bd-table tbody tr:last-child td, .bd-table tbody tr:last-child th { border-bottom: 0; }
 .bd-row { transition: background 0.15s ease; }
 .bd-row:hover { background: var(--bd-hover); }
+.bd-table tbody tr:last-child td, .bd-table tbody tr:last-child th { border-bottom: 1px solid var(--bd-card-edge); }
 .bd-name { display: inline-flex; align-items: baseline; gap: 7px; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .bd-name b { font-size: 12.5px; font-weight: 650; color: var(--bd-text); }
 .bd-name small { font-size: 10.5px; color: var(--bd-muted); }
@@ -78,7 +77,7 @@ td[data-ton='ok'] .bd-num:not(:disabled) { color: var(--ok); }
 td[data-ton='wait'] .bd-num:not(:disabled) { color: var(--wait); }
 td[data-ton='err'] .bd-num:not(:disabled) { color: var(--err); }
 .bd-na { color: var(--bd-faint); }
-.bd-subhead th { padding: 5px 12px; text-align: left; background: var(--bd-thead); border-top: 1px solid var(--bd-card-edge); border-bottom: 1px solid var(--bd-card-edge); font-size: 9.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--bd-muted); }
+.bd-subhead th { padding: 5px 12px; text-align: left; background: transparent; border-top: 1px solid var(--bd-card-edge); border-bottom: 1px solid var(--bd-card-edge); font-size: 9.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--bd-muted); }
 .bd-subhead em { margin-left: 8px; font-style: normal; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--bd-faint); }
 .bd-table .bd-td-durum { text-align: left; min-width: 260px; }
 .bd-table .bd-th-durum { min-width: 260px; }
@@ -92,16 +91,6 @@ td[data-ton='err'] .bd-num:not(:disabled) { color: var(--err); }
 .bd-durum b { width: 36px; font-size: 12px; font-weight: 650; color: var(--bd-text); text-align: right; }
 .bd-durum[data-state='done'] b { color: var(--ok); }
 .bd-durum[data-state='error'] b { color: var(--err); }
-.bd-table tfoot th, .bd-table tfoot td { padding: 7px 12px; border-top: 2px solid var(--bd-card-edge); background: var(--bd-thead); font-size: 12.5px; color: var(--bd-text); }
-.bd-table tfoot th:first-child { border-bottom-left-radius: 10px; }
-.bd-table tfoot td:last-child { border-bottom-right-radius: 10px; }
-.bd-table tfoot th { font-weight: 650; }
-.bd-table tfoot th em { margin-left: 8px; font-style: normal; font-size: 10.5px; font-weight: 500; color: var(--bd-muted); }
-.bd-table tfoot td b { font-weight: 650; }
-.bd-table tfoot td[data-ton='ok'] b { color: var(--ok); }
-.bd-table tfoot td[data-ton='wait'] b { color: var(--wait); }
-.bd-table tfoot td[data-ton='err'] b { color: var(--err); }
-.bd-table tfoot td[data-zero='true'] b { color: var(--bd-faint); font-weight: 500; }
 .bd-empty { display: flex; flex-direction: column; gap: 4px; padding: 36px 16px; border: 1px dashed var(--bd-card-edge); border-radius: 12px; text-align: center; font-size: 12px; color: var(--bd-muted); }
 .bd-empty b { font-weight: 650; color: var(--bd-text); }
 
@@ -131,14 +120,23 @@ html[data-theme='D'] .bd {
   --left: #c6d1e2;
   /* Panorama yan kartlarıyla (e-Defter kartı) aynı yıkama formülü: köşe ışıması + üstten alta açılan çivit yıkama */
   background:
-    radial-gradient(120% 90% at 100% 0%, rgba(50, 100, 237, 0.18), transparent 55%),
-    radial-gradient(90% 70% at 0% 100%, rgba(50, 100, 237, 0.11), transparent 55%),
-    linear-gradient(160deg, #e9eeff 0%, #f1f4ff 45%, #fff 100%);
+    radial-gradient(120% 90% at 100% 0%, rgba(50, 100, 237, 0.22), transparent 58%),
+    radial-gradient(90% 70% at 0% 100%, rgba(50, 100, 237, 0.15), transparent 58%),
+    linear-gradient(160deg, #e3e9ff 0%, #edf1ff 50%, #f6f8ff 100%);
 }
-html[data-theme='D'] .bd-table-wrap { border: 1px solid #d5ddfb; background: #fff; box-shadow: 0 5px 18px rgba(50, 100, 237, 0.08); }
-html[data-theme='D'] .bd { --bd-thead: #eef2fd; --bd-hover: #f1f4ff; }
-html[data-theme='D'] .bd-table tbody tr:nth-child(even):not(.bd-subhead) { background: #fbfcff; }
+html[data-theme='D'] .bd { --bd-card-edge: #d3dbf6; --bd-hover: rgba(255, 255, 255, 0.55); }
+html[data-theme='D'] .bd-table thead th { border-bottom-color: #c9d3f5; }
 html[data-theme='D'] .bd-mode, html[data-theme='D'] .bd-period { background: #fff; border-color: #c4d6f7; }
 html[data-theme='D'] .bd-legend li[data-ton='wait']::before { background: #f59f00; }
 html[data-theme='D'] .bd-legend li[data-ton='err']::before { background: #e03131; }
-html[data-theme='D'] .bd-table tbody td, html[data-theme='D'] .bd-table tbody th { border-bottom-color: #edf1f7; }
+html[data-theme='D'] .bd-table tbody td, html[data-theme='D'] .bd-table tbody th { border-bottom-color: #d9e1f8; }
+
+/* dashboard-white.css'teki genel [data-dashboard-root] table kuralları (beyaz zemin, gri başlık, zebra) bu tabloda GEÇERSİZ:
+   tablo şeffaf, kartın çivit yıkaması satırların içinden geçer (Muzaffer Bey: "dışına değil içine renklendirme"). */
+html[data-theme='D'] [data-dashboard-root] .bd-table { border: 0; border-radius: 0; background: transparent; overflow: visible; }
+html[data-theme='D'] [data-dashboard-root] .bd-table thead th { background: transparent !important; color: var(--bd-muted) !important; border-bottom: 1px solid #c9d3f5; font-weight: 600; }
+html[data-theme='D'] [data-dashboard-root] .bd-table tbody td, html[data-theme='D'] [data-dashboard-root] .bd-table tbody th { border-bottom: 1px solid #d9e1f8; }
+html[data-theme='D'] [data-dashboard-root] .bd-table tbody tr:last-child td, html[data-theme='D'] [data-dashboard-root] .bd-table tbody tr:last-child th { border-bottom: 1px solid #d9e1f8; }
+html[data-theme='D'] [data-dashboard-root] .bd-table tbody tr:nth-child(even):not(:hover):not([aria-selected='true']) { background: transparent; }
+html[data-theme='D'] [data-dashboard-root] .bd-table tbody tr.bd-row:hover { background: rgba(255, 255, 255, 0.5); }
+html[data-theme='D'] [data-dashboard-root] .bd-table .bd-subhead th { background: transparent !important; color: var(--bd-muted) !important; }
