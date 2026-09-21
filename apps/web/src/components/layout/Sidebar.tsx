@@ -389,7 +389,7 @@ export default function Sidebar() {
               </div>
 
               {/* Menü Öğeleri */}
-              <div className={collapsed ? 'space-y-1' : 'ml-2.5 space-y-1'}>
+              <div data-moren-sidebar-items="true" className={collapsed ? 'space-y-1' : 'ml-2.5 space-y-1'}>
                 {group.items.map(({ href, label, icon: Icon }) => {
                   const active = isActive(href);
                   const baseBackground = active
@@ -502,7 +502,7 @@ export default function Sidebar() {
                       </div>
 
                       {!collapsed && (
-                        <span className="flex-1 min-w-0 truncate leading-none relative transition-colors duration-200">{label}</span>
+                        <span data-moren-sidebar-label="true" className="flex-1 min-w-0 truncate leading-none relative transition-colors duration-200">{label}</span>
                       )}
 
                       {/* Bekleyen onay badge — Fatura İşleme menüsünde göster (Onay Kuyruğu oraya entegre) */}
