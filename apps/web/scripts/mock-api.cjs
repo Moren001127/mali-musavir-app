@@ -1055,7 +1055,7 @@ const BUGUN_SAHTE = () => {
   ay: { ad: 'Eylül', toplam: 64, tamam: 26, yuzde: 41, isGunuKaldi: 8, kdvSonGun: '28 Eylül Pazartesi', kdvKalanGun: 10, haftaninSonIsGunu: true, asamalar: { evrakBekliyor: 17, isleniyor: 12, kontrol: 6, beyan: 3, tamam: 26 } },
   akis,
   konular: [
-    { id: 'tb', bolum: 'bugun', kaynak: 'e-Tebligat', baslik: '6 yeni e-Tebligat geldi', aciklama: '12 mükellef · toplam 43 okunmamış · SİLBER İNŞAAT · YILMAZ GÖKTAŞ · SEDA İŞ GÜVENLİĞİ', sayi: 43, vurgu: 'kritik', href: '/panel/genel-sorgular', sayac: { okunmamis: 43, yeni: 6, mukellef: 12 }, detay: [
+    { id: 'tb', bolum: 'bugun', kaynak: 'e-Tebligat', baslik: '6 yeni e-Tebligat geldi', aciklama: '12 mükellef · toplam 43 okunmamış · SİLBER İNŞAAT · YILMAZ GÖKTAŞ · SEDA İŞ GÜVENLİĞİ', sayi: 43, vurgu: 'kritik', href: '/panel/ajanlar/tebligat', sayac: { okunmamis: 43, yeni: 6, mukellef: 12 }, detay: [
       { id: 'a', metin: 'SİLBER İNŞAAT GIDA SANAYİ VE TİCARET LİMİTED ŞİRKETİ', alt: '2 yeni · 9 okunmamış', sayi: 9, href: '/panel/mukellefler/tx-1', taxpayerId: 'tx-1' },
       { id: 'b', metin: 'YILMAZ GÖKTAŞ İNŞAAT VE GIDA SANAYİ TİCARET LİMİTED ŞİRKETİ', alt: '1 yeni · 7 okunmamış', sayi: 7, href: '/panel/mukellefler/tx-2', taxpayerId: 'tx-2' },
       { id: 'c', metin: 'SEDA İŞ GÜVENLİĞİ MALZEMELERİ SANAYİ TİCARET LİMİTED ŞİRKETİ', alt: '1 yeni · 5 okunmamış', sayi: 5, href: '/panel/mukellefler/tx-3', taxpayerId: 'tx-3' },
