@@ -15,7 +15,6 @@ import {
   Download,
   FileCheck2,
   Mailbox,
-  Search as SearchIcon,
   BellRing,
   BrainCircuit,
   Building2,
@@ -30,37 +29,19 @@ import {
   Workflow,
 } from 'lucide-react';
 import { beyannameTakipApi, BEYAN_ETIKETLER } from '@/lib/beyanname-takip';
-import type { OzetRow, BeyanTipi, DonemTuru } from '@/lib/beyanname-takip';
+import type { BeyanTipi, DonemTuru } from '@/lib/beyanname-takip';
 import Link from 'next/link';
-import { ReactNode, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { KritikUyariStatCard } from '@/components/dashboard/KritikUyariStatCard';
-import { BuHaftaTakvim } from '@/components/dashboard/BuHaftaTakvim';
+import { MaliTakvim } from '@/components/dashboard/MaliTakvim';
 import { IsAkisiHatti } from '@/components/dashboard/IsAkisiHatti';
+import { BeyanDurumTakibi, donemEtiket, type BeyanFilter } from '@/components/dashboard/BeyanDurumTakibi';
 import { OfisPanoramasi, type PanoramaPeriodProps } from '@/components/dashboard/OfisPanoramasi';
 
 const GOLD = '#d4b876';
 const TRACK_BLUE = '#7dd3fc';
 const TRACK_BLUE_SOFT = '#93c5fd';
-const BEYAN_TONE = {
-  accent: '#d8bd86',
-  accentSoft: '#f2d8a1',
-  title: '#f8f4ec',
-  muted: 'rgba(244,239,229,0.58)',
-  header: 'rgba(244,239,229,0.52)',
-  approved: '#3ddc84',
-  waiting: '#f2c46d',
-  error: '#ff7a8c',
-  remaining: '#f0a6b6',
-  status: '#8cc8ff',
-  border: 'rgba(216,189,134,0.20)',
-  borderSoft: 'rgba(244,239,229,0.08)',
-  bg: 'rgba(216,189,134,0.08)',
-  bgSoft: 'rgba(244,239,229,0.035)',
-  rowAlt: 'rgba(255,255,255,0.018)',
-  tableBg: 'rgba(8,8,7,0.36)',
-  headBg: 'rgba(244,239,229,0.035)',
-};
 
 type Task = {
   id: string;
@@ -133,28 +114,13 @@ function AgentMini({ href, icon: Icon, name, stat, running }: { href: string; ic
 // TOPLU BEYANNAME — SGK VE E-DEFTER KONTROL (Hattat-stili)
 // Dönem seçici + beyanname/SGK/E-defter tabloları progress bar ile
 // ══════════════════════════════════════════════════════════
-type BeyanFilter = 'toplam' | 'onaylanan' | 'bekleyen' | 'hatali' | 'kalan';
 type ModalState = { beyanTipi: BeyanTipi; filter: BeyanFilter; donem: string; donemTuru: DonemTuru } | null;
-
-// Dönem anahtarını Türkçe etikete çevirir (iç anahtar korunur, yalnız gösterim):
-//   "2026-05" → "Mayıs 2026" · "2026-Q1" → "2026 1. Dönem (Oca-Mar)" · "2026-YIL" → "2026 Yıllık"
-const BEYAN_AYLAR_TR = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
-const BEYAN_CEYREK_AYLAR = ['Oca-Mar', 'Nis-Haz', 'Tem-Eyl', 'Eki-Ara'];
-function donemEtiket(key?: string | null): string {
-  if (!key) return '-';
-  const ay = key.match(/^(\d{4})-(\d{2})$/);
-  if (ay) return `${BEYAN_AYLAR_TR[parseInt(ay[2], 10) - 1] || ay[2]} ${ay[1]}`;
-  const q = key.match(/^(\d{4})-Q([1-4])$/);
-  if (q) return `${q[1]} ${q[2]}. Dönem (${BEYAN_CEYREK_AYLAR[parseInt(q[2], 10) - 1]})`;
-  const yil = key.match(/^(\d{4})-YIL$/i);
-  if (yil) return `${yil[1]} Yıllık`;
-  return key;
-}
 
 function ToplubeyannameTable(props: PanoramaPeriodProps) {
   return <ToplubeyannamePanel {...props} />;
 }
 
+/** Beyanname Durum Takibi: veri + dönem seçenekleri + mükellef listesi penceresi burada; görünüm BeyanDurumTakibi bileşeninde. */
 function ToplubeyannamePanel({ donem, setDonem, donemTuru, setDonemTuru }: PanoramaPeriodProps) {
   const [modal, setModal] = useState<ModalState>(null);
 
@@ -165,47 +131,16 @@ function ToplubeyannamePanel({ donem, setDonem, donemTuru, setDonemTuru }: Panor
   });
 
   const rows = data?.rows || [];
-  const openModal = (beyanTipi: BeyanTipi, filter: BeyanFilter) =>
-    setModal({ beyanTipi, filter, donem: data?.donem || donem, donemTuru });
-
-  const beyanTipleri: BeyanTipi[] = [
-    'KURUMLAR', 'GELIR',
-    'KDV1', 'KDV2', 'KDV4', 'KDV9015',
-    'DAMGA', 'POSET',
-    'MUHSGK', 'MUHSGK2',
-    'GGECICI', 'KGECICI',
-    'TURIZM', 'KONAKLAMA', 'OIV', 'GMSI',
-    'OTV1', 'OTV3A', 'OTV3B', 'OTV4',
-  ];
-  const beyanRows = rows.filter((r) => beyanTipleri.includes(r.beyanTipi) && r.toplam > 0);
-  const bildirgeRow = rows.find((r) => r.beyanTipi === 'BILDIRGE' && r.toplam > 0);
-  const edefterRow = rows.find((r) => r.beyanTipi === 'EDEFTER' && r.toplam > 0);
-  const yardimciRows = [bildirgeRow, edefterRow].filter((r): r is OzetRow => Boolean(r));
-  const activeRows = rows.filter((r) => r.toplam > 0);
-  const totals = activeRows.reduce(
-    (acc, row) => ({
-      toplam: acc.toplam + row.toplam,
-      onaylanan: acc.onaylanan + row.onaylanan,
-      bekleyen: acc.bekleyen + row.bekleyen,
-      hatali: acc.hatali + row.hatali,
-      kalan: acc.kalan + row.kalan,
-    }),
-    { toplam: 0, onaylanan: 0, bekleyen: 0, hatali: 0, kalan: 0 },
-  );
-  const totalYuzde = totals.toplam > 0 ? Math.round((totals.onaylanan / totals.toplam) * 100) : 0;
   const selectedDonem = data?.donem || donem;
-  const modeLabel = donemTuru === 'VERILME' ? 'Verilme dönemi' : 'Vergi dönemi';
-  const modeNote = donemTuru === 'VERILME'
-    ? 'Seçilen ayda verilmesi gerekenler'
-    : 'Seçilen vergi dönemine ait olanlar';
+  const openModal = (beyanTipi: BeyanTipi, filter: BeyanFilter) =>
+    setModal({ beyanTipi, filter, donem: selectedDonem, donemTuru });
 
   const donemOptions = useMemo(() => {
     const now = new Date();
     const arr: { value: string; label: string }[] = [];
     const aylar = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
     // İLERİ + GERİ: gelecek 15 ay + geçmiş 24 ay. Kurumlar (ertesi yıl Nisan) / gelir
-    // (ertesi yıl Mart) gibi GELECEK dönem beyannameleri seçilip görülebilsin —
-    // eskiden yalnız geriye gidiliyordu, ileri dönem seçilemiyordu.
+    // (ertesi yıl Mart) gibi GELECEK dönem beyannameleri seçilip görülebilsin.
     for (let offset = 15; offset >= -24; offset--) {
       const d = new Date(now.getFullYear(), now.getMonth() + offset, 1);
       const v = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -215,672 +150,24 @@ function ToplubeyannamePanel({ donem, setDonem, donemTuru, setDonemTuru }: Panor
   }, []);
 
   return (
-    <div>
-      <div data-beyan-heading data-dashboard-band="plum" className="px-5 py-4" style={portalStyle({ borderBottom: `1px solid ${BEYAN_TONE.border}` })}>
-        <div className="grid gap-3 xl:grid-cols-[minmax(300px,1fr)_auto] xl:items-center">
-          {/* Kart başlığı dışarıdaki ortalı bölüm başlığına taşındı; burada yalnız dönem açıklaması + süzgeçler */}
-          <div className="flex min-w-0 items-center gap-2.5">
-            <span data-beyan-heading-icon className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" style={portalStyle({ background: BEYAN_TONE.bg, border: `1px solid ${BEYAN_TONE.border}`, color: BEYAN_TONE.accentSoft })}>
-              <FileCheck2 size={15} />
-            </span>
-            <div className="min-w-0">
-              <h3 data-beyan-title className="truncate text-[15px] font-bold leading-tight" style={portalStyle({ color: BEYAN_TONE.title })}>Beyanname Durum Takibi</h3>
-              <p className="mt-0.5 min-w-0 truncate text-[12px]" style={portalStyle({ color: BEYAN_TONE.muted })}>{modeLabel} · {donemEtiket(selectedDonem)} · {modeNote}</p>
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center justify-start gap-2 xl:justify-end">
-            <div data-beyan-mode-group className="inline-flex rounded-lg p-0.5" style={portalStyle({ background: 'rgba(244,239,229,0.03)', border: `1px solid ${BEYAN_TONE.borderSoft}` })}>
-              {([
-                ['VERILME', 'Verilme dönemi'],
-                ['VERGI', 'Vergi dönemi'],
-              ] as const).map(([value, label]) => (
-                <button
-                  key={value}
-                  data-beyan-mode={donemTuru === value ? 'active' : 'inactive'}
-                  type="button"
-                  onClick={() => setDonemTuru(value)}
-                  className="rounded-md px-2.5 py-1 text-[11.5px] font-semibold transition"
-                  style={portalStyle({
-                    background: donemTuru === value ? BEYAN_TONE.bg : 'transparent',
-                    color: donemTuru === value ? BEYAN_TONE.accentSoft : BEYAN_TONE.muted,
-                    border: donemTuru === value ? `1px solid ${BEYAN_TONE.border}` : '1px solid transparent',
-                  })}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            <select
-              aria-label="Beyanname takip dönemi"
-              value={donem}
-              onChange={(e) => setDonem(e.target.value)}
-              className="h-9 w-[150px] cursor-pointer rounded-lg px-3 text-[12.5px] font-semibold outline-none"
-              style={portalStyle({ background: 'rgba(244,239,229,0.035)', border: `1px solid ${BEYAN_TONE.border}`, color: BEYAN_TONE.title })}
-            >
-              {donemOptions.map((o) => (
-                <option key={o.value} value={o.value} style={portalStyle({ background: '#1a1814' })}>{o.label}</option>
-              ))}
-            </select>
-            <button
-              data-beyan-query
-              onClick={() => refetch()}
-              className="inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-[12px] font-semibold transition-all"
-              style={portalStyle({ background: 'rgba(140,200,255,0.09)', border: '1px solid rgba(140,200,255,0.22)', color: BEYAN_TONE.status })}
-            >
-              <SearchIcon size={13} /> Sorgula
-            </button>
-          </div>
-        </div>
-
-        <div className="hidden">
-          <BeyanMetric label="Toplam" value={totals.toplam} color="#fafaf9" sub={`${activeRows.length} takip kalemi`} />
-          <BeyanMetric label="Onaylanan" value={totals.onaylanan} color={BEYAN_TONE.approved} />
-          <BeyanMetric label="Bekleyen" value={totals.bekleyen} color={BEYAN_TONE.waiting} />
-          <BeyanMetric label="Hatalı" value={totals.hatali} color={BEYAN_TONE.error} />
-          <BeyanMetric label="Kalan" value={totals.kalan} color={totals.kalan > 0 ? BEYAN_TONE.remaining : BEYAN_TONE.approved} sub={`%${totalYuzde} tamam`} />
-        </div>
-      </div>
-
-      {isLoading && (
-        <div className="px-5 py-12 text-center text-[13px]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
-          Yükleniyor...
-        </div>
-      )}
-
-      {!isLoading && beyanRows.length === 0 && !bildirgeRow && !edefterRow && (
-        <div className="px-5 py-10 text-center">
-          <p className="text-[12.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
-            Bu dönem için takip edilecek beyanname bulunmadı.
-          </p>
-          <p className="text-[11px] mt-1.5" style={portalStyle({ color: 'rgba(250,250,249,0.3)' })}>
-            Mükellef kartlarındaki beyanname dönemleri ve türleri kontrol edilmeli.
-          </p>
-        </div>
-      )}
-
-      {beyanRows.length > 0 && (
-        <BeyanCompactTable title="Beyannameler" rows={beyanRows} donem={selectedDonem} onNumberClick={openModal} />
-      )}
-
-      {yardimciRows.length > 0 && (
-        <YardimciBeyanGrid rows={yardimciRows} donem={selectedDonem} onNumberClick={openModal} />
-      )}
-
+    <>
+      <BeyanDurumTakibi
+        donem={donem}
+        setDonem={setDonem}
+        donemTuru={donemTuru}
+        setDonemTuru={setDonemTuru}
+        donemOptions={donemOptions}
+        selectedDonem={selectedDonem}
+        rows={rows}
+        isLoading={isLoading}
+        onRefetch={() => refetch()}
+        onNumberClick={openModal}
+      />
       {modal && <BeyanDetayModal state={modal} onClose={() => setModal(null)} />}
-    </div>
+    </>
   );
 }
 
-function BeyanCompactTable({
-  title,
-  rows,
-  donem,
-  onNumberClick,
-  onayLabel = 'Onaylanan',
-  compact,
-}: {
-  title: string;
-  rows: OzetRow[];
-  donem: string;
-  onNumberClick: (tip: BeyanTipi, filter: BeyanFilter) => void;
-  onayLabel?: string;
-  compact?: boolean;
-}) {
-  return (
-    <div data-beyan-table-section className={compact ? 'px-5 pb-4' : 'px-5 py-4'}>
-      <div data-beyan-section className="mb-2.5 flex items-center justify-between gap-3">
-        <div className="text-[11px] font-bold uppercase tracking-[0.14em]" style={portalStyle({ color: BEYAN_TONE.accentSoft })}>
-          {title}
-        </div>
-        <div className="text-[11px] font-semibold tabular-nums" style={portalStyle({ color: BEYAN_TONE.muted, fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif' })}>
-          {donemEtiket(donem)}
-        </div>
-      </div>
-      <div data-beyan-table-scroll className="overflow-x-auto rounded-xl" style={portalStyle({ border: `1px solid ${BEYAN_TONE.borderSoft}`, background: BEYAN_TONE.tableBg })}>
-        <table className="w-full min-w-[760px] border-collapse text-[12px]" style={portalStyle({ color: BEYAN_TONE.title })}>
-          <thead>
-            <tr style={portalStyle({ background: BEYAN_TONE.headBg, borderBottom: `1px solid ${BEYAN_TONE.borderSoft}` })}>
-              <BeyanHeaderCell align="left">Beyanname</BeyanHeaderCell>
-              <BeyanHeaderCell>Takip</BeyanHeaderCell>
-              <BeyanHeaderCell>{onayLabel}</BeyanHeaderCell>
-              <BeyanHeaderCell>Bekleyen</BeyanHeaderCell>
-              <BeyanHeaderCell>Hatalı</BeyanHeaderCell>
-              <BeyanHeaderCell>Kalan</BeyanHeaderCell>
-              <BeyanHeaderCell align="left">Durum</BeyanHeaderCell>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <BeyanCompactRow key={row.beyanTipi} row={row} onNumberClick={onNumberClick} />
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-function YardimciBeyanGrid({
-  rows,
-  donem,
-  onNumberClick,
-}: {
-  rows: OzetRow[];
-  donem: string;
-  onNumberClick: (tip: BeyanTipi, filter: BeyanFilter) => void;
-}) {
-  return (
-    <div className="px-5 pb-4">
-      <div data-beyan-section className="mb-2.5 flex items-center justify-between gap-3">
-        <div className="text-[11px] font-bold uppercase tracking-[0.14em]" style={portalStyle({ color: BEYAN_TONE.accentSoft })}>
-          Bildirge ve E-Defter
-        </div>
-        <div className="text-[11px] font-semibold tabular-nums" style={portalStyle({ color: BEYAN_TONE.muted, fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif' })}>
-          {donemEtiket(donem)}
-        </div>
-      </div>
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        {rows.map((row) => (
-          <YardimciBeyanCard key={row.beyanTipi} row={row} donem={donem} onNumberClick={onNumberClick} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function YardimciBeyanCard({
-  row,
-  donem,
-  onNumberClick,
-}: {
-  row: OzetRow;
-  donem: string;
-  onNumberClick: (tip: BeyanTipi, filter: BeyanFilter) => void;
-}) {
-  const label = BEYAN_ETIKETLER[row.beyanTipi];
-  const pct = Math.max(0, Math.min(100, row.yuzde));
-  const done = row.kalan <= 0 && row.hatali <= 0;
-  const barColor = row.hatali > 0 ? BEYAN_TONE.error : done ? BEYAN_TONE.approved : BEYAN_TONE.status;
-  const statusLabel = row.hatali > 0 ? 'Hata var' : done ? 'Tamam' : 'Devam ediyor';
-  const onayText = row.beyanTipi === 'EDEFTER' ? 'Verilen' : 'Onaylanan';
-
-  return (
-    <div data-beyan-mini className="overflow-hidden rounded-xl" style={portalStyle({ background: BEYAN_TONE.rowAlt, border: `1px solid ${BEYAN_TONE.borderSoft}` })}>
-      <div className="grid grid-cols-[minmax(140px,1fr)_82px_92px_82px_minmax(150px,1fr)] items-center gap-0 px-3 py-2">
-        <button
-          type="button"
-          onClick={() => onNumberClick(row.beyanTipi, 'toplam')}
-          className="truncate text-left text-[13px] font-bold transition hover:underline decoration-dotted underline-offset-4"
-          style={portalStyle({ color: BEYAN_TONE.title })}
-          title="Mükellef listesini göster"
-        >
-          {label} <span className="font-semibold opacity-55">({donemEtiket(row.vergiDonem)})</span>
-        </button>
-        <YardimciBeyanNumber kind="toplam" label="Toplam" value={row.toplam} color="#fafaf9" onClick={() => onNumberClick(row.beyanTipi, 'toplam')} />
-        <YardimciBeyanNumber kind="onaylanan" label={onayText} value={row.onaylanan} color={BEYAN_TONE.approved} onClick={() => onNumberClick(row.beyanTipi, 'onaylanan')} />
-        <YardimciBeyanNumber kind="kalan" label="Kalan" value={row.kalan} color={row.kalan > 0 ? BEYAN_TONE.remaining : BEYAN_TONE.approved} onClick={() => onNumberClick(row.beyanTipi, 'kalan')} />
-        <div className="min-w-0 pl-3">
-          <div className="flex items-center justify-between gap-2">
-            <span className="truncate text-[11px] font-bold" style={portalStyle({ color: barColor })}>{statusLabel}</span>
-            <span className="text-[11px] font-bold tabular-nums" style={portalStyle({ color: barColor, fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif' })}>{pct}%</span>
-          </div>
-          <div className="mt-1 h-1.5 overflow-hidden rounded-full" style={portalStyle({ background: 'rgba(244,239,229,0.08)' })}>
-            <div
-              className="h-full rounded-full transition-all duration-500"
-              style={portalStyle({ width: `${pct}%`, background: `linear-gradient(90deg, ${barColor}99, ${barColor})` })}
-              data-beyan-progress={row.hatali > 0 ? 'error' : done ? 'done' : 'pending'}
-            />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function YardimciBeyanNumber({ label, value, color, onClick, kind }: { label: string; value: number; color: string; onClick: () => void; kind?: BeyanFilter }) {
-  const clickable = value > 0;
-  return (
-    <button
-      type="button"
-      data-beyan-num={kind} data-beyan-zero={value > 0 ? undefined : 'true'}
-      disabled={!clickable}
-      onClick={clickable ? onClick : undefined}
-      className={`min-w-0 px-2 text-right transition ${clickable ? 'hover:bg-white/[0.055] hover:underline decoration-dotted underline-offset-4' : ''}`}
-      title={clickable ? 'Mükellef listesini göster' : undefined}
-    >
-      <div className="truncate text-[9.5px] font-black uppercase tracking-[0.08em]" style={portalStyle({ color: BEYAN_TONE.header })}>{label}</div>
-      <div className="mt-0.5 text-[14px] font-bold leading-none tabular-nums" style={portalStyle({ color, fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', letterSpacing: 0 })}>
-        {value}
-      </div>
-    </button>
-  );
-}
-
-function BeyanHeaderCell({ children, align = 'right' }: { children: ReactNode; align?: 'left' | 'right' }) {
-  return (
-    <th
-      className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] ${align === 'right' ? 'text-right' : 'text-left'}`}
-      style={portalStyle({ color: BEYAN_TONE.header })}
-    >
-      {children}
-    </th>
-  );
-}
-
-function BeyanCompactRow({
-  row,
-  onNumberClick,
-}: {
-  row: OzetRow;
-  onNumberClick: (tip: BeyanTipi, filter: BeyanFilter) => void;
-}) {
-  const label = BEYAN_ETIKETLER[row.beyanTipi];
-  const pct = Math.max(0, Math.min(100, row.yuzde));
-  const done = row.kalan <= 0 && row.hatali <= 0;
-  const barColor = row.hatali > 0 ? BEYAN_TONE.error : done ? BEYAN_TONE.approved : BEYAN_TONE.status;
-  const statusLabel = row.hatali > 0 ? 'Hata var' : done ? 'Tamam' : 'Devam ediyor';
-
-  return (
-    <tr
-      className="transition"
-      style={portalStyle({ borderTop: `1px solid ${BEYAN_TONE.borderSoft}`, background: BEYAN_TONE.rowAlt })}
-      onMouseEnter={(e) => { e.currentTarget.style.background = BEYAN_TONE.bgSoft; }}
-      onMouseLeave={(e) => { e.currentTarget.style.background = BEYAN_TONE.rowAlt; }}
-    >
-      <td className="px-3 py-2">
-        <button
-          type="button"
-          onClick={() => onNumberClick(row.beyanTipi, 'toplam')}
-          className="max-w-[250px] truncate text-left text-[13px] font-bold transition hover:underline decoration-dotted underline-offset-4"
-          style={portalStyle({ color: BEYAN_TONE.title })}
-          title="Mükellef listesini göster"
-        >
-          {label}
-        </button>
-        <div className="mt-0.5 text-[10px]" style={portalStyle({ color: BEYAN_TONE.muted })}>
-          {donemEtiket(row.vergiDonem)}
-        </div>
-        <div className="hidden">
-          {row.toplam} mükellef takipte
-        </div>
-      </td>
-      <BeyanNumberCell kind="toplam" value={row.toplam} color={BEYAN_TONE.title} onClick={() => onNumberClick(row.beyanTipi, 'toplam')} />
-      <BeyanNumberCell kind="onaylanan" value={row.onaylanan} color={BEYAN_TONE.approved} onClick={() => onNumberClick(row.beyanTipi, 'onaylanan')} />
-      <BeyanNumberCell kind="bekleyen" value={row.bekleyen} color={row.bekleyen > 0 ? BEYAN_TONE.waiting : 'rgba(244,239,229,0.34)'} onClick={() => onNumberClick(row.beyanTipi, 'bekleyen')} />
-      <BeyanNumberCell kind="hatali" value={row.hatali} color={row.hatali > 0 ? BEYAN_TONE.error : 'rgba(244,239,229,0.34)'} onClick={() => onNumberClick(row.beyanTipi, 'hatali')} />
-      <BeyanNumberCell kind="kalan" value={row.kalan} color={row.kalan > 0 ? BEYAN_TONE.remaining : BEYAN_TONE.approved} onClick={() => onNumberClick(row.beyanTipi, 'kalan')} />
-      <td className="px-3 py-2">
-        <div className="grid grid-cols-[82px,1fr,38px] items-center gap-2">
-          <span className="text-[11px] font-bold" style={portalStyle({ color: barColor })}>{statusLabel}</span>
-          <div className="h-1.5 overflow-hidden rounded-full" style={portalStyle({ background: 'rgba(244,239,229,0.08)' })}>
-            <div
-              className="h-full rounded-full transition-all duration-500"
-              style={portalStyle({ width: `${pct}%`, background: `linear-gradient(90deg, ${barColor}99, ${barColor})` })}
-              data-beyan-progress={row.hatali > 0 ? 'error' : done ? 'done' : 'pending'}
-            />
-          </div>
-          <span
-            className="text-right text-[11px] font-bold tabular-nums"
-            style={portalStyle({ color: barColor, fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', letterSpacing: 0 })}
-          >
-            {pct}%
-          </span>
-        </div>
-      </td>
-    </tr>
-  );
-}
-
-function BeyanNumberCell({ value, color, onClick, kind }: { value: number; color: string; onClick: () => void; kind?: BeyanFilter }) {
-  const clickable = value > 0;
-  return (
-    <td className="px-3 py-2 text-right" data-beyan-num={kind} data-beyan-zero={value > 0 ? undefined : 'true'}>
-      <button
-        type="button"
-        disabled={!clickable}
-        onClick={clickable ? onClick : undefined}
-        className={`min-w-8 rounded-md px-2 py-0.5 text-right text-[13px] font-bold tabular-nums transition ${clickable ? 'hover:bg-white/[0.055] hover:underline decoration-dotted underline-offset-4' : ''}`}
-        style={portalStyle({ color, fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', letterSpacing: 0 })}
-        title={clickable ? 'Mükellef listesini göster' : undefined}
-      >
-        {value}
-      </button>
-    </td>
-  );
-}
-
-function BeyanMetric({ label, value, color, sub }: { label: string; value: number; color: string; sub?: string }) {
-  return (
-    <div
-      className="min-h-[76px] rounded-xl px-4 py-3 text-left"
-      style={portalStyle({ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)' })}
-    >
-      <div className="text-[10.5px] font-black uppercase tracking-[0.1em]" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>{label}</div>
-      <div className="mt-1 text-[28px] font-black leading-none tabular-nums" style={portalStyle({ color, fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', textShadow: '0 1px 14px rgba(0,0,0,0.28)' })}>{value}</div>
-      {sub && <div className="mt-1 text-[11px]" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>{sub}</div>}
-    </div>
-  );
-}
-
-function BeyanStatusRow({
-  row,
-  onNumberClick,
-}: {
-  row: OzetRow;
-  onNumberClick: (tip: BeyanTipi, filter: BeyanFilter) => void;
-}) {
-  const label = BEYAN_ETIKETLER[row.beyanTipi];
-  const barColor = row.hatali > 0 ? '#f472b6' : row.kalan > 0 ? TRACK_BLUE : '#22c55e';
-  const statusLabel = row.hatali > 0 ? 'Hata var' : row.kalan > 0 ? 'Devam ediyor' : 'Tamam';
-
-  return (
-    <div
-      className="grid gap-3 rounded-lg px-3.5 py-2.5 transition-all xl:grid-cols-[minmax(160px,.78fr)_minmax(410px,1.78fr)_minmax(180px,.66fr)]"
-      style={portalStyle({ background: row.hatali > 0 ? 'rgba(244,114,182,0.035)' : row.kalan > 0 ? 'rgba(125,211,252,0.035)' : 'rgba(34,197,94,0.026)', border: `1px solid ${row.hatali > 0 ? 'rgba(244,114,182,0.22)' : row.kalan > 0 ? 'rgba(125,211,252,0.22)' : 'rgba(34,197,94,0.18)'}` })}
-    >
-      <div className="min-w-0">
-        <div className="text-[14px] font-bold leading-tight" style={portalStyle({ color: GOLD })}>{label}</div>
-        <div className="mt-0.5 text-[11px]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>{row.toplam} mükellef takipte</div>
-      </div>
-
-      <div className="grid min-w-0 grid-cols-5 overflow-hidden rounded-lg" style={portalStyle({ background: 'rgba(255,255,255,0.026)', border: '1px solid rgba(255,255,255,0.055)' })}>
-        <BeyanCount label="Toplam" value={row.toplam} color="#fafaf9" onClick={() => onNumberClick(row.beyanTipi, 'toplam')} />
-        <BeyanCount label="Onay" value={row.onaylanan} color="#22c55e" onClick={() => onNumberClick(row.beyanTipi, 'onaylanan')} />
-        <BeyanCount label="Bekleyen" value={row.bekleyen} color="rgba(250,250,249,0.62)" onClick={() => onNumberClick(row.beyanTipi, 'bekleyen')} />
-        <BeyanCount label="Hatalı" value={row.hatali} color={row.hatali > 0 ? '#f472b6' : 'rgba(250,250,249,0.35)'} onClick={() => onNumberClick(row.beyanTipi, 'hatali')} />
-        <BeyanCount label="Kalan" value={row.kalan} color={row.kalan > 0 ? TRACK_BLUE : '#22c55e'} onClick={() => onNumberClick(row.beyanTipi, 'kalan')} />
-      </div>
-
-      <div className="flex flex-col justify-center gap-1.5">
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-[11px] font-semibold" style={portalStyle({ color: barColor })}>{statusLabel}</span>
-          <span className="text-[12px] font-bold tabular-nums" style={portalStyle({ color: barColor, fontFamily: 'JetBrains Mono, monospace' })}>%{row.yuzde}</span>
-        </div>
-        <div className="h-2 overflow-hidden rounded-full" style={portalStyle({ background: 'rgba(255,255,255,0.06)' })}>
-          <div
-            className="h-full rounded-full transition-all duration-500"
-            style={portalStyle({ width: `${Math.max(0, Math.min(100, row.yuzde))}%`, background: `linear-gradient(90deg, ${barColor}88, ${barColor})` })}
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function BeyanCount({ label, value, color, onClick }: { label: string; value: number; color: string; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="group min-w-0 px-2.5 py-1.5 text-left transition hover:bg-white/[0.035]"
-      style={portalStyle({ background: 'transparent', borderRight: '1px solid rgba(255,255,255,0.052)' })}
-      title="Mükellef listesini göster"
-    >
-      <div className="truncate text-[9.5px] font-black uppercase tracking-[0.08em]" style={portalStyle({ color: 'rgba(250,250,249,0.48)' })}>{label}</div>
-      <div
-        className="mt-0.5 text-[18px] font-black leading-none tabular-nums group-hover:underline decoration-dotted underline-offset-4"
-        style={portalStyle({ color, fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', textShadow: '0 1px 12px rgba(0,0,0,0.35)' })}
-      >
-        {value}
-      </div>
-    </button>
-  );
-}
-
-function ToplubeyannameTableLegacy() {
-  // Varsayılan: içinde bulunduğumuz ay
-  const [donem, setDonem] = useState<string>(() => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  });
-  const [modal, setModal] = useState<ModalState>(null);
-
-  const { data, isLoading, refetch } = useQuery({
-    queryKey: ['beyanname-ozet', donem],
-    queryFn: () => beyannameTakipApi.listOzet(donem),
-    // Her beyanname döneminde otomatik yenilensin diye 5 dk cache
-    staleTime: 5 * 60 * 1000,
-  });
-
-  const rows = data?.rows || [];
-  const openModal = (beyanTipi: BeyanTipi, filter: BeyanFilter) =>
-    setModal({ beyanTipi, filter, donem, donemTuru: 'VERILME' });
-
-  // Tablo gruplamaları
-  const beyanTipleri: BeyanTipi[] = [
-    'KURUMLAR', 'GELIR',
-    'KDV1', 'KDV2', 'KDV4', 'KDV9015',
-    'DAMGA', 'POSET',
-    'MUHSGK', 'MUHSGK2',
-    'GGECICI', 'KGECICI',
-    'TURIZM', 'KONAKLAMA', 'OIV', 'GMSI',
-    'OTV1', 'OTV3A', 'OTV3B', 'OTV4',
-  ];
-  const beyanRows = rows.filter((r) => beyanTipleri.includes(r.beyanTipi) && r.toplam > 0);
-  const bildirgeRow = rows.find((r) => r.beyanTipi === 'BILDIRGE' && r.toplam > 0);
-  const edefterRow = rows.find((r) => r.beyanTipi === 'EDEFTER' && r.toplam > 0);
-
-  // Dönem seçenekleri: gelecek 15 ay + geçmiş 24 ay (ileri dönem de seçilebilsin).
-  const donemOptions = useMemo(() => {
-    const now = new Date();
-    const arr: { value: string; label: string }[] = [];
-    const aylar = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
-    for (let offset = 15; offset >= -24; offset--) {
-      const d = new Date(now.getFullYear(), now.getMonth() + offset, 1);
-      const v = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      arr.push({ value: v, label: `${d.getFullYear()}/${aylar[d.getMonth()]}` });
-    }
-    return arr;
-  }, []);
-
-  return (
-    <div>
-      {/* Başlık bandı */}
-      <div className="flex items-center justify-between px-5 py-4 flex-wrap gap-3" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.04)' })}>
-        <div className="flex items-center gap-2.5">
-          <FileCheck2 size={16} style={portalStyle({ color: GOLD })} />
-          <h3 className="text-[13.5px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>Toplu Beyanname — SGK ve E-Defter Kontrol</h3>
-        </div>
-        <div className="flex items-center gap-2">
-          <select
-            value={donem}
-            onChange={(e) => setDonem(e.target.value)}
-            className="text-[12px] px-2.5 py-1.5 rounded-md outline-none cursor-pointer"
-            style={portalStyle({ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(184,160,111,0.25)', color: '#fafaf9' })}
-          >
-            {donemOptions.map((o) => (
-              <option key={o.value} value={o.value} style={portalStyle({ background: '#1a1814' })}>{o.label}</option>
-            ))}
-          </select>
-          <button
-            onClick={() => refetch()}
-            className="text-[11px] font-medium px-3 py-1.5 rounded-md transition-all inline-flex items-center gap-1.5"
-            style={portalStyle({ background: 'rgba(184,160,111,0.12)', border: '1px solid rgba(184,160,111,0.3)', color: GOLD })}
-          >
-            <SearchIcon size={11} /> Sorgula
-          </button>
-        </div>
-      </div>
-
-      {isLoading && (
-        <div className="px-5 py-10 text-center text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>
-          Yükleniyor...
-        </div>
-      )}
-
-      {!isLoading && beyanRows.length === 0 && !bildirgeRow && !edefterRow && (
-        <div className="px-5 py-10 text-center">
-          <p className="text-[12.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
-            Bu dönem için hiçbir mükellefin beyan yükümlülüğü yok.
-          </p>
-          <p className="text-[11px] mt-1.5" style={portalStyle({ color: 'rgba(250,250,249,0.3)' })}>
-            Ayarlar → Mükellef Beyanname Takip sayfasından mükellef konfigürasyonlarını düzenle.
-          </p>
-        </div>
-      )}
-
-      {/* Beyannameler tablosu */}
-      {beyanRows.length > 0 && (
-        <div className="px-1.5 py-1.5">
-          <table className="w-full text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.85)', tableLayout: 'fixed' })}>
-            <colgroup>
-              <col style={portalStyle({ width: '120px' })} />
-              <col style={portalStyle({ width: '68px' })} />
-              <col style={portalStyle({ width: '82px' })} />
-              <col style={portalStyle({ width: '82px' })} />
-              <col style={portalStyle({ width: '68px' })} />
-              <col style={portalStyle({ width: '68px' })} />
-              <col />
-            </colgroup>
-            <thead>
-              <tr style={portalStyle({ background: 'rgba(184,160,111,0.08)' })}>
-                <Th>Beyannameler ({data?.donem})</Th>
-                <Th right>Toplam</Th>
-                <Th right>Onaylanan</Th>
-                <Th right>Bekleyen</Th>
-                <Th right>Hatalı</Th>
-                <Th right>Kalan</Th>
-                <Th>Durum</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {beyanRows.map((r) => (
-                <BeyanTr key={r.beyanTipi} row={r} onNumberClick={openModal} />
-              ))}
-              {bildirgeRow && (
-                <BeyanTr key={bildirgeRow.beyanTipi} row={bildirgeRow} onNumberClick={openModal} />
-              )}
-              {edefterRow && (
-                <BeyanTr key={edefterRow.beyanTipi} row={edefterRow} onNumberClick={openModal} />
-              )}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* Mükellef listesi modal'ı */}
-      {modal && <BeyanDetayModal state={modal} onClose={() => setModal(null)} />}
-    </div>
-  );
-}
-
-function Th({ children, right, className }: { children: ReactNode; right?: boolean; className?: string }) {
-  return (
-    <th
-      className={`text-[10.5px] font-semibold uppercase tracking-wider px-2.5 py-2 ${right ? 'text-right' : 'text-left'} ${className || ''}`}
-      style={portalStyle({ color: 'rgba(250,250,249,0.6)' })}
-    >
-      {children}
-    </th>
-  );
-}
-
-/** Tıklanabilir rakam hücresi — rakam > 0 ise altın hover + tıklama. */
-function Num({
-  value,
-  color,
-  bold,
-  onClick,
-  disabled,
-}: {
-  value: number;
-  color: string;
-  bold?: boolean;
-  onClick?: () => void;
-  disabled?: boolean;
-}) {
-  const clickable = !disabled && !!onClick && value > 0;
-  return (
-    <td
-      className={`px-2.5 py-2 text-right tabular-nums ${bold ? 'font-semibold' : ''} ${clickable ? 'cursor-pointer hover:bg-white/5 hover:underline decoration-dotted underline-offset-2' : ''} transition`}
-      style={portalStyle({ fontFamily: 'JetBrains Mono, monospace', color })}
-      onClick={clickable ? onClick : undefined}
-      title={clickable ? 'Mükellef listesini göster' : undefined}
-    >
-      {value}
-    </td>
-  );
-}
-
-function BeyanTr({ row, onNumberClick }: { row: OzetRow; onNumberClick: (tip: BeyanTipi, filter: BeyanFilter) => void }) {
-  const kind = row.yuzde >= 90 ? 'ok' : row.yuzde >= 50 ? 'warn' : 'danger';
-  const barColor = kind === 'ok' ? '#22c55e' : kind === 'warn' ? TRACK_BLUE : '#ef4444';
-  return (
-    <tr style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.04)' })}>
-      <td className="px-2.5 py-2 font-semibold" style={portalStyle({ color: GOLD })}>{BEYAN_ETIKETLER[row.beyanTipi]}</td>
-      <Num value={row.toplam}    color="rgba(250,250,249,0.85)"                                              onClick={() => onNumberClick(row.beyanTipi, 'toplam')} />
-      <Num value={row.onaylanan} color="#22c55e"                                                             onClick={() => onNumberClick(row.beyanTipi, 'onaylanan')} />
-      <Num value={row.bekleyen}  color="rgba(250,250,249,0.5)"                                               onClick={() => onNumberClick(row.beyanTipi, 'bekleyen')} />
-      <Num value={row.hatali}    color={row.hatali > 0 ? '#ef4444' : 'rgba(250,250,249,0.3)'}                onClick={() => onNumberClick(row.beyanTipi, 'hatali')} />
-      <Num value={row.kalan}     color={row.kalan > 0 ? TRACK_BLUE : '#22c55e'} bold                          onClick={() => onNumberClick(row.beyanTipi, 'kalan')} />
-      <td className="px-2.5 py-2">
-        <div className="flex items-center gap-2">
-          <div className="flex-1 h-2 rounded-full overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.05)' })}>
-            <div
-              className="h-full transition-all duration-500 rounded-full"
-              style={portalStyle({ width: `${row.yuzde}%`, background: `linear-gradient(90deg, ${barColor}aa, ${barColor})` })}
-            />
-          </div>
-          <span className="text-[10.5px] font-semibold tabular-nums w-[32px] text-right" style={portalStyle({ color: barColor, fontFamily: 'JetBrains Mono, monospace' })}>%{row.yuzde}</span>
-        </div>
-      </td>
-    </tr>
-  );
-}
-
-function MiniTable({ title, row, donem, accent, onNumberClick }: { title: string; row: OzetRow; donem: string; accent: StatAccent; onNumberClick: (tip: BeyanTipi, filter: BeyanFilter) => void }) {
-  const tone = ACCENT_TONES[accent];
-  const kind = row.yuzde >= 90 ? 'ok' : row.yuzde >= 50 ? 'warn' : 'danger';
-  const barColor = kind === 'ok' ? '#22c55e' : kind === 'warn' ? TRACK_BLUE : '#ef4444';
-  const miniCell = (label: string, value: number, color: string, filter: BeyanFilter) => {
-    const clickable = value > 0;
-    return (
-      <div
-        className={`group ${clickable ? 'cursor-pointer' : ''}`}
-        onClick={clickable ? () => onNumberClick(row.beyanTipi, filter) : undefined}
-        title={clickable ? 'Mükellef listesini göster' : undefined}
-      >
-        <div className="text-[10px] uppercase tracking-wider opacity-70">{label}</div>
-        <div
-          className={`text-[16px] font-semibold tabular-nums ${clickable ? 'group-hover:underline decoration-dotted underline-offset-2' : ''}`}
-          style={portalStyle({ color, fontFamily: 'JetBrains Mono, monospace' })}
-        >
-          {value}
-        </div>
-      </div>
-    );
-  };
-  return (
-    <div className="rounded-xl overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: `1px solid ${tone.border}` })}>
-      <div className="flex items-center justify-between px-4 py-2.5" style={portalStyle({ background: tone.bg })}>
-        <div className="flex items-center gap-2">
-          <span className="w-[3px] h-3.5 rounded-sm" style={{ background: tone.color }} />
-          <span className="text-[12px] font-semibold" style={portalStyle({ color: tone.color })}>{title} ({donem})</span>
-        </div>
-      </div>
-      <div className="px-4 py-3 grid grid-cols-3 gap-3 text-[11px]" style={portalStyle({ color: 'rgba(250,250,249,0.6)' })}>
-        {miniCell('Toplam', row.toplam, '#fafaf9', 'toplam')}
-        {miniCell(title === 'E-Defter' ? 'Verilen' : 'Onaylanan', row.onaylanan, '#22c55e', 'onaylanan')}
-        {miniCell('Kalan', row.kalan, row.kalan > 0 ? TRACK_BLUE : '#22c55e', 'kalan')}
-      </div>
-      <div className="px-4 pb-3">
-        <div className="flex items-center gap-2">
-          <div className="flex-1 h-2 rounded-full overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.05)' })}>
-            <div
-              className="h-full transition-all duration-500 rounded-full"
-              style={portalStyle({ width: `${row.yuzde}%`, background: `linear-gradient(90deg, ${barColor}aa, ${barColor})` })}
-            />
-          </div>
-          <span className="text-[10.5px] font-semibold tabular-nums" style={portalStyle({ color: barColor, fontFamily: 'JetBrains Mono, monospace' })}>%{row.yuzde}</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ══════════════════════════════════════════════════════════
-// BEYAN DETAY MODAL — rakama tıklanınca açılır, filtreye göre mükellef listesi
-// ══════════════════════════════════════════════════════════
 function BeyanDetayModal({ state, onClose }: { state: { beyanTipi: BeyanTipi; filter: BeyanFilter; donem: string; donemTuru: DonemTuru }; onClose: () => void }) {
   const [mounted, setMounted] = useState(false);
   const { data: detay, isLoading } = useQuery({
@@ -1800,20 +1087,11 @@ export default function DashboardPage() {
 
       <OfisPanoramasi {...panoramaPeriod} />
 
-      <div
-        data-beyan-panel data-dashboard-surface className="rounded-2xl overflow-hidden"
-        style={portalStyle({
-          background: 'radial-gradient(circle at 6% 0%, rgba(216,189,134,0.12), transparent 34%), radial-gradient(circle at 92% 12%, rgba(140,200,255,0.07), transparent 30%), linear-gradient(180deg, rgba(19,19,17,0.94), rgba(12,11,10,0.91))',
-          border: `1px solid ${BEYAN_TONE.border}`,
-          boxShadow: '0 18px 44px rgba(0,0,0,0.20), inset 0 1px 0 rgba(255,255,255,0.035)',
-        })}
-      >
-        <ToplubeyannameTable {...panoramaPeriod} />
-      </div>
+      <ToplubeyannameTable {...panoramaPeriod} />
 
       <IsAkisiHatti counts={workflowCounts} total={workflowTotal} activeCount={activeCount || totalTx} />
 
-      <BuHaftaTakvim />
+      <MaliTakvim />
       </div>
     </div>
   );

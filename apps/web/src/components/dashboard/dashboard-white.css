@@ -122,24 +122,6 @@ html[data-theme='D'] [data-dashboard-root] table tbody td { border-bottom: 1px s
 html[data-theme='D'] [data-dashboard-root] table tbody tr:last-child td { border-bottom: 0; }
 html[data-theme='D'] [data-dashboard-root] table tbody tr:nth-child(even):not(:hover):not([aria-selected='true']) { background: #f8fafb; }
 
-html[data-theme='D'] [data-beyan-heading][data-dashboard-band] {
-  background: linear-gradient(110deg,#ddd0ed,#eee6f5 55%,#f8f5fb) !important;
-  border-top: 4px solid #80609e;
-  border-bottom-color: #c7b5d8 !important;
-  box-shadow: inset 0 1px 0 #ffffffb3;
-}
-html[data-theme='D'] [data-beyan-heading] p { color: #665771 !important; font-size: 12.5px; }
-html[data-theme='D'] [data-beyan-heading-icon] { background: linear-gradient(135deg,#65457f,#9674ad) !important; color: #fff !important; border-color: #8a6b9e !important; }
-html[data-theme='D'] [data-beyan-heading-icon] svg { color: #fff !important; }
-html[data-theme='D'] [data-beyan-mode='active'] { background: #fff !important; color: #684780 !important; border-color: #bca7cc !important; box-shadow: 0 2px 5px #49335c12; }
-html[data-theme='D'] [data-beyan-heading] select { background: #fff !important; border-color: #c3afd2 !important; }
-html[data-theme='D'] [data-beyan-query] { background: #70518b !important; color: #fff !important; border-color: #70518b !important; }
-html[data-theme='D'] [data-beyan-section] { padding: 7px 10px; background: linear-gradient(90deg,#f0eaf6,#faf8fc); border-left: 3px solid #997bab; border-bottom: 1px solid #e5dceb; border-radius: 4px; }
-html[data-theme='D'] [data-beyan-section] > div:first-child { color: #73518a !important; }
-html[data-theme='D'] [data-beyan-progress='pending'] { background: linear-gradient(90deg,#537cb3,#83a9d6) !important; }
-html[data-theme='D'] [data-beyan-progress='done'] { background: linear-gradient(90deg,#28845c,#65b891) !important; }
-html[data-theme='D'] [data-beyan-progress='error'] { background: linear-gradient(90deg,#bd4569,#df839f) !important; }
-
 /* İlk ekranda sayaçlar ve grafik birlikte görünür. */
 html[data-theme='D'] [data-dashboard-intro] { padding-top: 0; padding-bottom: 0; }
 html[data-theme='D'] [data-dashboard-intro] h1 { font-size: 25px !important; }
@@ -192,171 +174,11 @@ html[data-theme='D'] [data-dashboard-counters] [data-dashboard-kpi] { padding: 9
 html[data-theme='D'] [data-dashboard-counters] [data-dashboard-kpi-icon] { width: 26px; height: 26px; }
 html[data-theme='D'] [data-dashboard-counters] [data-dashboard-kpi] > .mb-2 { margin-bottom: 4px; }
 
-/* Onaylanan önizleme: ince, durağan yansımalı kenarlar. */
-html[data-theme='D'] :is(.ofis-beyan, .yukumluluk-karti, .fatura-grafik-karti, [data-beyan-panel]) {
-  --frame-color: #73c8b1;
-  border: 1px solid transparent !important;
-  background: linear-gradient(135deg,#fff,#fcfdff) padding-box,
-    linear-gradient(125deg,var(--frame-color),#edf8ff 28%,var(--frame-color) 62%,#e4ecfa 83%,var(--frame-color)) border-box !important;
-  box-shadow: 0 4px 16px #264b8808 !important;
-}
 html[data-theme='D'] .yukumluluk-karti[data-kind='edefter'] { --frame-color: #9dacfa; }
 html[data-theme='D'] .fatura-grafik-karti { --frame-color: #91b5ef; }
-html[data-theme='D'] [data-beyan-panel] { --frame-color: #aa92e4; border-radius: 16px; }
-html[data-theme='D'] [data-beyan-panel] [data-beyan-heading] {
-  padding: 12px 16px 10px; background: transparent !important;
-  border: 0 !important; box-shadow: none;
-}
-html[data-theme='D'] [data-beyan-panel] [data-beyan-heading] h3 { color: #182e53 !important; font-size: 16px; font-weight: 650; }
-html[data-theme='D'] [data-beyan-panel] [data-beyan-heading] p { color: #637696 !important; font-size: 11px; }
-html[data-theme='D'] [data-beyan-panel] [data-beyan-heading-icon] { background: #efebff !important; border: 0 !important; color: #8256da !important; border-radius: 10px; }
-html[data-theme='D'] [data-beyan-panel] [data-beyan-heading-icon] svg { color: #8256da !important; }
-html[data-theme='D'] [data-beyan-panel] [data-beyan-mode='active'] { background: #e9e3ff !important; border-color: transparent !important; color: #49339b !important; box-shadow: none; }
-html[data-theme='D'] [data-beyan-panel] [data-beyan-query] { background: #f4f8ff !important; color: #315dad !important; border-color: #cedcf4 !important; }
-html[data-theme='D'] [data-beyan-panel] select { border-color: #d6def1 !important; font-size: 12px; }
-html[data-theme='D'] [data-beyan-panel] [data-beyan-table-section] { padding: 0 16px 12px; }
-html[data-theme='D'] [data-beyan-table-section] > [data-beyan-section] { display: none; }
-html[data-theme='D'] [data-beyan-table-scroll] { border: 1px solid #dce2f4 !important; border-radius: 10px; }
-html[data-theme='D'] [data-beyan-panel] table { border: 0; border-radius: 0; table-layout: fixed; }
-html[data-theme='D'] [data-beyan-panel] table thead th { background: #eceefd !important; color: #4d6291 !important; border-bottom: 1px solid #dce2f4; padding: 7px 10px; font-size: 9px; font-weight: 650; letter-spacing: .07em; text-align: center; }
-html[data-theme='D'] [data-beyan-panel] table :is(th,td) + :is(th,td) { border-left: 1px solid #e6ebf5; }
-html[data-theme='D'] [data-beyan-panel] table th:first-child { width: 17%; text-align: left; }
-html[data-theme='D'] [data-beyan-panel] table th:last-child { width: 27%; text-align: left; }
-html[data-theme='D'] [data-beyan-panel] table tbody td { padding: 7px 10px; border-bottom: 1px solid #e6ebf5; text-align: center; }
-html[data-theme='D'] [data-beyan-panel] table tbody td:first-child { text-align: left; }
-html[data-theme='D'] [data-beyan-panel] table tbody tr { background: #fff !important; }
-html[data-theme='D'] [data-beyan-panel] table tbody tr:nth-child(even) { background: #f5f8fd !important; }
-html[data-theme='D'] [data-beyan-panel] table tbody tr:hover { background: #eef3fc !important; }
-html[data-theme='D'] [data-beyan-panel] table tbody button { font-size: 12px; font-weight: 600; }
-html[data-theme='D'] [data-beyan-panel] [data-beyan-progress='pending'] { background: linear-gradient(90deg,#5987e5,#3981ff) !important; }
-html[data-theme='D'] [data-beyan-panel] [data-beyan-section] { padding: 0; margin-bottom: 8px; border: 0; background: transparent; }
-html[data-theme='D'] [data-beyan-panel] [data-beyan-section] > div:first-child { color: #31466c !important; font-size: 10px; }
-html[data-theme='D'] [data-beyan-mini] { background: #fcfdff !important; border-color: #dce2f4 !important; border-radius: 10px; }
-html[data-theme='D'] [data-beyan-mini] > div { grid-template-columns: minmax(120px,1.7fr) repeat(3,minmax(44px,.6fr)) minmax(112px,1.5fr); padding: 9px 10px; }
-html[data-theme='D'] [data-beyan-mini] > div > * + * { border-left: 1px solid #e4eaf5; }
-html[data-theme='D'] [data-beyan-mini] > div > button:first-child { white-space: normal; font-size: 11px; line-height: 1.4; }
-html[data-theme='D'] [data-beyan-mini] button > div { text-align: center; }
-@media (max-width: 600px) {
-  html[data-theme='D'] [data-beyan-mini] { overflow-x: auto; }
-  html[data-theme='D'] [data-beyan-mini] > div { min-width: 490px; }
-}
-html[data-theme='D'] [data-beyan-mini] button > div:first-child { overflow: visible; text-overflow: clip; font-size: 8px; letter-spacing: .025em; }
-html[data-theme='D'] [data-beyan-mini] > div > button:not(:first-child) { padding-left: 4px; padding-right: 4px; }
+
 /* Araç satırı kaldırıldı; sayaçlar doğrudan üst boşluğa yerleşir. */
 html[data-theme='D'] [data-dashboard-counters] { margin-top: 0 !important; }
-/* Sıkı tablo: ad ve dönem aynı satırda, tutarlı sayı hizası. */
-html[data-theme='D'] [data-beyan-panel] { --frame-color: #b7a9df; border-radius: 12px; }
-html[data-theme='D'] [data-beyan-panel] [data-beyan-heading] { padding: 10px 14px; }
-html[data-theme='D'] [data-beyan-panel] [data-beyan-heading] h3 { font-size: 15px; }
-html[data-theme='D'] [data-beyan-panel] [data-beyan-heading-icon] { width: 30px; height: 30px; }
-html[data-theme='D'] [data-beyan-panel] [data-beyan-table-section] { padding: 0 14px 10px; }
-html[data-theme='D'] [data-beyan-panel] table th:first-child { width: 26%; }
-html[data-theme='D'] [data-beyan-panel] table th:last-child { width: 28%; }
-html[data-theme='D'] [data-beyan-panel] table thead th { padding: 6px 10px; background: #f0f1fa !important; letter-spacing: .045em; }
-html[data-theme='D'] [data-beyan-panel] table tbody td { padding: 5px 10px; height: 34px; line-height: 22px; }
-html[data-theme='D'] [data-beyan-panel] table tbody td:first-child > button { display: inline; max-width: 100%; vertical-align: baseline; }
-html[data-theme='D'] [data-beyan-panel] table tbody td:first-child > div:not(.hidden) { display: inline; margin: 0 0 0 10px; white-space: nowrap; font-size: 10px; color: #78869b !important; }
-html[data-theme='D'] [data-beyan-panel] table tbody tr:nth-child(even) { background: #f9fafd !important; }
-html[data-theme='D'] [data-beyan-panel] table :is(th,td) + :is(th,td) { border-left-color: #edf0f6; }
-html[data-theme='D'] [data-beyan-panel] table tbody td:last-child > div { grid-template-columns: 82px minmax(32px,1fr) 34px; gap: 10px; }
-html[data-theme='D'] [data-beyan-panel] table tbody td:last-child span { font-weight: 500; font-size: 10px; }
-html[data-theme='D'] [data-beyan-panel] table tbody td:last-child .h-1\.5 { height: 4px; }
-html[data-theme='D'] [data-beyan-panel] [data-beyan-section] { margin-bottom: 6px; }
-html[data-theme='D'] [data-beyan-mini] > div { padding: 6px 8px; }
-html[data-theme='D'] [data-beyan-mini] { border-radius: 8px; }
-
-/* ═════════════════════════════════════════════════════════════════════════════════════════════
-   2026-09-21 — Beyaz tema yeniden tasarım (Muzaffer Bey): "Beyanname Durum Takibi" + "Bu Ay İş Akışı"
-   Ortak dil: beyaz yüzey, #e3e8ef kenar, 14–16 px yarıçap, hafif gölge. Renk YALNIZ anlam taşır
-   (simge kutusu, ilerleme çubuğu, rozet); pastel yıkama ve mor/lila çerçeve gradyanı kaldırıldı.
-   Ton ailesi = Fatura İşleme Merkezi > Genel Bakış kutucukları: çivit #4263eb · mavi #1971c2 ·
-   deniz yeşili #0ca678 · yeşil #2f9e44 · kehribar #f08c00 · kırmızı #e03131 · mor #7048e8.
-   ═════════════════════════════════════════════════════════════════════════════════════════════ */
-
-/* ── Beyanname Durum Takibi ─────────────────────────────────────────────────────────────────── */
-html[data-theme='D'] [data-beyan-panel][data-dashboard-surface] {
-  --frame-color: #e3e8ef;
-  background: #fff !important;
-  border: 1px solid #e3e8ef !important;
-  border-radius: 16px;
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05) !important;
-}
-html[data-theme='D'] [data-beyan-panel] [data-beyan-heading] { padding: 12px 18px; border-bottom: 1px solid #edf1f5 !important; }
-html[data-theme='D'] [data-beyan-panel] [data-beyan-heading] p { color: #64748b !important; font-size: 12px; }
-html[data-theme='D'] [data-beyan-panel] [data-beyan-heading-icon] {
-  width: 32px;
-  height: 32px;
-  border-radius: 9px;
-  background: linear-gradient(135deg, #4263eb, #5c7cfa) !important;
-  box-shadow: 0 6px 14px -8px #4263eb;
-  color: #fff !important;
-}
-html[data-theme='D'] [data-beyan-panel] [data-beyan-heading-icon] svg { color: #fff !important; }
-html[data-theme='D'] [data-beyan-panel] [data-beyan-mode-group] { padding: 3px; border-radius: 9px; background: #f1f5f9 !important; border-color: #e2e8f0 !important; }
-html[data-theme='D'] [data-beyan-panel] [data-beyan-mode] { border-radius: 7px; color: #64748b !important; font-weight: 600; }
-html[data-theme='D'] [data-beyan-panel] [data-beyan-mode='active'] { background: #fff !important; color: #3b5bdb !important; border-color: transparent !important; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12), 0 0 0 1px #dbe4ff; }
-html[data-theme='D'] [data-beyan-panel] select { border-radius: 9px; background: #fff !important; border-color: #dbe2ea !important; color: #1e293b !important; font-weight: 600; }
-html[data-theme='D'] [data-beyan-panel] [data-beyan-query] {
-  border-radius: 9px;
-  background: linear-gradient(135deg, #4263eb, #5c7cfa) !important;
-  border-color: transparent !important;
-  color: #fff !important;
-  box-shadow: 0 8px 16px -10px #4263eb;
-}
-html[data-theme='D'] [data-beyan-panel] [data-beyan-query] svg { color: #fff !important; }
-html[data-theme='D'] [data-beyan-panel] [data-beyan-query]:hover { filter: brightness(1.06); }
-
-/* Tablo: tek ince çerçeve, açık gri başlık, beyaz satırlar, hafif zebra. */
-html[data-theme='D'] [data-beyan-panel] [data-beyan-table-section] { padding: 0 18px 12px; }
-html[data-theme='D'] [data-beyan-table-scroll] { border: 1px solid #e3e8ef !important; border-radius: 10px; background: #fff !important; }
-html[data-theme='D'] [data-beyan-panel] table thead th {
-  padding: 8px 12px;
-  background: #f8fafc !important;
-  color: #64748b !important;
-  border-bottom: 1px solid #e3e8ef;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: .08em;
-}
-html[data-theme='D'] [data-beyan-panel] table :is(th, td) + :is(th, td) { border-left-color: #eef2f6; }
-html[data-theme='D'] [data-beyan-panel] table tbody td { padding: 6px 12px; height: 38px; border-bottom: 1px solid #eef2f6; }
-html[data-theme='D'] [data-beyan-panel] table tbody tr { background: #fff !important; }
-html[data-theme='D'] [data-beyan-panel] table tbody tr:nth-child(even) { background: #fbfcfd !important; }
-html[data-theme='D'] [data-beyan-panel] table tbody tr:hover { background: #f4f7fb !important; }
-html[data-theme='D'] [data-beyan-panel] table tbody td:first-child > button { color: #1e293b !important; font-size: 13px; font-weight: 650; }
-html[data-theme='D'] [data-beyan-panel] table tbody td:first-child > div:not(.hidden) { color: #94a3b8 !important; }
-/* Sayılar: takip koyu · onaylanan yeşil · bekleyen kehribar · hatalı kırmızı · kalan nötr koyu gri · sıfırlar soluk */
-html[data-theme='D'] [data-beyan-panel] [data-beyan-num] button { color: #1e293b !important; font-weight: 650; }
-html[data-theme='D'] [data-beyan-panel] [data-beyan-num='onaylanan'] button { color: #2b8a3e !important; }
-html[data-theme='D'] [data-beyan-panel] [data-beyan-num='bekleyen'] button { color: #e8590c !important; }
-html[data-theme='D'] [data-beyan-panel] [data-beyan-num='hatali'] button { color: #e03131 !important; }
-html[data-theme='D'] [data-beyan-panel] [data-beyan-num='kalan'] button { color: #475569 !important; }
-html[data-theme='D'] [data-beyan-panel] [data-beyan-num][data-beyan-zero] button { color: #cbd5e1 !important; font-weight: 500; }
-html[data-theme='D'] [data-beyan-panel] [data-beyan-num] button:not([disabled]):hover { background: #edf2ff !important; }
-/* Durum sütunu: etiket ve yüzde çubukla aynı tonda (tamam yeşil · devam çivit · hata kırmızı) */
-html[data-theme='D'] [data-beyan-panel] table tbody td:last-child > div { grid-template-columns: 84px minmax(40px, 1fr) 38px; gap: 10px; }
-html[data-theme='D'] [data-beyan-panel] table tbody td:last-child span { font-size: 11px; font-weight: 600; }
-html[data-theme='D'] [data-beyan-panel] table tbody td:last-child .h-1\.5 { height: 5px; background: #eef2f6 !important; }
-html[data-theme='D'] [data-beyan-panel] div:has(> div > [data-beyan-progress='done']) span { color: #2b8a3e !important; }
-html[data-theme='D'] [data-beyan-panel] div:has(> div > [data-beyan-progress='pending']) span { color: #3b5bdb !important; }
-html[data-theme='D'] [data-beyan-panel] div:has(> div > [data-beyan-progress='error']) span { color: #e03131 !important; }
-html[data-theme='D'] [data-beyan-panel] [data-beyan-progress='pending'] { background: linear-gradient(90deg, #4263eb, #5c7cfa) !important; }
-html[data-theme='D'] [data-beyan-panel] [data-beyan-progress='done'] { background: linear-gradient(90deg, #2f9e44, #51cf66) !important; }
-html[data-theme='D'] [data-beyan-panel] [data-beyan-progress='error'] { background: linear-gradient(90deg, #e03131, #ff6b6b) !important; }
-/* Bildirge ve e-Defter: aynı tablo dili, tek satırlık kart */
-html[data-theme='D'] [data-beyan-panel] [data-beyan-section] > div:first-child { color: #64748b !important; font-size: 10px; letter-spacing: .1em; }
-html[data-theme='D'] [data-beyan-panel] [data-beyan-section] > div:last-child { color: #94a3b8 !important; }
-html[data-theme='D'] [data-beyan-mini] { background: #fff !important; border: 1px solid #e3e8ef !important; border-radius: 10px; }
-html[data-theme='D'] [data-beyan-mini] > div > * + * { border-left-color: #eef2f6; }
-html[data-theme='D'] [data-beyan-mini] > div > button:first-child { color: #1e293b !important; font-weight: 650; }
-html[data-theme='D'] [data-beyan-mini] > div > button:first-child span { color: #94a3b8 !important; opacity: 1; }
-html[data-theme='D'] [data-beyan-mini] button > div:first-child { color: #94a3b8 !important; }
-html[data-theme='D'] [data-beyan-mini] [data-beyan-num] > div:last-child { color: #1e293b !important; }
-html[data-theme='D'] [data-beyan-mini] [data-beyan-num='onaylanan'] > div:last-child { color: #2b8a3e !important; }
-html[data-theme='D'] [data-beyan-mini] [data-beyan-num='kalan'] > div:last-child { color: #475569 !important; }
-html[data-theme='D'] [data-beyan-mini] [data-beyan-num][data-beyan-zero] > div:last-child { color: #cbd5e1 !important; }
-html[data-theme='D'] [data-beyan-mini] [data-beyan-num]:not([disabled]):hover { background: #edf2ff !important; }
-html[data-theme='D'] [data-beyan-mini] .h-1\.5 { height: 5px; background: #eef2f6 !important; }
 
 /* ── 2026-09-21 — Ofis panoraması yan kartları (SGK · e-Defter · Fatura): HAFİF RENKLİ ZEMİN (Muzaffer Bey)
    Beyanname görünümü grafiği beyaz kalır. Ton = kartın kendi vurgu rengi (SGK yeşil, e-Defter çivit, Fatura mavi+mor):
@@ -424,27 +246,6 @@ html[data-theme='D'] .ofis-beyan {
 }
 html[data-theme='D'] .ofis-beyan__header button { background: rgba(255, 255, 255, 0.75); }
 
-/* ── 2026-09-21 Beyanname Durum Takibi: yazı hiyerarşisi (Muzaffer Bey: "yazıları, başlıkları kötü duruyor")
-   Başlık satırı koyu gri ve biraz büyük, ad 14px kalın, dönem 11.5px, sayılar 14px, çubuk 6px; alt kartlarda aynı ölçek. */
-html[data-theme='D'] [data-beyan-panel] [data-beyan-heading] p { font-size: 13px; font-weight: 500; color: #475569 !important; }
-html[data-theme='D'] [data-beyan-panel] table thead th { padding: 9px 12px; background: #f1f5f9 !important; color: #475569 !important; font-size: 11px; letter-spacing: .06em; }
-html[data-theme='D'] [data-beyan-panel] table tbody td { height: 42px; padding: 7px 12px; }
-html[data-theme='D'] [data-beyan-panel] table tbody td:first-child > button { font-size: 14px; font-weight: 700; color: #0f172a !important; }
-html[data-theme='D'] [data-beyan-panel] table tbody td:first-child > div:not(.hidden) { margin-left: 8px; font-size: 11.5px; color: #64748b !important; }
-html[data-theme='D'] [data-beyan-panel] [data-beyan-num] button { font-size: 14px; }
-html[data-theme='D'] [data-beyan-panel] table tbody td:last-child span { font-size: 12px; font-weight: 650; }
-html[data-theme='D'] [data-beyan-panel] table tbody td:last-child .h-1\.5 { height: 6px; }
-html[data-theme='D'] [data-beyan-panel] [data-beyan-section] > div:first-child { font-size: 11px; letter-spacing: .08em; color: #334155 !important; }
-html[data-theme='D'] [data-beyan-panel] [data-beyan-section] > div:last-child { font-size: 12px; color: #64748b !important; }
-html[data-theme='D'] [data-beyan-mini] > div { padding: 9px 12px; }
-html[data-theme='D'] [data-beyan-mini] > div > button:first-child { font-size: 13.5px; }
-html[data-theme='D'] [data-beyan-mini] > div > button:first-child span { font-size: 11.5px; }
-html[data-theme='D'] [data-beyan-mini] button > div:first-child { font-size: 9.5px; letter-spacing: .06em; color: #64748b !important; }
-html[data-theme='D'] [data-beyan-mini] [data-beyan-num] > div:last-child { font-size: 15px; }
-html[data-theme='D'] [data-beyan-mini] .h-1\.5 { height: 6px; }
-html[data-theme='D'] [data-beyan-mini] > div { grid-template-columns: minmax(120px, 1.6fr) repeat(3, minmax(62px, .7fr)) minmax(112px, 1.4fr); }
-html[data-theme='D'] [data-beyan-mini] button > div:first-child { letter-spacing: .03em; }
-
 /* ── 2026-09-21 Bölüm başlıkları (sola yaslı; kapsül + köprüler kalktı) + Beyan tablosu kartına çivit zemin (onaylandı) */
 html[data-theme='D'] [data-dashboard-section-title] { margin-top: 28px; margin-bottom: 10px; }
 html[data-theme='D'] [data-dashboard-section-text] { color: #1e293b !important; font-size: 14px; }
@@ -458,43 +259,6 @@ html[data-theme='D'] [data-dashboard-section-title][data-tone='mint'] [data-dash
 html[data-theme='D'] [data-dashboard-section-title][data-tone='rose'] [data-dashboard-section-icon] { background: #fff0f6 !important; border-color: #fcc2d7 !important; color: #c2255c !important; }
 html[data-theme='D'] [data-dashboard-section-title][data-tone='rose'] [data-dashboard-section-icon] svg { color: #c2255c !important; }
 html[data-theme='D'] [data-dashboard-section-title][data-tone='rose'] [data-dashboard-section-rule] { background: linear-gradient(90deg, #fcc2d7, transparent) !important; }
-/* Beyanname Durum Takibi kartı: yan kartlarla aynı dil, çivit zemin */
-html[data-theme='D'] [data-beyan-panel][data-dashboard-surface] {
-  --panorama-tint: 1.8;
-  --pt-a: #4263eb;
-  --pt-b: #4263eb;
-  --pt-wash: #eef2ff;
-  --pt-edge: #d5ddfb;
-  border: 1px solid var(--pt-edge) !important;
-  background:
-    radial-gradient(60% 70% at 100% 0%, color-mix(in srgb, var(--pt-a) calc(10% * var(--panorama-tint)), transparent), transparent 55%),
-    radial-gradient(50% 60% at 0% 100%, color-mix(in srgb, var(--pt-b) calc(6% * var(--panorama-tint)), transparent), transparent 55%),
-    linear-gradient(160deg, color-mix(in srgb, var(--pt-wash) calc(100% * var(--panorama-tint)), #fff) 0%, #fff 100%) !important;
-  box-shadow: 0 6px 18px rgba(66, 99, 235, 0.09) !important;
-}
-html[data-theme='D'] [data-beyan-panel] [data-beyan-heading] { border-bottom-color: #dfe5fb !important; }
-html[data-theme='D'] [data-beyan-panel] [data-beyan-mode-group] { background: rgba(255, 255, 255, 0.7) !important; border-color: #d5ddfb !important; }
-html[data-theme='D'] [data-beyan-table-scroll] { border-color: #d5ddfb !important; }
-html[data-theme='D'] [data-beyan-mini] { border-color: #d5ddfb !important; }
+
 html[data-theme='D'] [data-dashboard-section-text] { font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-weight: 700; letter-spacing: -0.005em; }
 
-/* ═════════════════════════════════════════════════════════════════════════════════════════════
-   2026-09-21 gece — ÜÇ BÖLÜM AYIRT EDİCİ (Muzaffer Bey: "beyanname takip, iş akışı ve mali takvim ayırt edilmiyor,
-   çok karışık"): dış başlıklar kalktı; her kartın üstünde KENDİ RENGİNDE başlık bandı + 4px üst çizgi + hafif gövde
-   yıkaması. Beyanname çivit · İş Akışı deniz yeşili · Mali Takvim gül. İş Akışı ve Takvim kartları artık kendi dosyalarında
-   (`is-akisi-hatti.css`, `mali-takvim.css`); burada yalnız Beyanname kartı kaldı. */
-
-/* ── Beyanname Durum Takibi (çivit) ── */
-html[data-theme='D'] [data-beyan-panel][data-dashboard-surface] {
-  --panorama-tint: 1.1;
-  margin-top: 44px; /* Muzaffer Bey: bölümler arasına biraz daha boşluk */
-  border-top: 4px solid #4263eb !important;
-}
-html[data-theme='D'] [data-beyan-panel] [data-beyan-heading] {
-  padding: 14px 18px;
-  background: linear-gradient(90deg, #edf2ff 0%, #f5f7ff 55%, #fbfcff 100%) !important;
-  border-bottom: 1px solid #dbe4ff !important;
-}
-html[data-theme='D'] [data-beyan-panel] [data-beyan-heading-icon] { width: 36px; height: 36px; border-radius: 10px; }
-html[data-theme='D'] [data-beyan-panel] [data-beyan-title] { color: #1e293b !important; font-size: 15px; font-weight: 700; letter-spacing: -0.005em; }
-html[data-theme='D'] [data-beyan-panel] [data-beyan-heading] p { color: #5b6b8a !important; font-size: 12px; }
