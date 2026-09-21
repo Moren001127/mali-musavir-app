@@ -1,0 +1,401 @@
+/* Mali tablolar (Mizan · Bilanço · Gelir Tablosu · İşletme Hesap Özeti) — beyaz tema (D) ortak katmanı.
+   bilgi/BEYAZ-TEMA-TASARIM-DILI.md 7. bölüm: düzen/işlev aynen kalır; yalnız renk, hiyerarşi, başlık, sayaç,
+   düğme, tablo ve girdi görünümü rehbere çekilir. Her sayfanın kendi beyaz.css dosyası bu dosyayı @import eder
+   ve sayfaya özgü kuralları ekler. A (koyu) teması etkilenmez: tüm kurallar html[data-theme='D'] altındadır.
+   Mizan sayfası KİLİTLİ olduğundan seçiciler yalnız mevcut sınıf/öznitelik yapısından kurulur. */
+
+/* ── 1. Paydalar: satır içi (portalStyle) renkler bu değişkenlere çözülür ─────────────────────────── */
+html[data-theme='D'] .financial-report-readable {
+  --portal-ink: #1e293b;
+  --portal-secondary: #475569;
+  --portal-muted: #64748b;
+  --portal-on-color: #fff;
+  --portal-surface: #fff;
+  --portal-raised: #f1f5f9;
+  --portal-wash: #fff;
+  --portal-line: #e3e8ef;
+  --portal-shadow: rgba(15, 23, 42, 0.06);
+  --portal-overlay: rgba(15, 23, 42, 0.45);
+  /* altın süs → koyu yazı / çivit yüzey / nötr zemin */
+  --portal-amber-ink: #0f172a;
+  --portal-amber-surface: #4263eb;
+  --portal-amber-wash: #f8fafc;
+  --portal-amber-line: #4263eb;
+  --portal-copper-ink: #d9480f;
+  --portal-copper-surface: #4263eb;
+  --portal-copper-wash: #f8fafc;
+  --portal-copper-line: #e3e8ef;
+  /* anlam renkleri (rehber ailesi) */
+  --portal-blue-ink: #1971c2;
+  --portal-blue-surface: #1971c2;
+  --portal-blue-wash: #e7f5ff;
+  --portal-blue-line: #c5e3fb;
+  --portal-green-ink: #2b8a3e;
+  --portal-green-surface: #2f9e44;
+  --portal-green-wash: #ebfbee;
+  --portal-green-line: #c6efd0;
+  --portal-rose-ink: #c92a2a;
+  --portal-rose-surface: #e03131;
+  --portal-rose-wash: #fff5f5;
+  --portal-rose-line: #ffc9c9;
+  --portal-teal-ink: #099268;
+  --portal-teal-surface: #0ca678;
+  --portal-teal-wash: #e6fcf5;
+  --portal-teal-line: #c3fae8;
+  --portal-plum-ink: #6741d9;
+  --portal-plum-surface: #7048e8;
+  --portal-plum-wash: #f3f0ff;
+  --portal-plum-line: #e5dbff;
+  --portal-slate-ink: #475569;
+  --portal-slate-surface: #5c6b7f;
+  --portal-slate-wash: #f1f5f9;
+  --portal-slate-line: #e2e8f0;
+  --mt-ink: #1e293b;
+  --mt-ink-2: #475569;
+  --mt-muted: #64748b;
+  --mt-faint: #94a3b8;
+  --mt-zero: #cbd5e1;
+  --mt-line: #e3e8ef;
+  --mt-line-soft: #eef2f6;
+  --mt-line-strong: #cbd5e1;
+  --mt-thead: #f8fafc;
+  --mt-zebra: #fbfcfd;
+  --mt-hover: #f4f7fb;
+  --mt-primary: #4263eb;
+  --mt-primary-2: #5c7cfa;
+  --mt-primary-text: #3b5bdb;
+  --mt-primary-soft: #edf2ff;
+  --mt-primary-line: #dbe4ff;
+  --mt-input-line: #dde3ea;
+  --mt-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+  color: var(--mt-ink);
+  color-scheme: light;
+}
+
+/* ── 2. Sayfa başlığı: bant/altın etiket/serif kalkar; 36px simge kutusu + 22px başlık + 13px alt satır ── */
+html[data-theme='D'] body [data-panel-main] .financial-report-readable.financial-report-readable [data-portal-page-header]:has(h1) {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0;
+  box-shadow: none !important;
+  padding: 2px 0 6px !important;
+  overflow: visible !important;
+}
+html[data-theme='D'] body [data-panel-main] .financial-report-readable.financial-report-readable [data-portal-page-header]:has(h1)::before { content: none !important; }
+/* üst altın şerit + "Mali Rapor / Kontrol" etiket satırı */
+html[data-theme='D'] .financial-report-readable [data-portal-page-header] > .absolute.inset-x-0.top-0 { display: none !important; }
+html[data-theme='D'] .financial-report-readable [data-portal-page-header] > div.flex.items-center.gap-2\.5.mb-3 { display: none !important; }
+/* simge kutusu */
+html[data-theme='D'] .financial-report-readable [data-portal-page-header] span.grid.place-items-center.rounded-xl {
+  width: 36px !important;
+  height: 36px !important;
+  border-radius: 10px !important;
+  background: var(--mt-primary-soft) !important;
+  box-shadow: none !important;
+  color: var(--mt-primary) !important;
+}
+html[data-theme='D'] .financial-report-readable [data-portal-page-header] span.grid.place-items-center.rounded-xl svg {
+  width: 18px;
+  height: 18px;
+  color: var(--mt-primary) !important;
+}
+html[data-theme='D'] body [data-panel-main] .financial-report-readable.financial-report-readable [data-portal-page-header] h1 {
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif !important;
+  font-size: 22px !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.01em !important;
+  line-height: 1.2 !important;
+  color: var(--mt-ink) !important;
+}
+html[data-theme='D'] .financial-report-readable [data-portal-page-header] h1 > span {
+  font-size: 18px !important;
+  font-weight: 600 !important;
+  color: var(--mt-primary-text) !important;
+  margin-left: 10px !important;
+}
+html[data-theme='D'] body [data-panel-main] .financial-report-readable.financial-report-readable [data-portal-page-header]:has(h1) p {
+  font-size: 13px !important;
+  margin-top: 2px !important;
+  color: var(--mt-muted) !important;
+  line-height: 1.45;
+}
+
+/* ── 3. Komut barı (mükellef seçici · dönem · eylemler) ───────────────────────────────────────────── */
+html[data-theme='D'] .financial-report-readable > div.rounded-xl.border.p-5,
+html[data-theme='D'] .financial-report-readable [data-mali-toolbar] {
+  background: #fff !important;
+  border: 1px solid var(--mt-line) !important;
+  border-radius: 14px !important;
+  box-shadow: var(--mt-shadow) !important;
+}
+html[data-theme='D'] .financial-report-readable label.uppercase.font-bold {
+  color: var(--mt-muted) !important;
+  font-size: 11px !important;
+  letter-spacing: 0.06em !important;
+}
+/* girdi görünümü: mükellef seçici düğmesi, açılır listeler, metin girdileri */
+html[data-theme='D'] .financial-report-readable > div.rounded-xl.border.p-5 :is(button.w-full.rounded-lg.border, select.rounded-lg, input.rounded-lg),
+html[data-theme='D'] .financial-report-readable [data-mali-toolbar] :is(button[data-mali-input], select, input[type='text']),
+html[data-theme='D'] .financial-report-readable [data-mali-input] {
+  background: #fff !important;
+  border: 1px solid var(--mt-input-line) !important;
+  border-radius: 10px !important;
+  color: var(--mt-ink) !important;
+  box-shadow: none !important;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+html[data-theme='D'] .financial-report-readable > div.rounded-xl.border.p-5 :is(button.w-full.rounded-lg.border, select.rounded-lg):hover,
+html[data-theme='D'] .financial-report-readable [data-mali-input]:hover { border-color: #c9d3de !important; }
+html[data-theme='D'] .financial-report-readable > div.rounded-xl.border.p-5 :is(button.w-full.rounded-lg.border, select.rounded-lg):focus-visible,
+html[data-theme='D'] .financial-report-readable [data-mali-input]:focus-visible,
+html[data-theme='D'] .financial-report-readable [data-mali-input]:focus-within {
+  outline: none !important;
+  border-color: var(--mt-primary) !important;
+  box-shadow: 0 0 0 3px var(--mt-primary-line) !important;
+}
+html[data-theme='D'] .financial-report-readable > div.rounded-xl.border.p-5 button.w-full.rounded-lg.border > span.flex-1,
+html[data-theme='D'] .financial-report-readable [data-mali-input] > span.flex-1 { color: var(--mt-ink) !important; }
+html[data-theme='D'] .financial-report-readable > div.rounded-xl.border.p-5 button.w-full.rounded-lg.border svg,
+html[data-theme='D'] .financial-report-readable [data-mali-input] svg { color: var(--mt-faint) !important; }
+html[data-theme='D'] .financial-report-readable select:disabled { color: var(--mt-faint) !important; background: #f8fafc !important; }
+
+/* ── 4. Düğmeler ─────────────────────────────────────────────────────────────────────────────────── */
+/* birincil: çivit gradyan (Mizan Yükle · Mizandan Oluştur · Kaydet) */
+html[data-theme='D'] .financial-report-readable > div.rounded-xl.border.p-5 button.px-5.font-bold,
+html[data-theme='D'] .financial-report-readable [data-mali-btn='primary'],
+html[data-theme='D'] .financial-report-readable button.w-full.px-3.py-2.rounded-lg.text-\[12\.5px\].font-bold {
+  background: linear-gradient(135deg, var(--mt-primary), var(--mt-primary-2)) !important;
+  color: #fff !important;
+  border: 0 !important;
+  border-radius: 10px !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  box-shadow: 0 8px 16px -10px var(--mt-primary) !important;
+}
+html[data-theme='D'] .financial-report-readable > div.rounded-xl.border.p-5 button.px-5.font-bold:hover:not(:disabled),
+html[data-theme='D'] .financial-report-readable [data-mali-btn='primary']:hover:not(:disabled) { filter: brightness(1.05); }
+/* ikincil: beyaz zemin, ince kenar (Mükellef Çıktısı · Excel · Düzelt · süzgeç düğmeleri) */
+html[data-theme='D'] .financial-report-readable [data-mali-btn='secondary'],
+html[data-theme='D'] .financial-report-readable h3 > button.ml-auto,
+html[data-theme='D'] .financial-report-readable button:has(> svg.lucide-download),
+html[data-theme='D'] .financial-report-readable button:has(> svg.lucide-refresh-cw),
+html[data-theme='D'] .financial-report-readable button:has(> svg.lucide-sliders-horizontal) {
+  background: #fff !important;
+  border: 1px solid var(--mt-input-line) !important;
+  color: var(--mt-ink-2) !important;
+  border-radius: 10px !important;
+  box-shadow: none !important;
+}
+html[data-theme='D'] .financial-report-readable [data-mali-btn='secondary']:hover:not(:disabled),
+html[data-theme='D'] .financial-report-readable h3 > button.ml-auto:hover:not(:disabled),
+html[data-theme='D'] .financial-report-readable button:has(> svg.lucide-download):hover:not(:disabled) { background: #f8fafc !important; border-color: #c9d3de !important; }
+html[data-theme='D'] .financial-report-readable button:has(> svg.lucide-download) svg,
+html[data-theme='D'] .financial-report-readable button:has(> svg.lucide-refresh-cw) svg { color: var(--mt-primary) !important; }
+/* Luca / veri çek: deniz yeşili yumuşak */
+html[data-theme='D'] .financial-report-readable > div.rounded-xl.border.p-5 button.px-4.font-semibold,
+html[data-theme='D'] .financial-report-readable [data-mali-btn='luca'] {
+  background: #e6fcf5 !important;
+  border: 1px solid #c3fae8 !important;
+  color: #099268 !important;
+  border-radius: 10px !important;
+  box-shadow: none !important;
+}
+html[data-theme='D'] .financial-report-readable > div.rounded-xl.border.p-5 button.px-4.font-semibold:hover:not(:disabled),
+html[data-theme='D'] .financial-report-readable [data-mali-btn='luca']:hover:not(:disabled) { background: #d3f9ea !important; }
+/* kesin kayıt: çivit yumuşak; kilidi aç: kırmızı yumuşak (satır içi renkler zaten kırmızıya çözülür) */
+html[data-theme='D'] .financial-report-readable button:has(> svg.lucide-lock),
+html[data-theme='D'] .financial-report-readable [data-mali-btn='lock'] {
+  background: var(--mt-primary-soft) !important;
+  border: 1px solid var(--mt-primary-line) !important;
+  color: var(--mt-primary-text) !important;
+  border-radius: 10px !important;
+  box-shadow: none !important;
+}
+html[data-theme='D'] .financial-report-readable button:has(> svg.lucide-unlock),
+html[data-theme='D'] .financial-report-readable [data-mali-btn='danger'] {
+  background: #fff5f5 !important;
+  border: 1px solid #ffc9c9 !important;
+  color: #c92a2a !important;
+  border-radius: 10px !important;
+  box-shadow: none !important;
+}
+html[data-theme='D'] .financial-report-readable [data-mali-btn='danger']:hover:not(:disabled),
+html[data-theme='D'] .financial-report-readable button:has(> svg.lucide-unlock):hover:not(:disabled) { background: #e03131 !important; color: #fff !important; border-color: #e03131 !important; }
+
+/* ── 5. Sayaç kartları (KPI): beyaz kart + koyu sayı + ton çubuğu ────────────────────────────────── */
+html[data-theme='D'] .financial-report-readable [data-portal-kpi] {
+  position: relative;
+  overflow: hidden;
+  background: #fff !important;
+  border: 1px solid var(--mt-line) !important;
+  border-radius: 14px !important;
+  box-shadow: var(--mt-shadow) !important;
+}
+html[data-theme='D'] .financial-report-readable [data-portal-kpi]::after {
+  content: '';
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 0;
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+  background: var(--kpi-tone, var(--mt-primary));
+  opacity: 0.85;
+}
+html[data-theme='D'] .financial-report-readable [data-portal-kpi] > div:first-child {
+  color: var(--mt-muted) !important;
+  font-size: 11px !important;
+  letter-spacing: 0.06em !important;
+}
+html[data-theme='D'] .financial-report-readable [data-portal-kpi] > div:first-child svg { color: var(--kpi-tone, var(--mt-primary)) !important; }
+html[data-theme='D'] .financial-report-readable [data-portal-kpi] :is(p, .tabular-nums) {
+  color: #0f172a !important;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 6. Kesin kayıt şeridi ────────────────────────────────────────────────────────────────────────── */
+html[data-theme='D'] .financial-report-readable > div.flex.items-center.justify-between.rounded-xl.p-3 {
+  background: #fff !important;
+  border: 1px solid var(--mt-line) !important;
+  border-radius: 12px !important;
+}
+html[data-theme='D'] .financial-report-readable > div.flex.items-center.justify-between.rounded-xl.p-3:has(> div > svg.lucide-lock) {
+  background: #ebfbee !important;
+  border-color: #c6efd0 !important;
+}
+
+/* ── 7. Bölüm başlıkları: 15/650 koyu, çivit çizgi, kurşuni/çivit rozet ─────────────────────────── */
+html[data-theme='D'] .financial-report-readable h3.font-semibold {
+  color: var(--mt-ink) !important;
+  font-size: 15px !important;
+  font-weight: 650 !important;
+}
+html[data-theme='D'] .financial-report-readable h3.font-semibold > span.w-\[3px\] { background: var(--mt-primary) !important; height: 16px !important; }
+html[data-theme='D'] .financial-report-readable h3.font-semibold > span.text-\[10\.5px\] {
+  background: var(--mt-primary-soft) !important;
+  color: var(--mt-primary-text) !important;
+  border: 1px solid var(--mt-primary-line);
+  border-radius: 999px !important;
+  font-size: 11px !important;
+  font-weight: 650 !important;
+  padding: 1px 9px !important;
+  font-variant-numeric: tabular-nums;
+}
+html[data-theme='D'] .financial-report-readable h3.font-semibold > span.italic { color: var(--mt-muted) !important; }
+html[data-theme='D'] .financial-report-readable h3.font-semibold > span:not([class]) { color: var(--mt-ink) !important; }
+html[data-theme='D'] .financial-report-readable h3.font-semibold > span.text-\[12px\] { color: var(--mt-muted) !important; font-weight: 500 !important; }
+
+/* ── 8. Tablolar: tek ince çerçeve, açık gri başlık, beyaz satırlar, tabular sayılar ─────────────── */
+html[data-theme='D'] .financial-report-readable div.rounded-xl.overflow-hidden,
+html[data-theme='D'] .financial-report-readable [data-mali-table] {
+  background: #fff !important;
+  border: 1px solid var(--mt-line) !important;
+  border-radius: 12px !important;
+  box-shadow: var(--mt-shadow) !important;
+}
+html[data-theme='D'] .financial-report-readable table { font-variant-numeric: tabular-nums; }
+html[data-theme='D'] body [data-panel-main] .financial-report-readable table { border: 0 !important; background: #fff !important; }
+html[data-theme='D'] body [data-panel-main] .financial-report-readable table thead th {
+  background: var(--mt-thead) !important;
+  color: var(--mt-ink-2) !important;
+  border-bottom: 1px solid var(--mt-line) !important;
+  font-weight: 700 !important;
+}
+/* küçük harf-aralıklı sütun başlıkları (Oluşturma · Mükellef · Dönem · Kod · Kalem · Tutar) */
+html[data-theme='D'] .financial-report-readable table thead th.uppercase {
+  font-size: 11px !important;
+  letter-spacing: 0.06em !important;
+  color: var(--mt-ink-2) !important;
+}
+html[data-theme='D'] body [data-panel-main] .financial-report-readable table tbody td {
+  border-color: var(--mt-line-soft) !important;
+  border-bottom: 1px solid var(--mt-line-soft) !important;
+}
+html[data-theme='D'] body [data-panel-main] .financial-report-readable table tbody tr:nth-child(even):not(:hover):not([aria-selected='true']) { background-color: var(--mt-zebra) !important; }
+html[data-theme='D'] body [data-panel-main] .financial-report-readable table tbody tr:last-child td { border-bottom: 0 !important; }
+html[data-theme='D'] .financial-report-readable table tbody tr { border-color: var(--mt-line-soft) !important; }
+html[data-theme='D'] .financial-report-readable table td.font-mono,
+html[data-theme='D'] .financial-report-readable table td.font-medium { color: var(--mt-ink) !important; }
+html[data-theme='D'] .financial-report-readable table td.font-mono.text-\[12px\] { color: var(--mt-muted) !important; }
+/* satır işlem düğmeleri: görüntüle çivit · indir mavi · sil kırmızı (yumuşak) */
+html[data-theme='D'] .financial-report-readable table td .inline-flex.gap-1\.5 > :is(button, a) {
+  border-radius: 8px !important;
+  transition: filter 0.15s;
+}
+html[data-theme='D'] .financial-report-readable table td .inline-flex.gap-1\.5 > :is(button, a):has(> svg.lucide-eye),
+html[data-theme='D'] .financial-report-readable table td .inline-flex.gap-1\.5 > :is(button, a):has(> svg.lucide-printer) {
+  background: var(--mt-primary-soft) !important;
+  color: var(--mt-primary-text) !important;
+}
+html[data-theme='D'] .financial-report-readable table td .inline-flex.gap-1\.5 > :is(button, a):hover:not(:disabled) { filter: brightness(0.95); }
+
+/* ── 9. Boş durumlar ─────────────────────────────────────────────────────────────────────────────── */
+html[data-theme='D'] .financial-report-readable div.rounded-xl.py-10.text-center,
+html[data-theme='D'] .financial-report-readable div.rounded-xl.p-6.text-center,
+html[data-theme='D'] .financial-report-readable [data-mali-empty] {
+  background: #f8fafc !important;
+  border: 1px dashed #dbe2ea !important;
+  border-radius: 12px !important;
+  box-shadow: none !important;
+  color: var(--mt-muted) !important;
+}
+html[data-theme='D'] .financial-report-readable :is(div.rounded-xl.py-10.text-center, div.rounded-xl.p-6.text-center, [data-mali-empty]) svg { color: var(--mt-faint) !important; opacity: 1 !important; }
+html[data-theme='D'] .financial-report-readable :is(div.rounded-xl.py-10.text-center, div.rounded-xl.p-6.text-center, [data-mali-empty]) p { color: var(--mt-muted) !important; }
+html[data-theme='D'] .financial-report-readable :is(div.rounded-xl.py-10.text-center, div.rounded-xl.p-6.text-center, [data-mali-empty]) p strong { color: var(--mt-primary-text) !important; }
+
+/* ── 10. Mükellef seçici penceresi ───────────────────────────────────────────────────────────────── */
+html[data-theme='D'] .financial-report-readable > div.fixed.inset-0 > div.rounded-2xl {
+  background: #fff !important;
+  border: 1px solid var(--mt-line) !important;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18) !important;
+}
+html[data-theme='D'] .financial-report-readable > div.fixed.inset-0 h3 { color: var(--mt-ink) !important; }
+html[data-theme='D'] .financial-report-readable > div.fixed.inset-0 .border-b { border-color: var(--mt-line-soft) !important; }
+html[data-theme='D'] .financial-report-readable > div.fixed.inset-0 div.rounded-lg.border {
+  background: #fff !important;
+  border: 1px solid var(--mt-input-line) !important;
+  border-radius: 10px !important;
+}
+html[data-theme='D'] .financial-report-readable > div.fixed.inset-0 div.rounded-lg.border:focus-within { border-color: var(--mt-primary) !important; box-shadow: 0 0 0 3px var(--mt-primary-line); }
+html[data-theme='D'] .financial-report-readable > div.fixed.inset-0 div.rounded-lg.border svg { color: var(--mt-faint) !important; }
+html[data-theme='D'] .financial-report-readable > div.fixed.inset-0 input { color: var(--mt-ink) !important; }
+html[data-theme='D'] .financial-report-readable > div.fixed.inset-0 button.w-full.flex.items-center.gap-3 { color: var(--mt-ink) !important; }
+html[data-theme='D'] .financial-report-readable > div.fixed.inset-0 button.w-full.flex.items-center.gap-3:hover { background: var(--mt-hover) !important; }
+html[data-theme='D'] .financial-report-readable > div.fixed.inset-0 button.w-full.flex.items-center.gap-3 > div.w-8.h-8 {
+  background: var(--mt-primary-soft) !important;
+  color: var(--mt-primary-text) !important;
+}
+html[data-theme='D'] .financial-report-readable > div.fixed.inset-0 button.p-1 svg,
+html[data-theme='D'] .financial-report-readable > div.fixed.inset-0 h3 + button svg { color: var(--mt-muted); }
+
+/* ── 11. Rapor tutarları: sıfırlar soluk, eksi kırmızı, kâr yeşil (hook: data-amount) ───────────── */
+html[data-theme='D'] .financial-report-readable [data-amount='zero'] { color: var(--mt-zero) !important; font-weight: 500 !important; }
+html[data-theme='D'] .financial-report-readable [data-amount='missing'] { color: var(--mt-faint) !important; font-weight: 500 !important; }
+html[data-theme='D'] .financial-report-readable [data-amount='neg'] { color: #c92a2a !important; }
+html[data-theme='D'] .financial-report-readable [data-amount='profit'] { color: #2b8a3e !important; }
+html[data-theme='D'] .financial-report-readable [data-amount='loss'] { color: #c92a2a !important; }
+
+/* ── 12. Oran/yüzde rozeti: kurşuni (nötr); eksi kırmızı yumuşak ────────────────────────────────── */
+html[data-theme='D'] .financial-report-readable [data-report-percent],
+html[data-theme='D'] .financial-report-readable [data-report-ratio='positive'] {
+  background: #f1f5f9 !important;
+  color: #475569 !important;
+  border: 1px solid #e2e8f0 !important;
+  text-shadow: none !important;
+  font-weight: 650 !important;
+}
+html[data-theme='D'] .financial-report-readable [data-report-ratio='negative'] {
+  background: #fff5f5 !important;
+  color: #c92a2a !important;
+  border: 1px solid #ffc9c9 !important;
+}
+
+/* ── 13. Odak halkası (klavye) ───────────────────────────────────────────────────────────────────── */
+html[data-theme='D'] .financial-report-readable :is(button, a, select, input):focus-visible {
+  outline: 2px solid var(--mt-primary) !important;
+  outline-offset: 2px;
+}
+html[data-theme='D'] .financial-report-readable ::placeholder { color: var(--mt-faint) !important; }
+html[data-theme='D'] .financial-report-readable div.rounded-lg.border > input:focus-visible,
+html[data-theme='D'] .financial-report-readable [data-mali-menu] input:focus-visible { outline: none !important; box-shadow: none !important; }
+html[data-theme='D'] .financial-report-readable input[type='checkbox'] { accent-color: var(--mt-primary); }

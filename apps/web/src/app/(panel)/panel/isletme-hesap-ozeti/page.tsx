@@ -554,7 +554,7 @@ export default function IsletmeHesapOzetiPage() {
   const activeLucaJobIds = Object.values(lucaJobs).filter(Boolean).map((job: any) => job.jobId);
 
   return (
-    <div data-isletme-report className="financial-report-readable space-y-4">
+    <div data-isletme-report data-mali-page="iho" className="financial-report-readable space-y-4">
       {/* Header — Fiş Yazdırma imzası: kart + üst renk şeridi + radial parıltı + degrade ikon kutusu */}
       <div data-portal-page-header
         className="relative overflow-hidden rounded-2xl border p-5"
@@ -593,6 +593,7 @@ export default function IsletmeHesapOzetiPage() {
           </div>
           {taxpayerId && !hicKayitYok && (
             <button
+              data-mali-btn="secondary"
               onClick={indirExcel}
               className="inline-flex items-center gap-2 rounded-md border border-white/15 bg-white/[0.04] px-3 py-1.5 text-sm text-stone-100 hover:bg-white/10 ml-auto flex-shrink-0"
             >
@@ -611,6 +612,7 @@ export default function IsletmeHesapOzetiPage() {
       {/* CANLI JOB DURUMU — her aktif job için son log satırı + spinner */}
       {Object.entries(lucaJobs).filter(([, j]) => j).length > 0 && (
         <div
+          data-mali-luca-status
           className="rounded-xl border p-3 text-sm space-y-2"
           style={portalStyle({
             background: 'rgba(212,184,118,0.04)',
@@ -682,6 +684,7 @@ export default function IsletmeHesapOzetiPage() {
       )}
 
       <div
+        data-mali-toolbar
         className="rounded-xl border border-white/10 p-4"
         style={portalStyle({ background: 'rgba(255,255,255,0.02)' })}
       >
@@ -689,6 +692,7 @@ export default function IsletmeHesapOzetiPage() {
           <div className="relative min-w-[300px]">
             <label className="mb-1 block text-xs text-stone-500">Mükellef</label>
             <button
+              data-mali-input
               onClick={() => setTpDropdownOpen((v) => !v)}
               className="flex w-full items-center justify-between rounded-md border border-white/15 bg-white/[0.04] px-3 py-2 text-sm text-stone-100"
             >
@@ -702,6 +706,7 @@ export default function IsletmeHesapOzetiPage() {
             </button>
             {tpDropdownOpen && (
               <div
+                data-mali-menu
                 className="absolute top-full left-0 z-10 mt-1 max-h-72 w-full overflow-auto rounded-md shadow-lg"
                 style={portalStyle({
                   background: '#12100c',
@@ -715,6 +720,7 @@ export default function IsletmeHesapOzetiPage() {
                   <div className="relative">
                     <Search className="absolute left-2 top-2 h-4 w-4 text-stone-500" />
                     <input
+                      data-mali-input
                       autoFocus
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
@@ -753,6 +759,7 @@ export default function IsletmeHesapOzetiPage() {
           <div>
             <label className="mb-1 block text-xs text-stone-500">Yıl</label>
             <select
+              data-mali-input
               value={yil}
               onChange={(e) => setYil(Number(e.target.value))}
               className="rounded-md border border-white/15 bg-white/[0.04] px-3 py-2 text-sm text-stone-100"
@@ -770,6 +777,7 @@ export default function IsletmeHesapOzetiPage() {
 
           {taxpayerId && hicKayitYok && (
             <button
+              data-mali-btn="primary"
               onClick={() => olusturYilMutation.mutate()}
               disabled={olusturYilMutation.isPending}
               className="inline-flex items-center gap-2 rounded-md bg-amber-500/10 px-3 py-2 text-sm font-medium text-amber-200 ring-1 ring-amber-400/40 hover:bg-amber-500/15 disabled:opacity-50"
@@ -786,6 +794,7 @@ export default function IsletmeHesapOzetiPage() {
           {taxpayerId && !hicKayitYok && (
             <button
               type="button"
+              data-mali-btn="secondary"
               onClick={() => window.dispatchEvent(new CustomEvent('iho-print'))}
               className="ml-auto inline-flex items-center gap-2 rounded-lg px-3 py-2 text-[12.5px] font-bold"
               style={portalStyle({
@@ -803,6 +812,7 @@ export default function IsletmeHesapOzetiPage() {
 
       {!taxpayerId ? (
         <div
+          data-mali-empty
           className="rounded-xl border border-white/10 p-12 text-center text-sm text-stone-500"
           style={portalStyle({ background: 'rgba(255,255,255,0.02)' })}
         >
@@ -810,6 +820,7 @@ export default function IsletmeHesapOzetiPage() {
         </div>
       ) : isLoading ? (
         <div
+          data-mali-empty
           className="rounded-xl border border-white/10 p-12 text-center"
           style={portalStyle({ background: 'rgba(255,255,255,0.02)' })}
         >
@@ -817,6 +828,7 @@ export default function IsletmeHesapOzetiPage() {
         </div>
       ) : hicKayitYok ? (
         <div
+          data-mali-empty
           className="rounded-xl border border-white/10 p-12 text-center text-sm text-stone-500"
           style={portalStyle({ background: 'rgba(255,255,255,0.02)' })}
         >
@@ -1331,6 +1343,7 @@ function KarsilastirmaTablosu({
                 {/* Locked rozet */}
                 {locked && (
                   <span
+                    data-mali-chip="locked"
                     className="inline-flex items-center gap-1 mt-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded"
                     style={portalStyle({ background: 'rgba(212,184,118,0.16)', color: AMOUNT_ACCENT, border: `1px solid ${GRID_LINE}` })}
                   >
@@ -1349,6 +1362,7 @@ function KarsilastirmaTablosu({
                           onLucaCek(d);
                         }
                       }}
+                      data-mali-btn={fetching ? 'danger' : 'luca'}
                       title={fetching ? 'Bu döneme ait Luca çekimini iptal et' : "Luca'dan İşletme Defteri Excel'i çek"}
                       className="inline-flex items-center justify-center gap-1.5 text-[11px] font-semibold rounded"
                       style={portalStyle({
@@ -1371,6 +1385,7 @@ function KarsilastirmaTablosu({
                   {c && !locked && (
                     <>
                       <button
+                        data-mali-btn="lock"
                         onClick={() => onLock(c.id)}
                         title="Kesin kayda al"
                         className="inline-flex items-center justify-center text-[11px] font-semibold rounded"
@@ -1670,7 +1685,7 @@ function KarsilastirmaTablosu({
             <Row
               label="ÖDENECEK GEÇİCİ VERGİ"
               cols={tersDonemler.map((d) => (
-                <span key={d} className="text-base font-bold" style={portalStyle({ color: AMOUNT_ACCENT })}>
+                <span key={d} className="text-base font-bold" data-amount={liveCalc(d).odenecek ? undefined : 'zero'} style={portalStyle({ color: AMOUNT_ACCENT })}>
                   {formatTR(liveCalc(d).odenecek)}
                 </span>
               ))}
@@ -1685,6 +1700,7 @@ function KarsilastirmaTablosu({
       {/* v1.36.70: DÖNEM AKSİYONLARI — üst tablonun sütun genişlikleriyle BİREBİR aynı grid.
           Her buton kendi sütunu içinde kalır, yan sütuna taşmaz. */}
       <div
+        data-mali-actions
         className="grid rounded-xl py-3 mt-3 items-center"
         style={portalStyle({
           // Üst tablo ile aynı: 24% etiket + N × COL_WIDTH (her dönem 19%)
@@ -1709,6 +1725,7 @@ function KarsilastirmaTablosu({
             return (
               <div key={d} className="px-2 flex items-center justify-center">
                 <div
+                  data-mali-chip="locked"
                   className="inline-flex items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-[11.5px] font-semibold whitespace-nowrap w-full"
                   style={portalStyle({
                     background: 'linear-gradient(135deg, rgba(245,158,11,0.18), rgba(245,158,11,0.06))',
@@ -1726,6 +1743,7 @@ function KarsilastirmaTablosu({
           return (
             <div key={d} className="px-2 flex items-center justify-center">
               <button
+                data-mali-btn="save"
                 onClick={() => saveDraft(d)}
                 className="inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-[12.5px] font-medium transition-all whitespace-nowrap w-full"
                 style={portalStyle({
@@ -1771,6 +1789,7 @@ function KarsilastirmaTablosu({
             </div>
             <label className="block text-xs text-stone-500 mb-1">Mükellef telefonu</label>
             <input
+              data-mali-input
               value={waPhone}
               onChange={(e) => setWaPhone(e.target.value)}
               placeholder="5xx xxx xx xx"
@@ -1785,6 +1804,7 @@ function KarsilastirmaTablosu({
             </pre>
             <div className="flex justify-end gap-2">
               <button
+                data-mali-btn="secondary"
                 onClick={() => setWaOpen(false)}
                 disabled={waLoading}
                 className="rounded-md border border-white/15 px-3 py-2 text-sm text-stone-300 hover:bg-white/5 disabled:opacity-50"
@@ -2012,6 +2032,7 @@ function Row({
           : profit && !isEmpty && !isNegative
           ? PROFIT_TEXT
           : AMOUNT_TEXT;
+        const amountKind = isEmpty ? 'zero' : amountColor === LOSS_TEXT ? 'loss' : amountColor === PROFIT_TEXT ? 'profit' : undefined;
 
         return (
           <td
@@ -2029,6 +2050,7 @@ function Row({
               <div className="flex flex-col items-center justify-center gap-1">
                 <span
                   className="tabular-nums"
+                  data-amount={amountKind}
                   style={portalStyle({
                     fontFamily: NUM_FONT,
                     fontSize: 15,
@@ -2059,6 +2081,7 @@ function Row({
             ) : (
               <span
                 className="tabular-nums"
+                data-amount={amountKind}
                 style={portalStyle({
                   fontFamily: NUM_FONT,
                   fontSize: 15,

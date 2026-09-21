@@ -157,7 +157,7 @@ export default function BilancoPage() {
   const denk = Math.abs(fark) < 0.01;
 
   return (
-    <div className="financial-report-readable space-y-3 max-w-7xl">
+    <div data-mali-page="bilanco" className="financial-report-readable space-y-3 max-w-7xl">
       {/* Header — Fiş Yazdırma imzası: kart + üst renk şeridi + radial parıltı + degrade ikon kutusu */}
       <div data-portal-page-header
         className="relative overflow-hidden rounded-2xl border p-5"
@@ -388,6 +388,7 @@ export default function BilancoPage() {
             };
             return (
               <div
+                data-mali-manual
                 className="rounded-lg px-3 py-2 flex items-center flex-wrap gap-2 text-[12px]"
                 style={portalStyle({
                   background: 'rgba(184,160,111,0.04)',
@@ -482,6 +483,7 @@ export default function BilancoPage() {
 
           {/* Denklik */}
           <div
+            data-mali-balance
             className="rounded-xl p-4 flex items-center justify-between"
             style={portalStyle({
               background: denk ? 'rgba(34,197,94,0.06)' : 'rgba(244,63,94,0.06)',
@@ -502,7 +504,7 @@ export default function BilancoPage() {
 
           {/* ─── Finansal Oranlar ve Yorumlama ───────────────────── */}
           {bilanco.finansalOranlar && (
-            <div>
+            <div data-bilanco-ratios>
               <h3 className="text-[14px] font-semibold mb-3 flex items-center gap-2.5 flex-wrap" style={portalStyle({ color: '#fafaf9' })}>
                 <span className="w-[3px] h-4 rounded-sm" style={portalStyle({ background: GOLD })} />
                 Finansal Oranlar
@@ -740,6 +742,7 @@ function BilancoAmount({
   return (
     <span
       className="tabular-nums"
+      data-amount={zero ? 'zero' : Number(value) < 0 ? 'neg' : undefined}
       style={portalStyle({
         display: 'block',
         textAlign: 'right',

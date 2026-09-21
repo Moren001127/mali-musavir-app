@@ -1,28 +1,160 @@
-/* Yalnız işletme hesap özeti D görünümü; hesaplar ve A teması korunur. */
-html[data-theme="D"] [data-isletme-report] [data-report-sections] > [data-report-section] { margin-top: 24px; }
-html[data-theme="D"] [data-isletme-report] [data-isletme-band] { background: #f5f9f8 !important; border-color: #c8d4d9 !important; }
-html[data-theme="D"] [data-isletme-report] [data-report-section] { background: #fff !important; border-color: #c8d4d9 !important; box-shadow: none !important; }
-html[data-theme="D"] [data-isletme-report] [data-report-section] > span { display: none; }
-html[data-theme="D"] [data-isletme-report] table { border: 0 !important; background: #fff !important; border-collapse: collapse !important; }
-html[data-theme="D"] [data-isletme-report] table :is(td, th) { border: 1px solid #d5dfe3 !important; }
-html[data-theme="D"] [data-isletme-report] table tr > :first-child { border-left: 0 !important; }
-html[data-theme="D"] [data-isletme-report] table tr > :last-child { border-right: 0 !important; }
-html[data-theme="D"] [data-isletme-report] table tr:last-child > td { border-bottom: 0 !important; }
-html[data-theme="D"] [data-isletme-report] [data-report-row] { background: #fff !important; }
-html[data-theme="D"] [data-isletme-report] [data-report-row="detail"]:nth-child(even),
-html[data-theme="D"] [data-isletme-report] [data-report-row="manual"]:nth-child(even) { background: #fafbfc !important; }
-html[data-theme="D"] [data-isletme-report] [data-report-row="total"] { background: #f1f7f4 !important; }
-html[data-theme="D"] [data-isletme-report] [data-report-row="final"] { background: #edf5f3 !important; }
-html[data-theme="D"] [data-isletme-report] [data-report-row="total"] > td,
-html[data-theme="D"] [data-isletme-report] [data-report-row="final"] > td { border-top-color: #b7cdc5 !important; }
-html[data-theme="D"] [data-isletme-report] [data-report-section-heading] { background: #f7f8fa !important; border-bottom: 1px solid #d5dfe3 !important; }
-html[data-theme="D"] [data-isletme-report] [data-report-section="amber"] [data-report-section-heading] { background: #f6f8f1 !important; }
-html[data-theme="D"] [data-isletme-report] [data-report-section="indigo"] [data-report-section-heading] { background: #f4f3f9 !important; }
-html[data-theme="D"] [data-isletme-report] [data-report-section="amber"] [data-report-section-heading] :is(h2, span) { color: #536742 !important; }
-html[data-theme="D"] [data-isletme-report] [data-report-section="indigo"] [data-report-section-heading] :is(h2, span) { color: #645780 !important; }
-html[data-theme="D"] [data-isletme-report] [data-report-section-heading] > span { background: transparent !important; border: 0 !important; box-shadow: none !important; }
-html[data-theme="D"] [data-isletme-report] [data-report-metric]:nth-child(4n + 1) [data-report-ratio="positive"] { background: #edf6f2 !important; border-color: #b7d5c9 !important; color: #286653 !important; }
-html[data-theme="D"] [data-isletme-report] [data-report-metric]:nth-child(4n + 2) [data-report-ratio="positive"] { background: #edf3fb !important; border-color: #bdcfe4 !important; color: #345f8b !important; }
-html[data-theme="D"] [data-isletme-report] [data-report-metric]:nth-child(4n + 3) [data-report-ratio="positive"] { background: #f3eff9 !important; border-color: #d1c4e2 !important; color: #69508a !important; }
-html[data-theme="D"] [data-isletme-report] [data-report-metric]:nth-child(4n + 4) [data-report-ratio="positive"] { background: #ecf6f6 !important; border-color: #b6d4d5 !important; color: #216c70 !important; }
-html[data-theme="D"] [data-isletme-report] [data-report-period] { font-family: inherit !important; }
+/* İşletme Hesap Özeti — beyaz tema (D). Ortak mali tablo katmanı + bu sayfaya özgü kurallar.
+   Hesaplar, girişler ve A teması korunur; mükellef çıktısı şablonu etkilenmez. */
+@import '../mali-tablolar-white.css';
+
+/* Luca güvenlik kodu paneli (ortak bileşen, altın vurgu alır): D'de deniz yeşili aileye çözülsün */
+html[data-theme='D'] [data-isletme-report] :is([data-luca-inline-captcha], [data-luca-inline-durum]) {
+  --portal-copper-ink: #099268;
+  --portal-copper-surface: #0ca678;
+  --portal-copper-wash: #e6fcf5;
+  --portal-copper-line: #c3fae8;
+}
+
+/* ── Luca işlem durumu kartı ─────────────────────────────────────────────────────────────────────── */
+html[data-theme='D'] [data-isletme-report] [data-mali-luca-status] {
+  background: #fff !important;
+  border: 1px solid var(--mt-line) !important;
+  border-radius: 12px !important;
+}
+html[data-theme='D'] [data-isletme-report] [data-mali-luca-status] > div:first-child { color: var(--mt-ink-2) !important; letter-spacing: 0.08em !important; }
+html[data-theme='D'] [data-isletme-report] [data-mali-luca-status] span.font-semibold { color: var(--mt-ink) !important; }
+html[data-theme='D'] [data-isletme-report] [data-mali-luca-status] span.font-mono { color: var(--mt-muted) !important; }
+html[data-theme='D'] [data-isletme-report] [data-mali-luca-status] span.rounded { border-radius: 999px !important; padding: 2px 8px !important; }
+
+/* ── Komut barı girdileri (mükellef açılır listesi · yıl) ─────────────────────────────────────────── */
+html[data-theme='D'] [data-isletme-report] [data-mali-toolbar] label { color: var(--mt-muted) !important; font-size: 11px !important; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px !important; }
+html[data-theme='D'] [data-isletme-report] [data-mali-toolbar] [data-mali-input] { min-height: 40px; }
+html[data-theme='D'] [data-isletme-report] [data-mali-toolbar] [data-mali-input] span { color: var(--mt-ink) !important; }
+html[data-theme='D'] [data-isletme-report] [data-mali-toolbar] [data-mali-input] span.text-stone-500 { color: var(--mt-faint) !important; }
+html[data-theme='D'] [data-isletme-report] [data-mali-menu] {
+  background: #fff !important;
+  border: 1px solid var(--mt-line) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.14) !important;
+}
+html[data-theme='D'] [data-isletme-report] [data-mali-menu] > div.sticky { background: #fff !important; border-color: var(--mt-line-soft) !important; }
+html[data-theme='D'] [data-isletme-report] [data-mali-menu] button:hover { background: var(--mt-hover) !important; }
+html[data-theme='D'] [data-isletme-report] [data-mali-menu] button div.font-medium { color: var(--mt-ink) !important; }
+html[data-theme='D'] [data-isletme-report] [data-mali-menu] button div.text-xs { color: var(--mt-muted) !important; }
+html[data-theme='D'] [data-isletme-report] [data-mali-menu] input { padding-left: 32px !important; }
+
+/* ── Dönem şeridi (üst bar): açık gri, koyu dönem adı, yumuşak düğmeler ─────────────────────────── */
+html[data-theme='D'] [data-isletme-report] [data-isletme-band] {
+  background: #f8fafc !important;
+  border-color: var(--mt-line) !important;
+  box-shadow: none !important;
+}
+html[data-theme='D'] [data-isletme-report] [data-isletme-band] > div > div { border-color: var(--mt-line) !important; }
+html[data-theme='D'] [data-isletme-report] [data-isletme-band] span.inline-flex.h-6.w-6 {
+  background: var(--mt-primary-soft) !important;
+  color: var(--mt-primary-text) !important;
+  border: 1px solid var(--mt-primary-line) !important;
+}
+html[data-theme='D'] [data-isletme-report] [data-isletme-band] span.uppercase.font-bold { color: var(--mt-ink-2) !important; letter-spacing: 0.08em !important; }
+html[data-theme='D'] [data-isletme-report] [data-report-period] {
+  font-family: inherit !important;
+  color: var(--mt-ink) !important;
+  font-weight: 700 !important;
+}
+html[data-theme='D'] [data-isletme-report] [data-report-period] + div { color: var(--mt-muted) !important; font-family: inherit !important; }
+html[data-theme='D'] [data-isletme-report] [data-isletme-band] > div > div[style*='copper-wash'] { background: #f1f5f9 !important; }
+html[data-theme='D'] [data-isletme-report] [data-report-period] { background: transparent !important; }
+html[data-theme='D'] [data-isletme-report] [data-mali-chip='locked'] {
+  background: #ebfbee !important;
+  color: #2b8a3e !important;
+  border: 1px solid #c6efd0 !important;
+  border-radius: 999px !important;
+}
+html[data-theme='D'] [data-isletme-report] [data-isletme-band] button { border-radius: 8px !important; }
+
+/* ── Bloklar (Kar/Zarar · Stok · Geçici vergi) ───────────────────────────────────────────────────── */
+html[data-theme='D'] [data-isletme-report] [data-report-sections] > [data-report-section] { margin-top: 20px; }
+html[data-theme='D'] [data-isletme-report] [data-report-section] {
+  background: #fff !important;
+  border-color: var(--mt-line) !important;
+  box-shadow: var(--mt-shadow) !important;
+}
+html[data-theme='D'] [data-isletme-report] [data-report-section] > span { display: none; }
+html[data-theme='D'] [data-isletme-report] [data-report-section-heading] {
+  background: #f8fafc !important;
+  border-bottom: 1px solid var(--mt-line) !important;
+}
+html[data-theme='D'] [data-isletme-report] [data-report-section-heading] > span {
+  background: var(--mt-primary-soft) !important;
+  color: var(--mt-primary-text) !important;
+  border: 1px solid var(--mt-primary-line) !important;
+  box-shadow: none !important;
+}
+html[data-theme='D'] [data-isletme-report] [data-report-section-heading] h2 { color: var(--mt-ink-2) !important; letter-spacing: 0.12em !important; }
+
+/* tablo çizgileri ve satır tonları */
+html[data-theme='D'] [data-isletme-report] table { border: 0 !important; background: #fff !important; border-collapse: separate !important; }
+html[data-theme='D'] [data-isletme-report] table :is(td, th) { border-color: var(--mt-line-soft) !important; }
+html[data-theme='D'] [data-isletme-report] table tr > :first-child { border-left: 0 !important; }
+html[data-theme='D'] [data-isletme-report] [data-report-row] { background: #fff !important; }
+html[data-theme='D'] [data-isletme-report] [data-report-row='detail']:nth-child(even) { background: var(--mt-zebra) !important; }
+html[data-theme='D'] [data-isletme-report] [data-report-row='manual'] > td:first-child { border-left: 3px solid #748ffc !important; }
+html[data-theme='D'] [data-isletme-report] [data-report-row='total'] { background: #f1f5f9 !important; }
+html[data-theme='D'] [data-isletme-report] [data-report-row='total'] > td { border-top: 2px solid var(--mt-line-strong) !important; }
+html[data-theme='D'] [data-isletme-report] [data-report-row='final'] { background: var(--mt-primary-soft) !important; }
+html[data-theme='D'] [data-isletme-report] [data-report-row='final'] > td { border-top: 2px solid #b9c7f5 !important; }
+html[data-theme='D'] [data-isletme-report] [data-report-row] > td:first-child { color: var(--mt-ink-2) !important; }
+html[data-theme='D'] [data-isletme-report] :is([data-report-row='total'], [data-report-row='final'], [data-report-row='manual']) > td:first-child { color: var(--mt-ink) !important; }
+html[data-theme='D'] [data-isletme-report] [data-report-row] > td:first-child > span.normal-case:not(.rounded-md) { color: var(--mt-faint) !important; }
+html[data-theme='D'] [data-isletme-report] [data-report-row] > td:first-child > span.rounded-md {
+  background: #f1f5f9 !important;
+  color: var(--mt-ink-2) !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 999px !important;
+  padding: 2px 8px !important;
+}
+html[data-theme='D'] [data-isletme-report] [data-report-row] td span.tabular-nums:not([data-amount]):not([data-report-ratio]) { color: var(--mt-ink) !important; }
+/* sayı girdileri: düzenlenebilir olan kutulu, kilitli olan düz metin */
+html[data-theme='D'] [data-isletme-report] input.num-input {
+  background: #fff !important;
+  border: 1px solid var(--mt-input-line) !important;
+  border-radius: 8px !important;
+  padding: 4px 8px !important;
+  color: var(--mt-ink) !important;
+  color-scheme: light !important;
+  font-weight: 650 !important;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+html[data-theme='D'] [data-isletme-report] input.num-input:hover:not(:disabled) { border-color: #c9d3de !important; }
+html[data-theme='D'] [data-isletme-report] input.num-input:focus { outline: none !important; border-color: var(--mt-primary) !important; box-shadow: 0 0 0 3px var(--mt-primary-line) !important; }
+html[data-theme='D'] [data-isletme-report] input.num-input:disabled { background: transparent !important; border-color: transparent !important; color: var(--mt-ink) !important; opacity: 1; }
+html[data-theme='D'] [data-isletme-report] input.num-input::placeholder { color: var(--mt-zero) !important; font-weight: 500; }
+html[data-theme='D'] [data-isletme-report] input.num-input:disabled::placeholder { color: var(--mt-zero) !important; }
+
+/* ── Dönem aksiyonları çubuğu ───────────────────────────────────────────────────────────────────── */
+html[data-theme='D'] [data-isletme-report] [data-mali-actions] {
+  background: #f8fafc !important;
+  border: 1px solid var(--mt-line) !important;
+  border-radius: 12px !important;
+}
+html[data-theme='D'] [data-isletme-report] [data-mali-actions] > div:first-child { color: var(--mt-ink-2) !important; }
+html[data-theme='D'] [data-isletme-report] [data-mali-btn='save'] {
+  background: linear-gradient(135deg, var(--mt-primary), var(--mt-primary-2)) !important;
+  color: #fff !important;
+  border: 0 !important;
+  border-radius: 10px !important;
+  box-shadow: 0 8px 16px -10px var(--mt-primary) !important;
+}
+html[data-theme='D'] [data-isletme-report] [data-mali-btn='save'] svg { color: #fff !important; }
+html[data-theme='D'] [data-isletme-report] [data-mali-btn='save']:hover { filter: brightness(1.05); }
+
+/* ── WhatsApp önizleme penceresi ────────────────────────────────────────────────────────────────── */
+html[data-theme='D'] [data-isletme-report] div.fixed.inset-0 > div.rounded-2xl {
+  background: #fff !important;
+  border: 1px solid var(--mt-line) !important;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18) !important;
+}
+html[data-theme='D'] [data-isletme-report] div.fixed.inset-0 h3 { color: var(--mt-ink) !important; }
+html[data-theme='D'] [data-isletme-report] div.fixed.inset-0 label { color: var(--mt-muted) !important; }
+html[data-theme='D'] [data-isletme-report] div.fixed.inset-0 pre {
+  background: #f8fafc !important;
+  border: 1px solid var(--mt-line) !important;
+  border-radius: 10px !important;
+  color: var(--mt-ink) !important;
+}
+html[data-theme='D'] [data-isletme-report] div.fixed.inset-0 button { border-radius: 10px !important; }

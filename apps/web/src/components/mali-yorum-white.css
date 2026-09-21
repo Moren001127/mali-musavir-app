@@ -1,0 +1,70 @@
+/* AI mali yorum kutusu (Mizan · Bilanço · Gelir Tablosu · İHÖ) — beyaz tema (D).
+   Rehber kart dili: çivit yumuşak başlık şeridi + beyaz gövde; sayfa vurgu rengi (accent) D'de kullanılmaz.
+   A teması satır içi renklerini korur; tüm kurallar html[data-theme='D'] altındadır. */
+html[data-theme='D'] [data-mali-yorum] {
+  background: #fff !important;
+  border: 1px solid #e3e8ef !important;
+  border-radius: 14px !important;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05) !important;
+  padding: 0 !important;
+  overflow: hidden;
+  color: #1e293b;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+html[data-theme='D'] [data-mali-yorum-head] {
+  background: #edf2ff !important;
+  border-bottom: 1px solid #dbe4ff;
+  padding: 14px 18px;
+}
+html[data-theme='D'] [data-mali-yorum-icon] {
+  width: 36px !important;
+  height: 36px !important;
+  border-radius: 10px !important;
+  background: #fff !important;
+  border: 1px solid #dbe4ff !important;
+  font-size: 17px !important;
+}
+html[data-theme='D'] [data-mali-yorum-title] { color: #1e293b !important; font-size: 15px !important; font-weight: 650 !important; letter-spacing: 0 !important; }
+html[data-theme='D'] [data-mali-yorum-sub] { color: #64748b !important; font-size: 12px !important; }
+html[data-theme='D'] [data-mali-yorum-btn] {
+  border-radius: 10px !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  padding: 7px 14px !important;
+  transition: filter 0.15s, background-color 0.15s;
+}
+html[data-theme='D'] [data-mali-yorum-btn='main'] {
+  background: linear-gradient(135deg, #4263eb, #5c7cfa) !important;
+  color: #fff !important;
+  border: 0 !important;
+  box-shadow: 0 8px 16px -10px #4263eb;
+}
+html[data-theme='D'] [data-mali-yorum-btn='main']:hover:not(:disabled) { filter: brightness(1.05); }
+html[data-theme='D'] [data-mali-yorum-btn='deep'] {
+  background: #fff !important;
+  border: 1px solid #dde3ea !important;
+  color: #475569 !important;
+}
+html[data-theme='D'] [data-mali-yorum-btn='deep']:hover:not(:disabled) { background: #f8fafc !important; border-color: #c9d3de !important; }
+html[data-theme='D'] [data-mali-yorum-btn]:disabled { opacity: 0.55; cursor: wait; }
+html[data-theme='D'] [data-mali-yorum-body] {
+  margin-top: 0 !important;
+  padding: 16px 18px 18px;
+}
+html[data-theme='D'] [data-mali-yorum-body] > p { color: #475569 !important; font-size: 13.5px !important; }
+html[data-theme='D'] [data-mali-yorum-body] > p b { color: #1e293b; }
+html[data-theme='D'] [data-mali-yorum-h] > span:first-child { color: #1e293b !important; font-size: 13.5px !important; }
+html[data-theme='D'] [data-mali-yorum-h] > span:last-child,
+html[data-theme='D'] [data-mali-yorum-li] > span:last-child,
+html[data-theme='D'] [data-mali-yorum-p] { color: #475569 !important; }
+html[data-theme='D'] [data-mali-yorum-li] > span:first-child { color: #4263eb !important; }
+html[data-theme='D'] [data-mali-yorum-meta] { color: #94a3b8 !important; border-top: 1px solid #eef2f6; padding-top: 10px; }
+html[data-theme='D'] [data-mali-yorum-error] {
+  background: #fff5f5 !important;
+  border: 1px solid #ffc9c9 !important;
+  border-radius: 12px !important;
+}
+html[data-theme='D'] [data-mali-yorum-error] > div:first-child { color: #c92a2a !important; }
+html[data-theme='D'] [data-mali-yorum-error] > div:nth-child(2) { color: #1e293b !important; }
+html[data-theme='D'] [data-mali-yorum-error] > div:last-child { color: #64748b !important; }
+html[data-theme='D'] [data-mali-yorum-error] b { color: #1e293b; }

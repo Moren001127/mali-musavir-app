@@ -1,4 +1,99 @@
-/* Yalnız bu modülün D teması; A temasını ve çıktı şablonlarını etkilemez. */
-html[data-theme="D"] [data-bilanco-report] { background: #fff !important; border-color: #cbd6de !important; }
-html[data-theme="D"] [data-bilanco-band] { background: #edf2f6 !important; border-color: #cbd6de !important; }
-html[data-theme="D"] [data-bilanco-row] { background: #fff !important; border-color: #d9e2e8 !important; }
+/* Bilanço — beyaz tema (D). Ortak mali tablo katmanı + bu sayfaya özgü kurallar. A teması ve çıktı şablonları etkilenmez. */
+@import '../mali-tablolar-white.css';
+
+/* ── Aktif / Pasif sütunları ─────────────────────────────────────────────────────────────────────── */
+html[data-theme='D'] [data-bilanco-report] {
+  background: #fff !important;
+  border: 1px solid var(--mt-line) !important;
+  border-radius: 12px !important;
+  box-shadow: var(--mt-shadow) !important;
+}
+/* sütun başlığı (AKTİF · PASİF + toplam) */
+html[data-theme='D'] [data-bilanco-report] [data-bilanco-band]:has(h4) {
+  background: #f1f5f9 !important;
+  border-bottom: 1px solid var(--mt-line-strong) !important;
+}
+html[data-theme='D'] [data-bilanco-report] [data-bilanco-band] h4 { color: #0f172a !important; font-size: 15px !important; letter-spacing: 0.02em !important; }
+html[data-theme='D'] [data-bilanco-report] [data-bilanco-band]:has(h4) span { color: #0f172a !important; }
+/* grup şeridi (I — DÖNEN VARLIKLAR · tutar) */
+html[data-theme='D'] [data-bilanco-report] [data-bilanco-band]:not(:has(h4)) {
+  background: #f8fafc !important;
+  color: var(--mt-ink-2) !important;
+  border-top: 1px solid var(--mt-line) !important;
+  border-bottom: 1px solid var(--mt-line-soft) !important;
+  letter-spacing: 0.06em !important;
+}
+/* kalem satırları */
+html[data-theme='D'] [data-bilanco-report] [data-bilanco-row] {
+  background: #fff !important;
+  border-color: var(--mt-line-soft) !important;
+}
+html[data-theme='D'] [data-bilanco-report] [data-bilanco-row] > div:first-child { color: var(--mt-ink) !important; font-weight: 600 !important; }
+/* alt hesap satırları: kod soluk, ad ikincil */
+html[data-theme='D'] [data-bilanco-report] div.pl-10 {
+  background: #fff !important;
+  border-color: var(--mt-line-soft) !important;
+  color: var(--mt-ink-2) !important;
+}
+html[data-theme='D'] [data-bilanco-report] div.pl-10 > div > span:first-child { color: var(--mt-muted) !important; font-weight: 600 !important; }
+html[data-theme='D'] [data-bilanco-report] button.w-full.text-left.pl-10 {
+  background: #fff !important;
+  border-color: var(--mt-line-soft) !important;
+  color: var(--mt-primary-text) !important;
+}
+html[data-theme='D'] [data-bilanco-report] button.w-full.text-left.pl-10:hover { background: var(--mt-hover) !important; }
+html[data-theme='D'] [data-bilanco-report] span.tabular-nums:not([data-amount]) { color: var(--mt-ink) !important; }
+
+/* ── 59 Net Kâr/Zarar manuel düzeltme şeridi ─────────────────────────────────────────────────────── */
+html[data-theme='D'] .financial-report-readable [data-mali-manual] {
+  background: #fff !important;
+  border: 1px solid var(--mt-line) !important;
+  border-radius: 12px !important;
+  padding: 10px 14px !important;
+}
+html[data-theme='D'] .financial-report-readable [data-mali-manual] strong { color: var(--mt-ink) !important; }
+html[data-theme='D'] .financial-report-readable [data-mali-manual] > div:first-child > svg { color: var(--mt-primary) !important; }
+html[data-theme='D'] .financial-report-readable [data-mali-manual] > div:first-child > span.rounded {
+  border-radius: 999px !important;
+  padding: 2px 8px !important;
+  font-size: 10.5px !important;
+  background: #f1f5f9 !important;
+  color: var(--mt-ink-2) !important;
+  border: 1px solid #e2e8f0;
+}
+html[data-theme='D'] .financial-report-readable [data-mali-manual] > div:first-child > span.rounded:has(svg) { background: #ebfbee !important; color: #2b8a3e !important; border-color: #c6efd0; }
+html[data-theme='D'] .financial-report-readable [data-mali-manual] label > span { color: var(--mt-muted) !important; font-size: 10.5px !important; }
+html[data-theme='D'] .financial-report-readable [data-mali-manual] input {
+  background: #fff !important;
+  border-radius: 8px !important;
+  padding: 5px 8px !important;
+  font-size: 12.5px !important;
+}
+html[data-theme='D'] .financial-report-readable [data-mali-manual] input:focus { box-shadow: 0 0 0 3px var(--mt-primary-line); }
+html[data-theme='D'] .financial-report-readable [data-mali-manual] button.px-3.py-1.rounded {
+  border-radius: 8px !important;
+  padding: 5px 12px !important;
+  box-shadow: 0 8px 16px -10px var(--mt-primary);
+}
+html[data-theme='D'] .financial-report-readable [data-mali-manual] button.px-2.py-0\.5.rounded { border-radius: 8px !important; padding: 3px 9px !important; }
+
+/* ── Denklik kutusu ──────────────────────────────────────────────────────────────────────────────── */
+html[data-theme='D'] .financial-report-readable [data-mali-balance] { border-radius: 12px !important; }
+html[data-theme='D'] .financial-report-readable [data-mali-balance] span:not(.font-mono):not(.font-bold) { color: var(--mt-ink-2) !important; }
+
+/* ── Finansal oranlar: beyaz kart, koyu değer; renk yalnız eğilim ve yorumda ────────────────────── */
+html[data-theme='D'] [data-bilanco-ratios] div.uppercase.tracking-\[\.2em\] {
+  color: var(--mt-ink-2) !important;
+  letter-spacing: 0.1em !important;
+  font-size: 11px !important;
+}
+html[data-theme='D'] [data-bilanco-ratios] div.rounded-xl.p-4 {
+  background: #fff !important;
+  border: 1px solid var(--mt-line) !important;
+  border-radius: 12px !important;
+  box-shadow: var(--mt-shadow) !important;
+}
+html[data-theme='D'] [data-bilanco-ratios] div.rounded-xl.p-4 > div:first-child > span:first-child { color: var(--mt-muted) !important; letter-spacing: 0.06em !important; }
+html[data-theme='D'] [data-bilanco-ratios] div.rounded-xl.p-4 > div:first-child > span.font-mono { color: var(--mt-faint) !important; font-size: 11px !important; }
+html[data-theme='D'] [data-bilanco-ratios] div.rounded-xl.p-4 span.tabular-nums { color: #0f172a !important; }
+html[data-theme='D'] [data-bilanco-ratios] div.rounded-xl.p-4 div.font-mono.mt-1 { color: var(--mt-faint) !important; font-size: 11px !important; }

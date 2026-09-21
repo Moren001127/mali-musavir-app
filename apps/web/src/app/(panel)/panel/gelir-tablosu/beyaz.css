@@ -1,29 +1,155 @@
-/* Yalnız bu modülün D teması; A temasını ve çıktı şablonlarını etkilemez. */
-/* Rapor tutarlarının kâr/zarar renklerine dokunmadan yalnız yüzey ve ayırıcılar. */
-html[data-theme="D"] [data-gelir-report] table { border-color: #cbd6de !important; }
-html[data-theme="D"] [data-gelir-report] table :is(td,th) { border-color: #d5dfe6 !important; }
+/* Gelir Tablosu — beyaz tema (D). Ortak mali tablo katmanı + bu sayfaya özgü kurallar.
+   A teması ve mükellef çıktısı (HTML şablonu) etkilenmez; kâr/zarar renkleri anlamını korur. */
+@import '../mali-tablolar-white.css';
 
-/* Belirgin rapor çizgileri; hesap ve tutar renkleri korunur. */
-html[data-theme="D"] [data-gelir-report] table { border: 1px solid #aebfc7 !important; background: #fff !important; }
-html[data-theme="D"] [data-gelir-report] table :is(td, th) { border-bottom: 1px solid #ccd7dc !important; border-color: #ccd7dc !important; }
-html[data-theme="D"] [data-gelir-report] table :is(td, th) + :is(td, th) { border-left: 1px solid #ccd7dc !important; }
-html[data-theme="D"] [data-gelir-report] thead :is(th, td) { background: #edf3f5 !important; color: #334d59 !important; border-bottom-color: #aebfc7 !important; }
-html[data-theme="D"] [data-gelir-report] [data-report-row="detail"] { background: #fff !important; }
-html[data-theme="D"] [data-gelir-report] [data-report-row="detail"]:nth-child(even) { background: #f8fafb !important; }
-html[data-theme="D"] [data-gelir-report] [data-report-row="group"] { background: #edf3f5 !important; }
-html[data-theme="D"] [data-gelir-report] [data-report-row="total"] { background: #eef4f3 !important; }
-html[data-theme="D"] [data-gelir-report] [data-report-row="final"] { background: #e7eff4 !important; }
-html[data-theme="D"] [data-gelir-report] [data-report-row="total"] > td { border-top: 2px solid #a7bebc !important; font-weight: 700; }
-html[data-theme="D"] [data-gelir-report] [data-report-row="final"] > td { border-top: 2px solid #8fa7b5 !important; border-bottom: 2px solid #8fa7b5 !important; font-weight: 700; }
-html[data-theme="D"] [data-gelir-report] [data-report-row="manual"] { background: #f0f5fc !important; }
-html[data-theme="D"] [data-gelir-report] [data-report-ratio]:nth-child(6n + 1) { background: #edf6f2 !important; border-color: #b7d5c9 !important; }
-html[data-theme="D"] [data-gelir-report] [data-report-ratio]:nth-child(6n + 2) { background: #edf3fb !important; border-color: #bdcfe4 !important; }
-html[data-theme="D"] [data-gelir-report] [data-report-ratio]:nth-child(6n + 3) { background: #f3eff9 !important; border-color: #d1c4e2 !important; }
-html[data-theme="D"] [data-gelir-report] [data-report-ratio]:nth-child(6n + 4) { background: #fff5e9 !important; border-color: #e6cead !important; }
-html[data-theme="D"] [data-gelir-report] [data-report-ratio]:nth-child(6n + 5) { background: #ecf6f6 !important; border-color: #b6d4d5 !important; }
-html[data-theme="D"] [data-gelir-report] [data-report-ratio]:nth-child(6n + 6) { background: #faf0f3 !important; border-color: #e2c5cf !important; }
-html[data-theme="D"] [data-gelir-report] [data-report-ratio] > :first-child { color: #3d505b !important; }
-html[data-theme="D"] [data-gelir-report] [data-report-ratio] > :last-child { color: #586974 !important; }
-html[data-theme="D"] [data-gelir-report] [data-report-ratio="neutral"] > :nth-child(2) { color: #65517e !important; }
+/* ── Rapor tabloları (gelir tablosu · geçici vergi · stok): çerçeve ve başlıklar ─────────────────── */
+html[data-theme='D'] [data-gelir-report] table { border: 0 !important; background: #fff !important; }
+html[data-theme='D'] [data-gelir-report] table :is(td, th) { border-color: var(--mt-line-soft) !important; }
+html[data-theme='D'] [data-gelir-report] table :is(td, th) + :is(td, th) { border-left: 1px solid var(--mt-line-soft) !important; }
+html[data-theme='D'] [data-gelir-report] thead tr { background: var(--mt-thead) !important; border-color: var(--mt-line) !important; }
+html[data-theme='D'] body [data-panel-main] [data-gelir-report] thead th {
+  background: var(--mt-thead) !important;
+  color: var(--mt-ink) !important;
+  border-bottom-color: var(--mt-line) !important;
+}
+/* firma satırı */
+html[data-theme='D'] [data-gelir-report] thead th[colspan] { font-size: 13.5px !important; font-weight: 650 !important; color: var(--mt-ink) !important; }
+html[data-theme='D'] [data-gelir-report] thead th[colspan] > span { color: var(--mt-muted) !important; }
+/* dönem başlıkları: koyu başlık, soluk ay aralığı */
+html[data-theme='D'] [data-gelir-report] thead th.text-center { color: var(--mt-ink) !important; }
+html[data-theme='D'] [data-gelir-report] thead th.text-center > div:first-child { color: var(--mt-ink) !important; }
+html[data-theme='D'] [data-gelir-report] thead th.text-center > div.font-normal { color: var(--mt-muted) !important; }
+html[data-theme='D'] [data-gelir-report] thead th.text-center > div.text-\[10px\] { color: var(--mt-faint) !important; }
+html[data-theme='D'] [data-gelir-report] thead th.text-center:has(> div.text-\[10px\]) { color: var(--mt-faint) !important; }
+html[data-theme='D'] [data-gelir-report] thead th.text-center:has(> div.text-\[10px\]) > div:first-child { color: var(--mt-faint) !important; }
+/* dönem düğmeleri: kesin kayıt çivit yumuşak · kilidi aç kırmızı (satır içi) · Excel beyaz ikincil · WhatsApp yeşil */
+html[data-theme='D'] [data-gelir-report] thead th.text-center button.text-\[10px\] {
+  border-radius: 7px !important;
+  padding: 2px 8px !important;
+  font-size: 10.5px !important;
+}
+html[data-theme='D'] [data-gelir-report] thead th.text-center button.text-\[10px\]:nth-of-type(1):not([style*='rose']) {
+  background: var(--mt-primary-soft) !important;
+  color: var(--mt-primary-text) !important;
+  border: 1px solid var(--mt-primary-line) !important;
+}
+html[data-theme='D'] [data-gelir-report] thead th.text-center button.text-\[10px\]:nth-of-type(2) {
+  background: #fff !important;
+  color: var(--mt-ink-2) !important;
+  border: 1px solid var(--mt-input-line) !important;
+}
+html[data-theme='D'] [data-gelir-report] thead th.text-center button.inline-flex { border-radius: 7px !important; }
 
-html[data-theme="D"] [data-gelir-report] [data-report-percent] { background: #e7f4ec !important; color: #205c3b !important; border-color: #b6d6c2 !important; text-shadow: none !important; }
+/* ── Satırlar: ayrıntı beyaz/zebra · grup açık gri · toplam gri + koyu çizgi · sonuç çivit yumuşak ── */
+html[data-theme='D'] [data-gelir-report] tbody tr { border-color: var(--mt-line-soft) !important; }
+html[data-theme='D'] [data-gelir-report] [data-report-row='detail'] { background: #fff !important; }
+html[data-theme='D'] [data-gelir-report] [data-report-row='detail']:nth-child(even) { background: var(--mt-zebra) !important; }
+html[data-theme='D'] [data-gelir-report] [data-report-row='detail'] > td:first-child { color: var(--mt-muted) !important; font-weight: 600 !important; }
+html[data-theme='D'] [data-gelir-report] [data-report-row='detail'] > td:nth-child(2) { color: var(--mt-ink-2) !important; }
+html[data-theme='D'] [data-gelir-report] [data-report-row='group'] { background: #f8fafc !important; }
+html[data-theme='D'] [data-gelir-report] [data-report-row='group'] > td { color: var(--mt-ink) !important; font-weight: 700 !important; }
+html[data-theme='D'] [data-gelir-report] [data-report-row='group'] > td:first-child { color: var(--mt-ink-2) !important; }
+html[data-theme='D'] [data-gelir-report] [data-report-row='total'] {
+  background: #f1f5f9 !important;
+  border-top: 2px solid var(--mt-line-strong) !important;
+  border-bottom: 1px solid var(--mt-line) !important;
+}
+html[data-theme='D'] [data-gelir-report] [data-report-row='total'] > td { color: #0f172a !important; font-weight: 700 !important; border-top: 2px solid var(--mt-line-strong) !important; border-bottom-color: var(--mt-line) !important; }
+html[data-theme='D'] [data-gelir-report] [data-report-row='final'] {
+  background: var(--mt-primary-soft) !important;
+  border-top: 2px solid #b9c7f5 !important;
+  border-bottom: 2px solid #b9c7f5 !important;
+}
+html[data-theme='D'] [data-gelir-report] [data-report-row='final'] > td { color: #0f172a !important; font-weight: 700 !important; border-top: 2px solid #b9c7f5 !important; border-bottom-color: #b9c7f5 !important; }
+html[data-theme='D'] [data-gelir-report] :is([data-report-row='total'], [data-report-row='final']) > td:first-child { color: var(--mt-ink-2) !important; }
+/* manuel düzeltme satırı: mavi yumuşak, kesikli ayraç */
+html[data-theme='D'] [data-gelir-report] [data-report-row='manual'] { background: #f3f8fe !important; border-top: 1px dashed #c5e3fb !important; }
+html[data-theme='D'] [data-gelir-report] [data-report-row='manual'] > td { border-bottom: 1px dashed #c5e3fb !important; color: #1971c2 !important; }
+html[data-theme='D'] [data-gelir-report] [data-report-row='manual'] input,
+html[data-theme='D'] [data-gelir-report] tbody input.font-mono {
+  background: #fff !important;
+  border: 1px solid #c5e3fb !important;
+  border-radius: 8px !important;
+  color: #1971c2 !important;
+  font-weight: 650 !important;
+}
+html[data-theme='D'] [data-gelir-report] tbody input.font-mono:disabled { background: #f8fafc !important; border-color: var(--mt-line-soft) !important; color: var(--mt-faint) !important; }
+html[data-theme='D'] [data-gelir-report] tbody input.font-mono:focus { border-color: var(--mt-primary) !important; box-shadow: 0 0 0 3px var(--mt-primary-line); }
+html[data-theme='D'] [data-gelir-report] [data-report-row='save'] { background: #f3f8fe !important; border-top: 1px solid #c5e3fb !important; }
+html[data-theme='D'] [data-gelir-report] [data-report-row='save'] > td { color: #1971c2 !important; border-left-color: var(--mt-line-soft) !important; }
+html[data-theme='D'] [data-gelir-report] [data-report-row='save'] button {
+  border-radius: 8px !important;
+  padding: 5px 12px !important;
+}
+html[data-theme='D'] [data-gelir-report] [data-report-row='save'] button[style*='blue'] {
+  background: linear-gradient(135deg, var(--mt-primary), var(--mt-primary-2)) !important;
+  color: #fff !important;
+  border: 0 !important;
+  box-shadow: 0 8px 16px -10px var(--mt-primary);
+}
+html[data-theme='D'] [data-gelir-report] [data-report-row='save'] button:not([style*='blue']) {
+  background: #fff !important;
+  color: var(--mt-ink-2) !important;
+  border: 1px solid var(--mt-input-line) !important;
+}
+/* geçici vergi tablosu: kaydet satırı ve girdi */
+html[data-theme='D'] [data-gelir-vergi] tbody tr:last-child { border-top: 1px dashed var(--mt-line-strong) !important; background: #f8fafc; }
+html[data-theme='D'] [data-gelir-vergi] tbody tr:last-child td.italic { color: var(--mt-muted) !important; }
+html[data-theme='D'] [data-gelir-vergi] tbody tr:last-child button { border-radius: 8px !important; padding: 5px 12px !important; box-shadow: 0 8px 16px -10px var(--mt-primary); }
+html[data-theme='D'] [data-gelir-vergi] tbody td span.rounded.text-\[9\.5px\] { border-radius: 999px !important; padding: 2px 8px !important; }
+html[data-theme='D'] [data-gelir-vergi] tbody td span.rounded.text-\[9\.5px\]:not([style*='green']) { background: #f1f5f9 !important; color: var(--mt-ink-2) !important; border: 1px solid #e2e8f0; }
+html[data-theme='D'] [data-gelir-vergi] tbody td:first-child { color: var(--mt-ink-2) !important; }
+html[data-theme='D'] [data-gelir-vergi] tbody td.font-mono[style*='portal-secondary'] { color: var(--mt-zero) !important; font-weight: 500 !important; }
+html[data-theme='D'] [data-gelir-vergi] :is([data-report-row='total'], [data-report-row='final']) > td:first-child { color: #0f172a !important; }
+/* stok tablosu: kod soluk, toplam satırları gri, kalan/negatif anlam rengi korunur */
+html[data-theme='D'] [data-gelir-stok] tbody tr { background: #fff !important; }
+html[data-theme='D'] [data-gelir-stok] tbody tr:nth-child(even) { background: var(--mt-zebra) !important; }
+html[data-theme='D'] [data-gelir-stok] tbody tr > td.font-mono:first-child { color: var(--mt-muted) !important; font-weight: 600 !important; }
+html[data-theme='D'] [data-gelir-stok] tbody tr > td:nth-child(2) { color: var(--mt-ink-2) !important; }
+html[data-theme='D'] [data-gelir-stok] tbody tr[style*='copper'] {
+  background: #f1f5f9 !important;
+  border-top: 2px solid var(--mt-line-strong) !important;
+}
+html[data-theme='D'] [data-gelir-stok] tbody tr[style*='copper'] > td { color: #0f172a !important; font-weight: 700 !important; }
+html[data-theme='D'] [data-gelir-stok] tbody tr[style*='rose'] { background: #fff5f5 !important; border-top: 1px solid #ffc9c9 !important; }
+html[data-theme='D'] [data-gelir-stok] tbody tr[style*='rose'] > td { color: #c92a2a !important; }
+html[data-theme='D'] [data-gelir-stok] tbody td[style*='rose-wash'] { background: #ffe3e3 !important; }
+
+/* ── Yüzde rozeti (net satışa oran): nötr kurşuni ─────────────────────────────────────────────────── */
+html[data-theme='D'] [data-gelir-report] [data-report-percent] {
+  border-radius: 6px !important;
+  font-size: 11.5px !important;
+  min-width: 0 !important;
+  padding: 2px 8px !important;
+}
+
+/* ── Finansal oran kartları: beyaz kart; renk yalnız değerde (iyi yeşil · uyarı kehribar · kötü kırmızı) ── */
+html[data-theme='D'] [data-gelir-report] [data-report-ratio] {
+  background: #fff !important;
+  border: 1px solid var(--mt-line) !important;
+  border-radius: 12px !important;
+  box-shadow: var(--mt-shadow) !important;
+}
+html[data-theme='D'] [data-gelir-report] [data-report-ratio] > :first-child { color: var(--mt-muted) !important; font-size: 11.5px !important; }
+html[data-theme='D'] [data-gelir-report] [data-report-ratio] > :last-child { color: var(--mt-faint) !important; font-size: 11px !important; }
+html[data-theme='D'] [data-gelir-report] [data-report-ratio='neutral'] > :nth-child(2) { color: #0f172a !important; }
+html[data-theme='D'] [data-gelir-report] [data-report-ratio='good'] > :nth-child(2) { color: #2b8a3e !important; }
+html[data-theme='D'] [data-gelir-report] [data-report-ratio='warn'] > :nth-child(2) { color: #d9480f !important; }
+html[data-theme='D'] [data-gelir-report] [data-report-ratio='bad'] > :nth-child(2) { color: #c92a2a !important; }
+
+/* ── WhatsApp önizleme penceresi ────────────────────────────────────────────────────────────────── */
+html[data-theme='D'] [data-gelir-report] > div.fixed.inset-0 textarea,
+html[data-theme='D'] [data-gelir-report] > div.fixed.inset-0 input {
+  background: #fff !important;
+  border: 1px solid var(--mt-input-line) !important;
+  border-radius: 10px !important;
+  color: var(--mt-ink) !important;
+}
+html[data-theme='D'] [data-gelir-report] > div.fixed.inset-0 label { color: var(--mt-muted) !important; }
+html[data-theme='D'] [data-gelir-report] > div.fixed.inset-0 button.border-white\/15 {
+  background: #fff !important;
+  border: 1px solid var(--mt-input-line) !important;
+  color: var(--mt-ink-2) !important;
+  border-radius: 10px !important;
+}
+html[data-theme='D'] [data-gelir-report] > div.fixed.inset-0 button.text-white { border-radius: 10px !important; }

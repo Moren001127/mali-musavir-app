@@ -1,4 +1,195 @@
-/* Yalnız bu modülün D teması; A temasını ve çıktı şablonlarını etkilemez. */
-html[data-theme="D"] [data-mizan-report] { background: #fff !important; border-color: #cbd6de !important; }
-html[data-theme="D"] [data-mizan-band] { background: linear-gradient(115deg,#eaf0f7,#fff) !important; border-color: #cbd6de !important; }
-html[data-theme="D"] [data-panel-main] [data-mizan-group="true"] { background: #edf3f7 !important; }
+/* Mizan — beyaz tema (D). Sayfa KİLİTLİ (page.tsx dokunulmaz): seçiciler mevcut sınıf/öznitelik yapısından kurulur.
+   Ortak mali tablo katmanı (../mali-tablolar-white.css) başlık, komut barı, sayaç, düğme, tablo ve boş durumları boyar;
+   burada yalnız Mizan'a özgü parçalar var. A teması ve çıktı şablonları etkilenmez. */
+@import '../mali-tablolar-white.css';
+
+/* ── Luca işlem kutusu (güvenlik kodu + günlük) ─────────────────────────────────────────────────── */
+html[data-theme='D'] .financial-report-readable > div.rounded-lg.p-3.text-sm {
+  background: #fff !important;
+  border: 1px solid var(--mt-line) !important;
+  border-radius: 12px !important;
+  color: var(--mt-ink) !important;
+}
+html[data-theme='D'] .financial-report-readable > div.rounded-lg.p-3.text-sm > div:first-child > div.flex-1 > div:first-child { color: var(--mt-ink) !important; }
+html[data-theme='D'] .financial-report-readable > div.rounded-lg.p-3.text-sm > div:first-child > svg { color: var(--mt-primary) !important; }
+html[data-theme='D'] .financial-report-readable > div.rounded-lg.p-3.text-sm button.px-3.py-1\.5.rounded-md {
+  background: #fff !important;
+  border: 1px solid var(--mt-input-line) !important;
+  color: var(--mt-ink-2) !important;
+  border-radius: 8px !important;
+}
+html[data-theme='D'] .financial-report-readable > div.rounded-lg.p-3.text-sm div.font-mono.space-y-0\.5 {
+  background: #f8fafc !important;
+  border: 1px solid var(--mt-line) !important;
+  border-radius: 10px !important;
+  color: var(--mt-ink-2) !important;
+}
+html[data-theme='D'] .financial-report-readable > div.rounded-lg.p-3.text-sm button.rounded-md.px-3.py-1\.5.text-xs.font-bold {
+  background: var(--mt-primary-soft) !important;
+  border: 1px solid var(--mt-primary-line) !important;
+  color: var(--mt-primary-text) !important;
+  border-radius: 8px !important;
+}
+html[data-theme='D'] .financial-report-readable > div.rounded-lg.p-3.text-sm input.h-11 {
+  background: #fff !important;
+  border: 1px solid var(--mt-input-line) !important;
+  color: var(--mt-ink) !important;
+}
+
+/* ── Denetim kriterleri kartı ────────────────────────────────────────────────────────────────────── */
+html[data-theme='D'] .financial-report-readable > div.rounded-xl.border.p-4 {
+  background: #fff !important;
+  border: 1px solid var(--mt-line) !important;
+  border-radius: 14px !important;
+  box-shadow: var(--mt-shadow) !important;
+}
+html[data-theme='D'] .financial-report-readable > div.rounded-xl.border.p-4 button:has(> svg.lucide-sliders-horizontal)[style*='copper'] {
+  background: var(--mt-primary-soft) !important;
+  border-color: var(--mt-primary-line) !important;
+  color: var(--mt-primary-text) !important;
+}
+/* "şu an kontrol edilen" ve "yeni kriter" iç kutuları */
+html[data-theme='D'] .financial-report-readable > div.rounded-xl.border.p-4 div.rounded-xl.border.p-3\.5 {
+  background: #f8fafc !important;
+  border: 1px solid var(--mt-line) !important;
+  border-radius: 12px !important;
+}
+html[data-theme='D'] .financial-report-readable > div.rounded-xl.border.p-4 h4 { color: var(--mt-ink) !important; }
+html[data-theme='D'] .financial-report-readable > div.rounded-xl.border.p-4 h4 + p { color: var(--mt-muted) !important; }
+html[data-theme='D'] .financial-report-readable > div.rounded-xl.border.p-4 span.rounded-md.px-2.py-1.font-bold {
+  background: var(--mt-primary-soft) !important;
+  color: var(--mt-primary-text) !important;
+  border: 1px solid var(--mt-primary-line);
+  border-radius: 999px !important;
+}
+/* sistem kriter kartları */
+html[data-theme='D'] .financial-report-readable > div.rounded-xl.border.p-4 div.rounded-lg.border.p-3 {
+  background: #fff !important;
+  border: 1px solid var(--mt-line) !important;
+  border-radius: 10px !important;
+}
+html[data-theme='D'] .financial-report-readable > div.rounded-xl.border.p-4 div.rounded-lg.border.p-3 > div.mt-2 { color: var(--mt-ink) !important; }
+html[data-theme='D'] .financial-report-readable > div.rounded-xl.border.p-4 div.rounded-lg.border.p-3 > p { color: var(--mt-muted) !important; }
+html[data-theme='D'] .financial-report-readable > div.rounded-xl.border.p-4 span.rounded.px-1\.5.py-0\.5.text-\[10px\][style*='copper'] {
+  background: #fff4e6 !important;
+  color: #d9480f !important;
+}
+/* form girdileri */
+html[data-theme='D'] .financial-report-readable > div.rounded-xl.border.p-4 :is(input.rounded-lg, select.rounded-lg) {
+  background: #fff !important;
+  border: 1px solid var(--mt-input-line) !important;
+  border-radius: 10px !important;
+  color: var(--mt-ink) !important;
+}
+html[data-theme='D'] .financial-report-readable > div.rounded-xl.border.p-4 :is(input.rounded-lg, select.rounded-lg):focus {
+  outline: none !important;
+  border-color: var(--mt-primary) !important;
+  box-shadow: 0 0 0 3px var(--mt-primary-line) !important;
+}
+html[data-theme='D'] .financial-report-readable > div.rounded-xl.border.p-4 button.mt-2.inline-flex {
+  background: #fff !important;
+  border: 1px solid var(--mt-input-line) !important;
+  color: var(--mt-ink-2) !important;
+}
+html[data-theme='D'] .financial-report-readable > div.rounded-xl.border.p-4 label.inline-flex { color: var(--mt-ink-2) !important; }
+/* kayıtlı kriter satırları */
+html[data-theme='D'] .financial-report-readable > div.rounded-xl.border.p-4 div.rounded-lg.px-3.py-2\.5.flex.items-start {
+  background: #fff !important;
+  border: 1px solid var(--mt-line) !important;
+  border-radius: 10px !important;
+}
+html[data-theme='D'] .financial-report-readable > div.rounded-xl.border.p-4 div.rounded-lg.px-3.py-2\.5.flex.items-start span.text-\[10px\].rounded {
+  border-radius: 999px !important;
+  padding: 2px 8px !important;
+}
+html[data-theme='D'] .financial-report-readable > div.rounded-xl.border.p-4 div.rounded-lg.px-3.py-2\.5.flex.items-start span.text-\[10px\].rounded[style*='copper-wash'] {
+  background: var(--mt-primary-soft) !important;
+  color: var(--mt-primary-text) !important;
+}
+html[data-theme='D'] .financial-report-readable > div.rounded-xl.border.p-4 div.rounded-lg.px-3.py-2\.5.flex.items-start span.text-\[10px\].rounded[style*='#f59e0b'] {
+  background: #fff4e6 !important;
+  color: #d9480f !important;
+}
+html[data-theme='D'] .financial-report-readable > div.rounded-xl.border.p-4 div.rounded-lg.px-3.py-2\.5.flex.items-start button.p-1\.5 { border-radius: 8px !important; }
+html[data-theme='D'] .financial-report-readable > div.rounded-xl.border.p-4 div.rounded-lg.px-3.py-2\.5.flex.items-start button.p-1\.5:has(> svg.lucide-pencil) {
+  background: var(--mt-primary-soft) !important;
+  color: var(--mt-primary-text) !important;
+}
+html[data-theme='D'] .financial-report-readable > div.rounded-xl.border.p-4 div.rounded-lg.px-3.py-2\.5.flex.items-start button.p-1\.5:has(> svg.lucide-plus) { background: #f1f5f9 !important; color: var(--mt-muted) !important; }
+html[data-theme='D'] .financial-report-readable > div.rounded-xl.border.p-4 div.rounded-lg.px-3.py-3.text-\[12px\] {
+  background: #f8fafc !important;
+  border: 1px dashed #dbe2ea !important;
+  color: var(--mt-muted) !important;
+}
+
+/* ── Hesap kodu denetimi (uyarı kartları): hata kırmızı, uyarı kehribar ─────────────────────────── */
+html[data-theme='D'] .financial-report-readable h3.font-semibold > span.text-\[10\.5px\][style*='#f59e0b'] {
+  background: #fff4e6 !important;
+  color: #d9480f !important;
+  border-color: #ffd8a8 !important;
+}
+html[data-theme='D'] .financial-report-readable div.rounded-lg.px-3.py-2\.5.flex.gap-2\.5 {
+  background: #fff !important;
+  border-radius: 10px !important;
+}
+html[data-theme='D'] .financial-report-readable div.rounded-lg.px-3.py-2\.5.flex.gap-2\.5:has(svg.lucide-triangle-alert) { border-color: #ffd8a8 !important; }
+html[data-theme='D'] .financial-report-readable div.rounded-lg.px-3.py-2\.5.flex.gap-2\.5:has(svg.lucide-triangle-alert) > div.w-5 { background: #fff4e6 !important; color: #d9480f !important; }
+html[data-theme='D'] .financial-report-readable div.rounded-lg.px-3.py-2\.5.flex.gap-2\.5:has(svg.lucide-triangle-alert) p.font-semibold { color: #d9480f !important; }
+html[data-theme='D'] .financial-report-readable div.rounded-lg.px-3.py-2\.5.flex.gap-2\.5:has(svg.lucide-circle-x) p.font-semibold { color: #c92a2a !important; }
+html[data-theme='D'] .financial-report-readable div.rounded-lg.px-3.py-2\.5.flex.gap-2\.5 p.leading-snug { color: var(--mt-ink-2) !important; }
+
+/* ── Mizan tablosu: Excel benzeri başlık bloğu + tek çerçeve + yapışkan başlık/alt toplam ───────── */
+html[data-theme='D'] [data-mizan-report] {
+  background: #fff !important;
+  border: 1px solid var(--mt-line) !important;
+  border-radius: 12px !important;
+  box-shadow: var(--mt-shadow) !important;
+}
+html[data-theme='D'] [data-mizan-band] {
+  background: #f8fafc !important;
+  border-bottom: 1px solid var(--mt-line) !important;
+}
+html[data-theme='D'] [data-mizan-band] > div:first-child { color: #0f172a !important; letter-spacing: 0.12em !important; }
+html[data-theme='D'] [data-mizan-band] > div:nth-child(2) { color: var(--mt-ink) !important; }
+html[data-theme='D'] [data-mizan-band] > div:last-child { color: var(--mt-ink-2) !important; }
+html[data-theme='D'] [data-mizan-band] > div:last-child span:first-child { color: var(--mt-muted) !important; }
+html[data-theme='D'] [data-mizan-band] > div:last-child span:last-child { color: var(--mt-ink) !important; }
+html[data-theme='D'] body [data-panel-main] [data-mizan-report] thead th {
+  background: var(--mt-thead) !important;
+  color: var(--mt-ink-2) !important;
+  font-size: 11px !important;
+  letter-spacing: 0.06em !important;
+  border-right-color: var(--mt-line) !important;
+  border-bottom: 1px solid var(--mt-line-strong) !important;
+}
+html[data-theme='D'] [data-mizan-report] tbody tr { background: #fff !important; }
+html[data-theme='D'] [data-mizan-report] tbody tr[data-mizan-group='true'] { background: #f8fafc !important; }
+html[data-theme='D'] body [data-panel-main] [data-mizan-report] tbody td {
+  border-right-color: var(--mt-line-soft) !important;
+  border-bottom: 1px solid var(--mt-line-soft) !important;
+  color: var(--mt-ink) !important;
+}
+html[data-theme='D'] [data-mizan-report] tbody tr[data-mizan-group='true'] td { color: #0f172a !important; }
+html[data-theme='D'] [data-mizan-report] tbody tr:not([data-mizan-group='true']) td:first-child { color: var(--mt-muted) !important; font-weight: 600 !important; }
+html[data-theme='D'] [data-mizan-report] tbody tr:not([data-mizan-group='true']) td:nth-child(2) { color: var(--mt-ink-2) !important; }
+html[data-theme='D'] [data-mizan-report] tbody td[style*='copper-wash'] { background: var(--mt-primary-soft) !important; outline-color: var(--mt-primary) !important; }
+html[data-theme='D'] [data-mizan-report] tbody td:hover { background: var(--mt-hover); }
+html[data-theme='D'] [data-mizan-report] tfoot td {
+  background: #f1f5f9 !important;
+  color: #0f172a !important;
+  border-top: 2px solid var(--mt-line-strong) !important;
+  border-right-color: var(--mt-line) !important;
+}
+html[data-theme='D'] [data-mizan-report] > div:last-child {
+  background: #f8fafc !important;
+  border-top: 1px solid var(--mt-line) !important;
+  color: var(--mt-muted) !important;
+}
+
+/* ── Geçmiş mizanlar: uyarı sayısı rozeti (kehribar / yeşil) ────────────────────────────────────── */
+html[data-theme='D'] .financial-report-readable table td.text-center span.rounded[style*='copper-wash'] {
+  background: #fff4e6 !important;
+  color: #d9480f !important;
+  border-radius: 999px !important;
+}
+html[data-theme='D'] .financial-report-readable table td.text-center span.rounded[style*='green-wash'] { border-radius: 999px !important; }

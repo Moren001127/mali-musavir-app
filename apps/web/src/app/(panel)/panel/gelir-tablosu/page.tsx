@@ -920,7 +920,7 @@ export default function GelirTablosuPage() {
   };
 
   return (
-    <div data-gelir-report className="financial-report-readable space-y-3 max-w-7xl">
+    <div data-gelir-report data-mali-page="gelir" className="financial-report-readable space-y-3 max-w-7xl">
       {/* Header — Fiş Yazdırma imzası: kart + üst renk şeridi + radial parıltı + degrade ikon kutusu */}
       <div data-portal-page-header
         className="relative overflow-hidden rounded-2xl border p-5"
@@ -1223,7 +1223,7 @@ export default function GelirTablosuPage() {
                 // Manuel düzeltme satırı (input ile) — 621'in hemen altında
                 if (row.manual) {
                   return (
-                    <tr key={idx} style={portalStyle({ borderTop: '1px dashed rgba(96,165,250,0.30)', background: 'rgba(96,165,250,0.045)' })}>
+                    <tr data-report-row="manual" key={idx} style={portalStyle({ borderTop: '1px dashed rgba(96,165,250,0.30)', background: 'rgba(96,165,250,0.045)' })}>
                       <td className="px-3 py-2.5 text-[12.5px]" style={portalStyle({ color: '#60a5fa', textAlign: 'left', fontWeight: 700, fontFamily: REPORT_FONT, borderRight: `1px solid ${GRID_LINE}`, borderBottom: '1px dashed rgba(96,165,250,0.35)' })}>Manuel</td>
                       <td className="px-3 py-2.5 text-[13.5px]" style={portalStyle({ color: '#60a5fa', fontWeight: 600, paddingLeft: 8, borderRight: `1px solid ${GRID_LINE}`, borderBottom: '1px dashed rgba(96,165,250,0.35)' })}>
                         {row.label}
@@ -1356,7 +1356,7 @@ export default function GelirTablosuPage() {
                   (Number(gt.duzeltmeler?.satisMaliyetiManuel) || 0) > 0
                 )
               ) && (
-                <tr style={portalStyle({ background: 'rgba(96,165,250,0.08)', borderTop: '1px solid rgba(96,165,250,0.25)' })}>
+                <tr data-report-row="save" style={portalStyle({ background: 'rgba(96,165,250,0.08)', borderTop: '1px solid rgba(96,165,250,0.25)' })}>
                   <td colSpan={2} className="px-3 py-3 text-[11.5px]" style={portalStyle({ color: '#60a5fa' })}>
                     Manuel satılan ticari mallar maliyeti
                   </td>
@@ -1588,7 +1588,7 @@ export default function GelirTablosuPage() {
               {year} · 4 Çeyrek
             </span>
           </h3>
-          <div className="rounded-xl overflow-hidden" style={portalStyle({ background: TABLE_BG, border: `1px solid ${GRID_LINE_STRONG}` })}>
+          <div data-gelir-vergi className="rounded-xl overflow-hidden" style={portalStyle({ background: TABLE_BG, border: `1px solid ${GRID_LINE_STRONG}` })}>
             <table className="w-full text-left text-[13px]" style={portalStyle({ fontVariantNumeric: 'tabular-nums', borderCollapse: 'collapse', borderSpacing: 0, tableLayout: 'fixed' })}>
               <colgroup>
                 <col style={portalStyle({ width: LEADING_COL_WIDTH })} />
@@ -1773,7 +1773,7 @@ export default function GelirTablosuPage() {
                 {year} · 4 Çeyrek
               </span>
             </h3>
-            <div className="rounded-xl overflow-hidden" style={portalStyle({ background: TABLE_BG, border: `1px solid ${GRID_LINE_STRONG}` })}>
+            <div data-gelir-stok className="rounded-xl overflow-hidden" style={portalStyle({ background: TABLE_BG, border: `1px solid ${GRID_LINE_STRONG}` })}>
               <table className="w-full text-left text-[13px]" style={portalStyle({ fontVariantNumeric: 'tabular-nums', borderCollapse: 'collapse', borderSpacing: 0, tableLayout: 'fixed' })}>
                 <colgroup>
                   <col style={portalStyle({ width: CODE_COL_WIDTH })} />
@@ -1959,7 +1959,7 @@ export default function GelirTablosuPage() {
               {formatDonemLabel(latestQuarter.donem, latestQuarter.donemTipi)}
             </span>
           </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+          <div data-gelir-ratios className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
             <RatioCard label="Brüt Kar Marjı" value={pct(Number(latestDerived?.brutSatisKari), Number(latestDerived?.netSatislar) || 1)} formula="Brüt Satış Karı / Net Satışlar" tone="good" />
             <RatioCard label="Faaliyet Kar Marjı" value={pct(Number(latestDerived?.faaliyetKari), Number(latestDerived?.netSatislar) || 1)} formula="Faaliyet Karı / Net Satışlar" tone="good" />
             <RatioCard label="Faaliyet Gider Oranı" value={pct(Number(latestDerived?.faaliyetGiderleri), Number(latestDerived?.netSatislar) || 1)} formula="Faaliyet Giderleri / Net Satışlar" tone="neutral" />
@@ -1995,7 +1995,7 @@ export default function GelirTablosuPage() {
             <p className="text-[13px]" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>Henüz kayıtlı gelir tablosu yok</p>
           </div>
         ) : (
-          <div className="rounded-xl overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' })}>
+          <div data-gelir-history className="rounded-xl overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' })}>
             <table className="w-full text-left text-[13px]">
               <thead>
                 <tr style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.05)' })}>
@@ -2242,9 +2242,11 @@ function AmountText({
   const missing = value === null;
   const zero = !missing && value === 0;
   const isStrong = final || emphasis;
+  const amountKind = missing ? 'missing' : zero ? 'zero' : color === PROFIT_COLOR ? 'profit' : color === LOSS_COLOR ? 'loss' : (value ?? 0) < 0 ? 'neg' : undefined;
   return (
     <span
       className={className}
+      data-amount={amountKind}
       style={portalStyle({
         display: 'block',
         width: '100%',

@@ -1,4 +1,5 @@
 'use client';
+import './mali-yorum-white.css';
 import { portalStyle } from '@/lib/portal-theme';
 
 
@@ -82,6 +83,7 @@ export function MaliYorumKutusu({
 
   return (
     <div
+      data-mali-yorum
       style={portalStyle({
         border: `1px solid ${hexA(accent, 0.28)}`,
         background: `linear-gradient(180deg, ${hexA(accent, 0.06)} 0%, rgba(255,255,255,0.012) 100%)`,
@@ -91,9 +93,10 @@ export function MaliYorumKutusu({
       })}
     >
       {/* Başlık */}
-      <div style={portalStyle({ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' })}>
+      <div data-mali-yorum-head style={portalStyle({ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' })}>
         <div style={portalStyle({ display: 'flex', alignItems: 'center', gap: 10 })}>
           <div
+            data-mali-yorum-icon
             style={portalStyle({
               width: 34,
               height: 34,
@@ -109,17 +112,18 @@ export function MaliYorumKutusu({
             🤖
           </div>
           <div>
-            <div style={portalStyle({ fontWeight: 700, color: '#f5efe3', fontSize: 15, letterSpacing: 0.2 })}>
+            <div data-mali-yorum-title style={portalStyle({ fontWeight: 700, color: '#f5efe3', fontSize: 15, letterSpacing: 0.2 })}>
               MOREN MALİ MÜŞAVİRLİK AI Değerlendirmesi
             </div>
-            <div style={portalStyle({ fontSize: 12, color: 'rgba(245,239,227,0.55)' })}>
+            <div data-mali-yorum-sub style={portalStyle({ fontSize: 12, color: 'rgba(245,239,227,0.55)' })}>
               Bir mali müşavir gözüyle otomatik yorum
             </div>
           </div>
         </div>
 
-        <div style={portalStyle({ display: 'flex', gap: 8, flexWrap: 'wrap' })}>
+        <div data-mali-yorum-actions style={portalStyle({ display: 'flex', gap: 8, flexWrap: 'wrap' })}>
           <button
+            data-mali-yorum-btn="main"
             onClick={() => uretMut.mutate({ force: !!yorum, derin: false })}
             disabled={uretiliyor}
             style={portalStyle({
@@ -137,6 +141,7 @@ export function MaliYorumKutusu({
             {uretiliyor && !derinPending ? 'İnceleniyor…' : yorum ? '↻ Yenile' : '✨ Değerlendir'}
           </button>
           <button
+            data-mali-yorum-btn="deep"
             onClick={() => uretMut.mutate({ force: true, derin: true })}
             disabled={uretiliyor}
             title="Güçlü model (Sonnet) ile daha derin inceleme — normalden biraz daha çok limit yer"
@@ -158,7 +163,7 @@ export function MaliYorumKutusu({
       </div>
 
       {/* Gövde */}
-      <div style={portalStyle({ marginTop: 16 })}>
+      <div data-mali-yorum-body style={portalStyle({ marginTop: 16 })}>
         {isLoading ? (
           <p style={portalStyle({ color: 'rgba(245,239,227,0.55)', fontSize: 13.5 })}>Yükleniyor…</p>
         ) : uretiliyor && !yorum ? (
@@ -169,13 +174,14 @@ export function MaliYorumKutusu({
           <>
             <YorumMetni ozet={yorum.ozet} accent={accent} />
             {zaman && (
-              <div style={portalStyle({ marginTop: 14, fontSize: 11.5, color: 'rgba(245,239,227,0.4)' })}>
+              <div data-mali-yorum-meta style={portalStyle({ marginTop: 14, fontSize: 11.5, color: 'rgba(245,239,227,0.4)' })}>
                 {zaman} · {yorum.model}
               </div>
             )}
           </>
         ) : hataMesaj ? (
           <div
+            data-mali-yorum-error
             style={portalStyle({
               border: '1px solid rgba(244,63,94,0.35)',
               background: 'rgba(244,63,94,0.06)',
@@ -221,7 +227,7 @@ function YorumMetni({ ozet, accent }: { ozet: string; accent: string }) {
         if (baslikMatch) {
           const kalan = line.slice(baslikMatch[0].length).trim();
           return (
-            <div key={i} style={portalStyle({ marginTop: i === 0 ? 0 : 10 })}>
+            <div key={i} data-mali-yorum-h style={portalStyle({ marginTop: i === 0 ? 0 : 10 })}>
               <span style={portalStyle({ fontWeight: 700, color: accent, fontSize: 13.5 })}>
                 {baslikMatch[0].replace(/:\s*$/, '')}
               </span>
@@ -238,7 +244,7 @@ function YorumMetni({ ozet, accent }: { ozet: string; accent: string }) {
         const madde = /^[-•*]\s+/.test(line);
         if (madde) {
           return (
-            <div key={i} style={portalStyle({ display: 'flex', gap: 8, paddingLeft: 4 })}>
+            <div key={i} data-mali-yorum-li style={portalStyle({ display: 'flex', gap: 8, paddingLeft: 4 })}>
               <span style={portalStyle({ color: accent, lineHeight: 1.65 })}>•</span>
               <span style={portalStyle({ color: 'rgba(245,239,227,0.85)', fontSize: 13.5, lineHeight: 1.65 })}>
                 {line.replace(/^[-•*]\s+/, '')}
@@ -248,7 +254,7 @@ function YorumMetni({ ozet, accent }: { ozet: string; accent: string }) {
         }
 
         return (
-          <p key={i} style={portalStyle({ color: 'rgba(245,239,227,0.85)', fontSize: 13.5, lineHeight: 1.65 })}>
+          <p key={i} data-mali-yorum-p style={portalStyle({ color: 'rgba(245,239,227,0.85)', fontSize: 13.5, lineHeight: 1.65 })}>
             {line}
           </p>
         );

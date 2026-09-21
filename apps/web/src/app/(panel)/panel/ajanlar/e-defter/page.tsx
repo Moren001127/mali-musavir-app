@@ -1,6 +1,6 @@
 'use client';
-import './edefter-white.css';
 import '@/app/(panel)/panel/ajanlar/_components/operations-white.css';
+import './edefter-white.css';
 
 import { portalStyle, portalPaint } from '@/lib/portal-theme';
 
@@ -779,10 +779,10 @@ export default function EDefterAgentPage() {
           </div>
           {/* Eylemler: ana düğme + ikincil grup (her zaman görünür) */}
           <div className="flex items-center gap-2 flex-wrap">
-            <button disabled={!taxpayerId || fetchMut.isPending || !!lucaJobId} onClick={() => fetchMut.mutate()} className="h-10 pl-2 pr-4 rounded-xl text-[13px] font-semibold inline-flex items-center gap-2.5 disabled:opacity-50" style={portalStyle({ background: 'linear-gradient(135deg,#3b82f6,#2563eb)', color: '#fff', boxShadow: '0 6px 18px rgba(59,130,246,.38)' })}>
+            <button data-ed-btn="luca" disabled={!taxpayerId || fetchMut.isPending || !!lucaJobId} onClick={() => fetchMut.mutate()} className="h-10 pl-2 pr-4 rounded-xl text-[13px] font-semibold inline-flex items-center gap-2.5 disabled:opacity-50" style={portalStyle({ background: 'linear-gradient(135deg,#3b82f6,#2563eb)', color: '#fff', boxShadow: '0 6px 18px rgba(59,130,246,.38)' })}>
               <span className="grid place-items-center w-[26px] h-[26px] rounded-lg" style={portalStyle({ background: 'rgba(255,255,255,.18)' })}>{fetchMut.isPending || lucaJobId ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}</span> Luca'dan Çek
             </button>
-            <div className="inline-flex h-10 rounded-xl overflow-hidden" style={portalStyle({ border: `1px solid ${BORDER_STRONG}`, background: 'rgba(255,255,255,.04)' })}>
+            <div data-ed-btn-group className="inline-flex h-10 rounded-xl overflow-hidden" style={portalStyle({ border: `1px solid ${BORDER_STRONG}`, background: 'rgba(255,255,255,.04)' })}>
               <button disabled={!activeSessionId || exportMut.isPending} onClick={() => exportMut.mutate()} className="px-3 text-[12.5px] font-semibold inline-flex items-center gap-1.5 disabled:opacity-40" style={portalStyle({ color: 'rgba(250,250,249,.85)' })} title="Bulguları Excel olarak indir">
                 {exportMut.isPending ? <Loader2 size={13} className="animate-spin" style={portalStyle({ color: NAVY })} /> : <Download size={13} style={portalStyle({ color: NAVY })} />} Excel
               </button>
@@ -910,7 +910,7 @@ export default function EDefterAgentPage() {
       </section>
 
       {/* ════════ HAP SEKMELER → aynı anda TEK içerik kartı ════════ */}
-      <div className="flex items-center gap-2 flex-wrap px-0.5">
+      <div data-ed-tabs className="flex items-center gap-2 flex-wrap px-0.5">
         <HapSekme active={activeTab === 'BULGULAR'} onClick={() => setActiveTab('BULGULAR')} icon={LayoutGrid} label="Bulgular" badge={stats.open} />
         <HapSekme active={activeTab === 'HESAPLAR'} onClick={() => setActiveTab('HESAPLAR')} icon={Building2} label="Hesaplar" badge={kontrolOzeti?.ozet?.hesap || 0} />
         <HapSekme active={activeTab === 'SATIRLAR'} onClick={() => setActiveTab('SATIRLAR')} icon={ListChecks} label="Fiş Satırları" badge={lines.length} />
