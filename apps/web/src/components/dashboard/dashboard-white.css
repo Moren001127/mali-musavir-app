@@ -508,3 +508,19 @@ html[data-theme='D'] [data-dashboard-counters] [data-dashboard-kpi][data-dashboa
 html[data-theme='D'] [data-dashboard-counters] [data-dashboard-kpi] > .mb-2 { margin-bottom: 3px; }
 html[data-theme='D'] [data-dashboard-counters] [data-dashboard-kpi] p:first-of-type { font-size: 10px; letter-spacing: .09em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 html[data-theme='D'] [data-dashboard-counters] [data-dashboard-kpi] p:last-of-type { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ── Beyanname görünümü grafiği: yan kartlarla aynı renkli zemin dili (yeşil, koyu ton 1.8 seçildi; Muzaffer Bey 2026-09-21) */
+html[data-theme='D'] .ofis-beyan {
+  --panorama-tint: 1.8;
+  --pt-a: #299c78;
+  --pt-b: #299c78;
+  --pt-wash: #eefaf5;
+  --pt-edge: #cfe8dc;
+  border: 1px solid var(--pt-edge) !important;
+  background:
+    radial-gradient(70% 60% at 100% 0%, color-mix(in srgb, var(--pt-a) calc(10% * var(--panorama-tint)), transparent), transparent 55%),
+    radial-gradient(60% 50% at 0% 100%, color-mix(in srgb, var(--pt-b) calc(6% * var(--panorama-tint)), transparent), transparent 55%),
+    linear-gradient(160deg, color-mix(in srgb, var(--pt-wash) calc(100% * var(--panorama-tint)), #fff) 0%, #fff 100%) !important;
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--pt-a) 9%, transparent) !important;
+}
+html[data-theme='D'] .ofis-beyan__header button { background: rgba(255, 255, 255, 0.75); }

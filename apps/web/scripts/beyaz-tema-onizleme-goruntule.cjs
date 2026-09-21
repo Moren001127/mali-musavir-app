@@ -37,10 +37,10 @@ fs.mkdirSync(CIKIS, { recursive: true });
   // Panorama yan kartları: hafif renk seçeneği (--panorama-tint 1; canlı 1.8) ayrı dosyaya
   const pan = pg.locator('.ofis-panorama').first();
   if (await pan.count()) {
-    await pg.addStyleTag({ content: "html[data-theme='D'] .yukumluluk-karti, html[data-theme='D'] .fatura-grafik-karti { --panorama-tint: 1 !important; }" });
+    await pg.addStyleTag({ content: "html[data-theme='D'] .yukumluluk-karti, html[data-theme='D'] .fatura-grafik-karti, html[data-theme='D'] .ofis-beyan { --panorama-tint: 1 !important; }" });
     await pg.waitForTimeout(300);
     await pan.screenshot({ path: path.join(CIKIS, 'panorama-hafif.png') });
-    await pg.addStyleTag({ content: "html[data-theme='D'] .yukumluluk-karti, html[data-theme='D'] .fatura-grafik-karti { --panorama-tint: 1.8 !important; }" });
+    await pg.addStyleTag({ content: "html[data-theme='D'] .yukumluluk-karti, html[data-theme='D'] .fatura-grafik-karti, html[data-theme='D'] .ofis-beyan { --panorama-tint: 1.8 !important; }" });
   }
   // Üçü birlikte (beyan başlığından takvim sonuna) tam sayfa dilimi
   const bas = pg.locator('[data-dashboard-section-title]').first();
