@@ -576,6 +576,12 @@ async function isle(req, res) {
     return jsonGonder(res, 200, { generatedAt: new Date().toISOString(), agents: [], hourlyActivity: [], totals: { activeJobs: 0, pendingLucaJobs: 0, runningLucaJobs: 0, doneToday: 0, failedToday: 0 } });
   // Gösterge paneli (/panel) — girişten sonra oraya düşer; boş ama geçerli yanıtlar
   if (yol === '/agent/events') return jsonGonder(res, 200, []);
+  // Ofis panoraması > Fatura kartı (canlı 2026-08 oranları: 1.310 belge; 623 aktarıldı / 687 bekleyen / 2 sorunlu)
+  if (yol === '/fatura-muhasebelestirme/summary') return jsonGonder(res, 200, { total: 1310 });
+  if (yol === '/fatura-muhasebelestirme/per-taxpayer-summary') {
+    const dagilim = [269, 61, 48, 37, 33, 29, 24, 21, 19, 17, 14, 12, 11, 9, 8, 7, 6, 5, 4, 3];
+    return jsonGonder(res, 200, dagilim.map((n, i) => ({ taxpayerId: `tx-${i + 1}`, pendingAlis: n, pendingSatis: Math.round(n * (i % 3 === 0 ? 0.35 : 0.12)), postedToLuca: Math.round(n * 0.9), hasIssue: i === 3 || i === 7 ? 1 : 0 })));
+  }
   // Bu Ay İş Akışı kutucukları (gerçekçi dağılım; canlı 2026-09: 13 aktif / 33 tamam)
   if (yol === '/taxpayers/workflow/queue') return jsonGonder(res, 200, { donem: '2026-09', counts: { evrak: 9, yukleme: 6, islenme: 7, kontrol: 4, beyanname: 2, tamam: 33 }, total: 61 });
   // Gösterge paneli üst alanı: "Bugünün İş Listesi" (/bugun) + "Başvuru Sayıları" (/gundem) — görsel doğrulama verisi
@@ -1049,7 +1055,7 @@ const BUGUN_SAHTE = () => {
   ay: { ad: 'Eylül', toplam: 64, tamam: 26, yuzde: 41, isGunuKaldi: 8, kdvSonGun: '28 Eylül Pazartesi', kdvKalanGun: 10, haftaninSonIsGunu: true, asamalar: { evrakBekliyor: 17, isleniyor: 12, kontrol: 6, beyan: 3, tamam: 26 } },
   akis,
   konular: [
-    { id: 'tb', bolum: 'bugun', kaynak: 'e-Tebligat', baslik: '6 yeni e-Tebligat geldi', aciklama: '12 mükellef · toplam 43 okunmamış · SİLBER İNŞAAT · YILMAZ GÖKTAŞ · SEDA İŞ GÜVENLİĞİ', sayi: 43, vurgu: 'kritik', href: '/panel/genel-sorgular', detay: [
+    { id: 'tb', bolum: 'bugun', kaynak: 'e-Tebligat', baslik: '6 yeni e-Tebligat geldi', aciklama: '12 mükellef · toplam 43 okunmamış · SİLBER İNŞAAT · YILMAZ GÖKTAŞ · SEDA İŞ GÜVENLİĞİ', sayi: 43, vurgu: 'kritik', href: '/panel/genel-sorgular', sayac: { okunmamis: 43, yeni: 6, mukellef: 12 }, detay: [
       { id: 'a', metin: 'SİLBER İNŞAAT GIDA SANAYİ VE TİCARET LİMİTED ŞİRKETİ', alt: '2 yeni · 9 okunmamış', sayi: 9, href: '/panel/mukellefler/tx-1', taxpayerId: 'tx-1' },
       { id: 'b', metin: 'YILMAZ GÖKTAŞ İNŞAAT VE GIDA SANAYİ TİCARET LİMİTED ŞİRKETİ', alt: '1 yeni · 7 okunmamış', sayi: 7, href: '/panel/mukellefler/tx-2', taxpayerId: 'tx-2' },
       { id: 'c', metin: 'SEDA İŞ GÜVENLİĞİ MALZEMELERİ SANAYİ TİCARET LİMİTED ŞİRKETİ', alt: '1 yeni · 5 okunmamış', sayi: 5, href: '/panel/mukellefler/tx-3', taxpayerId: 'tx-3' },

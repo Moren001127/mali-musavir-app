@@ -19,6 +19,8 @@ fs.mkdirSync(CIKIS, { recursive: true });
   await pg.evaluate(() => document.fonts.ready);
   await pg.waitForTimeout(3500);
   const hedefler = [
+    ['sayaclar', '[data-dashboard-counters]'],
+    ['panorama', '.ofis-panorama'],
     ['beyan-tablo', '[data-beyan-panel]'],
     ['is-akisi', '[data-workflow-counter]'],
     ['takvim', '[data-calendar]'],
@@ -31,6 +33,14 @@ fs.mkdirSync(CIKIS, { recursive: true });
     await el.evaluate((e) => e.scrollIntoView({ block: 'start' }));
     await pg.waitForTimeout(600);
     await el.screenshot({ path: path.join(CIKIS, `${ad}.png`) });
+  }
+  // Panorama yan kartları: hafif renk seçeneği (--panorama-tint 1; canlı 1.8) ayrı dosyaya
+  const pan = pg.locator('.ofis-panorama').first();
+  if (await pan.count()) {
+    await pg.addStyleTag({ content: "html[data-theme='D'] .yukumluluk-karti, html[data-theme='D'] .fatura-grafik-karti { --panorama-tint: 1 !important; }" });
+    await pg.waitForTimeout(300);
+    await pan.screenshot({ path: path.join(CIKIS, 'panorama-hafif.png') });
+    await pg.addStyleTag({ content: "html[data-theme='D'] .yukumluluk-karti, html[data-theme='D'] .fatura-grafik-karti { --panorama-tint: 1.8 !important; }" });
   }
   // Üçü birlikte (beyan başlığından takvim sonuna) tam sayfa dilimi
   const bas = pg.locator('[data-dashboard-section-title]').first();

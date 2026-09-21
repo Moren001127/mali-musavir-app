@@ -18,6 +18,7 @@ import {
   X as IconX,
   Download,
   FileCheck2,
+  Mailbox,
   Search as SearchIcon,
   BellRing,
   BrainCircuit,
@@ -79,7 +80,7 @@ type Task = {
   reminderDismissed?: boolean; // Kullanıcı "Anladım" derse bu oturumda bir daha uyarma
 };
 // Elit Boutique altın ailesi — dashboard'a renk dokunuşları için
-type StatAccent = 'gold' | 'champagne' | 'bronze' | 'copper' | 'burgundy' | 'sage' | 'sky' | 'amber';
+type StatAccent = 'gold' | 'champagne' | 'bronze' | 'copper' | 'burgundy' | 'sage' | 'sky' | 'amber' | 'teal';
 const ACCENT_TONES: Record<StatAccent, { color: string; bg: string; border: string; hoverBg: string; hoverBorder: string }> = {
   gold:      { color: '#d4b876', bg: 'rgba(212,184,118,0.12)', border: 'rgba(212,184,118,0.28)', hoverBg: 'rgba(212,184,118,0.06)', hoverBorder: 'rgba(212,184,118,0.32)' },
   champagne: { color: '#e8d6a0', bg: 'rgba(232,214,160,0.14)', border: 'rgba(232,214,160,0.32)', hoverBg: 'rgba(232,214,160,0.06)', hoverBorder: 'rgba(232,214,160,0.36)' },
@@ -89,6 +90,7 @@ const ACCENT_TONES: Record<StatAccent, { color: string; bg: string; border: stri
   sage:      { color: '#9cc8a6', bg: 'rgba(92,150,112,0.12)', border: 'rgba(156,200,166,0.25)', hoverBg: 'rgba(92,150,112,0.06)', hoverBorder: 'rgba(156,200,166,0.32)' },
   sky:       { color: '#9ec5e8', bg: 'rgba(96,165,250,0.11)', border: 'rgba(158,197,232,0.24)', hoverBg: 'rgba(96,165,250,0.06)', hoverBorder: 'rgba(158,197,232,0.30)' },
   amber:     { color: '#8bd3dd', bg: 'rgba(125,211,252,0.10)', border: 'rgba(125,211,252,0.23)', hoverBg: 'rgba(125,211,252,0.06)', hoverBorder: 'rgba(125,211,252,0.30)' },
+  teal:      { color: '#5fd3c0', bg: 'rgba(45,212,191,0.10)', border: 'rgba(45,212,191,0.24)', hoverBg: 'rgba(45,212,191,0.06)', hoverBorder: 'rgba(45,212,191,0.30)' },
 };
 
 function StatCard({ title, value, icon: Icon, href, sub, trend, trendKind, accent = 'gold' }: { title: string; value: number | string; icon: any; href?: string; sub?: string; trend?: string; trendKind?: 'up'|'down'|'flat'; accent?: StatAccent }) {
@@ -1682,6 +1684,16 @@ export default function DashboardPage() {
     (workflowData?.counts?.kontrol ?? 0) +
     (workflowData?.counts?.beyanname ?? 0);
 
+  // e-Tebligat sayacı (2026-09-21): gece sorgusuyla gelen ve henüz okunmamış tebligatlar.
+  // Kaynak = /bugun konusu 'tb' (BugunMasasi ile aynı sorgu anahtarı → tek istek, 3 dk önbellek).
+  const { data: bugunData } = useQuery<{ konular?: Array<{ id: string; sayac?: { okunmamis: number; yeni: number; mukellef: number } }> }>({
+    queryKey: ['bugun'],
+    queryFn: () => api.get('/bugun').then((r) => r.data),
+    staleTime: 3 * 60 * 1000,
+    refetchInterval: 5 * 60 * 1000,
+  });
+  const tebligat = bugunData?.konular?.find((k) => k.id === 'tb')?.sayac ?? { okunmamis: 0, yeni: 0, mukellef: 0 };
+
   // v1.36.74: Görevler artık backend'den geliyor (Görevler & Notlar modülüyle ortak veri).
   // Eskiden localStorage tabanlıydı — yeni `/panel/gorevler` sayfasıyla senkron olsun diye API'ye geçildi.
   const { data: backendTasksData } = useQuery({
@@ -1907,7 +1919,7 @@ export default function DashboardPage() {
       <h1 className="sr-only">Ofis Paneli</h1>
 
       {/* Sayaç kartları */}
-      <div data-dashboard-counters className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
+      <div data-dashboard-counters className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <StatCard
           title="Aktif Mükellef"
           value={activeCount || totalTx}
@@ -1939,6 +1951,23 @@ export default function DashboardPage() {
               : 'Sıradaki yapılacak işleri gör'
           }
           accent="champagne"
+        />
+        {/* e-Tebligat — gece sorgusuyla gelen, okunmamış tebligatlar (Muzaffer Bey, 2026-09-21) */}
+        <StatCard
+          title="E-Tebligat"
+          value={tebligat.okunmamis}
+          icon={Mailbox}
+          href="/panel/genel-sorgular"
+          sub={
+            tebligat.okunmamis === 0
+              ? 'Okunmamış tebligat yok'
+              : tebligat.yeni > 0
+                ? `Bu gece ${tebligat.yeni} yeni · ${tebligat.mukellef} mükellef`
+                : `${tebligat.mukellef} mükellefte okunmamış`
+          }
+          trend={tebligat.yeni > 0 ? `${tebligat.yeni} yeni` : undefined}
+          trendKind={tebligat.yeni > 0 ? 'down' : 'flat'}
+          accent="teal"
         />
         {/* Kritik Uyarı — tıklanabilir kart, detayı altta açılır panel */}
         <KritikUyariStatCard />

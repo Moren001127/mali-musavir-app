@@ -458,3 +458,53 @@ html[data-theme='D'] [data-beyan-mini] [data-beyan-num='kalan'] > div:last-child
 html[data-theme='D'] [data-beyan-mini] [data-beyan-num][data-beyan-zero] > div:last-child { color: #cbd5e1 !important; }
 html[data-theme='D'] [data-beyan-mini] [data-beyan-num]:not([disabled]):hover { background: #edf2ff !important; }
 html[data-theme='D'] [data-beyan-mini] .h-1\.5 { height: 5px; background: #eef2f6 !important; }
+
+/* ── 2026-09-21 — Ofis panoraması yan kartları (SGK · e-Defter · Fatura): HAFİF RENKLİ ZEMİN (Muzaffer Bey)
+   Beyanname görünümü grafiği beyaz kalır. Ton = kartın kendi vurgu rengi (SGK yeşil, e-Defter çivit, Fatura mavi+mor):
+   köşeden gelen ince ışıma + üstten alta açılan yıkama; kenar ve gölge aynı tonda. Yoğunluk --panorama-tint ile ayarlanır. */
+html[data-theme='D'] .yukumluluk-karti,
+html[data-theme='D'] .fatura-grafik-karti {
+  --panorama-tint: 1.8; /* Muzaffer Bey 'belirgin' seçeneğini seçti (2026-09-21); 1 = hafif */
+  --pt-a: #069c75;
+  --pt-b: #069c75;
+  --pt-wash: #eefaf5;
+  --pt-edge: #cfe8dc;
+  border: 1px solid var(--pt-edge) !important;
+  background:
+    radial-gradient(120% 90% at 100% 0%, color-mix(in srgb, var(--pt-a) calc(10% * var(--panorama-tint)), transparent), transparent 55%),
+    radial-gradient(90% 70% at 0% 100%, color-mix(in srgb, var(--pt-b) calc(6% * var(--panorama-tint)), transparent), transparent 55%),
+    linear-gradient(160deg, color-mix(in srgb, var(--pt-wash) calc(100% * var(--panorama-tint)), #fff) 0%, #fff 100%) !important;
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--pt-a) 9%, transparent) !important;
+}
+html[data-theme='D'] .yukumluluk-karti[data-kind='edefter'] {
+  --pt-a: #3264ed;
+  --pt-b: #3264ed;
+  --pt-wash: #eef2ff;
+  --pt-edge: #d5ddfb;
+}
+html[data-theme='D'] .fatura-grafik-karti {
+  --pt-a: #a04dff;
+  --pt-b: #2584ff;
+  --pt-wash: #ecf3ff;
+  --pt-edge: #d3e1fb;
+  box-shadow: 0 6px 18px rgba(39, 100, 220, 0.09) !important;
+}
+/* Kart içindeki beyaz parçalar (dönem kapsülü, ok düğmesi) zemin tonuna karışmasın: yarı saydam beyaz */
+html[data-theme='D'] .yukumluluk-karti__period,
+html[data-theme='D'] .yukumluluk-karti__header a,
+html[data-theme='D'] .fgk-link {
+  background: rgba(255, 255, 255, 0.75) !important;
+}
+html[data-theme='D'] .yukumluluk-karti__numbers,
+html[data-theme='D'] .fatura-grafik-karti footer,
+html[data-theme='D'] .fatura-grafik-karti footer > span + span {
+  border-color: color-mix(in srgb, var(--pt-edge) 70%, #fff) !important;
+}
+
+/* ── Sayaçlar 5'li (e-Tebligat eklendi, 2026-09-21): teal = e-Tebligat; Kritik Uyarı "sorun yok" hâli
+   artık deniz yeşili değil sakin kurşuni (yanındaki e-Tebligat teal ile karışmasın). */
+html[data-theme='D'] [data-dashboard-counters] [data-dashboard-kpi='teal'] { --counter-solid: #0ca678; --counter-2: #20c997; --counter-shadow: rgba(12,166,120,.5); }
+html[data-theme='D'] [data-dashboard-counters] [data-dashboard-kpi][data-dashboard-alert='clear'] { --counter-solid: #5c6b7f; --counter-2: #8494a7; --counter-shadow: rgba(92,107,127,.45); }
+html[data-theme='D'] [data-dashboard-counters] [data-dashboard-kpi] > .mb-2 { margin-bottom: 3px; }
+html[data-theme='D'] [data-dashboard-counters] [data-dashboard-kpi] p:first-of-type { font-size: 10px; letter-spacing: .09em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+html[data-theme='D'] [data-dashboard-counters] [data-dashboard-kpi] p:last-of-type { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

@@ -44,6 +44,7 @@ export type BugunKonu = {
   detay?: BugunDetay[];   // açılır ayrıntı
   taxpayerId?: string;    // tekil satır bir mükellefe aitse
   sira: number;           // bölüm içi öncelik (küçük üstte)
+  sayac?: { okunmamis: number; yeni: number; mukellef: number }; // e-Tebligat: gösterge paneli sayaç kartı (2026-09-21)
 };
 
 export type BugunAy = {
@@ -274,6 +275,7 @@ export class BugunService {
           baslik: yeni.length ? `${yeni.length} yeni e-Tebligat geldi` : `${rows.length} okunmamış e-Tebligat`,
           aciklama: `${perTp.size} mükellef · toplam ${rows.length} okunmamış · ${detay.slice(0, 3).map((d) => kisaAd(d.metin)).join(' · ')}`,
           sayi: rows.length, vurgu: yeni.length ? 'kritik' : 'uyari', href: '/panel/genel-sorgular', detay, sira: 5,
+          sayac: { okunmamis: rows.length, yeni: yeni.length, mukellef: perTp.size },
         });
       }),
 
