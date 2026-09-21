@@ -198,3 +198,128 @@ html[data-theme='D'] [data-calendar-row][data-calendar-urgency='immediate'] [dat
     margin-left: 0;
   }
 }
+
+/* ═════════════════════════════════════════════════════════════════════════════════════════════
+   2026-09-21 — Beyaz tema yeniden tasarım (Muzaffer Bey): "Bu Ay Mali Takvim"
+   Pastel yıkama şeritleri kaldırıldı: beyaz satırlar, tür rengi yalnız sol çizgi + simge kutusunda.
+   Bugün = dolu çivit kutu (FM tonu). Son tarih günü çivit, yakın son tarih kırmızı, notlu gün kehribar
+   (üst çizgi + rozet). Kalan gün rozeti: bugün/yarın dolu kırmızı · ≤3 gün kehribar · diğer gri.
+   ═════════════════════════════════════════════════════════════════════════════════════════════ */
+html[data-theme='D'] [data-calendar][data-dashboard-surface] {
+  padding: 18px 20px 14px;
+  background: #fff !important;
+  border: 1px solid #e3e8ef !important;
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05) !important;
+}
+html[data-theme='D'] [data-calendar] [data-calendar-header] {
+  min-height: 0;
+  margin: 0 0 14px;
+  padding: 0 0 12px;
+  background: #fff !important;
+  border: 0 !important;
+  border-bottom: 1px solid #edf1f5 !important;
+  border-radius: 0;
+  box-shadow: none;
+}
+html[data-theme='D'] [data-calendar-header] > span:first-child { height: 22px; background: linear-gradient(180deg, #4263eb, #5c7cfa) !important; }
+html[data-theme='D'] [data-calendar-header] h3 { font-size: 15px; font-weight: 650; color: #1e293b !important; }
+html[data-theme='D'] [data-calendar-header] h3 svg { width: 16px; height: 16px; color: #4263eb !important; }
+html[data-theme='D'] [data-calendar] [data-calendar-header] > span[data-calendar-chip] {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 10px;
+  letter-spacing: .04em;
+  background: #f1f5f9 !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #64748b !important;
+}
+html[data-theme='D'] [data-calendar] [data-calendar-header] > span[data-calendar-chip='deadlines'] { background: #edf2ff !important; border-color: #dbe4ff !important; color: #3b5bdb !important; }
+html[data-theme='D'] [data-calendar] [data-calendar-header] > span[data-calendar-chip='urgent'] { background: #fff5f5 !important; border-color: #ffc9c9 !important; color: #c92a2a !important; }
+html[data-theme='D'] [data-calendar] [data-calendar-header] > span[data-calendar-chip='notes'] { background: #fff4e6 !important; border-color: #ffe8cc !important; color: #d9480f !important; }
+html[data-theme='D'] [data-calendar] [data-calendar-header] > span[data-calendar-chip='range'] {
+  padding: 0;
+  border: 0 !important;
+  background: transparent !important;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: #94a3b8 !important;
+}
+
+/* Gün kutuları: beyaz; durum rengi üst çizgi + rozet + nokta ile. Bugün dolu çivit. */
+html[data-theme='D'] [data-calendar-day] {
+  --calendar-day-ink: #1e293b;
+  --calendar-day-edge: #e3e8ef;
+  --calendar-day-accent: transparent;
+  min-height: 84px;
+  padding: 12px 12px 10px;
+  border-radius: 12px;
+  background: #fff !important;
+  border: 1px solid var(--calendar-day-edge) !important;
+  box-shadow: inset 0 3px 0 var(--calendar-day-accent) !important;
+}
+html[data-theme='D'] [data-calendar-day='deadline'] { --calendar-day-ink: #3b5bdb; --calendar-day-edge: #dbe4ff; --calendar-day-accent: #4263eb; }
+html[data-theme='D'] [data-calendar-day='urgent'] { --calendar-day-ink: #c92a2a; --calendar-day-edge: #ffc9c9; --calendar-day-accent: #e03131; }
+html[data-theme='D'] [data-calendar-day='task'] { --calendar-day-ink: #1e293b; --calendar-day-edge: #e3e8ef; --calendar-day-accent: #f08c00; }
+html[data-theme='D'] [data-calendar-day][data-calendar-today='true'] {
+  --calendar-day-ink: #fff;
+  --calendar-day-edge: transparent;
+  background: linear-gradient(135deg, #4263eb, #5c7cfa) !important;
+  border-color: transparent !important;
+  box-shadow: 0 10px 22px -14px rgba(66, 99, 235, 0.7) !important;
+}
+html[data-theme='D'] [data-calendar-day] [data-calendar-date] { font-size: 22px !important; color: var(--calendar-day-ink) !important; }
+html[data-theme='D'] [data-calendar-day] [data-calendar-month] { color: #94a3b8 !important; font-size: 9.5px; letter-spacing: .06em; }
+html[data-theme='D'] [data-calendar-day] [data-calendar-dot='deadline'] { background: var(--calendar-day-accent) !important; }
+html[data-theme='D'] [data-calendar-day] [data-calendar-dot='task'] { background: #f08c00 !important; box-shadow: none !important; }
+html[data-theme='D'] [data-calendar-day] [data-calendar-day-badge] { padding: 2px 7px; border-radius: 999px; font-size: 9.5px; }
+html[data-theme='D'] [data-calendar-day] [data-calendar-day-badge='deadline'] { background: #edf2ff !important; border-color: #dbe4ff !important; color: #3b5bdb !important; }
+html[data-theme='D'] [data-calendar-day='urgent'] [data-calendar-day-badge='deadline'] { background: #fff5f5 !important; border-color: #ffc9c9 !important; color: #c92a2a !important; }
+html[data-theme='D'] [data-calendar-day] [data-calendar-day-badge='task'] { background: #fff4e6 !important; border-color: #ffe8cc !important; color: #d9480f !important; }
+html[data-theme='D'] [data-calendar-day][data-calendar-today='true'] [data-calendar-month] { color: rgba(255, 255, 255, 0.78) !important; }
+html[data-theme='D'] [data-calendar-day][data-calendar-today='true'] [data-calendar-dot] { background: #fff !important; box-shadow: none !important; }
+html[data-theme='D'] [data-calendar-day][data-calendar-today='true'] [data-calendar-day-badge] { background: rgba(255, 255, 255, 0.18) !important; border-color: rgba(255, 255, 255, 0.32) !important; color: #fff !important; }
+
+/* Son tarih satırları: tek çerçeveli liste; beyaz satır, sol 3 px tür çizgisi, tür renginde simge kutusu. */
+html[data-theme='D'] [data-calendar-deadlines] { border: 1px solid #e3e8ef; border-radius: 12px; overflow: hidden; background: #fff; }
+html[data-theme='D'] [data-calendar-row] {
+  --calendar-kind: #4263eb;
+  --calendar-kind-soft: #edf2ff;
+  min-height: 62px;
+  padding: 9px 14px 9px 6px;
+  border-radius: 0;
+  background: #fff !important;
+  border: 0 !important;
+  border-bottom: 1px solid #eef2f6 !important;
+  box-shadow: inset 3px 0 0 var(--calendar-kind) !important;
+}
+html[data-theme='D'] [data-calendar-row]:hover { background: #f8fafc !important; }
+html[data-theme='D'] [data-calendar-row]:last-child { border-bottom: 0 !important; }
+html[data-theme='D'] [data-calendar-row][data-calendar-kind='vat'] { --calendar-kind: #4263eb; --calendar-kind-soft: #edf2ff; }
+html[data-theme='D'] [data-calendar-row][data-calendar-kind='payroll'] { --calendar-kind: #7048e8; --calendar-kind-soft: #f3f0ff; }
+html[data-theme='D'] [data-calendar-row][data-calendar-kind='ledger'] { --calendar-kind: #0ca678; --calendar-kind-soft: #e6fcf5; }
+html[data-theme='D'] [data-calendar-row][data-calendar-kind='income'] { --calendar-kind: #1971c2; --calendar-kind-soft: #e7f5ff; }
+html[data-theme='D'] [data-calendar-row][data-calendar-kind='stamp'] { --calendar-kind: #c2255c; --calendar-kind-soft: #fff0f6; }
+html[data-theme='D'] [data-calendar-row][data-calendar-kind='tourism'] { --calendar-kind: #f08c00; --calendar-kind-soft: #fff4e6; }
+html[data-theme='D'] [data-calendar-row] [data-calendar-date] { font-size: 20px !important; color: #1e293b !important; }
+html[data-theme='D'] [data-calendar-row] [data-calendar-month] { color: #94a3b8 !important; font-size: 9.5px; }
+html[data-theme='D'] [data-calendar-row] [data-calendar-icon] { border-radius: 9px; background: var(--calendar-kind-soft) !important; border-color: transparent !important; color: var(--calendar-kind) !important; }
+html[data-theme='D'] [data-calendar-row] [data-calendar-icon] svg { color: var(--calendar-kind) !important; }
+html[data-theme='D'] [data-calendar-row] [data-calendar-title] { color: #1e293b !important; font-weight: 600; }
+html[data-theme='D'] [data-calendar-row] [data-calendar-subtitle] { color: #64748b !important; }
+html[data-theme='D'] [data-calendar-row] [data-calendar-task-badge] { padding: 3px 9px; border-radius: 999px; background: #fff4e6 !important; border-color: #ffe8cc !important; }
+html[data-theme='D'] [data-calendar-row] [data-calendar-task-badge] :is(span, svg) { color: #d9480f !important; }
+html[data-theme='D'] [data-calendar-row] [data-calendar-task-badge] .moren-task-pulse { background: #f08c00 !important; box-shadow: none !important; }
+html[data-theme='D'] [data-calendar-row] [data-calendar-remaining] {
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 650;
+  background: #f1f5f9 !important;
+  border-color: #e2e8f0 !important;
+  color: #475569 !important;
+}
+html[data-theme='D'] [data-calendar-row][data-calendar-urgency='soon'] [data-calendar-remaining] { background: #fff4e6 !important; border-color: #ffe8cc !important; color: #d9480f !important; }
+html[data-theme='D'] [data-calendar-row][data-calendar-urgency='immediate'] [data-calendar-remaining] { background: #e03131 !important; border-color: #e03131 !important; color: #fff !important; }
+html[data-theme='D'] [data-calendar-empty] { border-radius: 12px; background: #f8fafc !important; border: 1px dashed #dbe2ea !important; }
+html[data-theme='D'] [data-calendar-empty] p { color: #64748b !important; }

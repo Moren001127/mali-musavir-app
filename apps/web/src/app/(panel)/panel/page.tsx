@@ -142,7 +142,7 @@ function WorkflowOverview({ counts, total, activeCount }: { counts?: WorkflowCou
 
   return (
     <div
-      data-dashboard-surface className="rounded-2xl overflow-hidden"
+      data-workflow-panel data-dashboard-surface className="rounded-2xl overflow-hidden"
       style={portalStyle({
         background: 'radial-gradient(circle at 8% 0%, rgba(125,211,252,0.10), transparent 30%), radial-gradient(circle at 92% 14%, rgba(143,215,189,0.07), transparent 28%), linear-gradient(180deg, rgba(8,15,16,0.96), rgba(5,9,10,0.92))',
         border: '1px solid rgba(125,211,252,0.14)',
@@ -404,7 +404,7 @@ function ToplubeyannamePanel({ donem, setDonem, donemTuru, setDonemTuru }: Panor
             <p className="min-w-0 truncate text-[12px]" style={portalStyle({ color: BEYAN_TONE.muted })}>{modeLabel} · {donemEtiket(selectedDonem)} · {modeNote}</p>
           </div>
           <div className="flex flex-wrap items-center justify-start gap-2 xl:justify-end">
-            <div className="inline-flex rounded-lg p-0.5" style={portalStyle({ background: 'rgba(244,239,229,0.03)', border: `1px solid ${BEYAN_TONE.borderSoft}` })}>
+            <div data-beyan-mode-group className="inline-flex rounded-lg p-0.5" style={portalStyle({ background: 'rgba(244,239,229,0.03)', border: `1px solid ${BEYAN_TONE.borderSoft}` })}>
               {([
                 ['VERILME', 'Verilme dönemi'],
                 ['VERGI', 'Vergi dönemi'],
@@ -591,9 +591,9 @@ function YardimciBeyanCard({
         >
           {label} <span className="font-semibold opacity-55">({donemEtiket(row.vergiDonem)})</span>
         </button>
-        <YardimciBeyanNumber label="Toplam" value={row.toplam} color="#fafaf9" onClick={() => onNumberClick(row.beyanTipi, 'toplam')} />
-        <YardimciBeyanNumber label={onayText} value={row.onaylanan} color={BEYAN_TONE.approved} onClick={() => onNumberClick(row.beyanTipi, 'onaylanan')} />
-        <YardimciBeyanNumber label="Kalan" value={row.kalan} color={row.kalan > 0 ? BEYAN_TONE.remaining : BEYAN_TONE.approved} onClick={() => onNumberClick(row.beyanTipi, 'kalan')} />
+        <YardimciBeyanNumber kind="toplam" label="Toplam" value={row.toplam} color="#fafaf9" onClick={() => onNumberClick(row.beyanTipi, 'toplam')} />
+        <YardimciBeyanNumber kind="onaylanan" label={onayText} value={row.onaylanan} color={BEYAN_TONE.approved} onClick={() => onNumberClick(row.beyanTipi, 'onaylanan')} />
+        <YardimciBeyanNumber kind="kalan" label="Kalan" value={row.kalan} color={row.kalan > 0 ? BEYAN_TONE.remaining : BEYAN_TONE.approved} onClick={() => onNumberClick(row.beyanTipi, 'kalan')} />
         <div className="min-w-0 pl-3">
           <div className="flex items-center justify-between gap-2">
             <span className="truncate text-[11px] font-bold" style={portalStyle({ color: barColor })}>{statusLabel}</span>
@@ -612,11 +612,12 @@ function YardimciBeyanCard({
   );
 }
 
-function YardimciBeyanNumber({ label, value, color, onClick }: { label: string; value: number; color: string; onClick: () => void }) {
+function YardimciBeyanNumber({ label, value, color, onClick, kind }: { label: string; value: number; color: string; onClick: () => void; kind?: BeyanFilter }) {
   const clickable = value > 0;
   return (
     <button
       type="button"
+      data-beyan-num={kind} data-beyan-zero={value > 0 ? undefined : 'true'}
       disabled={!clickable}
       onClick={clickable ? onClick : undefined}
       className={`min-w-0 px-2 text-right transition ${clickable ? 'hover:bg-white/[0.055] hover:underline decoration-dotted underline-offset-4' : ''}`}
@@ -678,11 +679,11 @@ function BeyanCompactRow({
           {row.toplam} mükellef takipte
         </div>
       </td>
-      <BeyanNumberCell value={row.toplam} color={BEYAN_TONE.title} onClick={() => onNumberClick(row.beyanTipi, 'toplam')} />
-      <BeyanNumberCell value={row.onaylanan} color={BEYAN_TONE.approved} onClick={() => onNumberClick(row.beyanTipi, 'onaylanan')} />
-      <BeyanNumberCell value={row.bekleyen} color={row.bekleyen > 0 ? BEYAN_TONE.waiting : 'rgba(244,239,229,0.34)'} onClick={() => onNumberClick(row.beyanTipi, 'bekleyen')} />
-      <BeyanNumberCell value={row.hatali} color={row.hatali > 0 ? BEYAN_TONE.error : 'rgba(244,239,229,0.34)'} onClick={() => onNumberClick(row.beyanTipi, 'hatali')} />
-      <BeyanNumberCell value={row.kalan} color={row.kalan > 0 ? BEYAN_TONE.remaining : BEYAN_TONE.approved} onClick={() => onNumberClick(row.beyanTipi, 'kalan')} />
+      <BeyanNumberCell kind="toplam" value={row.toplam} color={BEYAN_TONE.title} onClick={() => onNumberClick(row.beyanTipi, 'toplam')} />
+      <BeyanNumberCell kind="onaylanan" value={row.onaylanan} color={BEYAN_TONE.approved} onClick={() => onNumberClick(row.beyanTipi, 'onaylanan')} />
+      <BeyanNumberCell kind="bekleyen" value={row.bekleyen} color={row.bekleyen > 0 ? BEYAN_TONE.waiting : 'rgba(244,239,229,0.34)'} onClick={() => onNumberClick(row.beyanTipi, 'bekleyen')} />
+      <BeyanNumberCell kind="hatali" value={row.hatali} color={row.hatali > 0 ? BEYAN_TONE.error : 'rgba(244,239,229,0.34)'} onClick={() => onNumberClick(row.beyanTipi, 'hatali')} />
+      <BeyanNumberCell kind="kalan" value={row.kalan} color={row.kalan > 0 ? BEYAN_TONE.remaining : BEYAN_TONE.approved} onClick={() => onNumberClick(row.beyanTipi, 'kalan')} />
       <td className="px-3 py-2">
         <div className="grid grid-cols-[82px,1fr,38px] items-center gap-2">
           <span className="text-[11px] font-bold" style={portalStyle({ color: barColor })}>{statusLabel}</span>
@@ -705,10 +706,10 @@ function BeyanCompactRow({
   );
 }
 
-function BeyanNumberCell({ value, color, onClick }: { value: number; color: string; onClick: () => void }) {
+function BeyanNumberCell({ value, color, onClick, kind }: { value: number; color: string; onClick: () => void; kind?: BeyanFilter }) {
   const clickable = value > 0;
   return (
-    <td className="px-3 py-2 text-right">
+    <td className="px-3 py-2 text-right" data-beyan-num={kind} data-beyan-zero={value > 0 ? undefined : 'true'}>
       <button
         type="button"
         disabled={!clickable}

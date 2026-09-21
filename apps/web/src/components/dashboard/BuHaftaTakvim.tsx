@@ -225,6 +225,7 @@ export function BuHaftaTakvim() {
         </h3>
         {rows.length > 0 && (
           <span
+            data-calendar-chip="deadlines"
             className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ml-1"
             style={portalStyle({ background: 'rgba(245,166,184,0.12)', color: ROSE, border: '1px solid rgba(245,166,184,0.30)' })}
           >
@@ -232,6 +233,7 @@ export function BuHaftaTakvim() {
           </span>
         )}
         <span
+          data-calendar-chip="month"
           className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded"
           title="e-Defter: aylık tercih için gelir vergisi mükelleflerinde ayın 10'u, kurumlar/diğer mükelleflerde ayın 14'ü · KDV2: ayın 25'i · MUHSGK/Damga/Konaklama: ayın 26'sı · KDV1: ayın 28'i · Geçici Vergi: Şubat/Mayıs/Ağustos/Kasım 17'si · Ay sonu: Turizm Payı"
           style={portalStyle({ background: 'rgba(255,255,255,0.045)', color: 'rgba(250,250,249,0.58)', border: '1px solid rgba(255,255,255,0.09)' })}
@@ -240,6 +242,7 @@ export function BuHaftaTakvim() {
         </span>
         {urgentCount > 0 && (
           <span
+            data-calendar-chip="urgent"
             className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded"
             style={portalStyle({ background: 'rgba(245,166,184,0.12)', color: '#ffc4cf', border: '1px solid rgba(245,166,184,0.30)' })}
           >
@@ -248,13 +251,14 @@ export function BuHaftaTakvim() {
         )}
         {noteCount > 0 && (
           <span
+            data-calendar-chip="notes"
             className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded"
             style={portalStyle({ background: 'rgba(96,165,250,0.10)', color: '#93c5fd', border: '1px solid rgba(96,165,250,0.25)' })}
           >
             {noteCount} not
           </span>
         )}
-        <span className="ml-auto text-[11px]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
+        <span data-calendar-chip="range" className="ml-auto text-[11px]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
           {monthStart.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })} — {monthEnd.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}
         </span>
       </div>
@@ -268,7 +272,7 @@ export function BuHaftaTakvim() {
       </div>
 
       {rows.length === 0 ? (
-        <div className="rounded-2xl py-10 text-center" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' })}>
+        <div data-calendar-empty className="rounded-2xl py-10 text-center" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' })}>
           <p className="text-[13px]" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
             Kalan günlerde beyanname, bildirim veya e-Defter son tarihi yok.
           </p>
@@ -314,12 +318,12 @@ function CalendarDayTile({ day }: { day: ReturnType<typeof buildCalendarDays>[nu
           <div data-calendar-date className="text-[17px] leading-none tabular-nums" style={portalStyle({ fontFamily: 'Fraunces, serif', fontWeight: 700, color: hasDeadline ? tone.pillText : hasTask ? '#93c5fd' : 'rgba(250,250,249,0.72)' })}>
             {day.date.getDate()}
           </div>
-          <div className="text-[9px] uppercase font-bold mt-1" style={portalStyle({ color: 'rgba(250,250,249,0.38)' })}>{month}</div>
+          <div data-calendar-month className="text-[9px] uppercase font-bold mt-1" style={portalStyle({ color: 'rgba(250,250,249,0.38)' })}>{month}</div>
         </div>
         {(hasDeadline || hasTask) && (
           <div className="flex items-center gap-1">
-            {hasDeadline && <span className="w-1.5 h-1.5 rounded-full" style={{ background: tone.accent }} />}
-            {hasTask && <span className="w-1.5 h-1.5 rounded-full" style={{ background: GOLD, boxShadow: `0 0 6px ${GOLD}66` }} />}
+            {hasDeadline && <span data-calendar-dot="deadline" className="w-1.5 h-1.5 rounded-full" style={{ background: tone.accent }} />}
+            {hasTask && <span data-calendar-dot="task" className="w-1.5 h-1.5 rounded-full" style={{ background: GOLD, boxShadow: `0 0 6px ${GOLD}66` }} />}
           </div>
         )}
       </div>
@@ -371,7 +375,7 @@ function DeadlineRowItem({ row, dayTasks }: { row: DeadlineRow; dayTasks: string
         >
           {row.date.getDate()}
         </span>
-        <span className="text-[10px] uppercase font-bold tracking-wider mt-0.5" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>
+        <span data-calendar-month className="text-[10px] uppercase font-bold tracking-wider mt-0.5" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>
           {MONTHS_TR[month]}
         </span>
       </div>
@@ -389,10 +393,10 @@ function DeadlineRowItem({ row, dayTasks }: { row: DeadlineRow; dayTasks: string
           <Icon size={15} />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="text-[13px] font-semibold truncate" style={portalStyle({ color: '#fafaf9', letterSpacing: '-0.01em' })}>
+          <div data-calendar-title className="text-[13px] font-semibold truncate" style={portalStyle({ color: '#fafaf9', letterSpacing: '-0.01em' })}>
             {row.title}
           </div>
-          <div className="text-[11px] mt-0.5 truncate" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
+          <div data-calendar-subtitle className="text-[11px] mt-0.5 truncate" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
             {row.subtitle}
           </div>
         </div>
@@ -401,6 +405,7 @@ function DeadlineRowItem({ row, dayTasks }: { row: DeadlineRow; dayTasks: string
       {/* Sağ: görev göstergesi (eğer bu güne not/hatırlatma varsa) + pill badge */}
       {hasTask && (
         <div
+          data-calendar-task-badge
           className="flex items-center gap-1.5 px-2 py-1 rounded-md flex-shrink-0"
           style={portalStyle({
             background: 'rgba(96,165,250,0.10)',

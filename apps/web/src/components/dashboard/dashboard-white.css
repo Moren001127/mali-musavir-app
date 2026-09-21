@@ -196,7 +196,8 @@ html[data-theme='D'] [data-dashboard-counters] [data-dashboard-kpi]::after {
 }
 html[data-theme='D'] [data-dashboard-counters] [data-dashboard-kpi] > * { position: relative; z-index: 1; }
 html[data-theme='D'] [data-dashboard-counters] [data-dashboard-kpi='sage'] { --counter-solid: #2f9e44; --counter-2: #51cf66; --counter-shadow: rgba(47,158,68,.5); }
-html[data-theme='D'] [data-dashboard-counters] [data-dashboard-kpi='sky'] { --counter-solid: #1971c2; --counter-2: #339af0; --counter-shadow: rgba(25,113,194,.5); }
+/* Bekleyen Görev: mavi çivit Aktif İş Yükü ile karışıyordu (Muzaffer Bey, 2026-09-21) → kehribar (bekleyen = kehribar, tabloyla aynı anlam) */
+html[data-theme='D'] [data-dashboard-counters] [data-dashboard-kpi='sky'] { --counter-solid: #f08c00; --counter-2: #f9a825; --counter-shadow: rgba(240,140,0,.5); }
 html[data-theme='D'] [data-dashboard-counters] [data-dashboard-kpi='champagne'] { --counter-solid: #4263eb; --counter-2: #5c7cfa; --counter-shadow: rgba(66,99,235,.5); }
 html[data-theme='D'] [data-dashboard-counters] [data-dashboard-kpi][data-dashboard-alert='clear'] { --counter-solid: #0ca678; --counter-2: #20c997; --counter-shadow: rgba(12,166,120,.5); }
 html[data-theme='D'] [data-dashboard-counters] [data-dashboard-kpi] :is(p, span, div, svg, .tabular-nums) { color: #fff !important; }
@@ -285,3 +286,175 @@ html[data-theme='D'] [data-beyan-panel] table tbody td:last-child .h-1\.5 { heig
 html[data-theme='D'] [data-beyan-panel] [data-beyan-section] { margin-bottom: 6px; }
 html[data-theme='D'] [data-beyan-mini] > div { padding: 6px 8px; }
 html[data-theme='D'] [data-beyan-mini] { border-radius: 8px; }
+
+/* ═════════════════════════════════════════════════════════════════════════════════════════════
+   2026-09-21 — Beyaz tema yeniden tasarım (Muzaffer Bey): "Beyanname Durum Takibi" + "Bu Ay İş Akışı"
+   Ortak dil: beyaz yüzey, #e3e8ef kenar, 14–16 px yarıçap, hafif gölge. Renk YALNIZ anlam taşır
+   (simge kutusu, ilerleme çubuğu, rozet); pastel yıkama ve mor/lila çerçeve gradyanı kaldırıldı.
+   Ton ailesi = Fatura İşleme Merkezi > Genel Bakış kutucukları: çivit #4263eb · mavi #1971c2 ·
+   deniz yeşili #0ca678 · yeşil #2f9e44 · kehribar #f08c00 · kırmızı #e03131 · mor #7048e8.
+   ═════════════════════════════════════════════════════════════════════════════════════════════ */
+
+/* ── Bu Ay İş Akışı ─────────────────────────────────────────────────────────────────────────── */
+html[data-theme='D'] [data-workflow-panel][data-dashboard-surface] {
+  background: #fff !important;
+  border: 1px solid #e3e8ef !important;
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05) !important;
+}
+html[data-theme='D'] [data-workflow-panel] [data-dashboard-band='mint'] {
+  padding: 13px 20px;
+  background: #fff !important;
+  border-color: #edf1f5 !important;
+  border-bottom: 1px solid #edf1f5 !important;
+}
+html[data-theme='D'] [data-workflow-panel] [data-dashboard-band='mint'] > div:first-child > span:first-child {
+  width: 3px;
+  height: 22px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #4263eb, #5c7cfa) !important;
+}
+html[data-theme='D'] [data-workflow-panel] h3 { color: #1e293b !important; font-size: 15px; font-weight: 650; }
+html[data-theme='D'] [data-workflow-panel] [data-dashboard-band='mint'] p { color: #64748b !important; font-size: 11.5px; margin-top: 2px; }
+html[data-theme='D'] [data-workflow-panel] [data-dashboard-band='mint'] > div:last-child > span {
+  padding: 4px 11px;
+  border-radius: 999px !important;
+  border: 1px solid transparent !important;
+  font-size: 11px;
+  font-weight: 650;
+}
+html[data-theme='D'] [data-workflow-panel] [data-dashboard-band='mint'] > div:last-child > span:nth-child(1) { background: #edf2ff !important; border-color: #dbe4ff !important; color: #3b5bdb !important; }
+html[data-theme='D'] [data-workflow-panel] [data-dashboard-band='mint'] > div:last-child > span:nth-child(2) { background: #ebfbee !important; border-color: #d3f9d8 !important; color: #2b8a3e !important; }
+html[data-theme='D'] [data-workflow-panel] [data-dashboard-band='mint'] > div:last-child > span:nth-child(3) { background: #f1f5f9 !important; border-color: #e2e8f0 !important; color: #64748b !important; }
+
+/* Kutucuklar: beyaz kart; ton yalnız simge kutusu (gradyan), yüzde rozeti ve ilerleme çubuğunda. Sayı koyu mürekkep. */
+html[data-theme='D'] [data-workflow-counter] {
+  --flow-start: #f08c00;
+  --flow-end: #f9a825;
+  --flow-soft: #fff4e6;
+  --flow-ink: #d9480f;
+  padding: 13px 14px 12px;
+  background: #fff !important;
+  border: 1px solid #e6ebf1 !important;
+  border-radius: 14px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04) !important;
+}
+html[data-theme='D'] [data-workflow-counter]:hover {
+  background: #fff !important;
+  border-color: color-mix(in srgb, var(--flow-start) 45%, #e6ebf1) !important;
+  box-shadow: 0 12px 24px -16px color-mix(in srgb, var(--flow-start) 70%, transparent) !important;
+}
+html[data-theme='D'] [data-workflow-counter='yukleme'] { --flow-start: #0ca678; --flow-end: #20c997; --flow-soft: #e6fcf5; --flow-ink: #099268; }
+html[data-theme='D'] [data-workflow-counter='islenme'] { --flow-start: #1971c2; --flow-end: #339af0; --flow-soft: #e7f5ff; --flow-ink: #1971c2; }
+html[data-theme='D'] [data-workflow-counter='kontrol'] { --flow-start: #7048e8; --flow-end: #9775fa; --flow-soft: #f3f0ff; --flow-ink: #6741d9; }
+html[data-theme='D'] [data-workflow-counter='beyanname'] { --flow-start: #4263eb; --flow-end: #5c7cfa; --flow-soft: #edf2ff; --flow-ink: #3b5bdb; }
+html[data-theme='D'] [data-workflow-counter='tamam'] { --flow-start: #2f9e44; --flow-end: #51cf66; --flow-soft: #ebfbee; --flow-ink: #2b8a3e; }
+html[data-theme='D'] [data-workflow-counter] > div:first-child > div {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--flow-start), var(--flow-end)) !important;
+  border-color: transparent !important;
+  box-shadow: 0 6px 14px -8px var(--flow-start);
+  color: #fff !important;
+}
+html[data-theme='D'] [data-workflow-counter] > div:first-child > div svg { color: #fff !important; }
+html[data-theme='D'] [data-workflow-counter] > div:first-child > span {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  background: var(--flow-soft) !important;
+  border-color: transparent !important;
+  color: var(--flow-ink) !important;
+}
+html[data-theme='D'] [data-workflow-counter] > div:nth-child(2) { margin-top: 10px; }
+html[data-theme='D'] [data-workflow-counter] > div:nth-child(2) > div:nth-child(1) { color: #1e293b !important; font-size: 24px; font-weight: 750; letter-spacing: -0.02em; }
+html[data-theme='D'] [data-workflow-counter] > div:nth-child(2) > div:nth-child(2) { color: #334155 !important; font-size: 12.5px; font-weight: 600; }
+html[data-theme='D'] [data-workflow-counter] > div:nth-child(2) > div:nth-child(3) { color: #94a3b8 !important; font-size: 10.5px; }
+html[data-theme='D'] [data-workflow-counter] > div:last-child { height: 5px; margin-top: 10px; background: #eef2f6 !important; }
+html[data-theme='D'] [data-workflow-counter] > div:last-child > div { background: linear-gradient(90deg, var(--flow-start), var(--flow-end)) !important; }
+
+/* ── Beyanname Durum Takibi ─────────────────────────────────────────────────────────────────── */
+html[data-theme='D'] [data-beyan-panel][data-dashboard-surface] {
+  --frame-color: #e3e8ef;
+  background: #fff !important;
+  border: 1px solid #e3e8ef !important;
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05) !important;
+}
+html[data-theme='D'] [data-beyan-panel] [data-beyan-heading] { padding: 12px 18px; border-bottom: 1px solid #edf1f5 !important; }
+html[data-theme='D'] [data-beyan-panel] [data-beyan-heading] p { color: #64748b !important; font-size: 12px; }
+html[data-theme='D'] [data-beyan-panel] [data-beyan-heading-icon] {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: linear-gradient(135deg, #4263eb, #5c7cfa) !important;
+  box-shadow: 0 6px 14px -8px #4263eb;
+  color: #fff !important;
+}
+html[data-theme='D'] [data-beyan-panel] [data-beyan-heading-icon] svg { color: #fff !important; }
+html[data-theme='D'] [data-beyan-panel] [data-beyan-mode-group] { padding: 3px; border-radius: 9px; background: #f1f5f9 !important; border-color: #e2e8f0 !important; }
+html[data-theme='D'] [data-beyan-panel] [data-beyan-mode] { border-radius: 7px; color: #64748b !important; font-weight: 600; }
+html[data-theme='D'] [data-beyan-panel] [data-beyan-mode='active'] { background: #fff !important; color: #3b5bdb !important; border-color: transparent !important; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12), 0 0 0 1px #dbe4ff; }
+html[data-theme='D'] [data-beyan-panel] select { border-radius: 9px; background: #fff !important; border-color: #dbe2ea !important; color: #1e293b !important; font-weight: 600; }
+html[data-theme='D'] [data-beyan-panel] [data-beyan-query] {
+  border-radius: 9px;
+  background: linear-gradient(135deg, #4263eb, #5c7cfa) !important;
+  border-color: transparent !important;
+  color: #fff !important;
+  box-shadow: 0 8px 16px -10px #4263eb;
+}
+html[data-theme='D'] [data-beyan-panel] [data-beyan-query] svg { color: #fff !important; }
+html[data-theme='D'] [data-beyan-panel] [data-beyan-query]:hover { filter: brightness(1.06); }
+
+/* Tablo: tek ince çerçeve, açık gri başlık, beyaz satırlar, hafif zebra. */
+html[data-theme='D'] [data-beyan-panel] [data-beyan-table-section] { padding: 0 18px 12px; }
+html[data-theme='D'] [data-beyan-table-scroll] { border: 1px solid #e3e8ef !important; border-radius: 10px; background: #fff !important; }
+html[data-theme='D'] [data-beyan-panel] table thead th {
+  padding: 8px 12px;
+  background: #f8fafc !important;
+  color: #64748b !important;
+  border-bottom: 1px solid #e3e8ef;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .08em;
+}
+html[data-theme='D'] [data-beyan-panel] table :is(th, td) + :is(th, td) { border-left-color: #eef2f6; }
+html[data-theme='D'] [data-beyan-panel] table tbody td { padding: 6px 12px; height: 38px; border-bottom: 1px solid #eef2f6; }
+html[data-theme='D'] [data-beyan-panel] table tbody tr { background: #fff !important; }
+html[data-theme='D'] [data-beyan-panel] table tbody tr:nth-child(even) { background: #fbfcfd !important; }
+html[data-theme='D'] [data-beyan-panel] table tbody tr:hover { background: #f4f7fb !important; }
+html[data-theme='D'] [data-beyan-panel] table tbody td:first-child > button { color: #1e293b !important; font-size: 13px; font-weight: 650; }
+html[data-theme='D'] [data-beyan-panel] table tbody td:first-child > div:not(.hidden) { color: #94a3b8 !important; }
+/* Sayılar: takip koyu · onaylanan yeşil · bekleyen kehribar · hatalı kırmızı · kalan nötr koyu gri · sıfırlar soluk */
+html[data-theme='D'] [data-beyan-panel] [data-beyan-num] button { color: #1e293b !important; font-weight: 650; }
+html[data-theme='D'] [data-beyan-panel] [data-beyan-num='onaylanan'] button { color: #2b8a3e !important; }
+html[data-theme='D'] [data-beyan-panel] [data-beyan-num='bekleyen'] button { color: #e8590c !important; }
+html[data-theme='D'] [data-beyan-panel] [data-beyan-num='hatali'] button { color: #e03131 !important; }
+html[data-theme='D'] [data-beyan-panel] [data-beyan-num='kalan'] button { color: #475569 !important; }
+html[data-theme='D'] [data-beyan-panel] [data-beyan-num][data-beyan-zero] button { color: #cbd5e1 !important; font-weight: 500; }
+html[data-theme='D'] [data-beyan-panel] [data-beyan-num] button:not([disabled]):hover { background: #edf2ff !important; }
+/* Durum sütunu: etiket ve yüzde çubukla aynı tonda (tamam yeşil · devam çivit · hata kırmızı) */
+html[data-theme='D'] [data-beyan-panel] table tbody td:last-child > div { grid-template-columns: 84px minmax(40px, 1fr) 38px; gap: 10px; }
+html[data-theme='D'] [data-beyan-panel] table tbody td:last-child span { font-size: 11px; font-weight: 600; }
+html[data-theme='D'] [data-beyan-panel] table tbody td:last-child .h-1\.5 { height: 5px; background: #eef2f6 !important; }
+html[data-theme='D'] [data-beyan-panel] div:has(> div > [data-beyan-progress='done']) span { color: #2b8a3e !important; }
+html[data-theme='D'] [data-beyan-panel] div:has(> div > [data-beyan-progress='pending']) span { color: #3b5bdb !important; }
+html[data-theme='D'] [data-beyan-panel] div:has(> div > [data-beyan-progress='error']) span { color: #e03131 !important; }
+html[data-theme='D'] [data-beyan-panel] [data-beyan-progress='pending'] { background: linear-gradient(90deg, #4263eb, #5c7cfa) !important; }
+html[data-theme='D'] [data-beyan-panel] [data-beyan-progress='done'] { background: linear-gradient(90deg, #2f9e44, #51cf66) !important; }
+html[data-theme='D'] [data-beyan-panel] [data-beyan-progress='error'] { background: linear-gradient(90deg, #e03131, #ff6b6b) !important; }
+/* Bildirge ve e-Defter: aynı tablo dili, tek satırlık kart */
+html[data-theme='D'] [data-beyan-panel] [data-beyan-section] > div:first-child { color: #64748b !important; font-size: 10px; letter-spacing: .1em; }
+html[data-theme='D'] [data-beyan-panel] [data-beyan-section] > div:last-child { color: #94a3b8 !important; }
+html[data-theme='D'] [data-beyan-mini] { background: #fff !important; border: 1px solid #e3e8ef !important; border-radius: 10px; }
+html[data-theme='D'] [data-beyan-mini] > div > * + * { border-left-color: #eef2f6; }
+html[data-theme='D'] [data-beyan-mini] > div > button:first-child { color: #1e293b !important; font-weight: 650; }
+html[data-theme='D'] [data-beyan-mini] > div > button:first-child span { color: #94a3b8 !important; opacity: 1; }
+html[data-theme='D'] [data-beyan-mini] button > div:first-child { color: #94a3b8 !important; }
+html[data-theme='D'] [data-beyan-mini] [data-beyan-num] > div:last-child { color: #1e293b !important; }
+html[data-theme='D'] [data-beyan-mini] [data-beyan-num='onaylanan'] > div:last-child { color: #2b8a3e !important; }
+html[data-theme='D'] [data-beyan-mini] [data-beyan-num='kalan'] > div:last-child { color: #475569 !important; }
+html[data-theme='D'] [data-beyan-mini] [data-beyan-num][data-beyan-zero] > div:last-child { color: #cbd5e1 !important; }
+html[data-theme='D'] [data-beyan-mini] [data-beyan-num]:not([disabled]):hover { background: #edf2ff !important; }
+html[data-theme='D'] [data-beyan-mini] .h-1\.5 { height: 5px; background: #eef2f6 !important; }

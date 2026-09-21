@@ -575,7 +575,9 @@ async function isle(req, res) {
   if (yol === '/agent/health-summary')
     return jsonGonder(res, 200, { generatedAt: new Date().toISOString(), agents: [], hourlyActivity: [], totals: { activeJobs: 0, pendingLucaJobs: 0, runningLucaJobs: 0, doneToday: 0, failedToday: 0 } });
   // Gösterge paneli (/panel) — girişten sonra oraya düşer; boş ama geçerli yanıtlar
-  if (yol === '/agent/events' || yol === '/taxpayers/workflow/queue') return jsonGonder(res, 200, []);
+  if (yol === '/agent/events') return jsonGonder(res, 200, []);
+  // Bu Ay İş Akışı kutucukları (gerçekçi dağılım; canlı 2026-09: 13 aktif / 33 tamam)
+  if (yol === '/taxpayers/workflow/queue') return jsonGonder(res, 200, { donem: '2026-09', counts: { evrak: 9, yukleme: 6, islenme: 7, kontrol: 4, beyanname: 2, tamam: 33 }, total: 61 });
   // Gösterge paneli üst alanı: "Bugünün İş Listesi" (/bugun) + "Başvuru Sayıları" (/gundem) — görsel doğrulama verisi
   if (yol === '/bugun') return jsonGonder(res, 200, BUGUN_SAHTE());
   if (yol === '/gundem') return jsonGonder(res, 200, GUNDEM_SAHTE());
@@ -586,6 +588,8 @@ async function isle(req, res) {
     { beyanTipi: 'DAMGA', toplam: 1, onaylanan: 0, bekleyen: 0, hatali: 0, muaf: 0, kalan: 1, vergiDonem: '2026-08', yuzde: 0 },
     { beyanTipi: 'MUHSGK', toplam: 33, onaylanan: 19, bekleyen: 2, hatali: 0, muaf: 0, kalan: 12, vergiDonem: '2026-08', yuzde: 58 },
     { beyanTipi: 'BILDIRGE', toplam: 39, onaylanan: 11, bekleyen: 0, hatali: 0, muaf: 0, kalan: 28, vergiDonem: '2026-08', yuzde: 28 },
+    // e-Defter: canlıda 5 aylık + 31 üç aylık tanımlı mükellef var (2026-09-21 salt-okunur sayım); verilme ayında aylıklar düşer
+    { beyanTipi: 'EDEFTER', toplam: 5, onaylanan: 3, bekleyen: 0, hatali: 0, muaf: 0, kalan: 2, vergiDonem: '2026-08', yuzde: 60 },
     { beyanTipi: 'GGECICI', toplam: 0, onaylanan: 0, bekleyen: 0, hatali: 0, muaf: 0, kalan: 0, vergiDonem: '2026-08', yuzde: 0 },
   ] });
   if (yol === '/agent/stats' || yol === '/agent/status' || yol === '/moren-ai/brifing') return jsonGonder(res, 200, {});
