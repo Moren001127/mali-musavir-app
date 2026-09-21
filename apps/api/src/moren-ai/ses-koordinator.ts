@@ -202,7 +202,7 @@ export function sesCevabiOlustur(o: SesKosuOzeti): string {
 export interface AjanSecimi {
   /** Hedef ajan; null = ajan başlatılmaz (neden dolu: ekibe kapalı iş / modül kapalı). */
   ajanId: string | null;
-  /** Reçete kodu (R1…R11, K1 e-defter, 'ekran' Luca Operatörü); ajan yoksa null. */
+  /** Reçete kodu (R1…R11, K1 e-defter, 'ekran' Luca Operatörü, 'okuma' beyanname muhtasar — reçetesiz, yalnız okuma araçları); ajan yoksa null. */
   recete: string | null;
   /** Koordinatör LLM'e giden tek satır gerekçe. */
   neden: string;
@@ -222,7 +222,9 @@ const secim = (ajanId: string, recete: string, neden: string): AjanSecimi => ({ 
  *  - geçici vergi paketi/beyannamesi → beyanname · R7
  *  - banka / ekstre / kasa-banka → ayrı ajan yok; Koordinatör mevcut kayıtları okur;  evrak / hatırlatma → AJAN YOK (evrak otomasyonu; Koordinatör kendisi okur);  tebligat → musteri · R10
  *  - e-defter / berat → edefter · K1
- *  - bordro / SGK / muhtasar → ajan yok ("bordro modülü kapalı")
+ *  - muhtasar / MUHSGK / stopaj → beyanname · okuma (PLAN/20 §A, 2026-09-22: reçete YOK; rakam/durum sorusu yalnız okuma araçlarıyla,
+ *    hazırlama/gönderme Muzaffer Bey’de) — bordro kapısından ÖNCE bakılır; "stopajlı fatura…" fatura kapılarına düşer
+ *  - bordro / SGK / APHB / bildirge → ajan yok ("bordro modülü kapalı")
  *  - "Luca'da … aç/doldur/oku/fiş" YALNIZ bu kalıp → luca-operator · ekran (KDV/mizan/gelir tablosu geçiyorsa değil)
  *  - belirsiz → null (Koordinatör tek satır soru sorar)
  */
@@ -232,7 +234,19 @@ export function ajanSec(cumle: string): AjanSecimi | null {
 
   // Ekibe kapalı / kapalı modül — önce bunlar (yanlışlıkla ajan başlatılmasın)
   if (/\bmihsap\b/.test(t)) return { ajanId: null, recete: null, neden: 'Mihsap çekimi ekibe kapalı; Muzaffer Bey portaldan çeker (Fatura Merkezi işi fatura/R4-R5).' };
-  if (/\b(bordro|sgk|muhtasar|aphb|bildirge)/.test(t)) return { ajanId: null, recete: null, neden: 'HAZIR DEĞİL: bordro modülü kapalı (bordro verisi portalda yok); ajan başlatılmaz.' };
+  // Muhtasar / MUHSGK / stopaj → beyanname, YALNIZ OKUMA (PLAN/20 §A, 2026-09-22). Eskiden bordro kapısı "muhtasar" geçen her cümleyi
+  //   "bordro modülü kapalı" diye kesiyordu. Bordro kapısından ÖNCE bakılır ("muhtasar ve SGK" bir MUHSGK sorusudur). Beyanname'de
+  //   muhtasar reçetesi YOK: ajan rakam/durum sorusunu okuma araçlarıyla cevaplar; hazırlama/gönderme Muzaffer Bey'de.
+  //   "stopajlı fatura…" (fatura geçen) cümleler bu kapıya girmez, fatura kapılarına (R5/R4) düşer.
+  if (/\b(muhtasar|muh-?sgk)/.test(t) || (/\bstopaj/.test(t) && !/\bfatura/.test(t))) {
+    return secim(
+      'beyanname',
+      'okuma',
+      'Muhtasar/MUHSGK/stopaj rakamı-durum sorusu → beyanname; beyanname’de muhtasar reçetesi YOK: yalnız OKUMA araçlarıyla cevapla (get_beyan_ozet, list_beyan_kayitlari; get_payroll_summary boşsa "bordro verisi yok" de). Hazırlama/gönderme Muzaffer Bey’de. Dönem: YYYY-MM.',
+    );
+  }
+  // Bordro kapısı: yalnız bordro / SGK / APHB / bildirge (işe giriş-çıkış, e-bildirge) kalıpları — modül kapalı, ajan başlatılmaz.
+  if (/\b(bordro|sgk|aphb|bildirge)/.test(t)) return { ajanId: null, recete: null, neden: 'HAZIR DEĞİL: bordro modülü kapalı (bordro verisi portalda yok); ajan başlatılmaz.' };
 
   // KDV Kontrol zinciri — PORTAL işi
   if (/kdv[^.]*\b(kontrol|mutabakat|karsilastir)/.test(t) || /alis[- ]?satis[^.]*mutabakat/.test(t) || /luca ile karsilastir/.test(t)) {

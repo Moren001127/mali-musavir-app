@@ -279,11 +279,35 @@ describe('ses-koordinator — ajanSec (PLAN/17 §5 yönlendirme)', () => {
     expect(sec('Berat ne zaman')).toBe('edefter/K1');
   });
 
-  it('bordro / SGK / muhtasar → ajan yok, neden "bordro modülü kapalı"', () => {
-    for (const c of ["X'in bordrosu hazır mı", 'SGK bildirgesi ver', 'Muhtasar beyannamesi hazırla']) {
+  it('bordro / SGK bildirgesi / APHB / işe giriş bildirgesi → ajan yok, neden "bordro modülü kapalı"', () => {
+    for (const c of ["X'in bordrosu hazır mı", 'SGK bildirgesi ver', 'APHB verildi mi', "X'in işe giriş bildirgesini hazırla"]) {
       const r = ajanSec(c);
       expect({ c, ajanId: r?.ajanId, neden: r?.neden }).toEqual({ c, ajanId: null, neden: expect.stringMatching(/bordro modülü kapalı/) });
     }
+  });
+
+  // PLAN/20 §A (2026-09-22): "muhtasar" geçen her cümle bordro kapısında "HAZIR DEĞİL" diye kesiliyordu → beyanname (reçete yok, yalnız okuma).
+  it('muhtasar / MUHSGK / stopaj → beyanname/okuma: yalnız OKUMA araçları, hazırlama/gönderme Muzaffer Bey’de (bordro kapısına DÜŞMEZ)', () => {
+    for (const c of [
+      'Muhtasar beyannamesi hazırla',
+      "X'in Ağustos muhtasarı ne durumda",
+      'MUHSGK verildi mi',
+      "Öz Ela'nın muh-sgk rakamları",
+      "X'in kira stopajı ne kadar",
+      'Muhtasar ve SGK bildirgesi verildi mi', // "bildirge" geçse de MUHSGK sorusudur: muhtasar kapısı bordro kapısından önce
+    ]) {
+      const r = ajanSec(c)!;
+      expect({ c, r: sec(c) }).toEqual({ c, r: 'beyanname/okuma' });
+      expect(r.neden).toMatch(/yalnız OKUMA araçlarıyla/);
+      expect(r.neden).toMatch(/get_beyan_ozet, list_beyan_kayitlari; get_payroll_summary boşsa "bordro verisi yok"/);
+      expect(r.neden).toMatch(/Hazırlama\/gönderme Muzaffer Bey’de/);
+      expect(r.neden).not.toMatch(/bordro modülü kapalı/);
+    }
+    // "stopajlı fatura…" fatura işidir: R4/R5 kapılarına düşer, beyanname/okuma'ya gitmez
+    expect(sec("X'in stopajlı faturalarını işle")).toBe('fatura/R4');
+    // görev metninde ön eşleme satırı
+    expect(sesGoreviOlustur({ question: 'Muhtasar beyannamesi hazırla', canli: false })).toContain('YÖNLENDİRME ÖNERİSİ: beyanname/okuma — ');
+    expect(whatsappGoreviOlustur({ question: 'MUHSGK verildi mi', canli: false })).toContain('YÖNLENDİRME ÖNERİSİ: beyanname/okuma — ');
   });
 
   it('"Luca\'da … aç/doldur/oku/fiş" YALNIZ bu kalıp → luca-operator', () => {

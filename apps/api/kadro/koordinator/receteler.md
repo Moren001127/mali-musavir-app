@@ -1,10 +1,10 @@
 # Koordinatör — Reçeteler (PLAN/17)
 
-Ortak: mükellef adı çoklu eşleşirse ya da dönemde yıl yoksa → tek satır soru, ajan BAŞLATMA. Her yönlendirmede create_pending_action ile İŞ ATAMASI kaydı: "İŞ ATAMASI → <ajanId>: <reçete> <mükellef> <dönem> <kuru/canlı>". Luca Operatörü'ne ASLA portal işi verme. get_taxpayer_work_status'un "KDV Kontrol yok / mizan yok" bayrağına tek başına güvenme; MALI_OKU / mali_donemler_listele ile kendin bak.
+Ortak: mükellef adı çoklu eşleşirse ya da dönemde yıl yoksa → tek satır soru, ajan BAŞLATMA. Her yönlendirmede create_pending_action ile İŞ ATAMASI kaydı: "İŞ ATAMASI → <ajanId>: <reçete> <mükellef> <dönem> <kuru/canlı>". get_taxpayer_work_status'un "KDV Kontrol yok / mizan yok" bayrağına tek başına güvenme; MALI_OKU / mali_donemler_listele ile kendin bak.
 Adım satırı: n) yap — araç — kademe — bekleme — başarı — hata.
 
 ## Dönem çevirisi (atama metnine BU biçimde yaz)
-- KDV Kontrol: 'YYYY/MM' ("Ağustos" → 2026/08). Fatura Merkezi / Mihsap: 'YYYY-MM'. Mizan / gelir tablosu / bilanço: 'YYYY-Qn' | 'YYYY-YILLIK' ("2. dönem / 2. dönem / Haziran sonu" → 2026-Q2). İHÖ: donem SAYI 1-4. KDV özeti: 'YYYY-MM'.
+- KDV Kontrol: 'YYYY/MM' ("Ağustos" → 2026/08). Fatura Merkezi / Mihsap: 'YYYY-MM'. Mizan / gelir tablosu / bilanço: 'YYYY-Qn' | 'YYYY-YILLIK' ("2. dönem / Haziran sonu" → 2026-Q2). İHÖ: donem SAYI 1-4. KDV özeti: 'YYYY-MM'.
 - Yıl söylenmediyse bugünün yılı; "geçen ay" bugünün bir önceki ayı; raporun ilk satırında hangi dönemi ele aldığını yaz.
 
 ## §5 Yönlendirme tablosu (cümle kalıbı → ajan · reçete)
@@ -20,9 +20,9 @@ Adım satırı: n) yap — araç — kademe — bekleme — başarı — hata.
 - "evrak gelmedi", "eksik evrak" → AJAN YOK: listeyi `list_taxpayers_monthly_status` ile KENDİN söyle (dönem YYYY-MM). "hatırlatma" → AJAN YOK, taslak YOK: evrak hatırlatması ve "evrak geldi" onayı portalın EVRAK OTOMASYONU (00_ORTAK §14); yalnız "otomasyon çalışıyor; teslim günü tanımsız olanlar: …" de.
 - "yeni tebligat var mı / tebligat listesi" → OKUMA: `list_etebligat` ile kendin cevapla, ajan yok. "tebligatı mükellefe ilet" → musteri · R10 (çekim gece otomasyonu; iletim 09:00 Akıllı Bildirim; ajan yalnız otomasyon kapalıysa taslak açar).
 - "e-defter kontrolü / berat" → edefter · K1 (çekim PRV); "yıl sonu kapanış kontrolü" → edefter · K3.
-- "bordro / SGK / muhtasar" → bordro verisi portalda 0 → doğrudan "HAZIR DEĞİL: bordro modülü kapalı", ajan BAŞLATMA (muhtasar rakamı sorusu: beyanname).
+- "bordro/SGK/APHB/bildirge" → "HAZIR DEĞİL: bordro modülü kapalı", ajan BAŞLATMA. "muhtasar/MUHSGK/stopaj" → beyanname (reçete YOK, yalnız OKUMA: get_beyan_ozet, list_beyan_kayitlari, get_payroll_summary; hazırlama/gönderme Muzaffer Bey'de).
 - "Luca'da şu ekranı aç / doldur / oku / fiş taslağı" → luca-operator. YALNIZ bu kalıp; KDV kontrol, mizan çek, gelir tablosu ASLA luca-operator'e gitmez.
-- Belirsiz mükellef/dönem → tek satır soru. Soru-cevap ("Haziran KDV'ler ne durumda", "X'in KDV taslağı") → ajan çağırmadan get_beyan_ozet / get_kdv1_on_hazirlik ile cevapla.
+- Belirsiz mükellef/dönem → tek satır soru. Soru-cevap ("Haziran KDV'ler ne durumda") → ajan çağırmadan get_beyan_ozet / get_kdv1_on_hazirlik ile cevapla.
 Görev metnindeki "YÖNLENDİRME ÖNERİSİ: <ajan>/<reçete>" satırı sistemin ön eşlemesidir; tabloyla çelişmiyorsa onu kullan.
 
 ## R11 — Dönem panosu / sabah özeti / iş dağıtımı

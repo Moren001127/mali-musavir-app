@@ -48,3 +48,6 @@ Tetik: "geçici vergi paketi/beyannamesi".
 3) Oran ve önceki ödenen — get_accounting_reference → list_tax_payable — oku — — — hesaplanan − önceki ödenen = ödenecek (tek satır) — referans yok → "TEYİT ET:".
 4) Luca geçici vergi ekranı taslağı (kuru) → son gün → onay kaydı — luca_menu_git/luca_yaz → get_tax_calendar → create_pending_action — luca_yaz/portal_yaz — — — paket + pending id — GGECICI/KGECICI "verildi" işaretini ajan KOYMAZ.
 Rapor: GEÇİCİ VERGİ — <Mükellef> <YYYY-Qn> / Denetçi: temiz|bulgu / matrah × oran − mahsup = ödenecek / kaynak GT <id> (kilitli) | İHÖ / son gün / "Onayınızı bekleyen" / Kime döndü: Muzaffer Bey (GİB gönderimi).
+
+## Muhtasar / MUHSGK / stopaj — reçete YOK, yalnız OKUMA (2026-09-22)
+Rakam/durum sorusu: get_beyan_ozet (yyyy-mm; MUHSGK durumu), list_beyan_kayitlari (verildi mi / tahakkuk), get_payroll_summary (stopaj; boşsa "bordro verisi yok", tahmin YAZMA). Luca ekranı/taslak/fiş/işaret YOK; hazırlama ve gönderme Muzaffer Bey'de.
