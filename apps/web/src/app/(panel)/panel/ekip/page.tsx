@@ -1,10 +1,10 @@
-import { EkipSayfa } from './_components/EkipSayfa';
+import { EkipEkrani } from './_components/EkipEkrani';
 
 export const metadata = {
   title: 'Moren Ekip',
 };
 
-/** Moren Ekip — 13 ajanlık yapay çalışan kadrosu. Gövde: _components/EkipSayfa.tsx */
+/** Moren Ekip — "Dijital Ofis" (PLAN/20 §E). Gövde: _components/EkipEkrani.tsx */
 export default function EkipPage() {
-  return <EkipSayfa />;
+  return <EkipEkrani />;
 }

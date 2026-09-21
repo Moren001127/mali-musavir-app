@@ -8,9 +8,11 @@ import {
   getAkis,
   getEkipDurum,
   getKadro,
+  getKuyruk,
   getMukellefler,
   getOnaylar,
   getPano,
+  getRutinler,
   iptalEt,
   isOmurgaYok,
   type AkisFiltre,
@@ -32,7 +34,7 @@ export interface Adim {
   sonuc?: string;
 }
 
-/** Ajan başına tek koşu kaydı — v2'de komut yalnız Koordinatör'e gider; harita anahtarı 'koordinator'. */
+/** Ajan başına tek koşu kaydı — komut varsayılan Koordinatör'e gider; Kadro çekmecesinden doğrudan personele de gidebilir (anahtar = ajanId). */
 export interface Kosu {
   ajanId: string;
   gorev: string;
@@ -99,6 +101,20 @@ export const SORGU = {
     queryFn: getMukellefler,
     staleTime: 5 * 60_000,
   },
+  /** İş düzeni (PLAN/20 §D) — 404'te {destek:false}, çökmez. */
+  rutinler: {
+    queryKey: ['ekip-rutinler'] as const,
+    queryFn: getRutinler,
+    refetchInterval: 60_000,
+    retry: false as const,
+  },
+  /** Kuyruk — süren kuyruk varken 5 sn, yoksa 30 sn. */
+  kuyruk: (canli: boolean) => ({
+    queryKey: ['ekip-kuyruk'] as const,
+    queryFn: getKuyruk,
+    refetchInterval: canli ? 5_000 : 30_000,
+    retry: false as const,
+  }),
 };
 
 /**
@@ -158,6 +174,7 @@ export function useKosular() {
     qc.invalidateQueries({ queryKey: ['ekip-onaylar'] });
     qc.invalidateQueries({ queryKey: ['ekip-pano'] });
     qc.invalidateQueries({ queryKey: ['ekip-kadro'] }); // kadro[].suAn/bekleyenOnay takılı kalmasın
+    qc.invalidateQueries({ queryKey: ['ekip-kuyruk'] }); // kuyruk öğesi bitmiş olabilir
   }, [qc]);
 
   const baslat = useCallback(

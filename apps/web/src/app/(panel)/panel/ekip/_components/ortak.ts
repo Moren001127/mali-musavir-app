@@ -103,12 +103,10 @@ export const RENK = {
   gri: '#a3a3a3', // bekliyor / kapalı metin
 } as const;
 
-/** Her ajanın kendi rengi (28px ikon, seçili satır kenarı, akış şeridi). */
+/** Her ajanın kendi rengi (28px ikon, seçili satır kenarı, akış şeridi) — koyu tema / e-Defter ekranı. 11 kişilik kadro (evrak, banka-kasa kaldırıldı). */
 export const AJAN_RENK: Record<string, string> = {
   koordinator: '#d4b876',
-  evrak: '#60a5fa',
   fatura: '#34d399',
-  'banka-kasa': '#22d3ee',
   beyanname: '#fbbf24',
   'bordro-sgk': '#a78bfa',
   edefter: '#818cf8',
@@ -141,9 +139,8 @@ export function ajanYuzeyRengi(id: string): string {
 export function ajanKisaltma(id: string, ad?: string): string {
   const map: Record<string, string> = {
     koordinator: 'KO',
-    evrak: 'EV',
+    siz: 'MB',
     fatura: 'FA',
-    'banka-kasa': 'BK',
     beyanname: 'BY',
     'bordro-sgk': 'SG',
     edefter: 'ED',
@@ -209,9 +206,8 @@ export function avatarHalkaStili(renk: string, secili: boolean): CSSProperties {
 export function ajanKisaAd(id: string, ad?: string): string {
   const map: Record<string, string> = {
     koordinator: 'Koordinatör',
-    evrak: 'Evrak',
+    siz: 'Muzaffer Bey',
     fatura: 'Fatura',
-    'banka-kasa': 'Banka',
     beyanname: 'Beyanname',
     'bordro-sgk': 'Bordro',
     edefter: 'e-Defter',
@@ -352,7 +348,7 @@ export function telefonMu(h?: string | null): boolean {
   return !!h && /^\+?\d{7,15}$/.test(String(h).replace(/\s+/g, ''));
 }
 
-/** Kaynak → etiket (portal / 🎤 ses / ⏰ cron / KO koordinatör / 💬 WhatsApp). */
+/** Kaynak → etiket (portal / ses / cron / koordinatör / WhatsApp / rutin / toplu — son ikisi PLAN/20, 2026-09-22). */
 export function kaynakEtiketi(k?: string | null): { ad: string; ikon: string } {
   switch (k) {
     case 'ses':
@@ -363,6 +359,10 @@ export function kaynakEtiketi(k?: string | null): { ad: string; ikon: string } {
       return { ad: 'koordinatör', ikon: 'KO' };
     case 'whatsapp':
       return { ad: 'WhatsApp', ikon: '💬' };
+    case 'rutin':
+      return { ad: 'Rutin', ikon: '' };
+    case 'toplu':
+      return { ad: 'Toplu', ikon: '' };
     default:
       return { ad: 'portal', ikon: '' };
   }
@@ -699,7 +699,6 @@ export function depoYaz(anahtar: string, deger: string | null) {
 export const AJAN_UNVAN: Record<string, string> = {
   koordinator: 'Ofis müdürü',
   fatura: 'Fatura işleme',
-  'banka-kasa': 'Banka ve kasa',
   beyanname: 'Beyanname ve KDV',
   'bordro-sgk': 'Bordro ve SGK',
   edefter: 'e-Defter',

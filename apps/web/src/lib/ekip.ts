@@ -1,16 +1,16 @@
 import { api, authorizedFetch, API_BASE } from './api';
 
 /**
- * Moren Ekip (13 ajan kadrosu) — API sözleşmesi.
+ * Moren Ekip (11 kişilik dijital kadro) — API sözleşmesi.
  * Backend omurgası ayrı yazılıyor; uçlar 404 dönerse OmurgaYokError fırlatılır,
  * ekran "Omurga henüz yayında değil" gösterir (çökmez).
+ * 2026-09-22 (PLAN/20 §D): iş düzeni (rutin) + kuyruk + kota bekçisi uçları eklendi; eski backend'de bu alanlar
+ * gelmezse boş/varsayılan kullanılır, ekran çökmez.
  */
 
 export type AjanId =
   | 'koordinator'
-  | 'evrak'
   | 'fatura'
-  | 'banka-kasa'
   | 'beyanname'
   | 'bordro-sgk'
   | 'edefter'
@@ -28,7 +28,14 @@ export interface KademeOzeti {
   disari_gonder: number;
 }
 
-export type EkipKaynak = 'portal' | 'ses' | 'cron' | 'koordinator' | 'whatsapp';
+/** İş kaynağı — 2026-09-22: `rutin` (iş düzeninden kendiliğinden) ve `toplu` (panodan seçilip personele verilen) eklendi. */
+export type EkipKaynak = 'portal' | 'ses' | 'cron' | 'koordinator' | 'whatsapp' | 'rutin' | 'toplu';
+
+/** Personelin yaptığı iş (reçete): kod + başlık — GET /ekip/kadro `receteler[]`. */
+export interface AjanRecete {
+  kod: string;
+  baslik: string;
+}
 
 /** Backend #3 (isteğe bağlı) — kadro satırına son koşu/bekleyen onay eklerse doğrudan kullanılır; yoksa FE isler(200)'den hesaplar. */
 export interface AjanSonKosu {
@@ -59,6 +66,10 @@ export interface Ajan {
   bugunKosu?: number;
   /** GET /ekip/kadro (2026-09-13): ajan şu an hangi vakada/mükellefte çalışıyor; boşta ise null. */
   suAn?: AjanSuAn | null;
+  /** GET /ekip/kadro (2026-09-22): personelin yaptığı işler (reçete kodu + başlık); eski backend'de boş. */
+  receteler: AjanRecete[];
+  /** Modülü kapalı personel (ör. Bordro/SGK): neden metni; açıksa null. */
+  kapali: { neden: string } | null;
 }
 
 /** Kadro satırı — koşan iş (status running, ajan başına en yeni). */
@@ -155,11 +166,32 @@ export interface Pano {
   donemOzetleri: PanoDonemOzeti[];
 }
 
+/** Max haftalık kota bekçisi (PLAN/20 §D): doluysa rutinler ve kuyruk duraklar, `sifirlanma` anında kendiliğinden sürer. */
+export interface KotaDurumu {
+  doldu: boolean;
+  sifirlanma?: string | null;
+  sonHata?: string | null;
+}
+
+/** GET /ekip/durum `kuyruk` özeti — süren kuyruk sayısı, süren kuyruğun kimliği, sıradaki mükellef. */
+export interface KuyrukOzeti {
+  aktif: number;
+  suruyorId?: string | null;
+  siradaki?: { taxpayerId: string; ad: string } | null;
+}
+
+/** GET /ekip/durum `bugunPlan` — bugün planlanan / süren / biten / yarım kalan iş sayıları. */
+export interface BugunPlani {
+  planlanan: number;
+  suruyor: number;
+  biten: number;
+  yarim: number;
+}
+
 export interface EkipDurum {
   operator: { acik: boolean; cihaz: string | null };
   bekleyenOnay: number;
   bugunKosu: number;
-  kota?: { kullanilan: number; limit?: number };
   sabahOzeti?: boolean;
   maxBagli?: boolean;
   /** Backend #2 (opsiyonel) — yoksa FE isler(200)'den hesaplar. */
@@ -168,6 +200,12 @@ export interface EkipDurum {
   sonSabahOzeti?: { isId: string; createdAt: string; raporIlkSatir?: string | null } | null;
   /** İsteğe bağlı (2026-09-13): akış sayaçları (gun=7) — yoksa FE getAkis().sayaclar kullanır. */
   akis?: AkisSayaclari;
+  /** 2026-09-22 (PLAN/20): kota bekçisi — eski backend'de gelmez (undefined). */
+  kota?: KotaDurumu;
+  /** 2026-09-22: kuyruk özeti — eski backend'de gelmez. */
+  kuyruk?: KuyrukOzeti;
+  /** 2026-09-22: bugünün planı — eski backend'de gelmez; ekran akıştan türetir. */
+  bugunPlan?: BugunPlani;
 }
 
 export type EkipStreamEvent =
@@ -220,6 +258,10 @@ export async function getKadro(): Promise<Ajan[]> {
         tetikler: Array.isArray(a.tetikler) ? a.tetikler : [],
         aciklama: a.aciklama || '',
         suAn: suAnNormalle(a.suAn),
+        receteler: (Array.isArray(a.receteler) ? a.receteler : [])
+          .map((r: any) => (typeof r === 'string' ? { kod: r, baslik: r } : r && typeof r === 'object' ? { kod: String(r.kod || ''), baslik: String(r.baslik || r.kod || '') } : null))
+          .filter((r: AjanRecete | null): r is AjanRecete => !!r && !!r.baslik),
+        kapali: a.kapali && typeof a.kapali === 'object' && (a.kapali.neden || a.kapali === true) ? { neden: String(a.kapali.neden || 'Modül kapalı') } : a.kapali === true ? { neden: 'Modül kapalı' } : null,
         kademeOzeti: {
           oku: Number(k.oku || 0),
           portal_yaz: Number(k.portal_yaz || 0),
@@ -353,7 +395,9 @@ export async function getEkipDurum(): Promise<EkipDurum> {
       },
       bekleyenOnay: Number(data?.bekleyenOnay || 0),
       bugunKosu: Number(data?.bugunKosu ?? data?.bugunkuKosu ?? 0),
-      kota: data?.kota,
+      kota: data?.kota && typeof data.kota === 'object' && 'doldu' in data.kota ? { doldu: data.kota.doldu === true, sifirlanma: data.kota.sifirlanma ?? null, sonHata: data.kota.sonHata ?? null } : undefined,
+      kuyruk: data?.kuyruk && typeof data.kuyruk === 'object' ? { aktif: Number(data.kuyruk.aktif || 0), suruyorId: data.kuyruk.suruyorId ?? null, siradaki: data.kuyruk.siradaki?.taxpayerId ? { taxpayerId: String(data.kuyruk.siradaki.taxpayerId), ad: String(data.kuyruk.siradaki.ad || '') } : null } : undefined,
+      bugunPlan: data?.bugunPlan && typeof data.bugunPlan === 'object' ? { planlanan: Number(data.bugunPlan.planlanan || 0), suruyor: Number(data.bugunPlan.suruyor || 0), biten: Number(data.bugunPlan.biten || 0), yarim: Number(data.bugunPlan.yarim || 0) } : undefined,
       sabahOzeti: data?.sabahOzeti,
       maxBagli: data?.maxBagli,
       calisan: typeof data?.calisan === 'number' ? data.calisan : undefined,
@@ -761,4 +805,188 @@ export async function istekKapat(bildirimId: string): Promise<{ ok: boolean; id?
     if (e?.response?.status === 404) return { ok: false, error: 'Omurga henüz yayında değil (istek ucu yok)' };
     return { ok: false, error: e?.response?.data?.message || e?.message || 'Kapatma isteği gönderilemedi' };
   }
+}
+
+// ─── İŞ DÜZENİ (rutin) · KUYRUK — PLAN/20 §D (2026-09-22) ───
+// Rutin = Muzaffer Bey'in açtığı, ekibin kendiliğinden yaptığı iş düzeni (varsayılan KAPALI; ekran hiçbir rutini kendiliğinden açmaz).
+// Kuyruk = sıralı işleyici (rutinden ya da panodan "Personele ver" ile); Durdur / Devam; kota dolunca `kota_bekliyor`.
+// Bu uçlar 404 dönerse (eski backend) OmurgaYok fırlatılmaz: `destek:false` ile boş liste döner, ekran çökmeden "yayında değil" der.
+
+export type RutinKapsam = 'pano:kontrol_bekleyen' | 'pano:isleme_bekleyen' | 'pano:hazirlik_bekleyen' | 'liste' | 'ofis';
+
+export type RutinZaman =
+  | { tur: 'haftalik'; gunler: number[]; baslangic: string; bitis: string }
+  | { tur: 'aylik'; ayGunu: number; saat: string; aylar?: number[] };
+
+export interface Rutin {
+  id: string;
+  ad: string;
+  ajanId: string;
+  sablon: string;
+  kapsam: RutinKapsam;
+  taxpayerIds?: string[];
+  zaman: RutinZaman;
+  gunlukTavan: number;
+  dryRun: boolean;
+  aktif: boolean;
+  sonKosuAt?: string | null;
+  sonSonuc?: string | null;
+  bugun: { planlanan: number; biten: number; hatali: number };
+}
+
+/** POST/PATCH gövdesi — id ve türetilen alanlar dışında her şey isteğe bağlı (PATCH kısmi gönderir). */
+export type RutinGirdi = Partial<Omit<Rutin, 'id' | 'sonKosuAt' | 'sonSonuc' | 'bugun'>>;
+
+export type KuyrukDurumu = 'bekliyor' | 'suruyor' | 'durduruldu' | 'bitti' | 'kota_bekliyor';
+export type KuyrukOgeDurumu = 'bekliyor' | 'suruyor' | 'bitti' | 'hatali' | 'atlandi';
+
+export interface KuyrukOgesi {
+  taxpayerId: string;
+  ad: string;
+  durum: KuyrukOgeDurumu;
+  isId?: string | null;
+  hata?: string | null;
+}
+
+export interface Kuyruk {
+  id: string;
+  ad: string;
+  ajanId: string;
+  dryRun: boolean;
+  kaynak: 'rutin' | 'toplu';
+  rutinId?: string | null;
+  durum: KuyrukDurumu;
+  toplam: number;
+  biten: number;
+  hatali: number;
+  siradaki: { taxpayerId: string; ad: string } | null;
+  aktifIsId?: string | null;
+  ogeler: KuyrukOgesi[];
+  createdAt: string;
+  bitisAt?: string | null;
+}
+
+function zamanNormalle(z: any): RutinZaman {
+  if (z && z.tur === 'aylik') return { tur: 'aylik', ayGunu: Math.min(31, Math.max(1, Number(z.ayGunu || 1))), saat: String(z.saat || '09:30') };
+  const gunler = (Array.isArray(z?.gunler) ? z.gunler : [1, 2, 3, 4, 5]).map((g: unknown) => Number(g)).filter((g: number) => g >= 1 && g <= 7);
+  return { tur: 'haftalik', gunler: gunler.length ? gunler : [1, 2, 3, 4, 5], baslangic: String(z?.baslangic || '09:30'), bitis: String(z?.bitis || '17:00') };
+}
+
+const KAPSAMLAR: RutinKapsam[] = ['pano:kontrol_bekleyen', 'pano:isleme_bekleyen', 'pano:hazirlik_bekleyen', 'liste', 'ofis'];
+
+function rutinNormalle(r: any): Rutin | null {
+  if (!r || !r.id) return null;
+  return {
+    id: String(r.id),
+    ad: String(r.ad || 'Rutin'),
+    ajanId: String(r.ajanId || 'koordinator'),
+    sablon: String(r.sablon || ''),
+    kapsam: KAPSAMLAR.includes(r.kapsam) ? r.kapsam : 'ofis',
+    taxpayerIds: Array.isArray(r.taxpayerIds) ? r.taxpayerIds.map(String) : undefined,
+    zaman: zamanNormalle(r.zaman),
+    gunlukTavan: Math.max(1, Number(r.gunlukTavan || 8)),
+    dryRun: r.dryRun !== false,
+    aktif: r.aktif === true,
+    sonKosuAt: r.sonKosuAt ?? null,
+    sonSonuc: r.sonSonuc ?? null,
+    bugun: { planlanan: Number(r.bugun?.planlanan || 0), biten: Number(r.bugun?.biten || 0), hatali: Number(r.bugun?.hatali || 0) },
+  };
+}
+
+function kuyrukNormalle(k: any): Kuyruk | null {
+  if (!k || !k.id) return null;
+  const ogeler: KuyrukOgesi[] = (Array.isArray(k.ogeler) ? k.ogeler : [])
+    .filter((o: any) => o && o.taxpayerId)
+    .map((o: any) => ({
+      taxpayerId: String(o.taxpayerId),
+      ad: String(o.ad || o.taxpayerId),
+      durum: (['bekliyor', 'suruyor', 'bitti', 'hatali', 'atlandi'] as KuyrukOgeDurumu[]).includes(o.durum) ? o.durum : 'bekliyor',
+      isId: o.isId ?? null,
+      hata: o.hata ?? null,
+    }));
+  const durum: KuyrukDurumu = (['bekliyor', 'suruyor', 'durduruldu', 'bitti', 'kota_bekliyor'] as KuyrukDurumu[]).includes(k.durum) ? k.durum : 'bekliyor';
+  return {
+    id: String(k.id),
+    ad: String(k.ad || 'Toplu iş'),
+    ajanId: String(k.ajanId || 'koordinator'),
+    dryRun: k.dryRun !== false,
+    kaynak: k.kaynak === 'rutin' ? 'rutin' : 'toplu',
+    rutinId: k.rutinId ?? null,
+    durum,
+    toplam: Number(k.toplam ?? ogeler.length),
+    biten: Number(k.biten ?? ogeler.filter((o) => o.durum === 'bitti').length),
+    hatali: Number(k.hatali ?? ogeler.filter((o) => o.durum === 'hatali').length),
+    siradaki: k.siradaki?.taxpayerId ? { taxpayerId: String(k.siradaki.taxpayerId), ad: String(k.siradaki.ad || '') } : null,
+    aktifIsId: k.aktifIsId ?? null,
+    ogeler,
+    createdAt: String(k.createdAt || ''),
+    bitisAt: k.bitisAt ?? null,
+  };
+}
+
+/** 404 → uç henüz yok (eski backend): çökmeden `destek:false`. Diğer hatalar fırlar. */
+function destekYokMu(e: any): boolean {
+  return e?.response?.status === 404;
+}
+
+export async function getRutinler(): Promise<{ rutinler: Rutin[]; destek: boolean }> {
+  try {
+    const { data } = await api.get('/ekip/rutinler');
+    return { rutinler: (Array.isArray(data?.rutinler) ? data.rutinler : []).map(rutinNormalle).filter(Boolean) as Rutin[], destek: true };
+  } catch (e) {
+    if (destekYokMu(e)) return { rutinler: [], destek: false };
+    throw e;
+  }
+}
+
+export async function rutinOlustur(girdi: RutinGirdi): Promise<Rutin> {
+  const { data } = await api.post('/ekip/rutinler', girdi);
+  const r = rutinNormalle(data?.rutin || data);
+  if (!r) throw new Error('Rutin oluşturulamadı');
+  return r;
+}
+
+export async function rutinGuncelle(id: string, girdi: RutinGirdi): Promise<Rutin> {
+  const { data } = await api.patch(`/ekip/rutinler/${encodeURIComponent(id)}`, girdi);
+  const r = rutinNormalle(data?.rutin || data);
+  if (!r) throw new Error('Rutin güncellenemedi');
+  return r;
+}
+
+export async function rutinSil(id: string): Promise<void> {
+  await api.delete(`/ekip/rutinler/${encodeURIComponent(id)}`);
+}
+
+/** Rutini şimdi çalıştır: kapsamı hesaplar, tavana kadar kuyruğa ekler → {ok, eklenen, kuyrukId}. */
+export async function rutinSimdi(id: string): Promise<{ ok: boolean; eklenen: number; kuyrukId?: string | null; error?: string }> {
+  const { data } = await api.post(`/ekip/rutinler/${encodeURIComponent(id)}/simdi`, {}, { timeout: 30_000 });
+  return { ok: data?.ok === true, eklenen: Number(data?.eklenen || 0), kuyrukId: data?.kuyrukId ?? null, error: data?.error || undefined };
+}
+
+export async function getKuyruk(): Promise<{ kuyruklar: Kuyruk[]; destek: boolean }> {
+  try {
+    const { data } = await api.get('/ekip/kuyruk');
+    return { kuyruklar: (Array.isArray(data?.kuyruklar) ? data.kuyruklar : []).map(kuyrukNormalle).filter(Boolean) as Kuyruk[], destek: true };
+  } catch (e) {
+    if (destekYokMu(e)) return { kuyruklar: [], destek: false };
+    throw e;
+  }
+}
+
+/** Toplu görev: seçili mükellefler + şablon → kuyruk. `dryRun` yalnız açıkça true gönderilirse canlı DEĞİL; kuru = true. */
+export async function kuyrukOlustur(govde: { ad?: string; ajanId: string; sablon: string; taxpayerIds: string[]; dryRun: boolean }): Promise<Kuyruk> {
+  const { data } = await api.post('/ekip/kuyruk', { ...govde, dryRun: govde.dryRun !== false });
+  const k = kuyrukNormalle(data?.kuyruk || data);
+  if (!k) throw new Error('Kuyruk oluşturulamadı');
+  return k;
+}
+
+export async function kuyrukDurdur(id: string): Promise<Kuyruk | null> {
+  const { data } = await api.post(`/ekip/kuyruk/${encodeURIComponent(id)}/durdur`, {});
+  return kuyrukNormalle(data?.kuyruk || null);
+}
+
+export async function kuyrukDevam(id: string): Promise<Kuyruk | null> {
+  const { data } = await api.post(`/ekip/kuyruk/${encodeURIComponent(id)}/devam`, {});
+  return kuyrukNormalle(data?.kuyruk || null);
 }

@@ -9,7 +9,7 @@ import { CARD_BORDER, GOLD, KIRMIZI, MAVI, MOR, MUTED, OK, TEXT, TURUNCU } from 
 /**
  * EKİP — küçük ortak parçalar.
  * Koyu tema (A): renkler `../../butce/ui` paletinden satır içi gelir (GOLD/OK/KIRMIZI/MAVI/MOR).
- * Beyaz tema (D): her parça `data-ton` kancası taşır; renkler `ekip-white.css`'te (bilgi/BEYAZ-TEMA-TASARIM-DILI.md ailesi).
+ * Beyaz tema (D): her parça `data-ton` kancası taşır; renkler `ofis/ofis.css`'te (bilgi/BEYAZ-TEMA-TASARIM-DILI.md ailesi).
  * Renk yalnız anlam taşır: çivit = sürüyor/birincil · kehribar = bekleyen · yeşil = bitti · kırmızı = yarım/tehlike · kurşuni = nötr.
  */
 export { GOLD, OK, KIRMIZI, MAVI, MOR, TURUNCU, TEXT, MUTED, CARD_BG, CARD_BORDER, ROW_SEP } from '../../butce/ui';
@@ -41,7 +41,6 @@ export function renkTonu(renk?: string): Ton {
 export const AJAN_TON: Record<string, Ton> = {
   koordinator: 'civit',
   fatura: 'mavi',
-  'banka-kasa': 'yesil',
   beyanname: 'mor',
   'bordro-sgk': 'deniz',
   edefter: 'yesil',
@@ -60,7 +59,6 @@ export function ajanTonu(id: string): Ton {
 export const AJAN_RENK: Record<string, string> = {
   koordinator: GOLD,
   fatura: TURUNCU,
-  'banka-kasa': OK,
   beyanname: MAVI,
   'bordro-sgk': MOR,
   edefter: '#72cdbd',

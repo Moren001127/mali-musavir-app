@@ -1,16 +1,19 @@
 'use client';
-import './genel-redesign.css';
 import { portalStyle } from '@/lib/portal-theme';
 
-
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Check, Loader2, MessageSquareReply, Send, XCircle } from 'lucide-react';
 import { istekKapat, onayla, reddet, type AcikKalem, type EkipOnay, type Vaka } from '@/lib/ekip';
 import type { Adim, Kosu, KosularApi } from './kosular';
 import { OnayTeyit, hedefMetni } from './OnayBekleyenler';
-import { Alinti, Avatar, CARD_BORDER, Dugme, GOLD, KIRMIZI, MUTED, OK, ROW_SEP, Rozet, TEXT } from './Tema';
-import { SADE_AYRAC } from './GenelBakis';
+import { Alinti, Avatar, CARD_BORDER, Dugme, KIRMIZI, MUTED, OK, ROW_SEP, TEXT } from './Tema';
 import { ajanKisaltma, ajanTamAd, aracAdi, kalanSure } from './ortak';
+
+/**
+ * Açık kalem kartları (Sizden beklenen · iş paneli). 2026-09-22: "Sizden beklenen" kutusu ofis/SizdenBeklenen.tsx'e taşındı;
+ * burada yalnız AcikKalemKarti (PRV onayı: `onayla(previewId)` → "ONAYLIYORUM #previewId", iki adımlı 5 sn teyit; Reddet notu),
+ * YerelOnay (SSE 'onay' olayı) ve bekleyenKalemler kaldı.
+ */
 
 /* ─────────────────────────── açık kalem (onay / karar / istek) ─────────────────────────── */
 
@@ -229,75 +232,4 @@ export function bekleyenKalemler(vakalar: Vaka[] | undefined): BekleyenKalem[] {
     for (const k of v.acikKalemler) out.push({ vaka: v, kalem: k, ajanId });
   }
   return out.sort((a, b) => new Date(b.vaka.guncellendi).getTime() - new Date(a.vaka.guncellendi).getTime());
-}
-
-export function SizdenBeklenenKutu({
-  kalemler,
-  onaylar,
-  ajanAd,
-  mukellefAd,
-  onBitti,
-  onCevapla,
-  calisiyor,
-  yukleniyor,
-  hata,
-  className = '',
-}: {
-  kalemler: BekleyenKalem[];
-  onaylar: EkipOnay[];
-  ajanAd: (id: string) => string;
-  mukellefAd: (id?: string | null) => string | undefined;
-  onBitti: () => void;
-  onCevapla: (vaka: Vaka, metin: string) => boolean | void;
-  calisiyor: boolean;
-  yukleniyor: boolean;
-  hata?: unknown;
-  className?: string;
-}) {
-  const onayHaritasi = useMemo(() => new Map(onaylar.map((o) => [o.previewId, o])), [onaylar]);
-  return (
-    <section aria-label="Sizden beklenen" className={`eg-kararlar mt-3.5 ${className}`}>
-      {!!hata && <p role="alert" className="eg-hata-yazi mb-2 text-[12px]" style={portalStyle({ color: KIRMIZI })}>Kararlar yenilenemedi. {hata instanceof Error ? hata.message : 'Lütfen yeniden deneyin.'}</p>}
-      <div className="eg-kararlar-baslik mb-2 flex items-center justify-between border-t pt-3.5 text-[13px]" style={portalStyle({ color: GOLD, borderColor: SADE_AYRAC })}>
-        <span>Sizden beklenen</span>
-        {kalemler.length > 0 && <Rozet metin={`${kalemler.length} bekliyor`} renk={GOLD} ton="kehribar" />}
-      </div>
-      {yukleniyor && !kalemler.length ? (
-        <div className="eg-bos-satir py-2 text-[12px]" style={portalStyle({ color: MUTED })}>
-          Yükleniyor…
-        </div>
-      ) : !kalemler.length ? (
-        <div className="eg-bos-satir flex items-center gap-2.5 text-[12.5px]" style={portalStyle({ color: MUTED })}>
-          {!hata && <Check size={18} className="eg-tamam-simge rounded-full p-0.5" style={portalStyle({ color: OK, background: `${OK}1f`, border: `1px solid ${OK}4d` })} />}
-          {hata ? 'Bekleyen karar bilgisi alınamadı.' : 'Sizden beklenen karar yok.'}
-        </div>
-      ) : (
-        <div className="-mt-1">
-          {kalemler.map(({ vaka, kalem, ajanId }) => (
-            <details key={`${vaka.vakaId}-${kalem.tip}-${kalem.id}`} className="eg-karar-detay group border-t py-1" style={portalStyle({ borderColor: ROW_SEP })}>
-              <summary className="flex cursor-pointer list-none items-center gap-3 py-3 [&::-webkit-details-marker]:hidden">
-                <span className="eg-karar-nokta h-1.5 w-1.5 shrink-0 rounded-full" style={portalStyle({ background: GOLD })} />
-                <span className="min-w-0 flex-1">
-                  <span className="eg-akis-baslik block truncate text-[12.5px] font-medium" style={portalStyle({ color: TEXT })} title={vaka.mukellef?.ad || 'Ofis geneli'}>{vaka.mukellef?.ad || 'Ofis geneli'}</span>
-                  <span className="eg-akis-alt block truncate text-[11.5px]" style={portalStyle({ color: MUTED })} title={kalem.baslik}>{kalem.baslik}</span>
-                </span>
-                <span className="eg-karar-ac shrink-0 text-[11.5px] font-semibold" style={portalStyle({ color: GOLD })}><span className="group-open:hidden">İncele</span><span className="hidden group-open:inline">Gizle</span></span>
-              </summary>
-            <AcikKalemKarti
-              kalem={kalem}
-              ustBaslik={vaka.mukellef?.ad || 'Ofis geneli'}
-              ajanId={ajanId}
-              ajanAd={ajanAd}
-              onay={kalem.kaynak === 'PRV' ? onayHaritasi.get(kalem.id) || null : null}
-              mukellefAd={mukellefAd}
-              onBitti={onBitti}
-              onCevapla={(m) => onCevapla(vaka, m)}
-              calisiyor={calisiyor}
-            />
-            </details>
-          ))}
-        </div>
-      )}
-    </section>
-  );
 }

@@ -1,5 +1,4 @@
 'use client';
-import './isler-redesign.css';
 import { portalStyle } from '@/lib/portal-theme';
 
 
@@ -8,11 +7,12 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Loader2, X, Square, Send, MessageSquareReply, RotateCcw, ChevronDown, AlertTriangle, GraduationCap, HelpCircle, FlaskConical, Clock, Ban } from 'lucide-react';
 import { toast } from 'sonner';
 import { getIs, iptalEt, sabahOzetiUret, isZamanAsimi, type CanliAdim, type IsDosyasi, type Vaka, type VakaAdim, type VakaAdimIs } from '@/lib/ekip';
-import type { KomutTaslak } from './GorevKarti';
+import type { KomutTaslak } from './ofis/GorevKutusu';
+import { OfisAvatar } from './ofis/Parcalar';
 import { DURDURULDU_METNI, type Adim, type Kosu, type KosularApi } from './kosular';
 import { OnayTeyit } from './OnayBekleyenler';
 import { AcikKalemKarti, YerelOnay } from './Kararlar';
-import { Avatar, Bos, CARD_BORDER, Dugme, GOLD, KIRMIZI, MAVI, MOR, MUTED, OK, ROW_SEP, Rozet, TEXT, TURUNCU, type Ton } from './Tema';
+import { Bos, CARD_BORDER, Dugme, GOLD, KIRMIZI, MAVI, MOR, MUTED, OK, ROW_SEP, Rozet, TEXT, TURUNCU, type Ton } from './Tema';
 import { adimAciklamasi, ajanKisaAd, ajanKisaltma, ajanTamAd, aracAdi, cevapAyristir, gorevSadelestir, kaynakEtiketi, konuKisalt, raporBolumleri, saatKisa, sayacMetni, sureKisa, yokMu, type RaporBolumu } from './ortak';
 
 /** Adım metinlerinde panelin mükellefi tekrar yazılmasın diye adimAciklamasi'ne geçen bağlam. */
@@ -66,14 +66,14 @@ type BekleyenCevap = { metin: string; vakaId: string; taxpayerId?: string; dryRu
 /* ─────────────────────────── zaman çizgisi ─────────────────────────── */
 
 /** Zaman çizgisi satırı: saat · avatar · başlık + alt yazı · sağda sonuç. */
-function ZamanSatiri({ saat, kisaltma, ton, ajanId, baslik, alt, sonuc, devir, nabiz, children }: { saat?: string; kisaltma: string; ton: 'gold' | 'mavi' | 'gri' | 'kirmizi'; ajanId?: string; baslik: ReactNode; alt?: ReactNode; sonuc?: ReactNode; devir?: boolean; nabiz?: boolean; children?: ReactNode }) {
+function ZamanSatiri({ saat, kisaltma, ton: _ton, ajanId, baslik, alt, sonuc, devir, nabiz, children }: { saat?: string; kisaltma: string; ton: 'gold' | 'mavi' | 'gri' | 'kirmizi'; ajanId?: string; baslik: ReactNode; alt?: ReactNode; sonuc?: ReactNode; devir?: boolean; nabiz?: boolean; children?: ReactNode }) {
   return (
     <li className="ekip-isler-gunluk-satir grid min-w-0 grid-cols-[42px_32px_minmax(0,1fr)] items-start gap-x-2 py-1.5 md:grid-cols-[42px_32px_minmax(0,1fr)_minmax(0,180px)]">
       <span className="ekip-isler-saat pt-1.5 text-[11px] tabular-nums" style={portalStyle({ color: MUTED })}>
         {saat || ''}
       </span>
       <span className="pt-0.5">
-        <Avatar kisaltma={kisaltma} ton={ton} ajanId={ajanId} boyut={26} nabiz={nabiz} />
+        <OfisAvatar ajanId={ajanId || (kisaltma === 'MB' ? 'siz' : 'koordinator')} boyut={26} canli={!!nabiz} />
       </span>
       <span className="min-w-0 pt-0.5">
         <b className="ekip-isler-gunluk-baslik block text-[12.5px] font-semibold" style={portalStyle({ color: TEXT })}>

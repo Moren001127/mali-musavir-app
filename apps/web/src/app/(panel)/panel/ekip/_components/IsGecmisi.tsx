@@ -1,5 +1,4 @@
 'use client';
-import './isler-redesign.css';
 import { portalStyle } from '@/lib/portal-theme';
 
 
@@ -9,8 +8,9 @@ import { useIsFetching, useQueryClient } from '@tanstack/react-query';
 import { isOmurgaYok, type Akis, type AkisFiltre, type AkisGun, type AkisSayaclari, type MukellefOzet, type Vaka } from '@/lib/ekip';
 import { MukellefSecici } from './MukellefSecici';
 import { OmurgaYokBilgi } from './OmurgaYokBilgi';
-import { Avatar, Bos, Dugme, GOLD, KIRMIZI, MAVI, MUTED, OK, ROW_SEP, Rozet, TEXT, ajanRengi } from './Tema';
-import { KUTULAR, ajanKisaAd, ajanKisaltma, tarihKisa, vakaSirasi } from './ortak';
+import { Bos, Dugme, GOLD, KIRMIZI, MAVI, MUTED, OK, ROW_SEP, Rozet, TEXT } from './Tema';
+import { OfisAvatar } from './ofis/Parcalar';
+import { KUTULAR, ajanKisaAd, tarihKisa, vakaSirasi } from './ortak';
 
 /** Sayfa başına satır. */
 const SAYFA = 8;
@@ -167,7 +167,7 @@ export function IsGecmisi({ akis, isLoading, error, sayaclar, suzgec, onSuzgec, 
                         </div>}
                       </td>
                       <td><span className="ekip-isler-sorumlu">
-                        <Avatar kisaltma={ajanKisaltma(personelId)} renk={ajanRengi(personelId)} ajanId={personelId} ton={kosuyor ? 'mavi' : personelId === 'koordinator' ? 'gold' : 'gri'} boyut={26} nabiz={kosuyor} title={ajanKisaAd(personelId, ajanAd(personelId))} />
+                        <OfisAvatar ajanId={personelId} boyut={28} canli={kosuyor} title={ajanKisaAd(personelId, ajanAd(personelId))} />
                         <span>{ajanKisaAd(personelId, ajanAd(personelId))}</span>
                       </span></td>
                       <td><span className="ekip-isler-durum" data-durum={r.ad} style={portalStyle({ color: r.renk })}>
