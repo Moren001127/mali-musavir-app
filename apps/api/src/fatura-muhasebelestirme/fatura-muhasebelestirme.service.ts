@@ -12483,11 +12483,32 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
    * Bu sürüm giriş yapar, /accounts ve inbox sayfasının ŞEKLİNİ loga yazar; liste ayrıştırma
    *   bir sonraki adımda o loga bakılarak yazılacak. Şifre YALNIZ şifreli kayıttan okunur.
    */
+  /**
+   * MİKRO e-PORTAL (eportal.mikrogrup.com) — 2026-09-22 canlı keşif (Muzaffer Bey portala girdi, ağ izi okundu).
+   *
+   * UÇLAR (ekranın kendi dosyalarından: /Ng/Services/Invoice/invoiceInboxService.js, .../invoiceOutboxService.js):
+   *   giriş   POST /home/loginEmikro {email,password}  → oturum çerezi
+   *   firma   GET  /accounts                            → /cp/{accountGuid}/ bağlantıları
+   *   gelen   GET  /cp/{guid}/inbox/GetIncomingInvoiceList?firstDate&lastDate&filterDateType=DocumentDate&…&page&recordPerPage
+   *   giden   GET  /cp/{guid}/outbox/GetSubmittedInvoiceList?… (aynı süzgeç)
+   *   belge   GET  /cp/{guid}/{inbox|outbox}/downloadUBL?id={Id}&enveloped=false → UBL XML (ikili)
+   * Liste yanıtı: { incomingInvoices|submittedInvoices: [...], pagination:{page,recordPerPage,totalPage,totalRecord} }
+   * Satır: Id (GUID) · UserTitle/UserTaxIdentification (karşı taraf) · Header.DocumentDate · FormattedGibNumber
+   *        · InvoiceTypeCode · State/StatusDescription · CancelationDate/ObjectionState · LineExtensionAmount.
+   *
+   * ⛔ TUZAK — IP ENGELİ: Cloudflare, `POST /home/loginEmikro` isteğini VERİ MERKEZİ IP'lerinden 403 ile kesiyor
+   *   (Railway ve Türkiye VPS'imizden; gerçek Chrome ile bile). Aynı istek ofis bağlantısından 200 dönüyor.
+   *   ÖNEMLİ: yalnız GİRİŞ engelli — /accounts, liste ve downloadUBL sunucudan 302 (oturum yok) veriyor, 403 değil.
+   *   Bu yüzden mimari İKİYE BÖLÜNDÜ: oturumu ofisteki ajan açar, çerezi buraya bırakır; gerisini sunucu yapar
+   *   (bkz. mikroOturumCerezi / POST /agent/mikro/session). Mikro IP'mize izin verirse doğrudan giriş de çalışır.
+   */
   private async fetchMikroEportalInvoices(
     cfg: RuntimeIntegrationConfig,
-    opts: { taxpayer: any; direction: 'ALIS' | 'SATIS'; period: { donem: string; startDate: string; endDate: string }; limit: number; channel?: string },
+    opts: { taxpayer: any; direction: 'ALIS' | 'SATIS'; period: { donem: string; startDate: string; endDate: string }; limit: number; channel?: string;
+            onPayload?: (p: ProviderInvoicePayload) => Promise<void>; skipExistingExternalIds?: Set<string> },
   ): Promise<ProviderInvoicePayload[]> {
     const B = MIKRO_EPORTAL_URL;
+    const nefes = (ms: number) => new Promise((res) => setTimeout(res, ms));
     const jar = new Map<string, string>();
     const cookieHeader = () => [...jar.entries()].map(([k, v]) => `${k}=${v}`).join('; ');
     const soak = (res: Response) => {
@@ -12502,55 +12523,148 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const res = await this.trFetch(B + path, {
         ...init,
         redirect: 'manual',
-        headers: { 'User-Agent': 'Mozilla/5.0', Accept: 'text/html,application/json,*/*', Cookie: cookieHeader(), ...(init.headers || {}) },
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0 Safari/537.36',
+          Accept: 'application/json, text/html, */*',
+          Cookie: cookieHeader(),
+          ...(init.headers || {}),
+        },
         signal: AbortSignal.timeout(60_000),
       });
       soak(res);
       return res;
     };
 
-    // 1) Giriş sayfası — oturum/antiforgery çerezi
-    await go('/');
-    // 2) Giriş
-    const loginRes = await go('/home/loginEmikro', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: cfg.username, password: cfg.password }),
-    });
-    const loginTxt = await loginRes.text();
-    let loginJson: any = null;
-    try { loginJson = JSON.parse(loginTxt); } catch { /* HTML dönebilir */ }
-    this.logger.log(`[MIKRO-EPORTAL] login HTTP=${loginRes.status} Success=${loginJson?.Success} 2FA=${loginJson?.IsTwoFactorRequired} govde=${loginTxt.slice(0, 300).replace(/\s+/g, ' ')}`);
-
-    if (loginJson && loginJson.Success === false) {
-      throw new Error(`Mikro e-Portal girişi reddedildi: ${JSON.stringify(loginJson).slice(0, 300)}`);
+    // ── 1) OTURUM: önce ajanın bıraktığı çerez, yoksa doğrudan giriş ──
+    const hazir = this.mikroOturumCerezi(cfg);
+    if (hazir) for (const parca of hazir.split(';')) {
+      const ix = parca.indexOf('=');
+      if (ix > 0) jar.set(parca.slice(0, ix).trim(), parca.slice(ix + 1).trim());
     }
-    if (loginJson?.IsTwoFactorRequired) {
-      throw new Error('Mikro e-Portal telefon doğrulaması (2FA) istiyor — portalda "iletişim bilgilerini doğrula" adımını tamamlayın, sonra tekrar deneyin.');
-    }
-
-    // 3) Firma listesi — accountGuid'i bul
-    const accRes = await go('/accounts');
-    const accTxt = accRes.status < 400 ? await accRes.text() : '';
-    const guids = [...new Set([...accTxt.matchAll(/\/cp\/([0-9a-f-]{36})\//gi)].map((m) => m[1]))];
-    this.logger.log(`[MIKRO-EPORTAL] /accounts HTTP=${accRes.status} len=${accTxt.length} bulunanFirma=${guids.length} ${guids.slice(0, 5).join(',')}`);
-    if (!guids.length) {
-      this.logger.warn(`[MIKRO-EPORTAL] /accounts ornek: ${accTxt.slice(0, 700).replace(/\s+/g, ' ')}`);
-      throw new Error('Mikro e-Portal: giriş yapıldı ama firma listesi çözülemedi (log: MIKRO-EPORTAL /accounts).');
-    }
-
-    // 4) Gelen/giden/e-arşiv ekranının ŞEKLİNİ öğren (ayrıştırma bir sonraki adımda)
-    const channel = String(opts.channel || (opts.direction === 'SATIS' ? 'OUT_EFATURA' : 'IN_EFATURA')).toUpperCase();
-    const ctrl = channel === 'OUT_EARSIV' ? 'earchive' : channel === 'OUT_EFATURA' ? 'outbox' : 'inbox';
-    for (const guid of guids.slice(0, 2)) {
-      const pRes = await go(`/cp/${guid}/${ctrl}/index`);
-      const pTxt = pRes.status < 400 ? await pRes.text() : '';
-      const scripts = [...pTxt.matchAll(/<script[^>]+src=["']([^"']+)["']/gi)].map((m) => m[1]).filter((s) => /\/Ng\//i.test(s));
-      this.logger.log(`[MIKRO-EPORTAL] ${ctrl}/index guid=${guid} HTTP=${pRes.status} len=${pTxt.length} ngScripts=${scripts.slice(0, 8).join(' | ')}`);
-      this.logger.log(`[MIKRO-EPORTAL] ${ctrl} govde ornegi: ${pTxt.slice(0, 900).replace(/\s+/g, ' ')}`);
+    let girisYapildi = !!hazir;
+    if (!girisYapildi) {
+      if (!cfg.username || !cfg.password) throw new Error('Mikro e-Portal kullanıcı adı (e-posta) ve parolası gerekli');
+      await go('/');
+      const loginRes = await go('/home/loginEmikro', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: cfg.username, password: cfg.password }),
+      });
+      const loginTxt = await loginRes.text();
+      if (loginRes.status === 403) {
+        throw new Error(
+          'Mikro e-Portal girişi sunucu IP\'sinden engelleniyor (Cloudflare 403). Giriş, ofisteki ajanın açtığı oturumla yapılmalı '
+          + '(ajan çerezi gönderince liste ve belge indirme sunucudan çalışıyor) ya da Mikro sunucu IP\'mize izin vermeli.',
+        );
+      }
+      let loginJson: any = null;
+      try { loginJson = JSON.parse(loginTxt); } catch { /* HTML dönebilir */ }
+      if (loginJson?.IsTwoFactorRequired) {
+        throw new Error('Mikro e-Portal iki adımlı doğrulama (SMS) istiyor — portaldan kapatın ya da ajan oturumunu kullanın.');
+      }
+      if (loginJson && loginJson.Success === false) {
+        throw new Error(`Mikro e-Portal girişi reddedildi: ${String(loginJson?.Errors || loginJson?.Message || '').slice(0, 200)}`);
+      }
+      girisYapildi = true;
     }
 
-    throw new Error('Mikro e-Portal: giriş BAŞARILI, ekran yapısı loga yazıldı (MIKRO-EPORTAL). Liste ayrıştırma bir sonraki adımda eklenecek.');
+    // ── 2) FİRMA KİMLİĞİ (accountGuid) ──
+    let guid = String((cfg as any).accountId || '').trim();
+    if (!/^[0-9a-f-]{36}$/i.test(guid)) {
+      const accRes = await go('/accounts');
+      const accTxt = accRes.status < 400 ? await accRes.text() : '';
+      const adaylar = [...new Set([...accTxt.matchAll(/\/cp\/([0-9a-f-]{36})\//gi)].map((m) => m[1]))];
+      guid = adaylar[0] || '';
+      if (!guid) {
+        throw new Error(
+          accRes.status === 302
+            ? 'Mikro e-Portal oturumu düşmüş (giriş sayfasına yönlendirildi) — ajanın yeni oturum açması gerekiyor.'
+            : 'Mikro e-Portal: firma listesi çözülemedi (/accounts).',
+        );
+      }
+    }
+
+    // ── 3) LİSTE (sayfalı) ──
+    const gelen = opts.direction === 'ALIS';
+    const modul = gelen ? 'inbox' : 'outbox';
+    const listeUcu = gelen ? 'GetIncomingInvoiceList' : 'GetSubmittedInvoiceList';
+    const sayfaBoyu = Math.min(Math.max(opts.limit, 50), 200);
+    const suzgec = (sayfa: number) => new URLSearchParams({
+      FlagStatus: 'All', cancelledStatus: 'All', filterDateType: 'DocumentDate',
+      firstDate: `${opts.period.startDate}T00:00:00.000Z`, lastDate: `${opts.period.endDate}T23:59:59.000Z`,
+      folder: '', gibNumber: '', invoiceCurrency: 'All', invoiceProfilesFilter: 'TUMU', invoiceTypeCodesFilter: 'TUMU',
+      maxAmount: '', minAmount: '', page: String(sayfa), readingState: 'All', recordPerPage: String(sayfaBoyu),
+      sortColumn: '', sortOrder: '', state: 'Hepsi', taxNumber: '', titleMatchType: 'StartsWith', titleValue: '',
+    }).toString();
+
+    const payloads: ProviderInvoicePayload[] = [];
+    let kept = 0;
+    let toplamSayfa = 1;
+    for (let sayfa = 1; sayfa <= toplamSayfa && kept < opts.limit; sayfa++) {
+      const r = await go(`/cp/${guid}/${modul}/${listeUcu}?${suzgec(sayfa)}`);
+      if (r.status === 302) throw new Error('Mikro e-Portal oturumu düştü — ajanın yeni oturum açması gerekiyor.');
+      const t = await r.text();
+      if (!r.ok) throw new Error(`Mikro e-Portal liste hatası: HTTP ${r.status} ${t.slice(0, 160).replace(/\s+/g, ' ')}`);
+      let j: any; try { j = JSON.parse(t); } catch { throw new Error('Mikro e-Portal liste yanıtı JSON değil (oturum düşmüş olabilir).'); }
+      const satirlar: any[] = j?.incomingInvoices || j?.submittedInvoices || j?.invoices || [];
+      const sayfalama = j?.pagination || {};
+      toplamSayfa = Math.max(1, Number(sayfalama.totalPage) || 1);
+      if (sayfa === 1) {
+        this.logger.log(`[MIKRO] ${modul} ${opts.period.donem}: ${Number(sayfalama.totalRecord) || satirlar.length} kayıt, ${toplamSayfa} sayfa`);
+      }
+      if (!satirlar.length) break;
+
+      for (const it of satirlar) {
+        if (kept >= opts.limit) break;
+        const id = String(it?.Id || '').trim();
+        if (!id) continue;
+        const externalId = `mikro:${modul}:${id}`;
+        if (opts.skipExistingExternalIds?.has(externalId)) { kept++; continue; }
+        const faturaNo = String(it?.FormattedGibNumber || it?.GIBNumber?.Serial ? `${it?.GIBNumber?.Serial || ''}${it?.GIBNumber?.Number || ''}` : id).trim() || id;
+
+        const dRes = await go(`/cp/${guid}/${modul}/downloadUBL?id=${encodeURIComponent(id)}&enveloped=false`, {
+          headers: { Accept: 'application/xml, application/octet-stream, */*' },
+        });
+        if (dRes.status === 302) throw new Error('Mikro e-Portal oturumu düştü (belge indirme) — ajanın yeni oturum açması gerekiyor.');
+        if (!dRes.ok) { this.logger.warn(`[MIKRO] belge indirilemedi (${faturaNo}): HTTP ${dRes.status}`); continue; }
+        const buf = Buffer.from(await dRes.arrayBuffer());
+        let xml: string | null = null;
+        if (buf.length >= 2 && buf[0] === 0x50 && buf[1] === 0x4b) xml = await this.elogoUnzipXml(buf);
+        else {
+          const metin = buf.toString('utf8').trim();
+          xml = metin.startsWith('<') ? metin
+            : (/^[A-Za-z0-9+/=\s]+$/.test(metin) && metin.length > 100 ? Buffer.from(metin, 'base64').toString('utf8') : null);
+        }
+        if (!xml || !xml.includes('<')) { this.logger.warn(`[MIKRO] belge boş/çözülemedi: ${faturaNo}`); continue; }
+
+        const iptalMi = !!(it?.CancelationDate || it?.CancelationReason);
+        const payload: ProviderInvoicePayload = {
+          externalId,
+          originalName: `${faturaNo}.xml`,
+          xml,
+          providerStatus: {
+            approval: String(it?.StatusDescription || it?.State || '').trim() || null,
+            iptal: iptalMi ? 'Iptal' : (String(it?.ObjectionState || '').toLowerCase().includes('itiraz') ? 'Itiraz' : null),
+          },
+        };
+        kept++;
+        if (opts.onPayload) await opts.onPayload(payload);
+        else payloads.push(payload);
+        await nefes(350); // nazik hız
+      }
+    }
+    this.logger.log(`[MIKRO] ${modul} çekim bitti: ${kept} belge (dönem ${opts.period.donem})`);
+    return payloads;
+  }
+
+  /** Ofis ajanının bıraktığı Mikro oturum çerezi (integration_connections.config.taxpayers[tp].mikroCookie).
+   *  40 dakikadan eskiyse kullanılmaz — düşmüş oturumla boşuna istek atılmasın. */
+  private mikroOturumCerezi(cfg: RuntimeIntegrationConfig): string | null {
+    const cerez = String((cfg as any).mikroCookie || '').trim();
+    const ne = Date.parse(String((cfg as any).mikroCookieAt || ''));
+    if (!cerez) return null;
+    if (Number.isFinite(ne) && Date.now() - ne > 40 * 60 * 1000) return null;
+    return cerez;
   }
 
   private static readonly mikroSessions = new Map<string, { sid: string; ts: number }>();
