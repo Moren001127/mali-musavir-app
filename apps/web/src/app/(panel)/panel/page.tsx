@@ -295,8 +295,9 @@ function BeyanDetayModal({ state, onClose }: { state: { beyanTipi: BeyanTipi; fi
     URL.revokeObjectURL(url);
   };
   const periodModeText = state.donemTuru === 'VERILME' ? 'Verilme dönemi' : 'Vergi dönemi';
+  // Bildirge'de Tarih sütunu yok (Muzaffer Bey: "tarih kısmını kaldır, yer açılsın; tahakkuk ile çalışan var/yok kalsın").
   const izgara = bildirge
-    ? 'grid-cols-[48px_minmax(200px,1.6fr)_150px_104px_120px_128px]'
+    ? 'grid-cols-[48px_minmax(240px,1.6fr)_170px_140px_150px]'
     : 'grid-cols-[64px_minmax(260px,1.6fr)_160px_130px_150px]';
   const vergiDonemKey = filteredItems[0]?.beyan?.vergiDonem || '';
   const emptyText = state.filter === 'onaylanan'
@@ -361,7 +362,7 @@ function BeyanDetayModal({ state, onClose }: { state: { beyanTipi: BeyanTipi; fi
                 <div>No</div>
                 <div>Mükellef</div>
                 <div>Durum</div>
-                <div>Tarih</div>
+                {!bildirge && <div>Tarih</div>}
                 <div className="text-right">Tahakkuk</div>
                 {bildirge && <div className="text-right" title="O dönem personel çalıştırmayan mükellef için 'Yok' seçin; bildirge o dönemde verildi sayılır.">Çalışan</div>}
               </div>
@@ -392,9 +393,11 @@ function BeyanDetayModal({ state, onClose }: { state: { beyanTipi: BeyanTipi; fi
                           {durumMetni(beyan)}
                         </span>
                       </div>
-                      <div className="text-[12px] font-semibold tabular-nums" style={portalStyle({ color: 'rgba(250,250,249,0.66)' })}>
-                        {formatDate(beyan.onayTarihi)}
-                      </div>
+                      {!bildirge && (
+                        <div className="text-[12px] font-semibold tabular-nums" style={portalStyle({ color: 'rgba(250,250,249,0.66)' })}>
+                          {formatDate(beyan.onayTarihi)}
+                        </div>
+                      )}
                       <div className="text-right text-[12px] font-black tabular-nums" style={portalStyle({ color: 'rgba(250,250,249,0.78)', fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif' })}>
                         {formatMoney(beyan.tahakkukTutari)}
                       </div>
@@ -406,7 +409,7 @@ function BeyanDetayModal({ state, onClose }: { state: { beyanTipi: BeyanTipi; fi
                             <div className="inline-flex rounded-lg p-0.5" role="group" aria-label="Çalışan var / yok" style={portalStyle({ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.10)' })}>
                               {([{ v: true, ad: 'Var' }, { v: false, ad: 'Yok' }] as const).map((s) => {
                                 const secili = beyan.calisanYok ? !s.v : s.v;
-                                const ton = s.v ? TRACK_BLUE : '#22c55e';
+                                const ton = TRACK_BLUE; // Muzaffer Bey: seçici mavi
                                 return (
                                   <button
                                     key={s.ad}
