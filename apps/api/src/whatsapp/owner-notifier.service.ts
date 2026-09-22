@@ -300,6 +300,7 @@ export class OwnerNotifierService implements OnModuleInit {
       AI_COST_LIMIT: { emoji: '⚠️', label: 'AI Maliyet' },
       AI_PROPOSAL: { emoji: '🔔', label: 'AI Oneri' },
       E_TEBLIGAT: { emoji: '📨', label: 'e-Tebligat' },
+      GENEL_SORGU: { emoji: '🔎', label: 'Genel Sorgu' },
       PORTAL_CREDENTIAL_FAIL: { emoji: '🔑', label: 'Portal Şifre' },
       TAX_DEADLINE: { emoji: '📅', label: 'Beyan Suresi' },
       TASK_DUE: { emoji: '✅', label: 'Gorev' },

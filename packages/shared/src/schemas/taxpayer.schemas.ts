@@ -10,7 +10,7 @@ const KurumTuruAlani = z.enum(KURUM_TURU_KODLARI).optional().nullable().or(z.lit
 const SektorEtiketiAlani = z.string().max(60, 'Sektör etiketi en fazla 60 karakter').optional().nullable().or(z.literal(''));
 
 // 2026-09-14 Otomatik Sorgulama Ayarı — gece cron'unun bu mükellef için açacağı sorgular.
-//   6 anahtar da opsiyonel; gönderilmeyen anahtar mevcut/varsayılan değerinde kalır. Şemalar .strict()
+//   7 anahtar da opsiyonel (eDefter 2026-09-22); gönderilmeyen anahtar mevcut/varsayılan değerinde kalır. Şemalar .strict()
 //   olduğundan alan burada tanımlı olmazsa mükellef formu kaydedilemez — o yüzden 3 şemaya da eklendi.
 export const OtomatikSorguSchema = z.object({
   eTebligat: z.boolean().optional(),
@@ -19,6 +19,7 @@ export const OtomatikSorguSchema = z.object({
   pos: z.boolean().optional(),
   eHaciz: z.boolean().optional(),
   yoklama: z.boolean().optional(),
+  eDefter: z.boolean().optional(),
 }).strict();
 export type OtomatikSorguDto = z.infer<typeof OtomatikSorguSchema>;
 const OtomatikSorguAlani = OtomatikSorguSchema.optional().nullable();

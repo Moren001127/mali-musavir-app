@@ -17,6 +17,9 @@ export const NOTIFICATION_TYPES = {
   AI_COST_LIMIT: 'AI_COST_LIMIT',
   MOREN_AI_ALERT: 'MOREN_AI_ALERT',
   E_TEBLIGAT: 'E_TEBLIGAT',
+  // Genel Sorgulamalar (2026-09-22): Dijital Vergi Dairesi gece/elle sorgusunda YENİ e-Haciz bildirisi ya da
+  // yoklama tutanağı bulununca (portal-automation completeJob). Vergi borcu / POS / gelen e-Arşiv bildirim üretmez.
+  GENEL_SORGU: 'GENEL_SORGU',
 
   // === Yeni: Kritik (Sprint 1) ===
   TASK_DUE: 'TASK_DUE',
@@ -67,6 +70,7 @@ export const TENANT_WIDE_TYPES = new Set<NotificationType>([
   NOTIFICATION_TYPES.WHATSAPP,
   NOTIFICATION_TYPES.AI,
   NOTIFICATION_TYPES.E_TEBLIGAT,
+  NOTIFICATION_TYPES.GENEL_SORGU,
   NOTIFICATION_TYPES.PORTAL_CREDENTIAL_FAIL,
   NOTIFICATION_TYPES.LUCA_SYNC_ERROR,
   NOTIFICATION_TYPES.CAPTCHA_SOLVER_ERROR,
@@ -87,6 +91,7 @@ export const DEFAULT_LINK_BY_TYPE: Partial<Record<NotificationType, string>> = {
   PENDING_DECISION: '/panel/onay-bekleyen',
   BANK_TRANSACTION_ALERT: '/panel/banka-takip',
   E_TEBLIGAT: '/panel/beyannameler',
+  GENEL_SORGU: '/panel/genel-sorgular',
   AGENT: '/panel/ajanlar',
   AI: '/panel/moren-ai',
   AI_PROPOSAL: '/panel/moren-ai',

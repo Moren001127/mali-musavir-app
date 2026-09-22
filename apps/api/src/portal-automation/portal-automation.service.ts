@@ -30,7 +30,21 @@ import { resolveTenantFromAgentToken as resolveAgentTenant } from '../common/age
 import { BeyanKayitlariService } from '../beyan-kayitlari/beyan-kayitlari.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NOTIFICATION_TYPES } from '../notifications/notification-types';
-import { otomatikSorguCoz, type OtomatikSorguTuru } from '@mali-musavir/shared';
+import {
+  DVD_SORGU_TURLERI,
+  GENEL_SORGU_TURLERI,
+  OTOMATIK_SORGU_ETIKETLERI,
+  acikDvdSorgulari,
+  dvdSorguTuruMu,
+  eDefterGeceSorguAylari,
+  eDefterMukellefTipi,
+  otomatikSorguCoz,
+  type DvdSorguTuru,
+  type EHacizVeri,
+  type OtomatikSorguTuru,
+  type YoklamaDenetimVeri,
+} from '@mali-musavir/shared';
+import { ayEkle as dvdAyEkle, hacizTatbikEdilmisMi, isoGunBicimle, istanbulGunISO, tlBicimle } from './dvd-sorgu-cozumleyici';
 
 export const PORTAL_PROVIDERS = ['GIB_EBEYANNAME', 'GIB_IVD', 'SGK_EBILDIRGE'] as const;
 export type PortalProvider = (typeof PORTAL_PROVIDERS)[number];
@@ -51,6 +65,11 @@ export const PORTAL_JOB_TYPES = [
   // ownerType TAXPAYER (galeri mükellefinin GIB_IVD girişi). Gece cron'una DAHIL DEĞİL —
   // yalnızca galeri ekranındaki butondan / HGS cron'undan tetiklenir.
   'GALERI_HGS',
+  // Dijital Vergi Dairesi sorguları (2026-09-22): vergi borcu / e-haciz / yoklama-denetim / POS /
+  // gelen e-arşiv / e-defter — mükellefin GIB_IVD girişiyle tek oturumda, tıklamasız (bkz. bilgi/DVD-SORGU-UCLARI.md).
+  // payload.sorgular = DvdSorguTuru[]. Gece: e-Tebligat açıksa bu sorgular E_TEBLIGAT_CHECK'in
+  // payload.ekSorgular'ı olarak aynı oturumda koşar; e-Tebligat kapalıysa ayrı DVD_SORGU işi açılır.
+  'DVD_SORGU',
 ] as const;
 export type PortalJobType = (typeof PORTAL_JOB_TYPES)[number];
 
@@ -117,6 +136,11 @@ const JOB_META: Record<PortalJobType, { provider: PortalProvider; ownerType: 'TE
     ownerType: 'TAXPAYER',
     label: 'Galeri HGS ihlal sorgu',
   },
+  DVD_SORGU: {
+    provider: 'GIB_IVD',
+    ownerType: 'TAXPAYER',
+    label: 'Dijital Vergi Dairesi sorgusu',
+  },
 };
 
 type ManualRunInput = {
@@ -141,6 +165,14 @@ type JobProgressUpdate = {
   current?: number;
   total?: number;
   records?: number;
+};
+
+/** Gece DVD sorgu planı için mükellef bilgisi (döngü öncesi tek sorguyla çekilir). */
+type GeceMukellefBilgisi = {
+  id: string;
+  type?: string | null;
+  otomatikSorgu?: unknown;
+  beyanConfig?: { eDefterPeriod?: string | null; eDefterBaslangic?: string | null; incomeTaxType?: string | null } | null;
 };
 
 type AgentDeclarationInput = {
@@ -1759,6 +1791,17 @@ export class PortalAutomationService {
       }
     }
 
+    // DİJİTAL VERGİ DAİRESİ SORGULARI (2026-09-22): result.genelSorgular → GenelSorguSonucu, result.eDefterBeratlar →
+    //   EDefterBerat (upsert), result.eDefterSorgular → EDefterSorguKaydi; e-Haciz / yoklama'da YENİ bulgu bildirimi.
+    //   Belgeler saklandıktan SONRA ki yoklama PDF'lerinin portalDocument id'si veriye yazılabilsin.
+    if (job.taxpayerId && input?.result && typeof input.result === 'object') {
+      const dvdKayit = await this.dvdSonuclariniKaydet(tenantId, job, input.result, saveErrors).catch((err: any) => {
+        saveErrors.push(`DVD sonuçları kaydedilemedi: ${String(err?.message || err)}`.slice(0, 300));
+        return 0;
+      });
+      recordCount += dvdKayit;
+    }
+
     const finalCount = Number.isFinite(Number(input?.recordCount)) ? Number(input.recordCount) : recordCount;
     await this.markCredentialSuccess(job).catch(() => {});
     let doneMessage = input?.result?.validationOnly
@@ -1816,6 +1859,215 @@ export class PortalAutomationService {
     }
 
     return updated;
+  }
+
+  /**
+   * Runner'ın DVD sorgu sonuçlarını kalıcı tablolara yazar (2026-09-22):
+   *   result.genelSorgular  → GenelSorguSonucu (tur/donem/ozet/veri, kaynak = iş kaynağı, jobId)
+   *   result.eDefterBeratlar → EDefterBerat upsert (taxpayerId + paketId benzersiz)
+   *   result.eDefterSorgular → EDefterSorguKaydi (dönem başına paket sayısı / hata)
+   * Her kayıt ayrı try/catch: hata saveErrors'a düşer, kalanlar yazılmaya devam eder. Dönüş: yazılan kayıt sayısı.
+   * YOKLAMA_DENETIM verisinde yoklamalar[].pdfDocumentId saklanan E_YOKLAMA portal belgesinin id'siyle doldurulur.
+   * YENİ BULGU BİLDİRİMİ: e-Haciz'de önceki en son satırda olmayan bildiriNo, yoklamada olmayan yoklamaKodu varsa
+   * (ilk sorguda da) GENEL_SORGU bildirimi yazılır → owner-notifier WhatsApp'a taşır (sessiz saatte sabah özetine düşer).
+   * Vergi borcu / POS / gelen e-Arşiv için bildirim YOK.
+   */
+  private async dvdSonuclariniKaydet(tenantId: string, job: any, result: any, saveErrors: string[]): Promise<number> {
+    const taxpayerId = String(job.taxpayerId);
+    const jobId = String(job.id);
+    const kaynak = job.source === 'nightly' ? 'nightly' : 'manual';
+    const genelSorgular: any[] = Array.isArray(result?.genelSorgular) ? result.genelSorgular : [];
+    const eDefterBeratlar: any[] = Array.isArray(result?.eDefterBeratlar) ? result.eDefterBeratlar : [];
+    const eDefterSorgular: any[] = Array.isArray(result?.eDefterSorgular) ? result.eDefterSorgular : [];
+    if (!genelSorgular.length && !eDefterBeratlar.length && !eDefterSorgular.length) return 0;
+
+    let yazilan = 0;
+    let mukellefAdi: string | null = null;
+    const adiGetir = async () => {
+      if (mukellefAdi === null) {
+        const tp = await (this.prisma as any).taxpayer
+          .findFirst({ where: { id: taxpayerId, tenantId }, select: { companyName: true, firstName: true, lastName: true, taxNumber: true } })
+          .catch(() => null);
+        mukellefAdi = adFormat(tp) || 'Mükellef';
+      }
+      return mukellefAdi;
+    };
+
+    for (const satir of genelSorgular) {
+      const tur = String(satir?.tur || '');
+      try {
+        if (!(GENEL_SORGU_TURLERI as readonly string[]).includes(tur)) {
+          saveErrors.push(`Genel sorgu türü bilinmiyor: ${tur || '?'}`.slice(0, 300));
+          continue;
+        }
+        let veri: any = satir?.veri && typeof satir.veri === 'object' ? satir.veri : {};
+        const donem = typeof satir?.donem === 'string' && /^\d{4}-\d{2}$/.test(satir.donem) ? satir.donem : null;
+        if (tur === 'YOKLAMA_DENETIM') veri = await this.yoklamaPdfIdleriniDoldur(tenantId, taxpayerId, veri);
+        // Yeni bulgu tespiti KAYITTAN ÖNCE (önceki en son satırla karşılaştırılır).
+        const yeniler = tur === 'E_HACIZ' || tur === 'YOKLAMA_DENETIM' ? await this.dvdYeniBulgular(tenantId, taxpayerId, tur, veri) : [];
+        await (this.prisma as any).genelSorguSonucu.create({
+          data: {
+            tenantId,
+            taxpayerId,
+            tur,
+            donem,
+            ozet: satir?.ozet ? String(satir.ozet).slice(0, 500) : null,
+            veri,
+            kaynak,
+            jobId,
+          },
+        });
+        yazilan++;
+        if (yeniler.length) {
+          await this.dvdYeniBulguBildir(tenantId, taxpayerId, await adiGetir(), tur, veri, yeniler, jobId).catch((err: any) =>
+            this.logger.warn(`GENEL_SORGU bildirimi yazılamadı (${tur}, ${taxpayerId}): ${err?.message || err}`));
+        }
+      } catch (err: any) {
+        const msg = `Genel sorgu sonucu kaydedilemedi (${tur || '?'}${satir?.donem ? ` ${satir.donem}` : ''}): ${err?.message || err}`;
+        saveErrors.push(msg.slice(0, 300));
+        this.logger.warn(`completeJob ${jobId}: ${msg}`);
+      }
+    }
+
+    for (const b of eDefterBeratlar) {
+      const paketId = String(b?.paketId || '').trim();
+      try {
+        if (!paketId) {
+          saveErrors.push('e-Defter paketi paketId olmadan geldi, atlandı');
+          continue;
+        }
+        const alan = {
+          donem: String(b?.donem || '').slice(0, 7),
+          belgeTuru: String(b?.belgeTuru || ''),
+          islemOid: b?.islemOid ? String(b.islemOid) : null,
+          oid: b?.oid ? String(b.oid) : null,
+          alinmaZamani: this.dvdIsoTarihiDate(b?.alinmaZamani),
+          durumKodu: Number.isFinite(Number(b?.durumKodu)) && b?.durumKodu !== null && b?.durumKodu !== '' ? Number(b.durumKodu) : null,
+          durumAciklama: b?.durumAciklama ? String(b.durumAciklama).slice(0, 500) : null,
+          ham: b?.ham ?? null,
+          sorguTarihi: new Date(),
+          jobId,
+        };
+        await (this.prisma as any).eDefterBerat.upsert({
+          where: { taxpayerId_paketId: { taxpayerId, paketId } },
+          create: { tenantId, taxpayerId, paketId, ...alan },
+          update: alan,
+        });
+        yazilan++;
+      } catch (err: any) {
+        const msg = `e-Defter paketi kaydedilemedi (${paketId || '?'}): ${err?.message || err}`;
+        saveErrors.push(msg.slice(0, 300));
+        this.logger.warn(`completeJob ${jobId}: ${msg}`);
+      }
+    }
+
+    for (const s of eDefterSorgular) {
+      const donem = String(s?.donem || '').slice(0, 7);
+      try {
+        if (!/^\d{4}-\d{2}$/.test(donem)) {
+          saveErrors.push(`e-Defter sorgu kaydı dönemsiz geldi (${s?.donem ?? '?'}), atlandı`);
+          continue;
+        }
+        await (this.prisma as any).eDefterSorguKaydi.create({
+          data: {
+            tenantId,
+            taxpayerId,
+            donem,
+            paketSayisi: Number.isFinite(Number(s?.paketSayisi)) ? Number(s.paketSayisi) : 0,
+            kaynak,
+            jobId,
+            hata: s?.hata ? String(s.hata).slice(0, 1000) : null,
+          },
+        });
+      } catch (err: any) {
+        const msg = `e-Defter sorgu kaydı yazılamadı (${donem || '?'}): ${err?.message || err}`;
+        saveErrors.push(msg.slice(0, 300));
+        this.logger.warn(`completeJob ${jobId}: ${msg}`);
+      }
+    }
+
+    return yazilan;
+  }
+
+  /** "2026-09-14T14:42:27" (dilimsiz) → İstanbul saati Date; "2026-09-14" → o günün başı; bozuk → null. */
+  private dvdIsoTarihiDate(v: unknown): Date | null {
+    if (!v) return null;
+    const s = String(v).trim();
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(s)) return parseDateOrNull(`${s}+03:00`);
+    return parseIstanbulDateBoundary(s, 'start');
+  }
+
+  /** YOKLAMA_DENETIM verisi: yoklamalar[].pdfDocumentId ← saklanmış E_YOKLAMA portal belgesi (referenceNo = yoklamaKodu). */
+  private async yoklamaPdfIdleriniDoldur(tenantId: string, taxpayerId: string, veri: any) {
+    const yoklamalar: any[] = Array.isArray(veri?.yoklamalar) ? veri.yoklamalar : [];
+    const kodlar = yoklamalar.map((y) => String(y?.yoklamaKodu || '')).filter(Boolean);
+    if (!kodlar.length) return veri;
+    const belgeler: Array<{ id: string; referenceNo: string | null }> = await (this.prisma as any).portalDocument.findMany({
+      where: { tenantId, taxpayerId, belgeTuru: 'E_YOKLAMA', referenceNo: { in: kodlar }, storageKey: { not: null } },
+      select: { id: true, referenceNo: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    const harita = new Map<string, string>();
+    for (const b of belgeler) if (b.referenceNo && !harita.has(b.referenceNo)) harita.set(b.referenceNo, b.id);
+    return {
+      ...veri,
+      yoklamalar: yoklamalar.map((y) => {
+        const id = harita.get(String(y?.yoklamaKodu || '')) || null;
+        return { ...y, pdfVarMi: !!id, pdfDocumentId: id };
+      }),
+    };
+  }
+
+  /** Önceki en son satırda olmayan bildiriNo (E_HACIZ) / yoklamaKodu (YOKLAMA_DENETIM). Önceki satır yoksa hepsi yeni. */
+  private async dvdYeniBulgular(tenantId: string, taxpayerId: string, tur: string, veri: any): Promise<string[]> {
+    const anahtarlar = (v: any): string[] =>
+      tur === 'E_HACIZ'
+        ? (Array.isArray(v?.bildiriler) ? v.bildiriler : []).map((b: any) => String(b?.bildiriNo || '')).filter(Boolean)
+        : (Array.isArray(v?.yoklamalar) ? v.yoklamalar : []).map((y: any) => String(y?.yoklamaKodu || '')).filter(Boolean);
+    const simdiki = anahtarlar(veri);
+    if (!simdiki.length) return [];
+    const onceki = await (this.prisma as any).genelSorguSonucu.findFirst({
+      where: { tenantId, taxpayerId, tur },
+      orderBy: [{ sorguTarihi: 'desc' }, { createdAt: 'desc' }],
+      select: { veri: true },
+    });
+    if (!onceki) return simdiki;
+    const eskiler = new Set(anahtarlar(onceki.veri));
+    return simdiki.filter((k) => !eskiler.has(k));
+  }
+
+  /** GENEL_SORGU bildirimi: başlıkta mükellef adı, gövdede kısa özet (adet + tutar / tür + tarih). */
+  private async dvdYeniBulguBildir(tenantId: string, taxpayerId: string, mukellefAdi: string, tur: string, veri: any, yeniler: string[], jobId: string) {
+    let title: string;
+    let body: string;
+    if (tur === 'E_HACIZ') {
+      const v = veri as EHacizVeri;
+      const yeniBildiriler = (Array.isArray(v?.bildiriler) ? v.bildiriler : []).filter((b) => yeniler.includes(String(b?.bildiriNo || '')));
+      const tutar = yeniBildiriler.reduce((s, b) => s + (Number(b?.tutar) || 0), 0);
+      const tatbik = yeniBildiriler.filter((b) => hacizTatbikEdilmisMi(String(b?.durum || ''))).length;
+      title = `e-Haciz bildirisi: ${mukellefAdi}`;
+      body = `${yeniBildiriler.length} yeni haciz bildirisi, ${tlBicimle(tutar)} (${tatbik} tatbik edilmiş; toplam ${v?.bildiriSayisi ?? yeniBildiriler.length} bildiri)`;
+    } else {
+      const v = veri as YoklamaDenetimVeri;
+      const yeniYoklamalar = (Array.isArray(v?.yoklamalar) ? v.yoklamalar : []).filter((y) => yeniler.includes(String(y?.yoklamaKodu || '')));
+      title = `Yoklama tutanağı: ${mukellefAdi}`;
+      if (yeniYoklamalar.length === 1) {
+        const y = yeniYoklamalar[0];
+        body = `${y.yoklamaTuru || 'Yoklama'} — ${isoGunBicimle(y.tarih) || 'tarih yok'}${y.vergiDairesi ? ` (${y.vergiDairesi})` : ''}`;
+      } else {
+        const parcalar = yeniYoklamalar.slice(0, 3).map((y) => `${y.yoklamaTuru || 'Yoklama'} ${isoGunBicimle(y.tarih)}`.trim());
+        body = `${yeniYoklamalar.length} yeni yoklama: ${parcalar.join('; ')}${yeniYoklamalar.length > 3 ? '; …' : ''}`;
+      }
+    }
+    await (this.prisma as any).notification.create({
+      data: {
+        tenantId,
+        title,
+        body,
+        type: NOTIFICATION_TYPES.GENEL_SORGU,
+        metadata: { taxpayerId, tur, jobId, yeniler: yeniler.slice(0, 100) },
+      },
+    });
   }
 
   async savePartialJobResults(
@@ -1891,14 +2143,26 @@ export class PortalAutomationService {
 
     // Otomatik Sorgulama Ayarı: yalnız GECE işlerinde bakılır (elle sorgu MUAF). Ayarları döngü
     //   öncesi TEK sorguyla çekip haritada tutuyoruz; mükellef başına ayrı sorgu atılmaz.
+    //   (2026-09-22) Aynı sorguda mükellef tipi + e-Defter tercihi de gelir: gece DVD sorgu planı
+    //   (ekSorgular / DVD_SORGU + eDefterAylar) buradan kurulur.
     const otomatikSorguHaritasi = new Map<string, ReturnType<typeof otomatikSorguCoz>>();
+    const geceMukellefBilgisi = new Map<string, GeceMukellefBilgisi>();
     if (opts.source === 'nightly' && opts.jobTypes.some((t) => OTOMATIK_SORGU_ANAHTARI[t])) {
-      const ayarlar = await (this.prisma as any).taxpayer.findMany({
+      const ayarlar: GeceMukellefBilgisi[] = await (this.prisma as any).taxpayer.findMany({
         where: { tenantId, ...(opts.taxpayerIds?.length ? { id: { in: opts.taxpayerIds } } : {}) },
-        select: { id: true, otomatikSorgu: true },
+        select: {
+          id: true,
+          type: true,
+          otomatikSorgu: true,
+          beyanConfig: { select: { eDefterPeriod: true, eDefterBaslangic: true, incomeTaxType: true } },
+        },
       });
-      for (const a of ayarlar) otomatikSorguHaritasi.set(a.id, otomatikSorguCoz(a.otomatikSorgu));
+      for (const a of ayarlar) {
+        otomatikSorguHaritasi.set(a.id, otomatikSorguCoz(a.otomatikSorgu));
+        geceMukellefBilgisi.set(a.id, a);
+      }
     }
+    const bugun = istanbulGunISO();
 
     for (const jobType of opts.jobTypes) {
       const meta = JOB_META[jobType];
@@ -1929,34 +2193,164 @@ export class PortalAutomationService {
           skipped.push({ jobType, taxpayerId, reason: 'Mukellef portal sifresi yok' });
           continue;
         }
+        // GECE TEK GİRİŞ (2026-09-22): E_TEBLIGAT_CHECK döngüsünde mükellefin şalterleri okunur.
+        //   e-Tebligat açık → E_TEBLIGAT_CHECK + payload.ekSorgular (+ eDefterAylar) aynı oturumda;
+        //   e-Tebligat kapalı ama başka şalter açık → DVD_SORGU işi (payload.sorgular);
+        //   hiçbiri açık değil → atla. Şifre kontrolünden SONRA ki "şifre yok" gerekçesi kaybolmasın.
+        let gercekJobType: PortalJobType = jobType;
+        let dvdSecenekleri: { sorgular?: DvdSorguTuru[]; ekSorgular?: DvdSorguTuru[]; eDefterAylar?: string[] } = {};
+        if (opts.source === 'nightly' && jobType === 'E_TEBLIGAT_CHECK') {
+          const plan = this.geceDvdPlani(geceMukellefBilgisi.get(taxpayerId), otomatikSorguHaritasi.get(taxpayerId), bugun);
+          if (!plan.eTebligat && !plan.sorgular.length) {
+            skipped.push({ jobType, taxpayerId, reason: 'Otomatik sorgu kapalı (mükellef kartı)' });
+            continue;
+          }
+          if (!plan.eTebligat) {
+            gercekJobType = 'DVD_SORGU';
+            dvdSecenekleri = { sorgular: plan.sorgular, eDefterAylar: plan.eDefterAylar };
+          } else if (plan.sorgular.length) {
+            dvdSecenekleri = { ekSorgular: plan.sorgular, eDefterAylar: plan.eDefterAylar };
+          }
+        } else {
+          // OTOMATİK SORGU AYARI (diğer iş tipleri): mükellef kartında bu sorgu kapalıysa gece işi AÇILMAZ
+          //   (kayıt NULL = varsayılan, e-Tebligat açık).
+          const ayarAnahtari = OTOMATIK_SORGU_ANAHTARI[jobType];
+          if (opts.source === 'nightly' && ayarAnahtari) {
+            const ayar = otomatikSorguHaritasi.get(taxpayerId) ?? otomatikSorguCoz(null);
+            if (ayar[ayarAnahtari] === false) {
+              skipped.push({ jobType, taxpayerId, reason: 'Otomatik sorgu kapalı (mükellef kartı)' });
+              continue;
+            }
+          }
+        }
         // 3 GECE KURALI (sözleşme §3): yalnız GECE işlerinde. Şifre kaydı 'sifre' türü hatadaysa VE bu
         //   mükellefin aynı iş tipindeki son 3 işi de şifre hatasıyla bittiyse iş AÇILMAZ — her gece aynı
         //   yanlış şifreyle portalı yormanın (ve hesabı kilitletmenin) anlamı yok. saveCredential şifre
         //   değişince lastError=null yapar → ertesi gece yeniden denenir. Elle "Şimdi sorgula" (manual) MUAF.
-        if (opts.source === 'nightly' && (await this.ucGeceSifreHatasiMi(tenantId, taxpayerId, jobType, credential))) {
-          skipped.push({ jobType, taxpayerId, reason: '3 gece üst üste şifre hatası — şifre güncellenene kadar sorgu dışı' });
+        if (opts.source === 'nightly' && (await this.ucGeceSifreHatasiMi(tenantId, taxpayerId, gercekJobType, credential))) {
+          skipped.push({ jobType: gercekJobType, taxpayerId, reason: '3 gece üst üste şifre hatası — şifre güncellenene kadar sorgu dışı' });
           continue;
         }
-        // OTOMATİK SORGU AYARI: mükellef kartında bu sorgu kapalıysa gece işi AÇILMAZ (kayıt NULL = varsayılan,
-        //   e-Tebligat açık). Şifre kontrolünden SONRA bakılır ki "şifre yok" gerekçesi kaybolmasın.
-        const ayarAnahtari = OTOMATIK_SORGU_ANAHTARI[jobType];
-        if (opts.source === 'nightly' && ayarAnahtari) {
-          const ayar = otomatikSorguHaritasi.get(taxpayerId) ?? otomatikSorguCoz(null);
-          if (ayar[ayarAnahtari] === false) {
-            skipped.push({ jobType, taxpayerId, reason: 'Otomatik sorgu kapalı (mükellef kartı)' });
-            continue;
-          }
-        }
-        const duplicate = opts.force ? null : await this.findDuplicateJob(tenantId, jobType, taxpayerId, opts.source, opts.dedupeAfter);
+        const duplicate = opts.force ? null : await this.findDuplicateJob(tenantId, gercekJobType, taxpayerId, opts.source, opts.dedupeAfter);
         if (duplicate) {
-          skipped.push({ jobType, taxpayerId, reason: 'Bu gece icin zaten kuyrukta' });
+          skipped.push({ jobType: gercekJobType, taxpayerId, reason: 'Bu gece icin zaten kuyrukta' });
           continue;
         }
-        created.push(await this.createJobRow(tenantId, taxpayerId, jobType, opts));
+        created.push(await this.createJobRow(tenantId, taxpayerId, gercekJobType, { ...opts, ...dvdSecenekleri }));
       }
     }
 
     return { created, skipped };
+  }
+
+  /**
+   * GECE DVD planı (2026-09-22): mükellefin Otomatik Sorgulama şalterlerinden o gece koşacak DVD sorguları.
+   * e-Defter yalnız e-Defter mükellefinde (beyanConfig.eDefterPeriod dolu) VE takvime göre bu ay / önceki ay
+   * son günü olan dönem varsa (eDefterGeceSorguAylari boş değilse) plana girer; aylar payload.eDefterAylar olur.
+   */
+  private geceDvdPlani(
+    tp: GeceMukellefBilgisi | undefined,
+    ayarHam: ReturnType<typeof otomatikSorguCoz> | undefined,
+    bugun: string,
+  ): { eTebligat: boolean; sorgular: DvdSorguTuru[]; eDefterAylar?: string[] } {
+    const ayar = ayarHam ?? otomatikSorguCoz(tp?.otomatikSorgu ?? null);
+    let sorgular = acikDvdSorgulari(ayar);
+    let eDefterAylar: string[] | undefined;
+    if (sorgular.includes('eDefter')) {
+      const aylar = this.eDefterSorguAylari(tp, bugun);
+      if (aylar.length) eDefterAylar = aylar;
+      else sorgular = sorgular.filter((s) => s !== 'eDefter');
+    }
+    return { eTebligat: ayar.eTebligat !== false, sorgular, eDefterAylar };
+  }
+
+  /** e-Defter mükellefiyse (tercih dolu) takvime göre sorgulanacak aylar; değilse boş. */
+  private eDefterSorguAylari(tp: GeceMukellefBilgisi | undefined, bugun: string): string[] {
+    const tercih = tp?.beyanConfig?.eDefterPeriod;
+    if (tercih !== 'AYLIK' && tercih !== 'UCAYLIK') return [];
+    return eDefterGeceSorguAylari(bugun, tercih, eDefterMukellefTipi(tp?.type, tp?.beyanConfig?.incomeTaxType), tp?.beyanConfig?.eDefterBaslangic);
+  }
+
+  /**
+   * ELLE Dijital Vergi Dairesi sorgusu — POST /portal-automation/dvd-sorgu (2026-09-22). Şalterden MUAF.
+   *   taxpayerIds boşsa GIB_IVD şifresi olan tüm aktif mükellefler. sorgular yalnız ['eDefter'] ise e-Defter
+   *   mükellefleriyle sınırlı; eDefterAylar verilmediyse mükellef başına takvimden hesaplanır, boş çıkarsa
+   *   o mükellef için e-Defter düşer. Aynı mükellefte bekleyen/koşan DVD_SORGU varsa atlanır ("Zaten kuyrukta").
+   *   priority 50, source 'manual'. Gelen e-Arşiv aralığı payload.dateFrom/dateTo = önceki ayın 1'i → şimdi.
+   */
+  async dvdSorguBaslat(
+    tenantId: string,
+    userId: string | null,
+    input: { taxpayerIds?: string[]; sorgular: DvdSorguTuru[]; eDefterAylar?: string[] },
+  ) {
+    const sorgular = Array.from(new Set((Array.isArray(input?.sorgular) ? input.sorgular : []).filter(dvdSorguTuruMu)));
+    if (!sorgular.length) throw new BadRequestException(`sorgular boş olamaz; geçerli değerler: ${DVD_SORGU_TURLERI.join(', ')}`);
+    const eDefterAylarGiris = (Array.isArray(input?.eDefterAylar) ? input.eDefterAylar : [])
+      .map((a) => String(a).trim())
+      .filter((a) => /^\d{4}-(0[1-9]|1[0-2])$/.test(a));
+    if (Array.isArray(input?.eDefterAylar) && input.eDefterAylar.length && !eDefterAylarGiris.length) {
+      throw new BadRequestException('eDefterAylar "YYYY-MM" biçiminde olmalı');
+    }
+
+    const created: Array<{ id: string; taxpayerId: string; jobType: PortalJobType; sorgular: DvdSorguTuru[] }> = [];
+    const skipped: Array<{ taxpayerId: string | null; reason: string }> = [];
+    const secilenIdler = Array.isArray(input?.taxpayerIds) ? input.taxpayerIds.map((x) => String(x).trim()).filter(Boolean) : [];
+    const taxpayerIds: string[] = await this.resolveTaxpayerTargets(tenantId, 'GIB_IVD', secilenIdler);
+    if (!taxpayerIds.length) {
+      skipped.push({ taxpayerId: null, reason: secilenIdler.length ? 'Seçilen mükellef bulunamadı ya da pasif' : 'GIB_IVD şifresi olan aktif mükellef bulunamadı' });
+      return { created, skipped, message: `0 sorgu işi kuyruğa alındı, ${skipped.length} atlandı` };
+    }
+
+    const bilgiler: GeceMukellefBilgisi[] = await (this.prisma as any).taxpayer.findMany({
+      where: { tenantId, id: { in: taxpayerIds } },
+      select: { id: true, type: true, otomatikSorgu: true, beyanConfig: { select: { eDefterPeriod: true, eDefterBaslangic: true, incomeTaxType: true } } },
+    });
+    const bilgiHaritasi = new Map(bilgiler.map((b) => [b.id, b] as const));
+    const bugun = istanbulGunISO();
+    const yalnizEDefter = sorgular.length === 1 && sorgular[0] === 'eDefter';
+    // Gelen e-Arşiv aralığı için işin tarih aralığı: önceki ayın 1'i (İstanbul) → şimdi.
+    const oncekiAyBasi = parseIstanbulDateBoundary(`${dvdAyEkle(bugun.slice(0, 7), -1)}-01`, 'start') || new Date();
+    const period = { start: oncekiAyBasi, end: new Date() };
+
+    for (const taxpayerId of taxpayerIds) {
+      const tp = bilgiHaritasi.get(taxpayerId);
+      const credential = await this.findCredential(tenantId, 'GIB_IVD', 'TAXPAYER', taxpayerId);
+      if (!credential || credential.isActive === false) {
+        skipped.push({ taxpayerId, reason: 'Mükellef portal şifresi yok' });
+        continue;
+      }
+      let mukellefSorgulari: DvdSorguTuru[] = [...sorgular];
+      let eDefterAylar: string[] | undefined;
+      if (mukellefSorgulari.includes('eDefter')) {
+        const tercih = tp?.beyanConfig?.eDefterPeriod;
+        const eDefterMukellefi = tercih === 'AYLIK' || tercih === 'UCAYLIK';
+        const aylar = !eDefterMukellefi ? [] : eDefterAylarGiris.length ? eDefterAylarGiris : this.eDefterSorguAylari(tp, bugun);
+        if (aylar.length) eDefterAylar = aylar;
+        else mukellefSorgulari = mukellefSorgulari.filter((s) => s !== 'eDefter');
+      }
+      if (!mukellefSorgulari.length) {
+        skipped.push({ taxpayerId, reason: yalnizEDefter ? 'e-Defter mükellefi değil ya da sorgulanacak dönem yok' : 'Sorgulanacak sorgu kalmadı' });
+        continue;
+      }
+      const bekleyen = await (this.prisma as any).portalAutomationJob.findFirst({
+        where: { tenantId, taxpayerId, jobType: 'DVD_SORGU', status: { in: ['pending', 'running'] } },
+        select: { id: true },
+      });
+      if (bekleyen) {
+        skipped.push({ taxpayerId, reason: 'Zaten kuyrukta' });
+        continue;
+      }
+      const job = await this.createJobRow(tenantId, taxpayerId, 'DVD_SORGU', {
+        source: 'manual',
+        userId,
+        period,
+        sorgular: mukellefSorgulari,
+        eDefterAylar,
+      });
+      created.push({ id: job.id, taxpayerId, jobType: 'DVD_SORGU', sorgular: mukellefSorgulari });
+    }
+
+    return { created, skipped, message: `${created.length} sorgu işi kuyruğa alındı, ${skipped.length} atlandı` };
   }
 
   private async createJobRow(
@@ -1974,6 +2368,11 @@ export class PortalAutomationService {
       discover?: boolean;
       earsivMode?: 'query' | 'download';
       selectedRefs?: string[];
+      // Dijital Vergi Dairesi sorguları (2026-09-22): DVD_SORGU → sorgular; E_TEBLIGAT_CHECK → ekSorgular (aynı oturum);
+      //   eDefterAylar = e-Defter paket listesi sorgulanacak aylar ("YYYY-MM").
+      sorgular?: DvdSorguTuru[];
+      ekSorgular?: DvdSorguTuru[];
+      eDefterAylar?: string[];
     },
   ) {
     const meta = JOB_META[jobType];
@@ -1984,6 +2383,18 @@ export class PortalAutomationService {
       : runnerMode === 'local_first' || runnerMode === 'local_first_with_server_fallback'
       ? 'Kuyrukta, yerel Moren ajan bekleniyor.'
       : 'Kuyrukta, runner bekleniyor.';
+    const sorgular = Array.isArray(opts.sorgular) ? opts.sorgular.filter(dvdSorguTuruMu) : [];
+    const ekSorgular = Array.isArray(opts.ekSorgular) ? opts.ekSorgular.filter(dvdSorguTuruMu) : [];
+    const eDefterAylar = Array.isArray(opts.eDefterAylar) ? opts.eDefterAylar.filter((a) => /^\d{4}-(0[1-9]|1[0-2])$/.test(String(a))) : [];
+    const sorguEtiketi = (liste: DvdSorguTuru[]) => liste.map((s) => OTOMATIK_SORGU_ETIKETLERI[s] || s).join(', ');
+    // İş listesinde ne koşacağı görünsün: "Dijital Vergi Dairesi sorgusu: Vergi Borcu, POS" / "GIB e-Tebligat kontrol + Vergi Borcu".
+    const label = validationOnly
+      ? `${meta.provider} sifre dogrulama`
+      : jobType === 'DVD_SORGU' && sorgular.length
+      ? `${meta.label}: ${sorguEtiketi(sorgular)}`
+      : ekSorgular.length
+      ? `${meta.label} + ${sorguEtiketi(ekSorgular)}`
+      : meta.label;
     return (this.prisma as any).portalAutomationJob.create({
       data: {
         tenantId,
@@ -1998,7 +2409,7 @@ export class PortalAutomationService {
         createdBy: opts.userId,
         priority: opts.source === 'manual' ? 50 : 0,
         payload: {
-          label: validationOnly ? `${meta.provider} sifre dogrulama` : meta.label,
+          label,
           provider: meta.provider,
           ownerType: meta.ownerType,
           runnerMode,
@@ -2007,6 +2418,9 @@ export class PortalAutomationService {
           discover: opts.discover === true,
           earsivMode: opts.earsivMode || undefined,
           selectedRefs: Array.isArray(opts.selectedRefs) ? opts.selectedRefs.slice(0, 500) : undefined,
+          sorgular: sorgular.length ? sorgular : undefined,
+          ekSorgular: ekSorgular.length ? ekSorgular : undefined,
+          eDefterAylar: eDefterAylar.length ? eDefterAylar : undefined,
           targetPeriod: opts.targetPeriod || undefined,
           dateFrom: opts.period.start.toISOString(),
           dateTo: opts.period.end.toISOString(),
@@ -2567,7 +2981,8 @@ export class PortalAutomationService {
     //   Kontrol EN BASA alindi: mevcut kayitta storageKey VARSA upload + Document/Version olusturma
     //   tamamen atlanir. Kayit var ama storageKey YOKSA (dosya ilk kez geldi) olusturma yapilir ve
     //   asagidaki patch ile mevcut kayda baglanir (eski davranis korunur).
-    const DEDUP_BELGE_TURU = ['E_TEBLIGAT', 'EARSIV_FATURA', 'SGK_TAHAKKUK', 'SGK_HIZMET_LISTESI'];
+    // E_YOKLAMA (2026-09-22): yoklama tutanağı PDF'i, referenceNo = yoklama kodu; tekrar sorguda kopya oluşmasın.
+    const DEDUP_BELGE_TURU = ['E_TEBLIGAT', 'EARSIV_FATURA', 'SGK_TAHAKKUK', 'SGK_HIZMET_LISTESI', 'E_YOKLAMA'];
     let existingDedup: any = null;
     if (DEDUP_BELGE_TURU.includes(String(input.belgeTuru)) && input.referenceNo) {
       existingDedup = await (this.prisma as any).portalDocument.findFirst({
@@ -3555,6 +3970,8 @@ export class PortalAutomationService {
         return 'Mukellefin SGK kullanici adi/e-kod, sistem sifresi ve isyeri sifresi ile ise giris ve isten cikis bildirgelerini indir ve portal belgesi olarak teslim et.';
       case 'SGK_ISGOREMEZLIK':
         return 'Mukellefin SGK kullanici adi/e-kod, sistem sifresi ve isyeri sifresi ile isgoremezlik raporlarini sorgula; rapor varsa portal belgesi olarak teslim et.';
+      case 'DVD_SORGU':
+        return 'Mukellefin Dijital Vergi Dairesi kullanici kodu ve sifresi ile payload.sorgular listesindeki sorgulari (vergi borcu, e-haciz, yoklama/denetim, POS, gelen e-arsiv, e-defter) tiklamasiz API ile calistir; sonuclari result.genelSorgular / result.eDefterBeratlar olarak teslim et.';
     }
   }
 

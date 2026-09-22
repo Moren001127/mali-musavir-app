@@ -3,38 +3,26 @@ import { portalStyle } from '@/lib/portal-theme';
 
 import React, { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { BadgeAlert, Landmark, Mail, Receipt, ScanSearch, Search, ShieldAlert, type LucideIcon } from 'lucide-react';
+import { BadgeAlert, BookOpen, Landmark, Mail, Receipt, ScanSearch, Search, ShieldAlert, type LucideIcon } from 'lucide-react';
 import { toast } from 'sonner';
+import {
+  OTOMATIK_SORGU_ETIKETLERI,
+  OTOMATIK_SORGU_TURLERI,
+  otomatikSorguCoz,
+  type OtomatikSorguAyari as OtomatikSorguDegeri,
+  type OtomatikSorguTuru,
+} from '@mali-musavir/shared';
 import { api } from '@/lib/api';
 import { FAINT, GREEN, MUTED, ikonRozeti } from '../_lib/tema';
 import { DurumCipi, FormGrup, Salter } from './ortak/Form';
 
-/** GET /taxpayers/:id → `otomatikSorgu` (null = varsayılan: yalnız e-Tebligat açık). */
-export type OtomatikSorgu = {
-  vergiBorcu: boolean;
-  eTebligat: boolean;
-  gelenEArsiv: boolean;
-  pos: boolean;
-  eHaciz: boolean;
-  yoklama: boolean;
-};
-export type OtomatikSorguAnahtar = keyof OtomatikSorgu;
-
-export const OTOMATIK_SORGU_VARSAYILAN: OtomatikSorgu = {
-  vergiBorcu: false,
-  eTebligat: true,
-  gelenEArsiv: false,
-  pos: false,
-  eHaciz: false,
-  yoklama: false,
-};
-
-/** null/eksik alanları varsayılana tamamlar. */
-export function otomatikSorguCoz(v: unknown): OtomatikSorgu {
-  const o = (v && typeof v === 'object' ? v : {}) as Partial<Record<OtomatikSorguAnahtar, unknown>>;
-  const al = (k: OtomatikSorguAnahtar) => (typeof o[k] === 'boolean' ? (o[k] as boolean) : OTOMATIK_SORGU_VARSAYILAN[k]);
-  return { vergiBorcu: al('vergiBorcu'), eTebligat: al('eTebligat'), gelenEArsiv: al('gelenEArsiv'), pos: al('pos'), eHaciz: al('eHaciz'), yoklama: al('yoklama') };
-}
+/**
+ * GET /taxpayers/:id → `otomatikSorgu` (null = varsayılan: e-Tebligat ve e-Defter açık).
+ * Tip, varsayılan ve çözümleme TEK KAYNAK: @mali-musavir/shared otomatik-sorgu.ts (7 şalter, 2026-09-22).
+ */
+export type OtomatikSorgu = OtomatikSorguDegeri;
+export type OtomatikSorguAnahtar = OtomatikSorguTuru;
+export { otomatikSorguCoz };
 
 /** "Tanımlı" göstergesi: en az bir şalter açık. */
 export function otomatikSorguTanimli(v: unknown): boolean {
@@ -42,36 +30,36 @@ export function otomatikSorguTanimli(v: unknown): boolean {
 }
 
 const STEEL = '#4f86c9';
-const KILIT_IPUCU = 'Dijital Vergi Dairesi sorgu yolu bağlanınca açılacak.';
 
-/** Şimdilik YALNIZ e-Tebligat etkin; diğer beşi kilitli ("Yakında"). */
-const SORGULAR: Array<{ key: OtomatikSorguAnahtar; ad: string; ikon: LucideIcon; etkin: boolean }> = [
-  { key: 'vergiBorcu', ad: 'Vergi Borcu', ikon: Landmark, etkin: false },
-  { key: 'eTebligat', ad: 'E-Tebligat', ikon: Mail, etkin: true },
-  { key: 'gelenEArsiv', ad: 'Gelen E-Arşiv', ikon: Receipt, etkin: false },
-  { key: 'pos', ad: 'POS', ikon: Search, etkin: false },
-  { key: 'eHaciz', ad: 'E-Haciz', ikon: ShieldAlert, etkin: false },
-  { key: 'yoklama', ad: 'Yoklama ve Denetim', ikon: BadgeAlert, etkin: false },
-];
+/** Satır ikonu ve tek satır açıklama (ne yapar). Etiketler shared'dan gelir. */
+const SATIR: Record<OtomatikSorguTuru, { ikon: LucideIcon; aciklama: string }> = {
+  eTebligat: { ikon: Mail, aciklama: 'Yeni tebligatları gece kontrol eder, belgeyi arşive alır' },
+  vergiBorcu: { ikon: Landmark, aciklama: 'Vadesi geçmiş / gelmemiş borç dökümünü alır' },
+  gelenEArsiv: { ikon: Receipt, aciklama: 'Mükellefe kesilen e-Arşiv faturalarını listeler' },
+  pos: { ikon: Search, aciklama: 'Banka ve ödeme kuruluşu POS tutarlarını (aylık) alır' },
+  eHaciz: { ikon: ShieldAlert, aciklama: 'Banka ve araç e-haciz bildirilerini alır' },
+  yoklama: { ikon: BadgeAlert, aciklama: 'Yoklama ve denetim tutanaklarını alır, tutanağı PDF olarak saklar' },
+  eDefter: { ikon: BookOpen, aciklama: 'e-Defter mükellefinde berat yüklemelerini gece kontrol eder' },
+};
 
 export const OTOMATIK_SORGU_IKON = ScanSearch;
 export const OTOMATIK_SORGU_RENK = STEEL;
 
 /**
- * Otomatik Sorgulama Ayarı — grup bantlı, etiket-solda satır listesi (kayıt formu dili).
+ * Otomatik Sorgulama Ayarı — grup bantlı, etiket-solda satır listesi (kayıt formu dili). 7 şalter, hepsi etkin.
  * Kaydet düğmesinden BAĞIMSIZ: şalter değişince anında PATCH /taxpayers/:id/otomatik-sorgu { anahtar: bool }
  * (yalnız değişen anahtar). İyimser güncelleme; hata olursa geri al + toast. Başarıda ['taxpayer', id] yenilenir.
  */
 export function OtomatikSorguAyari({ taxpayerId, deger }: { taxpayerId: string; deger: unknown }) {
   const qc = useQueryClient();
   const cozulmus = otomatikSorguCoz(deger);
-  const [bekleyen, setBekleyen] = useState<OtomatikSorguAnahtar | null>(null);
+  const [bekleyen, setBekleyen] = useState<OtomatikSorguTuru | null>(null);
 
   const { mutate } = useMutation({
     mutationFn: (degisiklik: Partial<OtomatikSorgu>) =>
       api.patch(`/taxpayers/${taxpayerId}/otomatik-sorgu`, degisiklik).then((r) => r.data),
     onMutate: async (degisiklik) => {
-      const anahtar = Object.keys(degisiklik)[0] as OtomatikSorguAnahtar;
+      const anahtar = Object.keys(degisiklik)[0] as OtomatikSorguTuru;
       setBekleyen(anahtar);
       await qc.cancelQueries({ queryKey: ['taxpayer', taxpayerId] });
       const onceki = qc.getQueryData<any>(['taxpayer', taxpayerId]);
@@ -91,9 +79,8 @@ export function OtomatikSorguAyari({ taxpayerId, deger }: { taxpayerId: string; 
       if (guncel && typeof guncel === 'object' && 'otomatikSorgu' in guncel) {
         qc.setQueryData<any>(['taxpayer', taxpayerId], (eski: any) => (eski ? { ...eski, otomatikSorgu: guncel.otomatikSorgu } : eski));
       }
-      const [anahtar, deger2] = Object.entries(degisiklik)[0] as [OtomatikSorguAnahtar, boolean];
-      const ad = SORGULAR.find((s) => s.key === anahtar)?.ad || anahtar;
-      toast.success(`${ad} gece sorgusu ${deger2 ? 'açıldı' : 'kapatıldı'}`);
+      const [anahtar, deger2] = Object.entries(degisiklik)[0] as [OtomatikSorguTuru, boolean];
+      toast.success(`${OTOMATIK_SORGU_ETIKETLERI[anahtar] || anahtar} gece sorgusu ${deger2 ? 'açıldı' : 'kapatıldı'}`);
     },
     onSettled: () => {
       setBekleyen(null);
@@ -101,53 +88,50 @@ export function OtomatikSorguAyari({ taxpayerId, deger }: { taxpayerId: string; 
     },
   });
 
-  const acikSayisi = SORGULAR.filter((s) => s.etkin && cozulmus[s.key]).length;
-  const etkinSayisi = SORGULAR.filter((s) => s.etkin).length;
+  const acikSayisi = OTOMATIK_SORGU_TURLERI.filter((t) => cozulmus[t]).length;
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3" data-otomatik-sorgu>
       <FormGrup
         baslik="Gece sorguları"
         aciklama="Kapalı olan sorgu gece çalışmaz; elle sorgu bu ayardan etkilenmez"
-        sag={<DurumCipi ton={acikSayisi ? 'yesil' : 'notr'}>{acikSayisi} / {etkinSayisi} açık</DurumCipi>}
+        sag={<DurumCipi ton={acikSayisi ? 'yesil' : 'notr'}>{acikSayisi} / {OTOMATIK_SORGU_TURLERI.length} açık</DurumCipi>}
+        sutun={1}
       >
-        {SORGULAR.map((s) => {
-          const Ikon = s.ikon;
-          const acik = cozulmus[s.key];
-          const kilitli = !s.etkin;
-          const mesgul = bekleyen === s.key;
+        {OTOMATIK_SORGU_TURLERI.map((t) => {
+          const { ikon: Ikon, aciklama } = SATIR[t];
+          const ad = OTOMATIK_SORGU_ETIKETLERI[t];
+          const acik = cozulmus[t];
+          const mesgul = bekleyen === t;
           return (
             <button
-              key={s.key}
+              key={t}
               type="button"
               role="switch"
               aria-checked={acik}
-              aria-disabled={kilitli}
               disabled={mesgul}
-              onClick={() => { if (kilitli || mesgul) return; mutate({ [s.key]: !acik } as Partial<OtomatikSorgu>); }}
-              title={kilitli ? KILIT_IPUCU : `${s.ad} gece sorgusunu ${acik ? 'kapat' : 'aç'}`}
-              className={`grid min-h-9 grid-cols-[200px_minmax(0,1fr)] items-center gap-x-3 text-left ${kilitli ? 'cursor-not-allowed' : ''}`}
+              onClick={() => { if (mesgul) return; mutate({ [t]: !acik } as Partial<OtomatikSorgu>); }}
+              title={`${ad} gece sorgusunu ${acik ? 'kapat' : 'aç'}`}
+              className="grid min-h-9 grid-cols-[200px_minmax(0,1fr)] items-center gap-x-3 text-left"
+              data-sorgu={t}
             >
-              <span className="flex items-center gap-2 text-[13px] font-medium" style={portalStyle({ color: kilitli ? FAINT : 'rgba(250,250,249,0.72)' })}>
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center" style={portalStyle({ ...ikonRozeti(kilitli ? 'rgba(250,250,249,0.35)' : STEEL), borderRadius: 6 })}>
+              <span className="flex items-center gap-2 text-[13px] font-medium" style={portalStyle({ color: 'rgba(250,250,249,0.72)' })}>
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center" style={portalStyle({ ...ikonRozeti(STEEL), borderRadius: 6 })}>
                   <Ikon size={13} />
                 </span>
-                <span className="truncate">{s.ad}</span>
+                <span className="truncate">{ad}</span>
               </span>
               <span className="flex min-w-0 items-center gap-2.5">
-                <Salter checked={acik && !kilitli} disabled={kilitli || mesgul} />
-                {kilitli ? (
-                  <span className="text-[13px] font-medium" style={portalStyle({ color: FAINT })}>Yakında</span>
-                ) : (
-                  <span className="text-[13px] font-medium" style={portalStyle({ color: acik ? GREEN : MUTED })}>{mesgul ? 'Kaydediliyor…' : acik ? 'Açık' : 'Kapalı'}</span>
-                )}
+                <Salter checked={acik} disabled={mesgul} />
+                <span className="w-[88px] shrink-0 text-[13px] font-medium" style={portalStyle({ color: acik ? GREEN : MUTED })}>{mesgul ? 'Kaydediliyor…' : acik ? 'Açık' : 'Kapalı'}</span>
+                <span className="hidden truncate text-[12px] md:inline" style={portalStyle({ color: FAINT })}>{aciklama}</span>
               </span>
             </button>
           );
         })}
       </FormGrup>
       <p className="text-[11.5px]" style={portalStyle({ color: FAINT })}>
-        Şalter değişince anında kaydedilir; üstteki Kaydet düğmesine gerek yoktur. "Yakında" olanlar: {KILIT_IPUCU}
+        Şalter değişince anında kaydedilir. Açık sorgular her gece mükellefin Dijital Vergi Dairesi girişiyle tek oturumda koşar.
       </p>
     </div>
   );

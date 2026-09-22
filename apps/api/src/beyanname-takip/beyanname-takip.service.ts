@@ -1,5 +1,18 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { EDEFTER_BELGE_ETIKETLERI, eDefterDonemEtiketi, type EDefterMukellefTipi, type EDefterTercih } from '@mali-musavir/shared';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  eDefterBaslangicCoz,
+  eDefterBeklenenDonemler,
+  eDefterBeratVerildiMi,
+  eDefterDurumCoz,
+  eDefterOzetVergiDonemi,
+  eDefterSonYukleme,
+  eDefterTercihCoz,
+  eDefterTipiCoz,
+  type EDefterBeklenenDonem,
+  type EDefterDurum,
+} from './edefter-takip';
 
 export type BeyanTipi =
   | 'KURUMLAR'
@@ -115,6 +128,8 @@ export class BeyannameTakipService {
       posetEnabled?: boolean;
       sgkBildirgeEnabled?: boolean;
       eDefterPeriod?: Period;
+      // e-Defter mükellefiyetinin başladığı ay "YYYY-MM" (Hattat "Başlangıç"); null = sınırsız (2026-09-22)
+      eDefterBaslangic?: string | null;
       // v1.37.1 — Hattat tarzı genişletme
       kdv4Period?: Period | null;
       kdv9015Period?: Period | null;
@@ -137,6 +152,18 @@ export class BeyannameTakipService {
       select: { id: true },
     });
     if (!taxpayer) throw new NotFoundException('Mükellef bulunamadı');
+
+    // eDefterBaslangic: boş → null; doluysa "YYYY-MM" olmalı (ör. 2026-07).
+    if (Object.prototype.hasOwnProperty.call(data, 'eDefterBaslangic')) {
+      const ham = data.eDefterBaslangic;
+      if (ham === null || ham === undefined || String(ham).trim() === '') {
+        data.eDefterBaslangic = null;
+      } else {
+        const temiz = eDefterBaslangicCoz(String(ham).trim());
+        if (!temiz) throw new BadRequestException('e-Defter başlangıç ayı YYYY-AA biçiminde olmalı (ör. 2026-07)');
+        data.eDefterBaslangic = temiz;
+      }
+    }
 
     return (this.prisma as any).taxpayerBeyanConfig.upsert({
       where: { taxpayerId },
@@ -292,13 +319,216 @@ export class BeyannameTakipService {
       }
     }
 
-    const rows = Object.values(agg).map((r) => ({
-      ...r,
-      vergiDonem: vergiDonemForTip(r.beyanTipi as BeyanTipi, yil, ay, donem, donemTuru),
-      yuzde: r.toplam > 0 ? Math.round(((r.onaylanan) / r.toplam) * 100) : 0,
-    }));
+    // e-Defter: KDV takvimi DEĞİL, berat takvimi (Sıra No 5 Tebliğ) — ayrı yol. Mükellef beklenen HER dönem için
+    // 1 sayılır (Haziran'da Ocak+Şubat beratı düşen şahıs 2 sayılır). Bekleyen/hatalı üretilmez.
+    const eDefter = await this.eDefterHesapla(tenantId, taxpayers, donem, donemTuru);
+    const eDefterDonemleri = new Set<string>();
+    for (const sonuc of eDefter.values()) {
+      for (const d of sonuc.donemler) {
+        eDefterDonemleri.add(d.donem);
+        agg.EDEFTER.toplam++;
+        if (d.durum === 'onaylandi') agg.EDEFTER.onaylanan++;
+        else agg.EDEFTER.kalan++;
+      }
+    }
+
+    const rows = Object.values(agg).map((r) => {
+      const vergiDonem = r.beyanTipi === 'EDEFTER'
+        ? eDefterOzetVergiDonemi(donem, donemTuru, eDefterDonemleri)
+        : vergiDonemForTip(r.beyanTipi as BeyanTipi, yil, ay, donem, donemTuru);
+      const donemler = r.beyanTipi === 'EDEFTER' ? Array.from(eDefterDonemleri).sort() : [vergiDonem];
+      return {
+        ...r,
+        vergiDonem,
+        // O ay takibe düşen dönem anahtarları (tekrarsız). e-Defter'de birden çok olabilir: ['2026-05', '2026-Q2'].
+        donemler,
+        yuzde: r.toplam > 0 ? Math.round(((r.onaylanan) / r.toplam) * 100) : 0,
+      };
+    });
 
     return { donem, donemTuru, rows };
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // E-DEFTER BERAT TAKİBİ (2026-09-22)
+  // ══════════════════════════════════════════════════════════
+
+  /**
+   * e-Defter mükellefleri için seçilen ayda beklenen dönemler + berat satırlarından durum.
+   * Yalnız eDefterPeriod dolu, o dönemde aktif mükellefler; beklenen dönemi olmayan mükellef haritaya girmez.
+   */
+  private async eDefterHesapla(
+    tenantId: string,
+    taxpayers: any[],
+    donem: string,
+    donemTuru: DonemTuru,
+    secenek: { tumBelgeler?: boolean } = {},
+  ): Promise<Map<string, EDefterMukellefSonucu>> {
+    const sonuclar = new Map<string, EDefterMukellefSonucu>();
+    const aylar = new Set<string>();
+    const donemAnahtarlari = new Set<string>();
+
+    for (const tp of taxpayers) {
+      if (tp.isActive === false) continue;
+      const cfg = effectiveBeyanConfig(tp);
+      const tercih = eDefterTercihCoz(cfg?.eDefterPeriod);
+      if (!tercih) continue;
+      const tip = eDefterTipiCoz(tp.type, cfg?.incomeTaxType);
+      const baslangic = eDefterBaslangicCoz(cfg?.eDefterBaslangic);
+      // Aktiflik dönemin kendi aylarına göre (işe başlama / işi bırakma) — verilme ayına göre değil.
+      const beklenen = eDefterBeklenenDonemler(donem, donemTuru, tercih, tip, baslangic)
+        .filter((d) => { const { baslangic: b, bitis } = vergiDonemAraligi(d.donem); return aktifMiAralikta(tp, b, bitis); });
+      if (beklenen.length === 0) continue;
+      for (const d of beklenen) { donemAnahtarlari.add(d.donem); for (const a of d.aylar) aylar.add(a); }
+      sonuclar.set(tp.id, {
+        tp, tercih, tip, baslangic,
+        donemler: beklenen.map((d) => ({ ...d, durum: 'kalan', verildi: false, beratlar: [], elleKaydi: null, sonYukleme: null })),
+      });
+    }
+    if (sonuclar.size === 0) return sonuclar;
+
+    const ids = Array.from(sonuclar.keys());
+    const beratlar: any[] = await (this.prisma as any).eDefterBerat.findMany({
+      where: {
+        tenantId,
+        taxpayerId: { in: ids },
+        donem: { in: Array.from(aylar) },
+        ...(secenek.tumBelgeler ? {} : { belgeTuru: { in: ['KB', 'YB'] } }),
+      },
+      select: { taxpayerId: true, donem: true, belgeTuru: true, paketId: true, islemOid: true, alinmaZamani: true, durumKodu: true, durumAciklama: true, sorguTarihi: true },
+      orderBy: [{ donem: 'asc' }, { belgeTuru: 'asc' }, { alinmaZamani: 'asc' }],
+    }).catch(() => []);
+    const beratMap = new Map<string, any[]>();
+    for (const b of beratlar || []) {
+      const liste = beratMap.get(b.taxpayerId) || [];
+      liste.push(b);
+      beratMap.set(b.taxpayerId, liste);
+    }
+
+    // Elle işaret: BeyanDurumu EDEFTER + dönem anahtarı ('2026-05' ya da '2026-Q2').
+    const elleKayitlar: any[] = await (this.prisma as any).beyanDurumu.findMany({
+      where: { tenantId, beyanTipi: 'EDEFTER', taxpayerId: { in: ids }, donem: { in: Array.from(donemAnahtarlari) } },
+    }).catch(() => []);
+    const elleMap = new Map<string, any>();
+    for (const k of elleKayitlar || []) elleMap.set(`${k.taxpayerId}::${k.donem}`, k);
+
+    for (const [taxpayerId, sonuc] of sonuclar) {
+      const tumBeratlar = beratMap.get(taxpayerId) || [];
+      for (const d of sonuc.donemler) {
+        const aySet = new Set(d.aylar);
+        d.beratlar = tumBeratlar.filter((b) => aySet.has(b.donem));
+        d.elleKaydi = elleMap.get(`${taxpayerId}::${d.donem}`) || null;
+        d.durum = eDefterDurumCoz(d.aylar, d.beratlar, d.elleKaydi?.durum);
+        d.verildi = d.durum === 'onaylandi';
+        d.sonYukleme = eDefterSonYukleme(d.aylar, d.beratlar);
+      }
+    }
+    return sonuclar;
+  }
+
+  /**
+   * "E-Defter Detayı" penceresi: GET /beyanname-takip/edefter?donem=YYYY-MM&donemTuru=VERILME|VERGI
+   * Yalnız e-Defter mükellefleri (eDefterPeriod dolu, aktif, WHATSAPP-* hariç). Her mükellefte o ay beklenen
+   * dönemler, her dönemin ayları ve o aya ait berat/defter paketleri (KB, YB, Y, K).
+   */
+  async listEDefterDetay(tenantId: string, donem: string, donemTuru: DonemTuru = 'VERILME') {
+    const [yilStr, ayStr] = donem.split('-');
+    const yil = parseInt(yilStr, 10);
+    const ay = parseInt(ayStr, 10);
+    if (!yil || !ay || ay < 1 || ay > 12) throw new BadRequestException(`Geçersiz dönem: ${donem}`);
+
+    const taxpayers = await (this.prisma as any).taxpayer.findMany({
+      where: {
+        tenantId,
+        isActive: true,
+        taxNumber: { not: { startsWith: 'WHATSAPP-' } },
+        beyanConfig: { is: { eDefterPeriod: { in: ['AYLIK', 'UCAYLIK'] } } },
+      },
+      include: { beyanConfig: true, portalCredentials: sgkCredentialInclude() },
+      orderBy: [{ companyName: 'asc' }, { firstName: 'asc' }],
+    });
+
+    const sonuclar = await this.eDefterHesapla(tenantId, taxpayers, donem, donemTuru, { tumBelgeler: true });
+    const ids = Array.from(sonuclar.keys());
+
+    // Son sorgu kaydı (mükellef başına en yeni).
+    const sonSorguMap = new Map<string, { sorguTarihi: string; hata: string | null; paketSayisi: number; kaynak: string }>();
+    if (ids.length > 0) {
+      const sorgular: any[] = await (this.prisma as any).eDefterSorguKaydi.findMany({
+        where: { tenantId, taxpayerId: { in: ids } },
+        orderBy: { sorguTarihi: 'desc' },
+        select: { taxpayerId: true, sorguTarihi: true, hata: true, paketSayisi: true, kaynak: true },
+      }).catch(() => []);
+      for (const s of sorgular || []) {
+        if (sonSorguMap.has(s.taxpayerId)) continue;
+        sonSorguMap.set(s.taxpayerId, {
+          sorguTarihi: s.sorguTarihi instanceof Date ? s.sorguTarihi.toISOString() : String(s.sorguTarihi),
+          hata: s.hata ?? null,
+          paketSayisi: Number(s.paketSayisi) || 0,
+          kaynak: s.kaynak || 'manual',
+        });
+      }
+    }
+
+    const collator = new Intl.Collator('tr', { sensitivity: 'base' });
+    const mukellefler = Array.from(sonuclar.values()).map((sonuc) => {
+      const tp = sonuc.tp;
+      const donemler = sonuc.donemler.map((d) => ({
+        donem: d.donem,
+        etiket: eDefterDonemEtiketi(d.donem),
+        tercih: sonuc.tercih,
+        tebligTarihi: d.tebligTarihi,
+        sonGun: d.sonGun,
+        uzatildi: d.uzatildi,
+        uzatmaKaynagi: d.uzatmaKaynagi,
+        verildi: d.verildi,
+        elleIsaretli: !!d.elleKaydi && d.elleKaydi.durum === 'onaylandi' && !eDefterBeratVerildiMi(d.aylar, d.beratlar),
+        sonYukleme: d.sonYukleme,
+        aylar: d.aylar.map((a) => ({
+          ay: a,
+          etiket: eDefterDonemEtiketi(a),
+          verildi: eDefterDurumCoz([a], d.beratlar) === 'onaylandi',
+          belgeler: d.beratlar
+            .filter((b) => b.donem === a)
+            .map((b) => ({
+              belgeTuru: b.belgeTuru,
+              etiket: (EDEFTER_BELGE_ETIKETLERI as Record<string, string>)[b.belgeTuru] || b.belgeTuru,
+              paketId: b.paketId,
+              islemOid: b.islemOid ?? null,
+              alinmaZamani: b.alinmaZamani instanceof Date ? b.alinmaZamani.toISOString() : (b.alinmaZamani ?? null),
+              durumKodu: b.durumKodu ?? null,
+              durumAciklama: b.durumAciklama ?? null,
+            })),
+        })),
+      }));
+      const verildi = donemler.every((d) => d.verildi);
+      const sonYuklemeler = donemler.map((d) => d.sonYukleme).filter((x): x is string => !!x).sort();
+      return {
+        taxpayerId: tp.id,
+        ad: adFormat(tp),
+        taxNumber: tp.taxNumber ?? null,
+        tip: sonuc.tip,
+        tipEtiketi: sonuc.tip === 'FIRMA' ? 'Kurumlar Vergisi' : 'Gelir Vergisi',
+        tercih: sonuc.tercih,
+        tercihEtiketi: sonuc.tercih === 'UCAYLIK' ? '3 Aylık' : 'Aylık',
+        baslangic: sonuc.baslangic,
+        donemler,
+        verildi,
+        sonSorgu: sonSorguMap.get(tp.id) || null,
+        sonYukleme: sonYuklemeler.length > 0 ? sonYuklemeler[sonYuklemeler.length - 1] : null,
+      };
+    }).sort((a, b) => collator.compare(a.ad, b.ad));
+
+    // Özet: panel tablosuyla aynı sayım — dönem başına 1 (birden çok dönem düşen mükellef kadar).
+    let toplam = 0;
+    let verilen = 0;
+    for (const m of mukellefler) for (const d of m.donemler) { toplam++; if (d.verildi) verilen++; }
+    return {
+      donem,
+      donemTuru,
+      mukellefler,
+      ozet: { toplam, verilen, kalan: toplam - verilen, mukellef: mukellefler.length, verilenMukellef: mukellefler.filter((m) => m.verildi).length },
+    };
   }
 
   /** Belirli bir mükellefin belirli bir beyannamesinin durumunu güncelle */
@@ -365,6 +595,9 @@ export class BeyannameTakipService {
     // SGK Bildirge: tahakkuk fişi indirildiyse bildirge verilmiş say (özet ile aynı kural).
     const sgkBildirgeSet = await this.sgkBildirgeVerilenSet(tenantId, vDonem2);
 
+    // e-Defter: berat takvimi (özet ile aynı kural) — her beklenen dönem ayrı girdi, vergiDonem = dönem anahtarı.
+    const eDefter = await this.eDefterHesapla(tenantId, taxpayers, donem, donemTuru);
+
     return taxpayers
       .filter((tp: any) => tp.isActive !== false)
       .map((tp: any) => {
@@ -372,6 +605,13 @@ export class BeyannameTakipService {
         // Sadece mükellefin VERGİ DÖNEMİNDE aktif olduğu beyannameler kalsın
         const beklenen = beklenenBeyanlar(cfg, yil, ay, donemTuru, kdv2OcrSet2, tp.id)
           .filter((tip) => aktifMiBeyanDoneminde(tp, tip, yil, ay, donem, donemTuru));
+        const eDefterGirdileri = (eDefter.get(tp.id)?.donemler || []).map((d) => ({
+          beyanTipi: 'EDEFTER' as BeyanTipi,
+          durum: d.durum,
+          vergiDonem: d.donem,
+          tahakkukTutari: null as number | null,
+          onayTarihi: (d.sonYukleme || d.elleKaydi?.onayTarihi || null) as string | Date | null,
+        }));
         const beyanlar = beklenen.map((tip) => {
           const resolved = resolveBeyanState(durumMap, kayitMap, tp.id, tip, yil, ay, donem, donemTuru);
           let durum = resolved.durum;
@@ -391,13 +631,30 @@ export class BeyannameTakipService {
         return {
           taxpayerId: tp.id,
           ad: adFormat(tp),
-          beyanlar,
+          beyanlar: [...beyanlar, ...eDefterGirdileri],
         };
       })
       // Vergi döneminde hiç aktif beyannamesi olmayan mükellefi listeden çıkar
       .filter((row: any) => row.beyanlar.length > 0);
   }
 }
+
+/** eDefterHesapla çıktısı: mükellef + tercih/tip + o ay beklenen dönemler (durumla). */
+type EDefterMukellefSonucu = {
+  tp: any;
+  tercih: EDefterTercih;
+  tip: EDefterMukellefTipi;
+  baslangic: string | null;
+  donemler: Array<EDefterBeklenenDonem & {
+    durum: EDefterDurum;
+    verildi: boolean;
+    /** Dönem aylarına ait berat/defter paketleri (EDefterBerat satırları) */
+    beratlar: any[];
+    /** Elle işaretlenmiş BeyanDurumu (EDEFTER + dönem anahtarı) */
+    elleKaydi: any | null;
+    sonYukleme: string | null;
+  }>;
+};
 
 // ══════════════════════════════════════════════════════════
 // YARDIMCILAR
@@ -430,6 +687,7 @@ function defaultConfig() {
     gmsiEnabled: false,
     turizmPeriod: null,
     eDefterPeriod: null,
+    eDefterBaslangic: null,
     notes: null,
   };
 }
@@ -755,7 +1013,7 @@ function lookupKeysForExpected(tip: BeyanTipi, yil: number, ay: number, donem: s
  * POSET 3 aylık: 1/4/7/10 aylarında verilir (önceki çeyrek)
  * Kurumlar: sadece Nisan (4. ay)
  * Gelir: sadece Mart (3. ay)
- * E-Defter aylık: her ay; 3 aylık: 3/6/9/12
+ * E-Defter: BURADA DEĞİL — berat takvimi (edefter-takip.ts / eDefterHesapla)
  */
 function beklenenBeyanlar(cfg: any, yil: number, ay: number, donemTuru: DonemTuru, kdv2OcrSet?: Set<string>, taxpayerId?: string): BeyanTipi[] {
   const tipler: BeyanTipi[] = [];
@@ -785,9 +1043,7 @@ function beklenenBeyanlar(cfg: any, yil: number, ay: number, donemTuru: DonemTur
   // SGK Bildirge (aylık, MUHSGK zaten birleşik ama ayrı bildirgeler için)
   if (cfg.sgkBildirgeEnabled) tipler.push('BILDIRGE');
 
-  // E-Defter
-  if (cfg.eDefterPeriod === 'AYLIK') tipler.push('EDEFTER');
-  else if (periodDue(cfg.eDefterPeriod, ay, donemTuru)) tipler.push('EDEFTER');
+  // E-Defter: KDV takvimiyle DEĞİL, berat takvimiyle (Sıra No 5 Tebliğ) hesaplanır → eDefterHesapla (ayrı yol).
   if (periodDue(cfg.otv1Period, ay, donemTuru)) tipler.push('OTV1');
   if (periodDue(cfg.otv3aPeriod, ay, donemTuru)) tipler.push('OTV3A');
   if (periodDue(cfg.otv3bPeriod, ay, donemTuru)) tipler.push('OTV3B');

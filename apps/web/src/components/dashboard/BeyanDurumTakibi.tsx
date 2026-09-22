@@ -1,6 +1,6 @@
 'use client';
 import { CalendarDays, FileCheck2, HelpCircle, Search } from 'lucide-react';
-import { BEYAN_ETIKETLER, type BeyanTipi, type DonemTuru, type OzetRow } from '@/lib/beyanname-takip';
+import { BEYAN_ETIKETLER, eDefterDonemCipleri, type BeyanTipi, type DonemTuru, type OzetRow } from '@/lib/beyanname-takip';
 import './beyan-durum.css';
 
 /**
@@ -62,7 +62,8 @@ export function BeyanDurumTakibi({
   const yardimciRows = aktif.filter((r) => r.beyanTipi === 'BILDIRGE' || r.beyanTipi === 'EDEFTER');
   const modeNote = donemTuru === 'VERILME' ? 'Seçilen ayda verilmesi gerekenler' : 'Seçilen vergi dönemine ait olanlar';
   const bos = !isLoading && aktif.length === 0;
-  const vergiDonemleri = Array.from(new Set(aktif.map((r) => r.vergiDonem).filter(Boolean)));
+  // E-Defter'in dönemi berat takvimine göre satırın kendi notunda ("Aylık Mayıs 2026 · 3 Aylık Nis–Haz 2026"); başlıkta tekrar yok.
+  const vergiDonemleri = Array.from(new Set(aktif.filter((r) => r.beyanTipi !== 'EDEFTER').map((r) => r.vergiDonem).filter(Boolean)));
 
   return (
     <section className="bd" data-beyan-panel aria-label="Beyanname durum takibi">
@@ -152,6 +153,10 @@ function BeyanSatiri({ row, onNumberClick, yardimci }: { row: OzetRow; onNumberC
       <th scope="row" className="bd-th-left">
         <button type="button" className="bd-name" onClick={() => onNumberClick(row.beyanTipi, 'toplam')} title="Mükellef listesini göster">
           <b>{BEYAN_ETIKETLER[row.beyanTipi]}</b>
+          {row.beyanTipi === 'EDEFTER' && row.donemler && row.donemler.length > 0 && (
+            // e-Defter berat takvimi: o ay son günü olan dönemler (ör. "Aylık Mayıs 2026 · 3 Aylık Nis–Haz 2026")
+            <small>{eDefterDonemCipleri(row.donemler).join(' · ')}</small>
+          )}
         </button>
       </th>
       <Sayi deger={row.toplam} ton="total" onClick={() => onNumberClick(row.beyanTipi, 'toplam')} />

@@ -1,11 +1,12 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { beyannameTakipApi, type DonemTuru } from '@/lib/beyanname-takip';
 import { BeyanGrafigi } from './BeyanGrafigi';
 import { YukumlulukKarti } from './YukumlulukKarti';
 import { FaturaGrafikKarti } from './FaturaGrafikKarti';
+import { EDefterDetayPenceresi } from './EDefterDetayPenceresi';
 import './ofis-panoramasi.css';
 
 export type PanoramaPeriodProps = {
@@ -17,6 +18,8 @@ export type PanoramaPeriodProps = {
 
 export function OfisPanoramasi({ donem, donemTuru }: PanoramaPeriodProps) {
   const gridRef = useRef<HTMLDivElement>(null);
+  // E-Defter kartı → "E-Defter Detayı" penceresi (2026-09-22)
+  const [eDefterAcik, setEDefterAcik] = useState(false);
   useEffect(() => {
     const grid = gridRef.current;
     if (!grid) return;
@@ -51,10 +54,11 @@ export function OfisPanoramasi({ donem, donemTuru }: PanoramaPeriodProps) {
         <BeyanGrafigi rows={rows} loading={query.isLoading} error={query.isError} />
         <div className="ofis-panorama__aside">
           <YukumlulukKarti kind="sgk" row={rows.find(row => row.beyanTipi === 'BILDIRGE')} loading={query.isLoading} error={query.isError} />
-          <YukumlulukKarti kind="edefter" row={rows.find(row => row.beyanTipi === 'EDEFTER')} loading={query.isLoading} error={query.isError} />
+          <YukumlulukKarti kind="edefter" row={rows.find(row => row.beyanTipi === 'EDEFTER')} loading={query.isLoading} error={query.isError} onAc={() => setEDefterAcik(true)} />
           <FaturaGrafikKarti period={invoicePeriod} />
         </div>
       </div>
+      {eDefterAcik && <EDefterDetayPenceresi donem={donem} donemTuru={donemTuru} onClose={() => setEDefterAcik(false)} />}
     </section>
   );
 }

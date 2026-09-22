@@ -13,9 +13,14 @@
 .yukumluluk-karti__heading p { margin: 0 0 2px; color: var(--yk-muted); font-size: 9px; letter-spacing: .055em; line-height: 1.25; white-space: nowrap; }
 .yukumluluk-karti .yukumluluk-karti__header h2 { margin: 0; font-family: inherit; font-size: 16px; line-height: 1.2; font-weight: 650; letter-spacing: -.15px; color: var(--yk-text); }
 .yukumluluk-karti__period { display: inline-flex; align-items: center; gap: 5px; margin-left: auto; padding: 6px 8px; border: 1px solid var(--yk-line); border-radius: 20px; color: var(--yk-muted); background: color-mix(in srgb, var(--yk-track) 25%, var(--yk-bg)); font-size: 10px; line-height: 1.2; white-space: nowrap; }
-.yukumluluk-karti__header a { display: grid; place-items: center; width: 30px; height: 30px; flex-shrink: 0; border: 1px solid #c4d6f7; border-radius: 50%; background: color-mix(in srgb, var(--yk-track) 20%, var(--yk-bg)); color: var(--yk-text); box-shadow: 0 2px 5px #24477b08; }
-.yukumluluk-karti__header a:hover { background: var(--yk-soft); color: var(--yk-accent); }
-.yukumluluk-karti__header a:focus-visible { outline: 2px solid var(--yk-accent); outline-offset: 3px; }
+.yukumluluk-karti__header a, .yukumluluk-karti__header button { display: grid; place-items: center; width: 30px; height: 30px; flex-shrink: 0; padding: 0; border: 1px solid #c4d6f7; border-radius: 50%; background: color-mix(in srgb, var(--yk-track) 20%, var(--yk-bg)); color: var(--yk-text); box-shadow: 0 2px 5px #24477b08; cursor: pointer; }
+.yukumluluk-karti__header a:hover, .yukumluluk-karti__header button:hover { background: var(--yk-soft); color: var(--yk-accent); }
+.yukumluluk-karti__header a:focus-visible, .yukumluluk-karti__header button:focus-visible { outline: 2px solid var(--yk-accent); outline-offset: 3px; }
+/* E-Defter: tercihe göre dönem çipleri üst üste (Aylık Mayıs 2026 / 3 Aylık Nis–Haz 2026); kart tıklanınca detay penceresi */
+.yukumluluk-karti__periods { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; margin-left: auto; min-width: 0; }
+.yukumluluk-karti__periods .yukumluluk-karti__period { margin-left: 0; padding: 2px 7px; font-size: 9.5px; line-height: 1.2; gap: 4px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.yukumluluk-karti[data-acilir='true'] { cursor: pointer; }
+.yukumluluk-karti[data-acilir='true']:hover { border-color: #c4d6f7; }
 .yukumluluk-karti__body { display: grid; grid-template-columns: 35% minmax(0, 1fr); align-items: stretch; margin-top: 3px; flex: 1; min-height: 0; container-type: size; }
 .yukumluluk-karti__gauge { display: flex; align-items: center; justify-content: center; min-width: 0; min-height: 0; height: 100%; }
 .yukumluluk-karti__gauge svg { display: block; width: 100%; max-width: 115px; height: 100%; min-height: 0; }
@@ -47,6 +52,7 @@
 @container (max-width: 345px) {
   .yukumluluk-karti__header { gap: 6px; }
   .yukumluluk-karti__period { padding: 5px; font-size: 9px; gap: 3px; }
+  .yukumluluk-karti__periods .yukumluluk-karti__period { padding: 1px 6px; font-size: 9px; }
   .yukumluluk-karti__header a { margin-left: auto; }
   .yukumluluk-karti__numbers { padding-left: 10px; }
   .yukumluluk-karti__total strong { font-size: 22px; }

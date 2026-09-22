@@ -263,6 +263,8 @@ model Taxpayer {
   yetkililer           TaxpayerYetkili[]
   // 2026-09-14: Genel Sorgulamalar (vergi borcu / e-haciz / yoklama / POS / gelen e-arşiv) sonuçları
   genelSorguSonuclari  GenelSorguSonucu[]
+  eDefterBeratlari     EDefterBerat[]
+  eDefterSorgulari     EDefterSorguKaydi[]
 
   @@index([tenantId])
   @@index([taxNumber])
@@ -295,6 +297,58 @@ model GenelSorguSonucu {
   @@index([tenantId, tur, sorguTarihi])
   @@index([taxpayerId, tur, donem])
   @@map("genel_sorgu_sonuclari")
+}
+
+// ============================================================
+// E-DEFTER BERAT TAKİBİ (2026-09-22)
+// Gece/elle DVD sorgusu e-Defter uygulamasından (edefter.gib.gov.tr) paket listesini çeker.
+// Her paket (Kebir Beratı KB / Yevmiye Beratı YB / Yevmiye Defteri Y / Kebir Defteri K) ayrı satır;
+// paketId GİB'in benzersiz kimliği ("VKN-YYYYMM-TUR-SIRA") → upsert anahtarı.
+// "Verildi" = dönemin her ayı için KB + YB durumKodu 0 (bkz. beyanname-takip e-Defter kuralı).
+// ============================================================
+model EDefterBerat {
+  id            String    @id @default(cuid())
+  tenantId      String
+  taxpayerId    String
+  donem         String // "YYYY-MM" (paketin ayı)
+  belgeTuru     String // KB | YB | Y | K
+  paketId       String // "3241199696-202605-KB-000000"
+  islemOid      String? // İşlem Numarası
+  oid           String?
+  alinmaZamani  DateTime? // GİB yükleme zamanı
+  durumKodu     Int? // 0 = başarılı
+  durumAciklama String?
+  ham           Json?
+  sorguTarihi   DateTime  @default(now())
+  jobId         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  taxpayer Taxpayer @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
+
+  @@unique([taxpayerId, paketId])
+  @@index([tenantId, donem])
+  @@index([taxpayerId, donem, belgeTuru])
+  @@map("edefter_beratlari")
+}
+
+/// e-Defter sorgu koşusu kaydı — mükellef + dönem başına "ne zaman sorgulandı, kaç paket geldi, hata var mı".
+model EDefterSorguKaydi {
+  id          String   @id @default(cuid())
+  tenantId    String
+  taxpayerId  String
+  donem       String // "YYYY-MM"
+  sorguTarihi DateTime @default(now())
+  paketSayisi Int      @default(0)
+  kaynak      String   @default("manual") // manual | nightly
+  jobId       String?
+  hata        String?
+  createdAt   DateTime @default(now())
+
+  taxpayer Taxpayer @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, taxpayerId, donem, sorguTarihi])
+  @@map("edefter_sorgu_kayitlari")
 }
 
 // ============================================================
@@ -358,6 +412,8 @@ model TaxpayerBeyanConfig {
 
   // E-Defter (bilanço usulü mükellefler için)
   eDefterPeriod String? // "AYLIK" | "UCAYLIK" | null (e-defter mükellefi değilse)
+  // e-Defter mükellefiyetinin başladığı ay "YYYY-MM" (Hattat "Başlangıç"); öncesindeki dönemler takibe düşmez (2026-09-22)
+  eDefterBaslangic String?
 
   // === v1.37.1: Hattat tarzı genişletilmiş beyanname türleri ===
   // KDV4 (özel kdv beyanları - e-ticaret, hizmet ihracatı vb.)

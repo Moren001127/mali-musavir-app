@@ -28,26 +28,30 @@ const { ekipUclari, ekipMukellefler } = require('./mock-ekip.cjs');
 // eşleşmezse false döner. Paralel çalışan tasarım ajanları bu dosyaya dokunmadan kendi sahte verisini ekler.
 // Her istekte dizin taranır; dosya değişmişse yeniden yüklenir (sunucuyu yeniden başlatmadan yeni sahte veri).
 const EKLENTI_ONBELLEK = new Map(); // dosya → { mtime, uclar }
-function eklentileriYukle() {
+// Öncelikli eklentiler (2026-09-22): scripts/mock/oncelik/*.cjs — YERLEŞİK uçlardan ÖNCE denenir; bir modül
+// yerleşik sahte ucu (ör. /genel-sorgular, /beyanname-takip/ozet) kendi verisiyle EZMEK istediğinde buraya koyar.
+const ONCELIK_ONBELLEK = new Map();
+function eklentileriYukle(oncelikli = false) {
   const fs = require('fs');
   const path = require('path');
-  const dizin = path.join(__dirname, 'mock');
+  const dizin = oncelikli ? path.join(__dirname, 'mock', 'oncelik') : path.join(__dirname, 'mock');
+  const onbellek = oncelikli ? ONCELIK_ONBELLEK : EKLENTI_ONBELLEK;
   if (!fs.existsSync(dizin)) return [];
   const sonuc = [];
   for (const f of fs.readdirSync(dizin).filter((x) => x.endsWith('.cjs')).sort()) {
     const tam = path.join(dizin, f);
     let mtime = 0;
     try { mtime = fs.statSync(tam).mtimeMs; } catch { continue; }
-    const onceki = EKLENTI_ONBELLEK.get(f);
+    const onceki = onbellek.get(f);
     if (!onceki || onceki.mtime !== mtime) {
       try {
         delete require.cache[require.resolve(tam)];
         const m = require(tam);
-        EKLENTI_ONBELLEK.set(f, { mtime, uclar: typeof m.uclar === 'function' ? m.uclar : null });
-        console.log(`[mock] eklenti yüklendi: ${f}`);
-      } catch (e) { console.warn(`[mock] eklenti yüklenemedi: ${f}: ${e.message}`); EKLENTI_ONBELLEK.set(f, { mtime, uclar: null }); }
+        onbellek.set(f, { mtime, uclar: typeof m.uclar === 'function' ? m.uclar : null });
+        console.log(`[mock] ${oncelikli ? 'öncelikli ' : ''}eklenti yüklendi: ${f}`);
+      } catch (e) { console.warn(`[mock] eklenti yüklenemedi: ${f}: ${e.message}`); onbellek.set(f, { mtime, uclar: null }); }
     }
-    const kayit = EKLENTI_ONBELLEK.get(f);
+    const kayit = onbellek.get(f);
     if (kayit && kayit.uclar) sonuc.push(kayit.uclar);
   }
   return sonuc;
@@ -573,6 +577,11 @@ async function isle(req, res) {
   const q = Object.fromEntries(u.searchParams.entries());
   const yontem = req.method;
   const govde = ['POST', 'PATCH', 'PUT'].includes(yontem) ? await govdeOku(req) : {};
+
+  // ── Öncelikli modül eklentileri (scripts/mock/oncelik/*.cjs) — yerleşik uçlardan ÖNCE ──
+  for (const uclar of eklentileriYukle(true)) {
+    if (uclar(yol, yontem, q, govde, jsonGonder, res) !== false) return;
+  }
 
   // ── İletim Raporu (mock-iletim-raporu.cjs) — eşleşmezse false döner, akış devam eder ──
   if (yol.startsWith('/akilli-bildirim/') && iletimRaporuUclari(yol, yontem, q, govde, jsonGonder, res) !== false) return;

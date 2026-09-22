@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { ArrowRight, BookOpen, CalendarDays, UsersRound } from 'lucide-react';
-import type { OzetRow } from '@/lib/beyanname-takip';
+import { eDefterDonemCipleri, type OzetRow } from '@/lib/beyanname-takip';
 import './yukumluluk-karti.css';
 
 export interface YukumlulukKartiProps {
@@ -9,9 +9,11 @@ export interface YukumlulukKartiProps {
   error: boolean;
   kind: 'sgk' | 'edefter';
   period?: string;
+  /** E-Defter: karta / ok düğmesine tıklanınca "E-Defter Detayı" penceresi (2026-09-22). Verilmezse modül bağlantısı. */
+  onAc?: () => void;
 }
 
-export function YukumlulukKarti({ row, loading, error, kind, period }: YukumlulukKartiProps) {
+export function YukumlulukKarti({ row, loading, error, kind, period, onAc }: YukumlulukKartiProps) {
   const sgk = kind === 'sgk';
   const title = sgk ? 'SGK' : 'E-Defter';
   const Icon = sgk ? UsersRound : BookOpen;
@@ -29,20 +31,42 @@ export function YukumlulukKarti({ row, loading, error, kind, period }: Yukumlulu
   const periodLabel = parsedPeriod
     ? new Date(Number(parsedPeriod[1]), Number(parsedPeriod[2]) - 1, 1).toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })
     : rawPeriod || 'Dönem belirtilmedi';
+  // E-Defter: KDV takvimi değil berat takvimi — o ay son günü olan dönemler tercihe göre ("Aylık Mayıs 2026", "3 Aylık Nis–Haz 2026").
+  const donemCipleri = !sgk ? eDefterDonemCipleri(row?.donemler) : [];
   const number = (value: number) => value.toLocaleString('tr-TR');
+  const acilir = !sgk && !!onAc;
 
   return (
-    <section className="yukumluluk-karti" data-kind={kind} aria-label={`${title} yükümlülük özeti`} aria-busy={loading}>
+    <section
+      className="yukumluluk-karti"
+      data-kind={kind}
+      data-acilir={acilir ? 'true' : undefined}
+      aria-label={`${title} yükümlülük özeti`}
+      aria-busy={loading}
+      onClick={acilir ? onAc : undefined}
+    >
       <header className="yukumluluk-karti__header">
         <span className="yukumluluk-karti__icon"><Icon size={25} strokeWidth={2} aria-hidden="true" /></span>
         <div className="yukumluluk-karti__heading">
           <p>{sgk ? 'SOSYAL GÜVENLİK' : 'DİJİTAL DEFTER'}</p>
           <h2>{title}</h2>
         </div>
-        <span className="yukumluluk-karti__period"><CalendarDays size={12} aria-hidden="true" />{periodLabel}</span>
-        <Link href={sgk ? '/panel/ajanlar/sgk' : '/panel/ajanlar/e-defter'} aria-label={`${title} modülünü aç`} title={`${title} modülünü aç`}>
-          <ArrowRight size={20} aria-hidden="true" />
-        </Link>
+        {donemCipleri.length > 0 ? (
+          <span className="yukumluluk-karti__periods" aria-label="Takipteki e-Defter dönemleri">
+            {donemCipleri.map((cip) => <span key={cip} className="yukumluluk-karti__period" title={cip}><CalendarDays size={11} aria-hidden="true" />{cip}</span>)}
+          </span>
+        ) : (
+          <span className="yukumluluk-karti__period"><CalendarDays size={12} aria-hidden="true" />{periodLabel}</span>
+        )}
+        {acilir ? (
+          <button type="button" onClick={(e) => { e.stopPropagation(); onAc?.(); }} aria-label="E-Defter Detayı penceresini aç" title="E-Defter Detayı">
+            <ArrowRight size={20} aria-hidden="true" />
+          </button>
+        ) : (
+          <Link href={sgk ? '/panel/ajanlar/sgk' : '/panel/ajanlar/e-defter'} aria-label={`${title} modülünü aç`} title={`${title} modülünü aç`}>
+            <ArrowRight size={20} aria-hidden="true" />
+          </Link>
+        )}
       </header>
       {available ? <>
         <div className="yukumluluk-karti__body">

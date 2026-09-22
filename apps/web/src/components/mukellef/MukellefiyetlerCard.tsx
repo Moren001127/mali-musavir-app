@@ -6,7 +6,7 @@ import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
-import { DurumCipi, FormAltBilgi, Salter, Secici } from '@/components/kayit-formu/KayitFormu';
+import { AlanGirdi, DurumCipi, FormAltBilgi, Salter, Secici } from '@/components/kayit-formu/KayitFormu';
 
 // v3 (2026-09-14, Muzaffer Bey: "beyanname | dönem — bu kadar; tablo düzeni belli olsun, profesyonel"):
 // İKİ sütunlu, TAM ÇİZGİLİ tablo. Açıklama/kod/durum sütunu YOK, GRUP SATIRI YOK — başlığın altında düz liste. Altın yok.
@@ -48,6 +48,8 @@ interface BeyanConfig {
   turizmPeriod: Period;
   // E-Defter
   eDefterPeriod: Period;
+  /** e-Defter mükellefiyetinin başladığı ay "YYYY-MM" (Hattat "Başlangıç"); öncesindeki dönemler takibe düşmez */
+  eDefterBaslangic: string | null;
 }
 
 const DEFAULT: BeyanConfig = {
@@ -72,6 +74,7 @@ const DEFAULT: BeyanConfig = {
   gmsiEnabled: false,
   turizmPeriod: null,
   eDefterPeriod: null,
+  eDefterBaslangic: null,
 };
 
 type BeyannameDef = {
@@ -153,6 +156,7 @@ export function MukellefiyetlerCard({
         gmsiEnabled: !!existingConfig.gmsiEnabled,
         turizmPeriod: existingConfig.turizmPeriod || null,
         eDefterPeriod: existingConfig.eDefterPeriod || null,
+        eDefterBaslangic: /^\d{4}-\d{2}$/.test(String(existingConfig.eDefterBaslangic || '')) ? existingConfig.eDefterBaslangic : null,
       });
     }
   }, [existingConfig, sgkCredentialReady]);
@@ -244,6 +248,24 @@ export function MukellefiyetlerCard({
                             <Salter checked={isActive} />
                             <span className="text-[13.5px] font-medium" style={portalStyle({ color: isActive ? GOOD : MUTED })}>{isActive ? 'Açık' : 'Kapalı'}</span>
                           </label>
+                        ) : item.key === 'eDefterPeriod' ? (
+                          // E-Defter: dönem tercihi + "Başlangıç" ayı (berat takibinde bu aydan önceki dönemler beklenmez)
+                          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                            <PeriodSegment value={value} onChange={(v) => setForm({ ...form, eDefterPeriod: v, eDefterBaslangic: v ? form.eDefterBaslangic : null })} />
+                            {value !== null && (
+                              <span className="flex items-center gap-2 text-[12.5px]" style={portalStyle({ color: MUTED })}>
+                                Başlangıç
+                                <AlanGirdi
+                                  type="month"
+                                  aria-label="E-Defter başlangıç ayı"
+                                  title="e-Defter mükellefiyetinin başladığı ay — öncesindeki dönemler takibe düşmez"
+                                  value={form.eDefterBaslangic ?? ''}
+                                  onChange={(e) => setForm({ ...form, eDefterBaslangic: e.target.value || null })}
+                                  className="!h-[30px] !w-[150px] !px-2.5 !text-[12.5px]"
+                                />
+                              </span>
+                            )}
+                          </div>
                         ) : (
                           <PeriodSegment value={value} full15={item.tip === 'period_15gun'} onChange={(v) => setForm({ ...form, [item.key]: v } as BeyanConfig)} />
                         )}

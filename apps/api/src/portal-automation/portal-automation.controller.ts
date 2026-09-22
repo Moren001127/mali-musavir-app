@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -94,6 +95,31 @@ export class PortalAutomationController {
   async nightlyRunNow(@Req() req: any) {
     const result = await this.service.createNightlyJobsForTenant(req.user.tenantId);
     return { ...result, runnerWake: this.runner.wake('nightly-run-now') };
+  }
+
+  /**
+   * ELLE Dijital Vergi Dairesi sorgusu (2026-09-22). Gövde:
+   *   { taxpayerIds?: string[]; sorgular: ('vergiBorcu'|'eHaciz'|'yoklama'|'pos'|'gelenEArsiv'|'eDefter')[]; eDefterAylar?: ['YYYY-MM'] }
+   * taxpayerIds boşsa GIB_IVD şifresi olan tüm aktif mükellefler. Şalterden MUAF. Dönüş: { created, skipped, message }.
+   */
+  @Post('dvd-sorgu')
+  @Roles('ADMIN', 'STAFF')
+  @HttpCode(HttpStatus.OK)
+  async dvdSorgu(@Req() req: any, @Body() body: any) {
+    const sorgular = Array.isArray(body?.sorgular) ? body.sorgular : [];
+    if (!sorgular.length) {
+      throw new BadRequestException('sorgular boş olamaz: vergiBorcu | eHaciz | yoklama | pos | gelenEArsiv | eDefter');
+    }
+    const result = await this.service.dvdSorguBaslat(
+      req.user.tenantId,
+      req.user.userId || req.user.sub || null,
+      {
+        taxpayerIds: Array.isArray(body?.taxpayerIds) ? body.taxpayerIds : [],
+        sorgular,
+        eDefterAylar: Array.isArray(body?.eDefterAylar) ? body.eDefterAylar : undefined,
+      },
+    );
+    return { ...result, runnerWake: this.runner.wake('dvd-sorgu') };
   }
 
   @Post('jobs/:id/cancel')

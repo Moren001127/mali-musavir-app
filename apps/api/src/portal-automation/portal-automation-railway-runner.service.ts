@@ -10,6 +10,35 @@ import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { PortalAutomationService, PortalJobType } from './portal-automation.service';
 import { tryDecrypt } from '../common/crypto';
+import {
+  DVD_SORGU_TURLERI,
+  OTOMATIK_SORGU_ETIKETLERI,
+  dvdSorguTuruMu,
+  type DvdSorguTuru,
+  type EDefterBeratGirdisi,
+  type EDefterSorguSonucu,
+  type GenelSorguTuru,
+  type GenelSorguVeri,
+} from '@mali-musavir/shared';
+import {
+  ayEkle as dvdAyEkle,
+  eDefterPaketCoz,
+  eHacizCoz,
+  eHacizOzeti,
+  gelenEArsivCoz,
+  gelenEArsivOzeti,
+  gibTarihCoz,
+  gunPencereleri,
+  isoGunuGibTarihi,
+  istanbulGunISO,
+  posCoz,
+  posOzeti,
+  vergiBorcuCoz,
+  vergiBorcuOzeti,
+  yoklamaDenetimCoz,
+  yoklamaDenetimOzeti,
+  type GelenEArsivPenceresi,
+} from './dvd-sorgu-cozumleyici';
 
 type RunnerCredential = {
   provider: string;
@@ -103,6 +132,7 @@ const JOB_TYPES_DEFAULT: PortalJobType[] = [
   'SGK_ISGOREMEZLIK',
   'EARSIV_PORTAL_FETCH',
   'GALERI_HGS',
+  'DVD_SORGU',
 ];
 
 // KGM ihlal sorgulama sayfasi (HGS). GIB girisi gerektirmez; matematik captcha'li.
@@ -111,6 +141,23 @@ const KGM_HGS_URL = 'https://webihlaltakip.kgm.gov.tr/WebIhlalSorgulama/Sayfalar
 const GIB_ARAC_BILGILERIM_URL = 'https://dijital.gib.gov.tr/portal/arac-bilgilerim';
 // HGS borç özeti WhatsApp hedef numaralari (kullanici karari: sabit iki numara).
 const GALERI_HGS_WHATSAPP_PHONES = ['05348610965', '05350587475'];
+
+// Dijital Vergi Dairesi sorguları (DVD_SORGU / E_TEBLIGAT ekSorgular): sorgu başına üst sınır ve koşu sırası.
+// Sıra: önce DVD'nin kendi uçları, SSO ile başka uygulamaya geçenler (e-Haciz = İnternet Vergi Dairesi,
+// e-Defter = edefter.gib.gov.tr) EN SONA — geçiş DVD oturumunu etkilerse kalan sorgular zarar görmesin.
+const DVD_SORGU_SURE_SINIRI_MS = 90_000;
+const DVD_SORGU_SIRASI: DvdSorguTuru[] = ['vergiBorcu', 'pos', 'gelenEArsiv', 'yoklama', 'eHaciz', 'eDefter'];
+
+type DvdApiYaniti = { ok: boolean; status: number; json: any; text: string };
+
+type DvdSorguKosuSonucu = {
+  documents: any[];
+  genelSorgular: Array<{ tur: GenelSorguTuru; donem: string | null; ozet: string; veri: GenelSorguVeri }>;
+  eDefterBeratlar: EDefterBeratGirdisi[];
+  eDefterSorgular: EDefterSorguSonucu[];
+  sorguHatalari: Array<{ sorgu: string; hata: string }>;
+  notes: string[];
+};
 
 const TEXT = {
   captcha: /captcha|dogrulama|doğrulama|guvenlik kodu|güvenlik kodu|security code/i,
@@ -207,6 +254,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       'SGK_ISGOREMEZLIK',
       'EARSIV_PORTAL_FETCH',
       'GALERI_HGS',
+      'DVD_SORGU',
     ]);
     const parsed = raw
       .split(',')
@@ -266,7 +314,8 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
   }
 
   private canRunParallel(job: any) {
-    return job?.jobType === 'E_TEBLIGAT_CHECK' || job?.jobType === 'SGK_HIZMET_LISTESI';
+    // DVD_SORGU da e-Tebligat gibi mükellef başına ayrı GİB oturumu: paralel havuza girer.
+    return job?.jobType === 'E_TEBLIGAT_CHECK' || job?.jobType === 'SGK_HIZMET_LISTESI' || job?.jobType === 'DVD_SORGU';
   }
 
   private async runParallelJobs(jobs: any[]) {
@@ -517,7 +566,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         this.logger.log(`[PortalRailwayRunner] job tamam: ${job.id} EBEYAN_NEW count=${result.recordCount || 0}`);
         return;
       }
-      if (job.jobType === 'E_TEBLIGAT_CHECK' || job.jobType === 'EARSIV_PORTAL_FETCH' || job.jobType.startsWith('SGK_')) {
+      if (job.jobType === 'E_TEBLIGAT_CHECK' || job.jobType === 'DVD_SORGU' || job.jobType === 'EARSIV_PORTAL_FETCH' || job.jobType.startsWith('SGK_')) {
         const result = await this.runPortalDocumentJob(job.tenantId, bundle);
         await this.portalAutomation.completeJob(job.tenantId, job.id, result);
         this.logger.log(`[PortalRailwayRunner] job tamam: ${job.id} count=${result.recordCount || 0}`);
@@ -826,9 +875,9 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       const page = await context.newPage();
       page.setDefaultTimeout(15_000);
 
-      if (jobType === 'E_TEBLIGAT_CHECK') {
+      if (jobType === 'E_TEBLIGAT_CHECK' || jobType === 'DVD_SORGU') {
         await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
-        await this.loginGibDigitalWithCaptcha(page, credential, loginUrl, 'e-tebligat');
+        await this.loginGibDigitalWithCaptcha(page, credential, loginUrl, jobType === 'DVD_SORGU' ? 'dvd-sorgu' : 'e-tebligat');
       } else if (isSgk) {
         await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
         await this.loginSgkWithCaptcha(page, credential, loginUrl, jobType);
@@ -852,11 +901,78 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         };
       }
 
+      // DİJİTAL VERGİ DAİRESİ SORGULARI (2026-09-22): e-Tebligat kapalı ama başka şalter açıkken gece
+      //   ya da elle "Sorgula" ile açılan iş. Giriş yapıldı; payload.sorgular tıklamasız API ile koşar.
+      //   Sonuç sözleşmesi: result.genelSorgular / eDefterBeratlar / eDefterSorgular / sorguHatalari (completeJob kaydeder).
+      if (jobType === 'DVD_SORGU' && bundle.job?.payload?.validationOnly !== true) {
+        const istenen = Array.isArray(bundle.job?.payload?.sorgular) ? bundle.job.payload.sorgular : [];
+        // sorgular verilmemişse (örn. genel manual-run ile açıldıysa) e-Defter hariç tüm DVD sorguları koşar.
+        const sorgular: DvdSorguTuru[] = istenen.filter(dvdSorguTuruMu).length
+          ? istenen.filter(dvdSorguTuruMu)
+          : DVD_SORGU_TURLERI.filter((s) => s !== 'eDefter');
+        const dvd = await this.dvdSorgulariCalistir(page, context, bundle.job, sorgular, loginUrl);
+        await this.jobProgress(
+          tenantId, bundle.job, 'dvd_done',
+          `Dijital Vergi Dairesi sorguları tamamlandı: ${dvd.genelSorgular.length} sonuç, ${dvd.eDefterBeratlar.length} e-Defter paketi, ${dvd.documents.length} belge, ${dvd.sorguHatalari.length} hata.`,
+        );
+        await context.close().catch(() => {});
+        return {
+          documents: dvd.documents,
+          recordCount: dvd.documents.length + dvd.genelSorgular.length + dvd.eDefterBeratlar.length,
+          result: {
+            runner: 'railway',
+            phase: 'dvd_sorgu',
+            jobType,
+            url: this.safeUrl(page.url()),
+            sorgular,
+            genelSorgular: dvd.genelSorgular,
+            eDefterBeratlar: dvd.eDefterBeratlar,
+            eDefterSorgular: dvd.eDefterSorgular,
+            sorguHatalari: dvd.sorguHatalari,
+            notes: dvd.notes,
+          },
+        };
+      }
+
       // GERCEK e-Tebligat: explicit "sadece dogrula" degilse HER ZAMAN gercek API taramasi.
       // (manual+force heuristigi E_TEBLIGAT'i validation-only yapmasin; tebligat cekmek isin amaci.)
       if (jobType === 'E_TEBLIGAT_CHECK' && bundle.job?.payload?.validationOnly !== true) {
         const etb = await this.collectETebligatViaApi(page, context, bundle.job, loginUrl);
         await this.jobProgress(tenantId, bundle.job, 'etebligat_done', `e-Tebligat sorgusu tamamlandi: ${etb.recordCount} kayit.`);
+        // GECE TEK GİRİŞ (2026-09-22): mükellefin açık şalterleri (payload.ekSorgular) AYNI oturumda koşar;
+        //   e-Tebligat sonucu korunur, belgeler birleşir, DVD alanları result'a eklenir.
+        const ekSorgular: DvdSorguTuru[] = (Array.isArray(bundle.job?.payload?.ekSorgular) ? bundle.job.payload.ekSorgular : []).filter(dvdSorguTuruMu);
+        if (ekSorgular.length) {
+          try {
+            const dvd = await this.dvdSorgulariCalistir(page, context, bundle.job, ekSorgular, loginUrl);
+            await this.jobProgress(
+              tenantId, bundle.job, 'dvd_done',
+              `Ek sorgular tamamlandı: ${dvd.genelSorgular.length} sonuç, ${dvd.eDefterBeratlar.length} e-Defter paketi, ${dvd.documents.length} belge, ${dvd.sorguHatalari.length} hata.`,
+            );
+            await context.close().catch(() => {});
+            const documents = [...etb.documents, ...dvd.documents];
+            return {
+              ...etb,
+              documents,
+              recordCount: documents.length + dvd.genelSorgular.length + dvd.eDefterBeratlar.length,
+              result: {
+                ...etb.result,
+                ekSorgular,
+                genelSorgular: dvd.genelSorgular,
+                eDefterBeratlar: dvd.eDefterBeratlar,
+                eDefterSorgular: dvd.eDefterSorgular,
+                sorguHatalari: dvd.sorguHatalari,
+                notes: [...etb.result.notes, ...dvd.notes],
+              },
+            };
+          } catch (err: any) {
+            // Ek sorgular tümden patlasa bile e-Tebligat sonucu kaybolmaz; hata result'a işlenir.
+            const hata = this.compact(err?.message || err);
+            this.logger.warn(`[DVD] ${bundle.job?.id} ek sorgular koşulamadı: ${hata}`);
+            await context.close().catch(() => {});
+            return { ...etb, result: { ...etb.result, ekSorgular, sorguHatalari: [{ sorgu: 'ekSorgular', hata }], notes: [...etb.result.notes, `Ek sorgular koşulamadı: ${hata}`] } };
+          }
+        }
         await context.close().catch(() => {});
         return etb;
       }
@@ -929,13 +1045,15 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
 
   private isCredentialValidationOnlyJob(job: any, jobType: PortalJobType) {
     if (job?.payload?.validationOnly === true) return true;
+    // DVD_SORGU hiçbir zaman "sadece doğrula" olmaz (payload.validationOnly hariç): amacı sorgu koşturmak.
+    if (jobType === 'DVD_SORGU') return false;
     return job?.source === 'manual'
       && (jobType === 'E_TEBLIGAT_CHECK' || jobType === 'SGK_HIZMET_LISTESI')
       && job?.payload?.force === true;
   }
 
   private loginUrlForJob(jobType: PortalJobType) {
-    if (jobType === 'E_TEBLIGAT_CHECK') {
+    if (jobType === 'E_TEBLIGAT_CHECK' || jobType === 'DVD_SORGU') {
       return process.env.PORTAL_AUTOMATION_GIB_IVD_LOGIN_URL || DEFAULT_GIB_IVD_LOGIN_URL;
     }
     if (jobType === 'EARSIV_PORTAL_FETCH') {
@@ -1423,6 +1541,553 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})(?::(\d{2}))?/);
     if (m) return `${m[3]}-${m[2]}-${m[1]}T${m[4]}:${m[5]}:${m[6] || '00'}+03:00`;
     return s;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════════════════════
+  // DİJİTAL VERGİ DAİRESİ SORGULARI (2026-09-22) — DVD_SORGU işi ve E_TEBLIGAT_CHECK'in ekSorgular'ı
+  //
+  // Hepsi TIKLAMASIZ: giriş sonrası SPA'nın sessionStorage.token'ı ile apigateway'e sayfa içinden fetch
+  // (e-Tebligat kalıbı). Uçlar, gövdeler ve yanıt şekilleri canlı oturumdan keşfedildi: bilgi/DVD-SORGU-UCLARI.md.
+  // Her sorgu ayrı try/catch + 90 sn üst sınır: biri patlayınca diğerleri sürer, hata result.sorguHatalari'na
+  // düşer (iş yine 'done' biter). Ham JSON → shared veri şekli çevrimi dvd-sorgu-cozumleyici.ts'de (saf, testli).
+  // e-Haciz İnternet Vergi Dairesi'nde, e-Defter edefter.gib.gov.tr'de: DVD'nin SSO ucundan redirectUrl alınıp
+  // AYNI tarayıcı bağlamında YENİ sayfada açılır (DVD sayfası bozulmasın), iş bitince sayfa kapatılır.
+  // Fatura Merkezi'ne HİÇBİR ŞEY yazılmaz (kural): gelen e-Arşiv yalnız Genel Sorgular satırıdır.
+  // ═══════════════════════════════════════════════════════════════════════════════════════════
+
+  private async dvdSorgulariCalistir(page: any, context: any, job: any, sorgular: DvdSorguTuru[], loginUrl: string): Promise<DvdSorguKosuSonucu> {
+    const tenantId = job?.tenantId;
+    const secilen = DVD_SORGU_SIRASI.filter((s) => sorgular.includes(s));
+    const sonuc: DvdSorguKosuSonucu = { documents: [], genelSorgular: [], eDefterBeratlar: [], eDefterSorgular: [], sorguHatalari: [], notes: [] };
+    if (!secilen.length) {
+      sonuc.notes.push('DVD sorgusu seçilmedi');
+      return sonuc;
+    }
+    // Vergi dairesi kodu → ad (vergi borcu / yoklama sonuçlarından derlenir; e-Haciz satırında ad için).
+    const vdAdlari: Record<string, string> = {};
+
+    const tokenVar = await this.dvdTokenHazirla(page, loginUrl);
+    if (!tokenVar) {
+      const hata = 'Dijital Vergi Dairesi oturum anahtarı (sessionStorage.token) alınamadı';
+      for (const s of secilen) sonuc.sorguHatalari.push({ sorgu: s, hata });
+      sonuc.notes.push(hata);
+      return sonuc;
+    }
+
+    const kos = async (sorgu: DvdSorguTuru, fn: () => Promise<void>) => {
+      const etiket = OTOMATIK_SORGU_ETIKETLERI[sorgu] || sorgu;
+      await this.jobProgress(tenantId, job, `dvd_${sorgu}`, `${etiket} sorgulanıyor.`);
+      try {
+        await this.dvdSureSiniri(fn(), DVD_SORGU_SURE_SINIRI_MS, `${etiket} sorgusu`);
+      } catch (err: any) {
+        const hata = this.compact(err?.message || err);
+        sonuc.sorguHatalari.push({ sorgu, hata });
+        this.logger.warn(`[DVD] ${job?.id || '-'} ${sorgu} hata: ${hata}`);
+        await this.jobProgress(tenantId, job, `dvd_${sorgu}_hata`, `${etiket} sorgusu hata verdi: ${hata.slice(0, 160)}`);
+      }
+    };
+
+    const bugun = istanbulGunISO();
+    const buAy = bugun.slice(0, 7);
+
+    for (const sorgu of secilen) {
+      switch (sorgu) {
+        case 'vergiBorcu':
+          await kos(sorgu, async () => {
+            const veri = await this.dvdVergiBorcuSorgula(page);
+            for (const k of veri.kalemler) if (k.vergiDairesiKodu && k.vergiDairesi) vdAdlari[k.vergiDairesiKodu] = k.vergiDairesi;
+            const ozet = vergiBorcuOzeti(veri);
+            sonuc.genelSorgular.push({ tur: 'VERGI_BORCU', donem: null, ozet, veri });
+            sonuc.notes.push(`Vergi borcu: ${ozet}`);
+          });
+          break;
+        case 'pos':
+          await kos(sorgu, async () => {
+            // Bu ay ve önceki ay — ay başına bir satır (veri yoksa da yazılır).
+            for (const ay of [dvdAyEkle(buAy, -1), buAy]) {
+              const [yil, ayNo] = ay.split('-').map((x) => parseInt(x, 10));
+              const veri = await this.dvdPosSorgula(page, yil, ayNo);
+              const ozet = posOzeti(veri);
+              sonuc.genelSorgular.push({ tur: 'POS', donem: ay, ozet, veri });
+              sonuc.notes.push(`POS ${ay}: ${ozet}`);
+            }
+          });
+          break;
+        case 'gelenEArsiv':
+          await kos(sorgu, async () => {
+            const aralik = this.dvdGelenEArsivAraligi(job, bugun);
+            const satirlar = await this.dvdGelenEArsivSorgula(page, aralik.baslangic, aralik.bitis);
+            for (const s of satirlar) {
+              const ozet = gelenEArsivOzeti(s.veri);
+              sonuc.genelSorgular.push({ tur: 'GELEN_EARSIV', donem: s.donem, ozet, veri: s.veri });
+              sonuc.notes.push(`Gelen e-Arşiv ${s.donem}: ${ozet}`);
+            }
+            if (aralik.not) sonuc.notes.push(aralik.not);
+          });
+          break;
+        case 'yoklama':
+          await kos(sorgu, async () => {
+            const y = await this.dvdYoklamaSorgula(page, job);
+            for (const t of y.veri.yoklamalar) if (t.vergiDairesiKodu && t.vergiDairesi) vdAdlari[t.vergiDairesiKodu] = t.vergiDairesi.replace(/\s*\(\d+\)\s*$/, '');
+            const ozet = yoklamaDenetimOzeti(y.veri);
+            sonuc.genelSorgular.push({ tur: 'YOKLAMA_DENETIM', donem: null, ozet, veri: y.veri });
+            sonuc.documents.push(...y.documents);
+            sonuc.notes.push(`Yoklama/denetim: ${ozet}; ${y.documents.length} PDF indirildi`);
+            if (y.denetimHata) sonuc.sorguHatalari.push({ sorgu: 'yoklama(denetim)', hata: y.denetimHata });
+          });
+          break;
+        case 'eHaciz':
+          await kos(sorgu, async () => {
+            const h = await this.dvdEHacizSorgula(page, context, vdAdlari);
+            const ozet = eHacizOzeti(h.veri);
+            sonuc.genelSorgular.push({ tur: 'E_HACIZ', donem: null, ozet, veri: h.veri });
+            sonuc.notes.push(`e-Haciz: ${ozet}`);
+            for (const n of h.notlar) sonuc.sorguHatalari.push({ sorgu: 'eHaciz(kısmi)', hata: n });
+          });
+          break;
+        case 'eDefter': {
+          const aylar: string[] = (Array.isArray(job?.payload?.eDefterAylar) ? job.payload.eDefterAylar : [])
+            .map((a: any) => String(a))
+            .filter((a: string) => /^\d{4}-(0[1-9]|1[0-2])$/.test(a));
+          if (!aylar.length) {
+            sonuc.notes.push('e-Defter: sorgulanacak ay yok (payload.eDefterAylar boş) — atlandı');
+            break;
+          }
+          await kos(sorgu, async () => {
+            const e = await this.dvdEDefterSorgula(page, context, aylar);
+            sonuc.eDefterBeratlar.push(...e.beratlar);
+            sonuc.eDefterSorgular.push(...e.sorgular);
+            sonuc.notes.push(`e-Defter: ${aylar.join(', ')} → ${e.beratlar.length} paket${e.sorgular.some((s) => s.hata) ? ' (bazı dönemler hatalı)' : ''}`);
+          });
+          break;
+        }
+        default:
+          break;
+      }
+    }
+    return sonuc;
+  }
+
+  /** Verilen süre içinde bitmeyen sorguyu hata ile keser (iş takılmasın; kalan sorgular sürsün). */
+  private dvdSureSiniri<T>(islem: Promise<T>, ms: number, etiket: string): Promise<T> {
+    let zamanlayici: any = null;
+    const sure = new Promise<never>((_, reject) => {
+      zamanlayici = setTimeout(() => reject(new Error(`${etiket} ${Math.round(ms / 1000)} sn içinde bitmedi`)), ms);
+    });
+    return Promise.race([islem, sure]).finally(() => {
+      if (zamanlayici) clearTimeout(zamanlayici);
+    }) as Promise<T>;
+  }
+
+  /** SPA token'ı (sessionStorage.token) yoksa /portal'a gidip bekler (en çok ~10 sn). */
+  private async dvdTokenHazirla(page: any, loginUrl: string): Promise<boolean> {
+    const tokenVarMi = async () =>
+      page.evaluate(() => {
+        try { return !!sessionStorage.getItem('token'); } catch { return false; }
+      }).catch(() => false);
+    if (await tokenVarMi()) return true;
+    const base = String(loginUrl).replace(/\/login.*$/i, '');
+    await page.goto(base, { waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(() => null);
+    for (let i = 0; i < 20; i++) {
+      if (await tokenVarMi()) return true;
+      await page.waitForTimeout(500);
+    }
+    return false;
+  }
+
+  /** DVD apigateway çağrısı: sayfa içinden fetch, Authorization: Bearer <sessionStorage.token>. */
+  private async dvdApi(page: any, istek: { method: 'GET' | 'POST'; path: string; body?: any }): Promise<DvdApiYaniti> {
+    const yanit = await page.evaluate(async (o: any) => {
+      try {
+        const token = sessionStorage.getItem('token');
+        if (!token) return { ok: false, status: 0, json: null, text: 'token yok' };
+        const headers: any = { Accept: 'application/json, text/plain, */*', Authorization: 'Bearer ' + token };
+        let body: string | undefined;
+        if (o.body !== undefined && o.body !== null) {
+          headers['Content-Type'] = 'application/json';
+          body = JSON.stringify(o.body);
+        }
+        const resp = await fetch(location.origin + o.path, { method: o.method, headers, body });
+        const text = await resp.text();
+        let json: any = null;
+        try { json = text ? JSON.parse(text) : null; } catch { json = null; }
+        return { ok: resp.ok, status: resp.status, json, text: text.slice(0, 4000) };
+      } catch (e: any) {
+        return { ok: false, status: 0, json: null, text: String((e && e.message) || e) };
+      }
+    }, istek).catch((err: any) => ({ ok: false, status: 0, json: null, text: String(err?.message || err) }));
+    return yanit || { ok: false, status: 0, json: null, text: 'yanıt yok' };
+  }
+
+  /** GİB "kayıt yok" yanıtı (409 + messages INFO "… bulunmamaktadır.") — hata DEĞİL, boş sonuç. */
+  private dvdBosYanitMi(r: DvdApiYaniti): boolean {
+    if (r.ok) return false;
+    const mesajlar = Array.isArray(r.json?.messages) ? r.json.messages.map((m: any) => String(m?.text || '')).join(' ') : '';
+    return /bulunmamaktad[ıi]r|bulunamad[ıi]|kay[ıi]t yok/i.test(`${mesajlar} ${r.text || ''}`);
+  }
+
+  private dvdHataMetni(r: DvdApiYaniti, etiket: string): string {
+    const mesajlar = Array.isArray(r.json?.messages) ? r.json.messages.map((m: any) => m?.text).filter(Boolean).join('; ') : '';
+    const ek = mesajlar ? `: ${mesajlar}` : r.text ? `: ${this.compact(r.text).slice(0, 200)}` : '';
+    return `${etiket} HTTP ${r.status}${ek}`;
+  }
+
+  /** Sayfalı DVD liste ucu: ilk sayfa + pageDetail.totalPage kadar ek sayfa (üst sınırlı); satırlar birleştirilir. */
+  private async dvdSayfaliListe(
+    page: any,
+    path: string,
+    govde: (pageNo: number) => any,
+    satirlar: (json: any) => any[] | null,
+    etiket: string,
+    enFazlaSayfa = 20,
+  ): Promise<{ satirlar: any[]; ilk: any; bos: boolean }> {
+    const ilk = await this.dvdApi(page, { method: 'POST', path, body: govde(1) });
+    if (!ilk.ok) {
+      if (this.dvdBosYanitMi(ilk)) return { satirlar: [], ilk: ilk.json, bos: true };
+      throw new Error(this.dvdHataMetni(ilk, etiket));
+    }
+    const toplanan = [...(satirlar(ilk.json) || [])];
+    const toplamSayfa = Number(ilk.json?.pageDetail?.totalPage || 1);
+    for (let s = 2; s <= Math.min(toplamSayfa, enFazlaSayfa); s++) {
+      const r = await this.dvdApi(page, { method: 'POST', path, body: govde(s) });
+      if (!r.ok) throw new Error(this.dvdHataMetni(r, `${etiket} sayfa ${s}`));
+      toplanan.push(...(satirlar(r.json) || []));
+      await page.waitForTimeout(120);
+    }
+    return { satirlar: toplanan, ilk: ilk.json, bos: false };
+  }
+
+  // ── Vergi borcu: POST payment/api/debtinformation/true (pageSize 100; totalPage>1 ise sayfalar gezilir) ──
+  private async dvdVergiBorcuSorgula(page: any) {
+    const govde = (pageNo: number) => ({ meta: { pagination: { pageNo, pageSize: 100 }, sortFieldName: 'vdAdi', sortType: 'ASC', filters: [] } });
+    const r = await this.dvdSayfaliListe(
+      page,
+      '/apigateway/payment/api/debtinformation/true',
+      govde,
+      (json) => (Array.isArray(json?.borclar) ? json.borclar : []),
+      'Vergi borcu',
+    );
+    if (r.bos) return vergiBorcuCoz({ borclar: [], ozetBilgi: [], messages: r.ilk?.messages ?? null });
+    return vergiBorcuCoz({ ...(r.ilk || {}), borclar: r.satirlar });
+  }
+
+  // ── POS: mali-bilgiler/pos-islem/banka-bilgileri + odeme-kurulus-bilgileri (yıl+ay; dataList null olabilir) ──
+  private async dvdPosSorgula(page: any, yil: number, ay: number) {
+    const govde = (pageNo: number) => ({
+      meta: { pagination: { pageNo, pageSize: 100 }, sortFieldName: 'tutar', sortType: 'DESC', filters: [] },
+      data: { yil: String(yil), ay: String(ay).padStart(2, '0') },
+    });
+    const satirlar = (json: any) => (Array.isArray(json?.dataList) ? json.dataList : []);
+    const banka = await this.dvdSayfaliListe(page, '/apigateway/mali-bilgiler/pos-islem/banka-bilgileri', govde, satirlar, `POS banka ${yil}-${String(ay).padStart(2, '0')}`);
+    const odeme = await this.dvdSayfaliListe(page, '/apigateway/mali-bilgiler/pos-islem/odeme-kurulus-bilgileri', govde, satirlar, `POS ödeme kuruluşu ${yil}-${String(ay).padStart(2, '0')}`);
+    return posCoz(yil, ay, banka.satirlar, odeme.satirlar);
+  }
+
+  /**
+   * Gelen e-Arşiv aralığı: GECE önceki ayın 1'i → bugün; ELLE payload.dateFrom/dateTo (İstanbul günü).
+   * GİB kuralı: içinde bulunulan aydan önceki 2 aya kadar → başlangıç buna kırpılır; bitiş bugünü aşamaz.
+   */
+  private dvdGelenEArsivAraligi(job: any, bugun: string): { baslangic: string; bitis: string; not: string | null } {
+    const varsayilanBas = `${dvdAyEkle(bugun.slice(0, 7), -1)}-01`;
+    let baslangic = varsayilanBas;
+    let bitis = bugun;
+    if (job?.source !== 'nightly') {
+      const bas = job?.payload?.dateFrom ? new Date(job.payload.dateFrom) : null;
+      const bit = job?.payload?.dateTo ? new Date(job.payload.dateTo) : null;
+      if (bas && bit && !Number.isNaN(bas.getTime()) && !Number.isNaN(bit.getTime())) {
+        baslangic = istanbulGunISO(bas);
+        bitis = istanbulGunISO(bit);
+      }
+    }
+    let not: string | null = null;
+    const altSinir = `${dvdAyEkle(bugun.slice(0, 7), -2)}-01`;
+    if (baslangic < altSinir) {
+      not = `Gelen e-Arşiv başlangıcı GİB sınırına kırpıldı: ${baslangic} → ${altSinir}`;
+      baslangic = altSinir;
+    }
+    if (bitis > bugun) bitis = bugun;
+    if (baslangic > bitis) baslangic = bitis;
+    return { baslangic, bitis, not };
+  }
+
+  // ── Gelen e-Arşiv: POST eislemler/earsiv/alici-list, pencere EN FAZLA 7 gün; 409 "bulunmamaktadır" = boş ──
+  private async dvdGelenEArsivSorgula(page: any, basISO: string, bitISO: string) {
+    const pencereler = gunPencereleri(basISO, bitISO, 7);
+    const sonuclar: GelenEArsivPenceresi[] = [];
+    for (const p of pencereler) {
+      const govde = (pageNo: number) => ({
+        meta: { pagination: { pageNo, pageSize: 100 }, sortFieldName: 'faturaNo', sortType: 'DESC', filters: [] },
+        data: { duzenlenmeTarihiBas: isoGunuGibTarihi(p.baslangic), duzenlenmeTarihiSon: isoGunuGibTarihi(p.bitis) },
+      });
+      try {
+        const r = await this.dvdSayfaliListe(
+          page,
+          '/apigateway/eislemler/earsiv/alici-list',
+          govde,
+          (json) => (Array.isArray(json?.resultListDenormalized) ? json.resultListDenormalized : []),
+          `Gelen e-Arşiv ${p.baslangic}–${p.bitis}`,
+          50,
+        );
+        sonuclar.push({ baslangic: p.baslangic, bitis: p.bitis, faturalar: r.satirlar });
+      } catch (err: any) {
+        sonuclar.push({ baslangic: p.baslangic, bitis: p.bitis, faturalar: [], hata: this.compact(err?.message || err) });
+      }
+      await page.waitForTimeout(150);
+    }
+    return gelenEArsivCoz(sonuclar);
+  }
+
+  // ── Yoklama / Denetim: get-yoklama-list + get-denetim-list; PDF'ler get-yoklama-pdf → reportLink → düz PDF ──
+  private async dvdYoklamaSorgula(page: any, job: any) {
+    const tenantId = job?.tenantId || null;
+    const taxpayerId = job?.taxpayerId || null;
+    const listeR = await this.dvdApi(page, {
+      method: 'POST',
+      path: '/apigateway/api/yoklamalar/get-yoklama-list',
+      body: { meta: { pagination: { pageNo: 1, pageSize: 200 }, sortFieldName: 'vdKoduText', sortType: 'ASC', filters: [] } },
+    });
+    let yoklamaList: any[] = [];
+    if (listeR.ok) yoklamaList = Array.isArray(listeR.json?.yoklamaList) ? listeR.json.yoklamaList : [];
+    else if (!this.dvdBosYanitMi(listeR)) throw new Error(this.dvdHataMetni(listeR, 'Yoklama listesi'));
+
+    const denetimR = await this.dvdApi(page, {
+      method: 'POST',
+      path: '/apigateway/api/denetimler/get-denetim-list',
+      body: { meta: { pagination: { pageNo: 1, pageSize: 200 }, sortFieldName: 'bkodu', sortType: 'ASC', filters: [] } },
+    });
+    let denetimList: any[] = [];
+    let denetimHata: string | null = null;
+    if (denetimR.ok) denetimList = Array.isArray(denetimR.json?.denetimlerResponseDto) ? denetimR.json.denetimlerResponseDto : [];
+    else if (!this.dvdBosYanitMi(denetimR)) denetimHata = this.dvdHataMetni(denetimR, 'Denetim listesi');
+
+    // PDF: DB'de zaten (storageKey'li) E_YOKLAMA belgesi olan yoklama kodları ATLANIR (artımlı, gece ucuz).
+    const kodlar = yoklamaList.map((y) => String(y?.ykodu || '').trim()).filter(Boolean);
+    let eldekiler = new Set<string>();
+    if (tenantId && kodlar.length) {
+      const where: any = { tenantId, belgeTuru: 'E_YOKLAMA', storageKey: { not: null }, referenceNo: { in: kodlar } };
+      if (taxpayerId) where.taxpayerId = taxpayerId;
+      const have = await (this.prisma as any).portalDocument.findMany({ where, select: { referenceNo: true } }).catch(() => []);
+      eldekiler = new Set((have || []).map((h: any) => String(h.referenceNo)));
+    }
+    const pdfVar = new Set<string>(eldekiler);
+    const documents: any[] = [];
+    const enFazlaPdf = Math.max(1, Math.min(200, Number(process.env.DVD_YOKLAMA_PDF_MAX_PER_RUN || 30)));
+    let indirilen = 0;
+    for (const y of yoklamaList) {
+      const kod = String(y?.ykodu || '').trim();
+      if (!kod || !y?.secureId || eldekiler.has(kod) || indirilen >= enFazlaPdf) continue;
+      const b64 = await this.dvdYoklamaPdfIndir(page, kod, String(y.secureId)).catch(() => null);
+      if (!b64) continue;
+      indirilen++;
+      pdfVar.add(kod);
+      const tarih = gibTarihCoz(y?.tarih);
+      const { secureId: _gizli, ...raw } = y;
+      documents.push({
+        taxpayerId,
+        belgeTuru: 'E_YOKLAMA',
+        title: `Yoklama tutanağı — ${String(y?.yoklamaTuruText || y?.yturu || '').trim() || kod}`,
+        referenceNo: kod,
+        issuedAt: tarih ? (tarih.includes('T') ? `${tarih}+03:00` : tarih) : null,
+        mimeType: 'application/pdf',
+        originalName: `${kod}.pdf`,
+        base64: b64,
+        raw,
+      });
+      await page.waitForTimeout(200);
+    }
+    return { veri: yoklamaDenetimCoz(yoklamaList, denetimList, pdfVar), documents, denetimHata };
+  }
+
+  /** get-yoklama-pdf {data:{yoklamaKodu,secureId}} → reportLink → GET (Bearer) → %PDF doğrulaması → base64 */
+  private async dvdYoklamaPdfIndir(page: any, yoklamaKodu: string, secureId: string): Promise<string | null> {
+    return page.evaluate(async (a: any) => {
+      try {
+        const token = sessionStorage.getItem('token');
+        if (!token) return null;
+        const auth: any = { Authorization: 'Bearer ' + token };
+        const jh: any = Object.assign({ 'Content-Type': 'application/json', Accept: 'application/json, text/plain, */*' }, auth);
+        const r1 = await fetch(location.origin + '/apigateway/api/yoklamalar/get-yoklama-pdf', {
+          method: 'POST', headers: jh, body: JSON.stringify({ data: { yoklamaKodu: a.yoklamaKodu, secureId: a.secureId } }),
+        });
+        if (!r1.ok) return null;
+        const j = await r1.json();
+        const link = j && j.reportLink;
+        if (!link || typeof link !== 'string') return null;
+        const r2 = await fetch(link, { method: 'GET', headers: auth });
+        if (!r2.ok) return null;
+        const buf = new Uint8Array(await r2.arrayBuffer());
+        // Düz PDF bekleniyor (PKCS#7 zarf değil) — yine de %PDF başlangıcı doğrulanır.
+        if (!(buf.length > 4 && buf[0] === 0x25 && buf[1] === 0x50 && buf[2] === 0x44 && buf[3] === 0x46)) return null;
+        let bin = '';
+        const CH = 0x8000;
+        for (let i = 0; i < buf.length; i += CH) bin += String.fromCharCode.apply(null, buf.subarray(i, i + CH) as any);
+        return btoa(bin);
+      } catch { return null; }
+    }, { yoklamaKodu, secureId });
+  }
+
+  // ── e-Haciz: DVD intvrg-login (SSO) → İnternet Vergi Dairesi main.jsp → intvrg_server/dispatch (form-POST) ──
+  private async dvdEHacizSorgula(page: any, context: any, vdAdlari: Record<string, string>) {
+    const sso = await this.dvdApi(page, { method: 'GET', path: '/apigateway/auth/tdvd/intvrg-login' });
+    const redirectUrl = sso.ok ? String(sso.json?.redirectUrl || '') : '';
+    if (!redirectUrl) throw new Error(this.dvdHataMetni(sso, 'İnternet Vergi Dairesi geçişi (intvrg-login)'));
+    let token = '';
+    try { token = new URL(redirectUrl).searchParams.get('token') || ''; } catch { token = ''; }
+
+    const ivd = await context.newPage();
+    ivd.setDefaultTimeout(15_000);
+    try {
+      await ivd.goto(redirectUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+      await ivd.waitForTimeout(1500);
+      if (!token) {
+        token = (await ivd.evaluate(() => {
+          try { return new URLSearchParams(location.search).get('token') || ''; } catch { return ''; }
+        }).catch(() => '')) || '';
+      }
+      if (!token) throw new Error(`İnternet Vergi Dairesi oturum anahtarı (token) bulunamadı. URL=${this.safeUrl(ivd.url())}`);
+
+      const dispatch = async (cmd: string, jp: Record<string, string>): Promise<DvdApiYaniti> => {
+        const r = await ivd.evaluate(async (o: any) => {
+          try {
+            const params = new URLSearchParams();
+            params.set('cmd', o.cmd);
+            params.set('callid', o.callid);
+            params.set('jp', JSON.stringify(o.jp));
+            params.set('token', o.token);
+            const resp = await fetch(location.origin + '/intvrg_server/dispatch', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', Accept: 'application/json, text/javascript, */*' },
+              body: params.toString(),
+            });
+            const text = await resp.text();
+            let json: any = null;
+            try { json = text ? JSON.parse(text) : null; } catch { json = null; }
+            return { ok: resp.ok, status: resp.status, json, text: text.slice(0, 3000) };
+          } catch (e: any) {
+            return { ok: false, status: 0, json: null, text: String((e && e.message) || e) };
+          }
+        }, { cmd, jp, token, callid: `${Date.now()}${Math.floor(Math.random() * 1_000_000)}` }).catch((err: any) => ({ ok: false, status: 0, json: null, text: String(err?.message || err) }));
+        return r || { ok: false, status: 0, json: null, text: 'yanıt yok' };
+      };
+
+      // secim 1 = BANKA, 2 = ARAÇ. "ADINIZA DÜZENLENMİŞ HACİZ BİLDİRİSİ BİLGİSİ BULUNMAMAKTADIR." = boş (hata değil).
+      const listeAl = async (secim: '1' | '2'): Promise<any[]> => {
+        const etiket = secim === '1' ? 'banka' : 'araç';
+        const r = await dispatch('ehacizSorgulamaService_EhacizSorgulamaSonuc', { secim });
+        if (!r.ok) throw new Error(`e-Haciz ${etiket} listesi HTTP ${r.status}: ${this.compact(r.text).slice(0, 200)}`);
+        const data = r.json?.data;
+        if (Array.isArray(data)) return data;
+        if (/BULUNMAMAKTADIR/i.test(r.text)) return [];
+        if (r.json === null) throw new Error(`e-Haciz ${etiket} listesi JSON değil: ${this.compact(r.text).slice(0, 200)}`);
+        const hataMetni = r.json?.error || r.json?.errorMessage || r.json?.hata || r.json?.message;
+        if (hataMetni) throw new Error(`e-Haciz ${etiket} listesi: ${this.compact(String(hataMetni)).slice(0, 200)}`);
+        return [];
+      };
+
+      const notlar: string[] = [];
+      let banka: any[] = [];
+      let arac: any[] = [];
+      try { banka = await listeAl('1'); } catch (err: any) { notlar.push(`banka: ${this.compact(err?.message || err)}`); }
+      try { arac = await listeAl('2'); } catch (err: any) { notlar.push(`araç: ${this.compact(err?.message || err)}`); }
+      if (notlar.length === 2) throw new Error(`e-Haciz sorgusu başarısız — ${notlar.join(' | ')}`);
+
+      // Her bildiri için detay (vergi türü/dönemi + banka satırları); en çok 50 bildiri.
+      const detaylar: Record<string, any> = {};
+      const tumu = [...banka.map((b) => ({ b, secim: '1' as const, kapsam: 'BANKA' })), ...arac.map((b) => ({ b, secim: '2' as const, kapsam: 'ARAC' }))];
+      for (const { b, secim, kapsam } of tumu.slice(0, 50)) {
+        const hbno = String(b?.hbno || '').trim();
+        if (!hbno) continue;
+        const d = await dispatch('ehacizSorgulamaService_EhacizSorgulamaSonucDetay', { vdkod: String(b?.vdkod || ''), hbno, secim });
+        if (d.ok && d.json?.data && typeof d.json.data === 'object') detaylar[`${kapsam}:${hbno}`] = d.json.data;
+        await ivd.waitForTimeout(150);
+      }
+      return { veri: eHacizCoz(banka, arac, detaylar, vdAdlari), notlar };
+    } finally {
+      await ivd.close().catch(() => {});
+    }
+  }
+
+  // ── e-Defter: DVD edefter-login (SSO) → edefter.gib.gov.tr (localStorage.token JWT) → paket listesi (dönem başına) ──
+  private async dvdEDefterSorgula(page: any, context: any, aylar: string[]) {
+    const sso = await this.dvdApi(page, { method: 'GET', path: '/apigateway/auth/tdvd/edefter-login' });
+    const redirectUrl = sso.ok ? String(sso.json?.redirectUrl || '') : '';
+    if (!redirectUrl) throw new Error(this.dvdHataMetni(sso, 'e-Defter geçişi (edefter-login)'));
+
+    const ed = await context.newPage();
+    ed.setDefaultTimeout(15_000);
+    try {
+      await ed.goto(redirectUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(() => null);
+      // localStorage.token ({"data":"<JWT>"}) gelene kadar bekle (en çok 20 sn); 5 sn sonra URL'deki esut da kabul.
+      let jwt = '';
+      for (let i = 0; i < 40 && !jwt; i++) {
+        jwt = (await ed.evaluate((esutKabul: boolean) => {
+          try {
+            const t = localStorage.getItem('token');
+            if (t) {
+              try { const j = JSON.parse(t); if (j && j.data) return String(j.data); } catch { /* düz metin */ }
+              return t;
+            }
+          } catch { /* localStorage kapalı */ }
+          if (esutKabul) {
+            try { return new URLSearchParams(location.search).get('esut') || ''; } catch { return ''; }
+          }
+          return '';
+        }, i >= 10).catch(() => '')) || '';
+        if (!jwt) await ed.waitForTimeout(500);
+      }
+      if (!jwt) throw new Error(`e-Defter oturum anahtarı (JWT) alınamadı. URL=${this.safeUrl(ed.url())}`);
+
+      const beratlar: EDefterBeratGirdisi[] = [];
+      const sorgular: EDefterSorguSonucu[] = [];
+      for (const ay of aylar) {
+        const donem = ay.replace('-', '');
+        let hata: string | null = null;
+        let result: any[] = [];
+        // 503 gelirse 2 sn bekleyip 2 kez daha dene (toplam 3).
+        for (let deneme = 1; deneme <= 3; deneme++) {
+          const r: DvdApiYaniti = (await ed.evaluate(async (o: any) => {
+            try {
+              const resp = await fetch(location.origin + '/api/v1/edefter/paket/EDEFTER_PAKET_LISTESI_GETIR?donem=' + o.donem + '&page=0&size=1000&sort=', {
+                method: 'GET',
+                headers: { Accept: 'application/json, text/plain, */*', Authorization: 'Bearer ' + o.jwt },
+              });
+              const text = await resp.text();
+              let json: any = null;
+              try { json = text ? JSON.parse(text) : null; } catch { json = null; }
+              return { ok: resp.ok, status: resp.status, json, text: text.slice(0, 2000) };
+            } catch (e: any) {
+              return { ok: false, status: 0, json: null, text: String((e && e.message) || e) };
+            }
+          }, { donem, jwt }).catch((err: any) => ({ ok: false, status: 0, json: null, text: String(err?.message || err) }))) || { ok: false, status: 0, json: null, text: 'yanıt yok' };
+          if (r.status === 503 && deneme < 3) {
+            await ed.waitForTimeout(2000);
+            continue;
+          }
+          if (!r.ok) {
+            hata = `HTTP ${r.status}: ${this.compact(r.text).slice(0, 200)}`;
+            break;
+          }
+          const durum = String(r.json?.status ?? '');
+          const mesaj = String(r.json?.message || '').trim();
+          if (durum !== '1') {
+            // "kayıt bulunamadı" türü yanıt = boş dönem, hata değil.
+            if (/bulunamad|bulunmamaktad|kay[ıi]t yok/i.test(mesaj)) { result = []; hata = null; break; }
+            hata = `GİB durum ${durum || '?'}: ${mesaj || this.compact(r.text).slice(0, 200)}`;
+            break;
+          }
+          result = Array.isArray(r.json?.result) ? r.json.result : [];
+          hata = null;
+          break;
+        }
+        const girdiler = hata ? [] : eDefterPaketCoz(ay, result);
+        beratlar.push(...girdiler);
+        sorgular.push({ donem: ay, paketSayisi: girdiler.length, hata });
+        await ed.waitForTimeout(200);
+      }
+      return { beratlar, sorgular };
+    } finally {
+      await ed.close().catch(() => {});
+    }
   }
 
   // SGK onaylı hizmet listesi + tahakkuk = e-Bildirge V2 (Struts) SAF FORM-POST (tıklamasız PDF).

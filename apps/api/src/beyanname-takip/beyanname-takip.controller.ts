@@ -56,6 +56,16 @@ export class BeyannameTakipController {
     return this.svc.listDonemDetay(req.user.tenantId, donem, normalizeDonemTuru(donemTuru));
   }
 
+  // ── E-DEFTER DETAYI (panel "E-Defter Detayı" penceresi) ────
+  // Berat takvimi (Sıra No 5 Tebliğ): o ay son günü olan dönemler + KB/YB berat durumu.
+  @Get('edefter')
+  listEDefter(@Req() req: any, @Query('donem') donem: string, @Query('donemTuru') donemTuru?: string) {
+    if (!donem || !/^\d{4}-\d{2}$/.test(donem)) {
+      throw new BadRequestException('donem parametresi yyyy-mm formatında olmalı');
+    }
+    return this.svc.listEDefterDetay(req.user.tenantId, donem, normalizeDonemTuru(donemTuru));
+  }
+
   // ── DURUM GÜNCELLEME (beyanname onay/red) ───────────
   @Put('durum/:taxpayerId/:beyanTipi/:donem')
   upsertDurum(

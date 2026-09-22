@@ -37,6 +37,7 @@ import { KritikUyariStatCard } from '@/components/dashboard/KritikUyariStatCard'
 import { MaliTakvim } from '@/components/dashboard/MaliTakvim';
 import { BeyanDurumTakibi, donemEtiket, type BeyanFilter } from '@/components/dashboard/BeyanDurumTakibi';
 import { OfisPanoramasi, type PanoramaPeriodProps } from '@/components/dashboard/OfisPanoramasi';
+import { EDefterDetayPenceresi, type EDefterSekme } from '@/components/dashboard/EDefterDetayPenceresi';
 
 const GOLD = '#d4b876';
 const TRACK_BLUE = '#7dd3fc';
@@ -122,6 +123,8 @@ function ToplubeyannameTable(props: PanoramaPeriodProps) {
 /** Beyanname Durum Takibi: veri + dönem seçenekleri + mükellef listesi penceresi burada; görünüm BeyanDurumTakibi bileşeninde. */
 function ToplubeyannamePanel({ donem, setDonem, donemTuru, setDonemTuru }: PanoramaPeriodProps) {
   const [modal, setModal] = useState<ModalState>(null);
+  // E-Defter satırındaki sayılar → "E-Defter Detayı" penceresi (berat takvimi; 2026-09-22)
+  const [eDefterSekme, setEDefterSekme] = useState<EDefterSekme | null>(null);
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['beyanname-ozet', donem, donemTuru],
@@ -131,8 +134,10 @@ function ToplubeyannamePanel({ donem, setDonem, donemTuru, setDonemTuru }: Panor
 
   const rows = data?.rows || [];
   const selectedDonem = data?.donem || donem;
-  const openModal = (beyanTipi: BeyanTipi, filter: BeyanFilter) =>
+  const openModal = (beyanTipi: BeyanTipi, filter: BeyanFilter) => {
+    if (beyanTipi === 'EDEFTER') { setEDefterSekme(filter === 'onaylanan' ? 'verilmis' : 'verilmemis'); return; }
     setModal({ beyanTipi, filter, donem: selectedDonem, donemTuru });
+  };
 
   const donemOptions = useMemo(() => {
     const now = new Date();
@@ -163,6 +168,7 @@ function ToplubeyannamePanel({ donem, setDonem, donemTuru, setDonemTuru }: Panor
         onNumberClick={openModal}
       />
       {modal && <BeyanDetayModal state={modal} onClose={() => setModal(null)} />}
+      {eDefterSekme && <EDefterDetayPenceresi donem={selectedDonem} donemTuru={donemTuru} sekme={eDefterSekme} onClose={() => setEDefterSekme(null)} />}
     </>
   );
 }

@@ -3,6 +3,8 @@ export * from './constants/tax-rates-2025';
 export * from './constants/declaration-types';
 export * from './constants/kurum-turu';
 export * from './constants/otomatik-sorgu';
+export * from './constants/genel-sorgu-veri';
+export * from './constants/edefter-takvim';
 export * from './types';
 export * from './schemas/auth.schemas';
 export * from './schemas/taxpayer.schemas';
