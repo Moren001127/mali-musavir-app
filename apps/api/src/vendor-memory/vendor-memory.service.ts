@@ -895,20 +895,31 @@ Yanlış ipucuna uyup yanlış karar vermek, ipucu olmamasından DAHA KÖTÜDÜR
    */
   async cariDefteriKur(tenantId: string, opts: { limit?: number } = {}) {
     const tavan = Math.min(20000, Math.max(1, Number(opts.limit || 20000)));
-    const kayitlar: any[] = await (this.prisma as any).eFaturaInbox.findMany({
-      where: { tenantId, ublXmlRaw: { not: null } },
-      orderBy: { syncedAt: 'desc' },
-      take: tavan,
-      select: { ublXmlRaw: true },
-    });
-
-    // Önce bellekte birleştir (aynı VKN yüzlerce faturada geçiyor) → tek tek DB yazma olmasın.
+    // SAYFALI OKUMA ZORUNLU (2026-09-23): 3.300 XML'i tek findMany ile çekmek yüzlerce MB —
+    //   ilk denemede API 500 verdi. 200'erli sayfalarla okunur, XML bellekte TUTULMAZ:
+    //   her sayfa ayrıştırılıp atılır, yalnız küçük cari haritası birikir.
     const defter = new Map<string, CariBilgi>();
-    for (const k of kayitlar) {
-      for (const c of faturadanCariler(String(k.ublXmlRaw || ''))) {
-        defter.set(c.kimlikNo, cariBirlestir(defter.get(c.kimlikNo) || null, c));
+    const SAYFA = 200;
+    let okunan = 0;
+    for (let atla = 0; atla < tavan; atla += SAYFA) {
+      const sayfa: any[] = await (this.prisma as any).eFaturaInbox.findMany({
+        where: { tenantId, ublXmlRaw: { not: null } },
+        orderBy: { syncedAt: 'desc' },
+        skip: atla,
+        take: Math.min(SAYFA, tavan - atla),
+        select: { ublXmlRaw: true },
+      });
+      if (!sayfa.length) break;
+      okunan += sayfa.length;
+      for (const k of sayfa) {
+        for (const c of faturadanCariler(String(k.ublXmlRaw || ''))) {
+          defter.set(c.kimlikNo, cariBirlestir(defter.get(c.kimlikNo) || null, c));
+        }
+        k.ublXmlRaw = null; // bellek serbest
       }
+      if (sayfa.length < SAYFA) break;
     }
+    const kayitlar = { length: okunan };
 
     let yeni = 0;
     let guncel = 0;
