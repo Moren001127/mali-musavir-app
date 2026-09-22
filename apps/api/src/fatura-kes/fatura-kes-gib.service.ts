@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { EARSIV_PENCERE_GUN, tarihPencereleri } from '../portal-automation/tarih-pencereleri';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { tryDecrypt } from '../common/crypto';
@@ -521,11 +522,32 @@ export class FaturaKesGibService {
   /** GİB listesinden ETTN'ye göre satırı bulur. Silme çağrısı satırın TAMAMINI ister. */
   private async satirBul(token: string, ettn: string, tarih?: Date | string | null) {
     const { baslangic, bitis } = this.pencere(tarih);
-    const liste: any = await this.dispatch(token, 'EARSIV_PORTAL_TASLAKLARI_GETIR', 'RG_TASLAKLAR', {
-      baslangic, bitis, hangiTip: '5000/30000', onayDurumu: 'Hepsi',
-    });
-    const rows: any[] = Array.isArray(liste?.data) ? liste.data : [];
-    return rows.find((r) => String(r?.ettn || '').toLowerCase() === String(ettn).toLowerCase()) || null;
+    // GİB 7 GÜN SINIRI (2026-09-22): tarih verilmediğinde pencere bir AY olur ve GİB reddeder →
+    //   aralık 7'şer güne bölünür, ETTN bulununca durulur.
+    for (const pen of this.gibPencereleri(baslangic, bitis)) {
+      const liste: any = await this.dispatch(token, 'EARSIV_PORTAL_TASLAKLARI_GETIR', 'RG_TASLAKLAR', {
+        baslangic: pen.baslangic, bitis: pen.bitis, hangiTip: '5000/30000', onayDurumu: 'Hepsi',
+      });
+      const rows: any[] = Array.isArray(liste?.data) ? liste.data : [];
+      const bulunan = rows.find((r) => String(r?.ettn || '').toLowerCase() === String(ettn).toLowerCase());
+      if (bulunan) return bulunan;
+    }
+    return null;
+  }
+
+  /** GİB'in kabul ettiği gg/aa/yyyy aralığını 7'şer günlük pencerelere böler (2026-09-22 sınırı). */
+  private gibPencereleri(baslangic: string, bitis: string): Array<{ baslangic: string; bitis: string }> {
+    const cevir = (g: string) => {
+      const m = String(g || '').match(/^(\d{2})[./](\d{2})[./](\d{4})$/);
+      return m ? `${m[3]}-${m[2]}-${m[1]}` : g;
+    };
+    const geri = (iso: string) => {
+      const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
+    };
+    const pencereler = tarihPencereleri(cevir(baslangic), cevir(bitis), EARSIV_PENCERE_GUN);
+    if (!pencereler.length) return [{ baslangic, bitis }];
+    return pencereler.map((x) => ({ baslangic: geri(x.bas), bitis: geri(x.bit) }));
   }
 
   /** GİB'DEKİ BELGELERİ LİSTELER — SALT OKUMA. Tarih verilmezse içinde bulunulan ay. */
@@ -537,13 +559,24 @@ export class FaturaKesGibService {
     const varsayilan = this.pencere(null);
     const token = await this.oturumAc(tenantId, taxpayerId);
     try {
-      const liste: any = await this.dispatch(token, 'EARSIV_PORTAL_TASLAKLARI_GETIR', 'RG_TASLAKLAR', {
-        baslangic: opts.baslangic || varsayilan.baslangic,
-        bitis: opts.bitis || varsayilan.bitis,
-        hangiTip: '5000/30000',
-        onayDurumu: 'Hepsi',
-      });
-      const rows: any[] = Array.isArray(liste?.data) ? liste.data : [];
+      // GİB 7 GÜN SINIRI (2026-09-22): ay aralığı tek sorguda kabul edilmiyor → 7'şer gün sorgulanıp
+      //   satırlar ETTN ile tekilleştirilerek birleştirilir.
+      const rows: any[] = [];
+      const gorulenEttn = new Set<string>();
+      for (const pen of this.gibPencereleri(opts.baslangic || varsayilan.baslangic, opts.bitis || varsayilan.bitis)) {
+        const parca: any = await this.dispatch(token, 'EARSIV_PORTAL_TASLAKLARI_GETIR', 'RG_TASLAKLAR', {
+          baslangic: pen.baslangic,
+          bitis: pen.bitis,
+          hangiTip: '5000/30000',
+          onayDurumu: 'Hepsi',
+        });
+        for (const satir of (Array.isArray(parca?.data) ? parca.data : [])) {
+          const anahtar = String(satir?.ettn || satir?.belgeNumarasi || '').toLowerCase();
+          if (anahtar && gorulenEttn.has(anahtar)) continue;
+          if (anahtar) gorulenEttn.add(anahtar);
+          rows.push(satir);
+        }
+      }
       return rows.map((r) => ({
         faturaNo: String(r.belgeNumarasi || ''),
         aliciVkn: String(r.aliciVknTckn || ''),

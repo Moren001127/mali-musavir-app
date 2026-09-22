@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { EARSIV_PENCERE_GUN, tarihPencereleri } from './tarih-pencereleri';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { chromium as pwChromium } from 'playwright-core';
 import { PDFParse } from 'pdf-parse';
@@ -2367,15 +2368,47 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     const endDate = this.earsivDateInput(job.periodEnd);
     if (!startDate || !endDate) throw new Error('GIB e-Arsiv tarih araligi hazirlanamadi');
 
-    const list = await this.earsivDispatch(token, 'EARSIV_PORTAL_TASLAKLARI_GETIR', 'RG_TASLAKLAR', {
-      baslangic: startDate,
-      bitis: endDate,
-      hangiTip: '5000/30000',
-      // onayDurumu (kullanıcı bulgusu — "hepsinde boş"): portalın kendi grid'i bu alanı gönderiyor;
-      //   eksikken GİB listeyi daraltıp onaylı/imzalı faturaları elemiş olabilir → "Hepsi" ile tümü gelir.
-      onayDurumu: 'Hepsi',
-    });
-    const rows = Array.isArray(list?.data) ? list.data : [];
+    // ── 7 GÜN SINIRI (GİB değişikliği, 2026-09-22) ──────────────────────────────────────────────
+    //   GİB e-Arşiv portalı sorgu aralığını EN FAZLA 7 GÜN'e indirdi (takvimde 8. gün seçilemiyor).
+    //   Kullanıcı ayı seçtiğinde burada aralık 7'şer günlük pencerelere bölünür, her pencere ayrı
+    //   sorgulanır ve satırlar ETTN/belge no ile TEKİLLEŞTİRİLEREK birleştirilir. 7 gün ve altı
+    //   aralıkta tek sorgu kalır (eski davranış). Sınır değişirse tek yer: EARSIV_PENCERE_GUN.
+    const pencereler = tarihPencereleri(job.periodStart, job.periodEnd, EARSIV_PENCERE_GUN);
+    const sorguPencereleri = pencereler.length
+      ? pencereler.map((x) => ({ bas: this.earsivDateInput(x.bas), bit: this.earsivDateInput(x.bit) }))
+      : [{ bas: startDate, bit: endDate }];
+    const rows: any[] = [];
+    const gorulen = new Set<string>();
+    const pencereNotlari: string[] = [];
+    let list: any = null;
+    for (let pi = 0; pi < sorguPencereleri.length; pi++) {
+      const pen = sorguPencereleri[pi];
+      if (!pen.bas || !pen.bit) continue;
+      if (sorguPencereleri.length > 1 && pi > 0) {
+        await this.jobProgress(tenantId, job, 'earsiv_progress', `GIB e-Arsiv: ${pi}/${sorguPencereleri.length} pencere sorgulandi, ${rows.length} satir toplandi.`);
+      }
+      const parca = await this.earsivDispatch(token, 'EARSIV_PORTAL_TASLAKLARI_GETIR', 'RG_TASLAKLAR', {
+        baslangic: pen.bas,
+        bitis: pen.bit,
+        hangiTip: '5000/30000',
+        // onayDurumu (kullanıcı bulgusu — "hepsinde boş"): portalın kendi grid'i bu alanı gönderiyor;
+        //   eksikken GİB listeyi daraltıp onaylı/imzalı faturaları elemiş olabilir → "Hepsi" ile tümü gelir.
+        onayDurumu: 'Hepsi',
+      });
+      list = list || parca; // teşhis/mesaj için ilk yanıt yeterli
+      const parcaSatir = Array.isArray(parca?.data) ? parca.data : [];
+      let yeni = 0;
+      for (const satir of parcaSatir) {
+        const anahtar = (this.earsivRead(satir, ['ettn', 'uuid', 'faturaUuid', 'belgeUuid'])
+          || this.earsivRead(satir, ['belgeNumarasi', 'faturaNo', 'belgeNo', 'no'])).toLowerCase();
+        if (anahtar && gorulen.has(anahtar)) continue;
+        if (anahtar) gorulen.add(anahtar);
+        rows.push(satir);
+        yeni++;
+      }
+      if (sorguPencereleri.length > 1) pencereNotlari.push(`${pen.bas}-${pen.bit}: ${parcaSatir.length} satir${yeni !== parcaSatir.length ? ` (${parcaSatir.length - yeni} mukerrer)` : ''}`);
+      this.logger.log(`[EARSIV-SORGU] pencere ${pi + 1}/${sorguPencereleri.length} ${pen.bas}-${pen.bit}: ${parcaSatir.length} satir (toplam ${rows.length})`);
+    }
     // TEŞHİS (kullanıcı bulgusu — "boş = arıza mı, 0 kayıt mı belli değil"): GİB 200 + boş data dönünce
     //   eskiden hiçbir iz kalmıyordu. Ham yanıtın özetini (satır sayısı + GİB mesajı + data tipi) log'a
     //   ve notes'a yaz → neden boş olduğu ekrandan görünür.
@@ -2388,13 +2421,21 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     //   döndürdüğü listeyi büyük ölçüde karşılayan 200'e çıkarıldı (kod zaten üst tavan olarak 200'ü
     //   uyguluyordu — env ile bile aşılamıyordu). Sınır yine de aşılırsa (200'den fazla satır) artık
     //   notes'a GÖRÜNÜR bir uyarı düşülüyor — eskiden kalan satırlar hiçbir iz bırakmadan atlanıyordu.
-    const max = Math.max(1, Math.min(200, Number(process.env.PORTAL_AUTOMATION_EARSIV_MAX_DOWNLOADS || 200)));
+    //   TAVAN: eskiden tek sorgu → 200 satır sınırı yeterliydi. Artık ay 7'şer günlük pencerelerle
+    //   tamamen taranıyor; aylık toplam 200'ü aşabilir → tavan pencere sayısıyla ölçeklenir.
+    const tekSorguTavani = Math.max(1, Math.min(200, Number(process.env.PORTAL_AUTOMATION_EARSIV_MAX_DOWNLOADS || 200)));
+    const max = tekSorguTavani * Math.max(1, sorguPencereleri.length);
     const documents: any[] = [];
     const mode = job?.payload?.earsivMode === 'query' ? 'query' : 'download';
     const selectedRefs = new Set((Array.isArray(job?.payload?.selectedRefs) ? job.payload.selectedRefs : [])
       .map((v: any) => String(v || '').trim())
       .filter(Boolean));
-    const notes: string[] = [`GIB e-Arsiv liste: ${rows.length} satir (${startDate}-${endDate})${gibMsg ? ` — GIB mesaji: ${gibMsg}` : ''}`];
+    const notes: string[] = [
+      `GIB e-Arsiv liste: ${rows.length} satir (${startDate}-${endDate})`
+      + (sorguPencereleri.length > 1 ? ` — GIB 7 gun siniri nedeniyle ${sorguPencereleri.length} pencerede sorgulandi` : '')
+      + (gibMsg ? ` — GIB mesaji: ${gibMsg}` : ''),
+    ];
+    if (pencereNotlari.length) notes.push(`Pencereler → ${pencereNotlari.join(' · ')}`);
     if (rows.length === 0) {
       notes.push(`GIB bu donem icin 0 e-Arsiv faturasi dondu. Mukellef bu donemde GIB portali uzerinden e-Arsiv kesmediyse (entegrator/e-Fatura ise) bu normaldir; kesmisse tarih araligini/onay durumunu kontrol edin.${gibMsg ? ` GIB mesaji: ${gibMsg}` : ''}`);
     }
