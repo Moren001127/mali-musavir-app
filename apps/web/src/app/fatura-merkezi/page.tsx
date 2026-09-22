@@ -3159,7 +3159,7 @@ function ScreenSorgu({ taxpayerId, period, source, onOpenEntegrator }: { taxpaye
   ];
 
   return (
-    <section className="screen sorgu-screen sq-screen">
+    <section className="screen sorgu-screen sq-screen fm2">
       <div className="h2">{source === 'earsiv' ? 'GİB e-Arşiv Sorgu' : 'e-Fatura Sorgu'}</div>
 
       {/* ── SORGU ŞERİDİ (tek kart): dönem takvimi + hazır aralık hapları + tarih aralığı + Sorgula + ilerleme/iptal + son sorgu ── */}
@@ -3347,7 +3347,6 @@ function ScreenSorgu({ taxpayerId, period, source, onOpenEntegrator }: { taxpaye
                   <th className={`num sortable${sirala.k === 'tutar' ? ' sorted' : ''}`} onClick={() => siralaTikla('tutar')} title="Tutara göre sırala (tutar yalnız muhasebeleştirilmiş satırlarda bilinir)">Tutar <span className="sq-sort">{siralaOk('tutar')}</span></th>
                   <th>Onay</th>
                   <th className="center">Görsel</th>
-                  <th className="center">Aktarım</th>
                 </tr>
               </thead>
               <tbody>
@@ -3357,7 +3356,7 @@ function ScreenSorgu({ taxpayerId, period, source, onOpenEntegrator }: { taxpaye
                       {secilebilir ? (
                         <Check checked={sel.has(r.sourceRefId)} onToggle={() => toggle(r.sourceRefId)} />
                       ) : (
-                        <Check checked={false} disabled title={earsivAktarildi(r) ? 'Zaten aktarılmış' : 'Aktarıma alınmaz'} />
+                        <Check checked={false} disabled title={earsivAktarildi(r) ? `Zaten aktarılmış — ${akt.t}` : 'Aktarıma alınmaz'} />
                       )}
                     </td>
                     <td><span className="sq-src" style={{ ['--sc' as any]: sorguProvRenk('GIB_PORTAL') }}><i>GİB</i>e-Arşiv</span></td>
@@ -3375,11 +3374,10 @@ function ScreenSorgu({ taxpayerId, period, source, onOpenEntegrator }: { taxpaye
                         <span className="eye" onClick={() => openDocFile(r.muhasebeBelgeId)} title="Fatura görselini aç" style={{ color: '#0891b2', margin: '0 auto' }}><Ico html={I.eye} size={15} /></span>
                       ) : '—'}
                     </td>
-                    <td className="center"><span className={`sq-akt ${akt.k}`} title={akt.t}>{akt.l}</span></td>
                   </tr>
                 ))}
                 {!earsivSuz.length && (
-                  <tr><td colSpan={10} className="emptyrow">{
+                  <tr><td colSpan={9} className="emptyrow">{
                     !taxpayerId
                       ? 'Önce mükellef seç.'
                       : rows.length
@@ -3489,7 +3487,6 @@ function ScreenSorgu({ taxpayerId, period, source, onOpenEntegrator }: { taxpaye
                   <th>Tür</th>
                   <th className={`num sortable${sirala.k === 'tutar' ? ' sorted' : ''}`} onClick={() => siralaTikla('tutar')} title="Tutara göre sırala">Tutar <span className="sq-sort">{siralaOk('tutar')}</span></th>
                   <th>Onay</th>
-                  <th className="center">Aktarım</th>
                 </tr>
               </thead>
               <tbody>
@@ -3499,7 +3496,7 @@ function ScreenSorgu({ taxpayerId, period, source, onOpenEntegrator }: { taxpaye
                       <Check
                         checked={selectable && sel.has(rowId)}
                         disabled={!selectable}
-                        title={transferred ? 'Zaten aktarılmış' : missingOriginal ? 'Aktarımda orijinal belge yeniden indirilecek' : selectable ? 'Aktarım için seç' : 'Satır kimliği yok'}
+                        title={transferred ? `Zaten aktarılmış — ${akt.t}` : missingOriginal ? 'Aktarımda orijinal belge yeniden indirilecek' : selectable ? 'Aktarım için seç' : 'Satır kimliği yok'}
                         onToggle={() => toggle(rowId)}
                       />
                     </td>
@@ -3510,15 +3507,14 @@ function ScreenSorgu({ taxpayerId, period, source, onOpenEntegrator }: { taxpaye
                     <td><span className="sq-pill gray">{r.invoiceProfile || 'e-Fatura'}</span></td>
                     <td className="num">{r.toplam != null ? fmtMoney(r.toplam) : '—'}</td>
                     <td><span className={`sq-onay ${onay.k}`} title={String(approvalRaw || '') || undefined}>{onay.l}</span></td>
-                    <td className="center"><span className={`sq-akt ${akt.k}`} title={akt.t}>{akt.l}</span></td>
                   </tr>
                 ))}
                 {!efaturaSuz.length && (
                   (efaturaInboxQ.isLoading || (efaturaInboxQ.isFetching && !efaturaInboxQ.data))
                     // İLK YÜKLEME (kullanıcı bulgusu #10): ekran ÖNCE boş "sorgu satırı yok" flaşlıyordu →
                     //   veri gelene kadar boş mesaj yerine yükleniyor göster; mükellef/dönem değişince de böyle.
-                    ? <tr><td colSpan={9} className="emptyrow loadingrow">Faturalar yükleniyor…</td></tr>
-                    : <tr><td colSpan={9} className="emptyrow">{
+                    ? <tr><td colSpan={8} className="emptyrow loadingrow">Faturalar yükleniyor…</td></tr>
+                    : <tr><td colSpan={8} className="emptyrow">{
                       !taxpayerId
                         ? 'Önce mükellef seç.'
                         : efaturaRows.length
@@ -3934,7 +3930,7 @@ function ScreenKurallar({ taxpayerId, period }: { taxpayerId: string; period: st
     .slice(0, 12);
 
   return (
-    <section className="screen">
+    <section className="screen fm2">
       <div className="h2">Eşleştirme Kuralları</div>
       <div className="sub">Bir belgeyi onayladığında sistem o satıcı + içerik için hesap kodunu <b>öğrenir</b>; sonraki benzer belgeleri otomatik eşleştirir. Aşağıda öğrenilmiş kurallar ve henüz kurala uymayan istisnalar var.</div>
 
@@ -5322,7 +5318,7 @@ function ScreenAktarilanlar({ taxpayerId, period, mode = 'bekleyen', isIsletme =
   };
 
   return (
-    <section className="screen">
+    <section className="screen fm2">
       <div className="h2">{arsiv ? "Arşivim — Luca'ya Aktarılanlar" : "Aktarım — Luca'ya Toplu Fiş"}</div>
       <div className="sub">{arsiv
         ? <>Luca'ya aktarılmış (fişi kesilmiş) faturaların arşivi ({period}). Buradakiler işlenmiş ve Luca'da.</>
@@ -9332,4 +9328,63 @@ const CSS = `
 #fm-root .gf-strip-h .gf-oran-cip{display:inline-flex;align-items:center;gap:4px;margin-left:auto;height:22px;padding:0 9px;border-radius:999px;border:1px solid var(--accent-line);background:color-mix(in srgb,var(--accent) 7%,#fff);color:var(--muted);font-size:11px;font-weight:600;white-space:nowrap;cursor:help;align-self:center}
 #fm-root .gf-strip-h .gf-oran-cip b{color:var(--accent);font-weight:800;font-variant-numeric:tabular-nums}
 /* === /PLAN15-F3-FE === */
+
+/* ===================== FM YENİ ARAYÜZ DİLİ — 2026-09-23 (Muzaffer Bey onayı) =====================
+   Kapsam: yalnız .fm2 sınıfı taşıyan 5 ekran → e-Fatura Sorgu · GİB e-Arşiv Sorgu · Aktarım ·
+   Arşivim · Eşleştirme Kuralları. Diğer ekranlar (Gelen Faturalar, Muhasebeleştir, KDV…) DOKUNULMADI.
+
+   Karar (Muzaffer Bey: "aynı şeylerin rengini değiştirip gönderme"): renk değil DÜZEN değişti —
+     · sayaç kutuları → birleşik, tıklanabilir SÜZGEÇ ŞERİDİ (seçili olanın altı çizili)
+     · tablo sık ve ölçülü: 44px satır, ince ayraç, belge no mono, tutarlar eşit genişlikte rakam
+     · durum dili TEK: nokta + yazı (hap/etiket yok)
+     · aktarılmış satır soluk → iş bitti, gözü yormasın
+   Renk portalın seçili vurgu ailesinden (var(--accent)) gelir; ayrı bir renk sistemi kurulmadı. */
+
+/* — başlık şeridi — */
+#fm-root .fm2 > .h2{font-size:21px;font-weight:800;letter-spacing:-.35px;color:#0f172a;margin-bottom:3px}
+#fm-root .fm2 > .sub{font-size:12.5px;color:#5b6777;margin-bottom:13px;max-width:820px;line-height:1.55}
+
+/* — SAYAÇLAR → birleşik süzgeç şeridi (eski: ayrı ayrı duran renkli kutular) — */
+#fm-root .fm2 .filttiles{flex-wrap:nowrap;gap:0;margin:2px 0 13px;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff;box-shadow:0 1px 2px rgba(15,23,42,.05)}
+#fm-root .fm2 .filttiles .ftile{flex:1 1 0;min-width:0;display:grid;grid-template-columns:auto 1fr;grid-template-areas:'num num' 'dot lbl';column-gap:6px;row-gap:3px;align-items:center;padding:11px 16px;border:0;border-radius:0;background:transparent;box-shadow:none;transform:none}
+#fm-root .fm2 .filttiles .ftile + .ftile{border-left:1px solid #eef2f7}
+#fm-root .fm2 .filttiles .ftile::before{display:none}
+#fm-root .fm2 .filttiles .ftile:hover{background:#f8fafc;transform:none;box-shadow:none;border-color:transparent}
+#fm-root .fm2 .filttiles .ftile .fttx{display:contents}
+#fm-root .fm2 .filttiles .ftile .ftn{grid-area:num;font-size:19px;letter-spacing:-.5px;line-height:1}
+#fm-root .fm2 .filttiles .ftile .ftdot{grid-area:dot;width:7px;height:7px}
+#fm-root .fm2 .filttiles .ftile .ftl{grid-area:lbl;font-size:11.5px;font-weight:700;color:#5b6777;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#fm-root .fm2 .filttiles .ftile.on{background:color-mix(in srgb,var(--accent) 8%,#fff);box-shadow:none}
+#fm-root .fm2 .filttiles .ftile.on::after{content:'';position:absolute;left:0;right:0;bottom:0;height:2.5px;background:var(--accent)}
+#fm-root .fm2 .filttiles .ftile.on .ftn{color:var(--accent)}
+#fm-root .fm2 .filttiles .ftile.on .ftl{color:var(--accent)}
+/* Şeridin içindeki "iptal/itiraz aktarılmaz" notu: aynı cümle toplu işlem çubuğunda zaten var — tekrarı kaldırıldı. */
+#fm-root .fm2 .filttiles .sq-tilenote{display:none}
+
+/* — kart — */
+#fm-root .fm2 .card{border-radius:14px;box-shadow:0 1px 2px rgba(15,23,42,.05),0 10px 30px -22px rgba(15,23,42,.45)}
+
+/* — TABLO: iki tip de aynı dilde (sorgu ekranları .sourcetable · aktarım/arşiv/kural .twrap table) — */
+#fm-root .fm2 .sourcetable th,#fm-root .fm2 .twrap > table > thead > tr > th{height:34px;padding:9px 14px;background:#fbfcfe;color:#93a1b4;font-size:10px;font-weight:850;letter-spacing:.6px;border-bottom:1px solid var(--line)}
+#fm-root .fm2 .sourcetable td,#fm-root .fm2 .twrap > table > tbody > tr > td{height:44px;padding:9px 14px;border-bottom:1px solid #eef2f7;font-size:12.5px}
+#fm-root .fm2 .sourcetable tbody tr:hover td,#fm-root .fm2 .twrap > table > tbody > tr:hover > td{background:#f9fbfd}
+#fm-root .fm2 .sourcetable td.num,#fm-root .fm2 .twrap > table > tbody > tr > td.num{font-variant-numeric:tabular-nums;font-weight:750;color:#0f172a}
+#fm-root .fm2 .sq-party b{font-weight:750;line-height:1.25}
+#fm-root .fm2 .sq-party small{font-variant-numeric:tabular-nums}
+#fm-root .fm2 .sq-mono,#fm-root .fm2 .sourcetable .mono,#fm-root .fm2 .twrap .mono{font-family:ui-monospace,'Cascadia Mono',Consolas,monospace;font-size:11.5px;letter-spacing:-.2px;color:#334155}
+/* Aktarım sütunu kalktı → son sütun artık Onay/Görsel; "son sütun ortalanır" kuralı bozmasın. */
+#fm-root .fm2 .sourcetable th:last-child,#fm-root .fm2 .sourcetable td:last-child{text-align:left}
+#fm-root .fm2 .sourcetable th.center,#fm-root .fm2 .sourcetable td.center{text-align:center}
+
+/* — satır hâlleri: aktarılmış = iş bitti (soluk), seçili = vurgu, aktarılamaz = sessiz — */
+#fm-root .fm2 .sourcetable tr.done td{background:#fff;opacity:.66}
+#fm-root .fm2 .sourcetable tr.blocked td{background:#fff;color:#94a3b8}
+#fm-root .fm2 .sourcetable tr.sel td{background:color-mix(in srgb,var(--accent) 8%,#fff);opacity:1}
+#fm-root .fm2 .sourcetable tr.sel:hover td{background:color-mix(in srgb,var(--accent) 11%,#fff)}
+
+/* — DURUM DİLİ: hap değil, nokta + yazı (her ekranda aynı) — */
+#fm-root .fm2 .sq-onay{height:auto;padding:0;border:0!important;border-radius:0;background:transparent!important;font-size:12px;font-weight:750;gap:6px}
+#fm-root .fm2 .sq-onay::before{width:7px;height:7px}
+#fm-root .fm2 .sq-onaysub{color:#93a1b4}
+/* === /FM YENİ ARAYÜZ DİLİ === */
 `;
