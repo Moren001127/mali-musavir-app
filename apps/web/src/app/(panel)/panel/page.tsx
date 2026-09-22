@@ -258,9 +258,8 @@ function BeyanDetayModal({ state, onClose }: { state: { beyanTipi: BeyanTipi; fi
     muaf: 'Muaf',
     kalan: 'Verilmedi',
   };
-  // Çalışan yok işaretli bildirge: rozette kısa "Çalışan yok" (Verildi sayılır); dışa aktarımda açık yazılır.
-  const durumMetni = (b: { durum: string; calisanYok?: boolean }, uzun = false) =>
-    b.calisanYok ? (uzun ? 'Verildi (çalışan yok)' : 'Çalışan yok') : durumEtiket[b.durum] || b.durum;
+  // Çalışan yok işaretli bildirge de Durum'da düz "Verildi" (Muzaffer Bey); çalışan bilgisi yalnız Çalışan sütununda.
+  const durumMetni = (b: { durum: string }) => durumEtiket[b.durum] || b.durum;
   const formatDate = (value: string | null) => {
     if (!value) return '-';
     const date = new Date(value);
@@ -280,7 +279,7 @@ function BeyanDetayModal({ state, onClose }: { state: { beyanTipi: BeyanTipi; fi
       BEYAN_ETIKETLER[state.beyanTipi],
       donemEtiket(state.donem),
       donemEtiket(beyan.vergiDonem),
-      durumMetni(beyan, true),
+      durumMetni(beyan),
       formatDate(beyan.onayTarihi),
       formatMoney(beyan.tahakkukTutari),
       ...(bildirge ? [beyan.calisanYok ? 'Yok' : 'Var'] : []),
