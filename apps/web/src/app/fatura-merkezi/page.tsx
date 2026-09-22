@@ -3073,8 +3073,13 @@ function ScreenSorgu({ taxpayerId, period, source, onOpenEntegrator }: { taxpaye
     const selectable = efaturaCanImport(r) && !!rowId;
     const iptalMi = !transferred && !efaturaCanImport(r);
     const kuyrukta = !transferred && selectable && docStatus === 'READY' && (efaturaImportMut.isPending || efaturaQueuedImport || efaturaImportRunning);
+    // AYNI FATURA BAŞKA ENTEGRATÖRDEN AKTARILMIŞ (sunucu ETTN ile eşleştirir): kaynağı da yaz —
+    //   "✓ aktarıldı · Paraşüt". Mükerrer aktarım denenmesin, kullanıcı nereden geldiğini görsün.
+    const baskaKaynak = r?.baskaKaynaktanAktarildi ? String(r?.aktarimKaynagi || '').trim() : '';
     const akt: SqAkt = transferred
-      ? { k: 'ok', l: '✓ aktarıldı', t: 'Bekleyen listeye aktarıldı' }
+      ? (baskaKaynak
+        ? { k: 'ok', l: `✓ aktarıldı · ${baskaKaynak}`, t: `Bu fatura ${baskaKaynak} üzerinden zaten aktarılmış — ikinci kez aktarılmaz` }
+        : { k: 'ok', l: '✓ aktarıldı', t: 'Bekleyen listeye aktarıldı' })
       : kuyrukta
         ? { k: 'kuyruk', l: '⏳ kuyrukta', t: 'Aktarım sırasında' }
         : docStatus === 'PENDING_DOWNLOAD'

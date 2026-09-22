@@ -203,7 +203,7 @@ export class EFaturaSyncService {
       orderBy: { syncedAt: 'desc' },
       take,
       select: {
-        id: true, entegrator: true, uuid: true, faturaNo: true, faturaDate: true,
+        id: true, tenantId: true, taxpayerId: true, entegrator: true, uuid: true, ettn: true, faturaNo: true, faturaDate: true,
         senderVkn: true, senderTitle: true, receiverVkn: true,
         matrah: true, kdv: true, toplam: true, paraBirimi: true,
         direction: true, invoiceProfile: true, isTransferred: true, documentId: true,
@@ -278,6 +278,54 @@ export class EFaturaSyncService {
     }
     const staleIds = new Set(staleRows.map((row: any) => row.id));
 
+    // ── AYNI FATURA BAŞKA ENTEGRATÖRDEN AKTARILMIŞ MI? (Muzaffer Bey, 2026-09-22) ──
+    //   Mükellefte iki entegratör varsa (ör. Paraşüt + Mikro) aynı fatura İKİSİNDE DE görünür.
+    //   Belge oluşturma tarafı zaten ETTN ile mükerrer engelliyor; ama liste, Paraşüt'ten aktarılmış
+    //   faturayı Mikro satırında "aktarılabilir" gösteriyordu. Artık ETTN eşleşen muhasebe belgesi
+    //   varsa satır AKTARILDI görünür (kaynağı da yazılır) → ikinci kez aktarım denenmez.
+    const ettnAl = (row: any): string => {
+      const dogrudan = String(row?.ettn || '').trim();
+      if (dogrudan) return dogrudan.toLowerCase();
+      const m = String(row?.ublXmlRaw || '').match(/<cbc:UUID>\s*([0-9a-fA-F-]{20,40})\s*<\/cbc:UUID>/);
+      return m ? m[1].trim().toLowerCase() : '';
+    };
+    const capraz = new Map<string, { documentId: string; kaynak: string }>();
+    const bekleyen = rows.filter((row: any) => !staleIds.has(row.id) && !row.documentId && ettnAl(row));
+    if (bekleyen.length) {
+      const ettnler = [...new Set(bekleyen.map(ettnAl))].slice(0, 300);
+      const cesitler = ettnler.flatMap((e: string) => [e, e.toUpperCase()]);
+      const tpIdler = [...new Set(bekleyen.map((row: any) => String(row.taxpayerId || '')).filter(Boolean))];
+      try {
+        const belgeler = await (this.prisma as any).invoiceAccountingDocument.findMany({
+          where: {
+            tenantId,
+            ...(tpIdler.length ? { taxpayerId: { in: tpIdler } } : {}),
+            OR: [
+              { sourceRefId: { in: cesitler } },
+              ...cesitler.map((v) => ({ ocrData: { path: ['ettn'], equals: v } })),
+            ],
+          },
+          select: { id: true, source: true, sourceRefId: true, ocrData: true },
+          take: 600,
+        });
+        for (const b of belgeler) {
+          const anahtarlar = [String(b.sourceRefId || ''), String((b as any)?.ocrData?.ettn || '')]
+            .map((x) => x.trim().toLowerCase()).filter(Boolean);
+          for (const a of anahtarlar) if (!capraz.has(a)) capraz.set(a, { documentId: String(b.id), kaynak: String(b.source || '') });
+        }
+      } catch { /* eşleştirme başarısızsa liste normal çalışsın */ }
+    }
+    /** 'integration-parasut' → 'Paraşüt' gibi okunur kaynak adı. */
+    const kaynakAdi = (kaynak: string): string => {
+      const k = String(kaynak || '').toLowerCase().replace(/^integration-/, '');
+      const sozluk: Record<string, string> = {
+        parasut: 'Paraşüt', mikro: 'Mikro', turkcell: 'Turkcell', eczacikart: 'Eczacıkart',
+        elogo: 'eLogo', uyumsoft: 'Uyumsoft', izibiz: 'İzibiz', turmob_efatura: 'TÜRMOB',
+        'manual-web': 'elle yükleme', mobile: 'mobil', mihsap: 'Mihsap', luca: 'Luca',
+      };
+      return sozluk[k] || (k ? k.toUpperCase() : 'başka kaynak');
+    };
+
     const channel = String(opts.channel || '').toUpperCase();
     return rows
       .filter((row: any) => {
@@ -307,6 +355,17 @@ export class EFaturaSyncService {
           : row.senderTitle;
         if (staleIds.has(row.id) || missingOriginalDocument(row)) {
           return { ...row, senderTitle, receiverTitle, documentId: null, isTransferred: false, processedAt: null, hasAccountingDocument: false };
+        }
+        // Başka entegratörden AKTARILMIŞ aynı fatura (ETTN eşleşmesi) → satır "Aktarıldı" görünür.
+        if (!hasAccountingDocument) {
+          const bulunan = capraz.get(ettnAl(row));
+          if (bulunan) {
+            return {
+              ...row, senderTitle, receiverTitle,
+              documentId: bulunan.documentId, isTransferred: true, hasAccountingDocument: true,
+              baskaKaynaktanAktarildi: true, aktarimKaynagi: kaynakAdi(bulunan.kaynak),
+            };
+          }
         }
         return { ...row, senderTitle, receiverTitle, documentId: linkedDocId || null, isTransferred: hasAccountingDocument, hasAccountingDocument };
       });
