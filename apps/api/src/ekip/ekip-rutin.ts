@@ -116,8 +116,8 @@ export interface PanoDonemi {
 }
 
 export interface KapsamSonucu {
-  /** 'kdv:islenmis': işaretçe işlenmiş görünen ama Luca'sı boş olanlar (rutin almaz, rapora girer). */
-  islenmemis?: Array<{ taxpayerId: string | null; ad: string | null }>;
+  /** 'kdv:islenmis': kontrolü hiç başlamamış (oturum/Luca kaydı yok) ama "İşlendi" işaretli olanlar — aday, ama Luca boş çıkabilir. */
+  baslanmamis?: Array<{ taxpayerId: string | null; ad: string | null }>;
   donem: string | null;
   mukellefler: Array<{ taxpayerId: string | null; ad: string | null }>;
 }
@@ -149,10 +149,10 @@ export function kapsamMukellefleri(
   // işlenmiş olanlar. "İşlendi" kutusuna güvenilmiyor (canlıda 37 işaretliden 11'inin Luca'sı boştu) → hazır kümesi
   // servis tarafında ölçülür: o dönem KDV oturumu var VE Luca kaydı gelmiş. Kalanlar 'islenmemis' olarak raporlanır.
   if (kapsam === 'kdv:islenmis') {
-    const hazir = ek?.kdvHazirIdler || null;   // Luca kaydı var + en az bir oturum AÇIK (iş kalmış)
+    const hazir = ek?.kdvHazirIdler || null;   // Luca kaydı var + en az bir oturum AÇIK (iş yarım kalmış)
     const bitmis = ek?.kdvBitmisIdler || null; // o dönemin oturumları kilitli (COMPLETED) → iş yok
     const out: KapsamSonucu['mukellefler'] = [];
-    const islenmemis: KapsamSonucu['mukellefler'] = [];
+    const baslanmamis: KapsamSonucu['mukellefler'] = [];
     const gorulenK = new Set<string>();
     for (const m of d.mukellefler || []) {
       if (!m?.taxpayerId || gorulenK.has(m.taxpayerId)) continue;
@@ -160,10 +160,15 @@ export function kapsamMukellefleri(
       // → tek başına güvenilmez; asıl ölçüt oturum durumu (bitmis kümesi).
       if (m.asamalar?.kdvKontrol || bitmis?.has(m.taxpayerId)) continue;
       gorulenK.add(m.taxpayerId);
+      // Muzaffer Bey (2026-09-22): yeni dönemde oturum hiç açılmamış olur → "İşlendi" işaretliyi de al; ekip Luca'yı çeker,
+      // kayıt gelmezse "Luca'ya işlenmemiş" deyip bırakır (kilitlemez). Yarım kalmış işler (hazır) her hâlükârda aday.
       if (hazir?.has(m.taxpayerId)) out.push({ taxpayerId: m.taxpayerId, ad: m.ad || null });
-      else if (m.asamalar?.isleme) islenmemis.push({ taxpayerId: m.taxpayerId, ad: m.ad || null });
+      else if (m.asamalar?.isleme) {
+        out.push({ taxpayerId: m.taxpayerId, ad: m.ad || null });
+        baslanmamis.push({ taxpayerId: m.taxpayerId, ad: m.ad || null });
+      }
     }
-    return { donem: d.beyannameDonem || null, mukellefler: out, islenmemis };
+    return { donem: d.beyannameDonem || null, mukellefler: out, baslanmamis };
   }
   const suzgec: ((m: PanoMukellefi) => boolean) | null =
     kapsam === 'pano:kontrol_bekleyen'

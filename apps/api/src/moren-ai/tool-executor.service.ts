@@ -5057,6 +5057,23 @@ export class ToolExecutorService {
     if (!lucaIs) {
       return { ok: false, neden: 'Luca çekimi bu oturum için tamamlanmamış — 0 kaydın nedeni çekim yapılmamış olabilir; önce kdv_kontrol_luca_cek + luca_is_bekle.', kdvRecord: 0, receiptImage: 0 };
     }
+    // GÜVENLİK (2026-09-22): portalda o dönem fatura VARSA "boş dönem" değildir — evrak Luca'ya işlenmemiş olabilir; kilitleme.
+    const donemTire = String(session?.periodLabel || '').replace('/', '-');
+    const faturaTuru = session?.type === 'KDV_391' || session?.type === 'ISLETME_GELIR' ? 'SATIS' : 'ALIS';
+    const portalFatura = session?.taxpayerId && /^\d{4}-\d{2}$/.test(donemTire)
+      ? await (this.prisma as any).mihsapInvoice
+          .count({ where: { tenantId: ctx.tenantId, mukellefId: session.taxpayerId, donem: donemTire, faturaTuru: { contains: faturaTuru } } })
+          .catch(() => 0)
+      : 0;
+    if (Number(portalFatura) > 0) {
+      return {
+        ok: false,
+        neden: `Portalda bu dönem ${portalFatura} fatura var (Luca 0) — boş dönem DEĞİL, evrak Luca'ya işlenmemiş olabilir; kilitlenmedi. Rapora "Luca'ya işlenmemiş" yaz.`,
+        kdvRecord: 0,
+        receiptImage: 0,
+        portalFatura: Number(portalFatura),
+      };
+    }
     try {
       await svc.completeSession(sessionId, ctx.tenantId);
       return {

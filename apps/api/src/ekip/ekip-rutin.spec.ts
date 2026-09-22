@@ -84,25 +84,25 @@ const PANO = {
 describe('ekip rutin — kapsam kdv:islenmis (2026-09-22)', () => {
   // Muzaffer Bey: "KDV kontrol edildi işaretsizlerin bir kısmının evrakı Luca'ya işlenmemiş; işlenmeden neyi kontrol edeceksin."
   // → aday YALNIZ hazır kümesindekiler (o dönem KDV oturumu + Luca kaydı olanlar); kalanı 'islenmemis' raporuna.
-  it('hazır kümesindekiler aday olur; işlendi işaretli ama Luca boş olanlar islenmemis listesine düşer; kdvKontrol bitmiş elenir', () => {
+  it('yarım kalmış (hazır) + hiç başlanmamış ama İşlendi ✔ olanlar aday; başlanmamışlar ayrıca raporlanır; kdvKontrol bitmiş elenir', () => {
     const k = kapsamMukellefleri('kdv:islenmis', PANO, null, { kdvHazirIdler: new Set(['a']) });
     expect(k.donem).toBe('2026-08');
-    expect(k.mukellefler).toEqual([{ taxpayerId: 'a', ad: 'A Ltd' }]);
-    expect(k.islenmemis).toEqual([{ taxpayerId: 'e', ad: 'E' }]);
+    expect(k.mukellefler).toEqual([{ taxpayerId: 'a', ad: 'A Ltd' }, { taxpayerId: 'e', ad: 'E' }]);
+    expect(k.baslanmamis).toEqual([{ taxpayerId: 'e', ad: 'E' }]);
   });
 
   // 2026-09-22 canlı bulgu: Aylık Takip "KDV kontrol edildi" işareti BEYANNAME ayına yazılır, pano satırı İŞLEM ayıdır →
   // kilitli (bitmiş) oturumlar "kontrol edilmemiş" görünüp rutine giriyordu (26 mükellefin hepsi kilitliyken 8 iş açıldı).
-  it('oturumları kilitli olan (bitmis) mükellef ne aday olur ne işlenmemiş sayılır', () => {
+  it('oturumları kilitli olan (bitmis) mükellef ne aday olur ne raporlanır', () => {
     const k = kapsamMukellefleri('kdv:islenmis', PANO, null, { kdvHazirIdler: new Set(['a']), kdvBitmisIdler: new Set(['a', 'e']) });
     expect(k.mukellefler).toEqual([]);
-    expect(k.islenmemis).toEqual([]);
+    expect(k.baslanmamis).toEqual([]);
   });
 
-  it('hazır kümesi yoksa (oturum/kayıt yok) aday üretilmez, işlenmemiş listesi dolar', () => {
+  it('hiç oturum yokken (yeni dönem) İşlendi ✔ olanlar aday olur — ekip kontrolü kendisi başlatır', () => {
     const k = kapsamMukellefleri('kdv:islenmis', PANO, null, { kdvHazirIdler: new Set() });
-    expect(k.mukellefler).toEqual([]);
-    expect(k.islenmemis?.map((m) => m.taxpayerId)).toEqual(['a', 'e']);
+    expect(k.mukellefler.map((m) => m.taxpayerId)).toEqual(['a', 'e']);
+    expect(k.baslanmamis?.map((m) => m.taxpayerId)).toEqual(['a', 'e']);
   });
 
   it('tohum rutini bu kapsamı kullanır', () => {

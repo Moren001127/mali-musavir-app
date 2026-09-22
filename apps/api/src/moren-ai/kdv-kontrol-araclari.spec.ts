@@ -663,6 +663,22 @@ describe('kdv_kontrol_bos_oturum_kilitle (boş dönem kilidi, 2026-09-22)', () =
     expect(r).toMatchObject({ ok: true, kilitlendi: true, lucaIsId: 'lj1' });
     expect(complete).toHaveBeenCalledWith('s1', 't1');
   });
+  it('portalda o dönem fatura varsa (Luca 0) kilitlemez — evrak Luca\'ya işlenmemiş olabilir', async () => {
+    const { svc, complete } = svcKur();
+    const pr = prismaKur({
+      kdvRecord: { count: () => 0 },
+      receiptImage: { count: () => 0 },
+      lucaFetchJob: { findFirst: () => ({ id: 'lj1', recordCount: 0, finishedAt: new Date() }) },
+      mihsapInvoice: { count: () => 12 },
+    });
+    const svc2 = { ...svc, findSession: async () => ({ status: 'PROCESSING', taxpayerId: 'tp1', periodLabel: '2026/08', type: 'KDV_191' }) };
+    const { tool } = aracKur({ prisma: pr.prisma, servisler: { KdvControlService: svc2 } });
+    const r = await tool.execute('kdv_kontrol_bos_oturum_kilitle', { sessionId: 's1' }, ctx);
+    expect(r).toMatchObject({ ok: false, portalFatura: 12 });
+    expect(r.neden).toMatch(/boş dönem DEĞİL/);
+    expect(complete).not.toHaveBeenCalled();
+  });
+
   it('Luca kaydı ya da görsel varsa kilitlemez; Luca işi yoksa kilitlemez; zaten kilitliyse dokunmaz', async () => {
     const { svc, complete } = svcKur();
     const dolu = prismaKur({ kdvRecord: { count: () => 21 }, receiptImage: { count: () => 0 } });

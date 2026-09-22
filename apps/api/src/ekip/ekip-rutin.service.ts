@@ -332,7 +332,7 @@ export class EkipRutinService implements OnApplicationBootstrap {
     const tavan = opts.tavanUygula ? gunlukTavan - acilan.sayi : SIMDI_CALISTIR_TAVANI;
 
     let sonuc: { eklenen: number; aday: number; kuyrukId: string | null; donem: string | null; neden: string | null };
-    /** 'kdv:islenmis': işaretçe işlenmiş ama Luca'sı boş olanlar — rutin almaz, Muzaffer Bey'e raporlanır. */
+    /** 'kdv:islenmis': kontrolü hiç başlamamış olanlar (aday ama Luca boş çıkabilir) — rapora yazılır. */
     let islenmemisNot: { sayi: number; adlar: string[] } | null = null;
     if (tavan <= 0) {
       sonuc = { eklenen: 0, aday: 0, kuyrukId: null, donem: null, neden: `günlük tavan doldu (${acilan.sayi}/${gunlukTavan})` };
@@ -345,8 +345,8 @@ export class EkipRutinService implements OnApplicationBootstrap {
         kdvHazirIdler: kdvDurum?.hazir || null,
         kdvBitmisIdler: kdvDurum?.bitmis || null,
       });
-      if (Array.isArray(k.islenmemis) && k.islenmemis.length) {
-        islenmemisNot = { sayi: k.islenmemis.length, adlar: k.islenmemis.map((m) => m.ad || m.taxpayerId || '?').slice(0, 20) };
+      if (Array.isArray(k.baslanmamis) && k.baslanmamis.length) {
+        islenmemisNot = { sayi: k.baslanmamis.length, adlar: k.baslanmamis.map((m) => m.ad || m.taxpayerId || '?').slice(0, 20) };
       }
       const secilen = secilecekOgeler(k.mukellefler, acilan, tavan);
       if (!secilen.length) {
@@ -377,7 +377,7 @@ export class EkipRutinService implements OnApplicationBootstrap {
     const ilkDegerlendirme = !ayniIstanbulGunuMu(r.sonKosuAt, simdi);
     if (sonuc.eklenen > 0 || ilkDegerlendirme || !opts.tavanUygula) {
       await this.db.ekipRutin
-        .update({ where: { id: r.id }, data: { sonKosuAt: simdi, sonSonuc: { zaman: simdi.toISOString(), ...sonuc, ...(islenmemisNot ? { islenmemis: islenmemisNot } : {}), elle: !opts.tavanUygula } } })
+        .update({ where: { id: r.id }, data: { sonKosuAt: simdi, sonSonuc: { zaman: simdi.toISOString(), ...sonuc, ...(islenmemisNot ? { baslanmamis: islenmemisNot } : {}), elle: !opts.tavanUygula } } })
         .catch((e: any) => this.logger.warn(`[rutin] sonuç yazılamadı ${r.id}: ${e?.message || e}`));
     }
     if (sonuc.eklenen > 0 || !opts.tavanUygula) {
