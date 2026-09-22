@@ -10,7 +10,7 @@ import { ogeleriOku } from './ekip-kuyruk';
  * Zaman: {tur:'haftalik', gunler:[1..7], baslangic:'09:30', bitis:'17:00'} | {tur:'aylik', ayGunu:5, saat:'09:30', aylar?:[1,4,7,10]} (aylar boşsa her ay).
  */
 
-export const RUTIN_KAPSAMLARI = ['pano:kontrol_bekleyen', 'pano:isleme_bekleyen', 'pano:hazirlik_bekleyen', 'ofis', 'liste'] as const;
+export const RUTIN_KAPSAMLARI = ['kdv:islenmis', 'pano:kontrol_bekleyen', 'pano:isleme_bekleyen', 'pano:hazirlik_bekleyen', 'ofis', 'liste'] as const;
 export type RutinKapsami = (typeof RUTIN_KAPSAMLARI)[number];
 
 export type RutinZamani =
@@ -104,7 +104,8 @@ export interface PanoMukellefi {
   taxpayerId: string | null;
   ad: string | null;
   kayitVar?: boolean;
-  asamalar: { evrak: boolean; isleme: boolean; kontrol: boolean; beyannameHazir: boolean; beyanname: boolean };
+  /** kdvKontrol = Aylık Takip "KDV kontrol edildi" kutusu; kontrol = İND+HES+ARŞİV kutuları (AYNI ŞEY DEĞİL, 2026-09-22). */
+  asamalar: { evrak: boolean; isleme: boolean; kontrol: boolean; kdvKontrol?: boolean; beyannameHazir: boolean; beyanname: boolean };
 }
 
 export interface PanoDonemi {
@@ -115,6 +116,8 @@ export interface PanoDonemi {
 }
 
 export interface KapsamSonucu {
+  /** 'kdv:islenmis': işaretçe işlenmiş görünen ama Luca'sı boş olanlar (rutin almaz, rapora girer). */
+  islenmemis?: Array<{ taxpayerId: string | null; ad: string | null }>;
   donem: string | null;
   mukellefler: Array<{ taxpayerId: string | null; ad: string | null }>;
 }
@@ -133,6 +136,7 @@ export function kapsamMukellefleri(
   kapsam: string,
   pano: { donemler?: PanoDonemi[] } | null | undefined,
   taxpayerIds: string[] | null | undefined,
+  ek?: { kdvHazirIdler?: Set<string> | null },
 ): KapsamSonucu {
   if (kapsam === 'ofis') return { donem: panoSonDonemi(pano)?.beyannameDonem || null, mukellefler: [{ taxpayerId: null, ad: null }] };
   if (kapsam === 'liste') {
@@ -141,6 +145,23 @@ export function kapsamMukellefleri(
   }
   const d = panoSonDonemi(pano);
   if (!d) return { donem: null, mukellefler: [] };
+  // 'kdv:islenmis' (2026-09-22, Muzaffer Bey'in kararı): "KDV kontrol edildi" işaretsiz AMA evrakı gerçekten Luca'ya
+  // işlenmiş olanlar. "İşlendi" kutusuna güvenilmiyor (canlıda 37 işaretliden 11'inin Luca'sı boştu) → hazır kümesi
+  // servis tarafında ölçülür: o dönem KDV oturumu var VE Luca kaydı gelmiş. Kalanlar 'islenmemis' olarak raporlanır.
+  if (kapsam === 'kdv:islenmis') {
+    const hazir = ek?.kdvHazirIdler || null;
+    const out: KapsamSonucu['mukellefler'] = [];
+    const islenmemis: KapsamSonucu['mukellefler'] = [];
+    const gorulenK = new Set<string>();
+    for (const m of d.mukellefler || []) {
+      if (!m?.taxpayerId || gorulenK.has(m.taxpayerId)) continue;
+      if (m.asamalar?.kdvKontrol) continue; // kontrolü bitmiş
+      gorulenK.add(m.taxpayerId);
+      if (hazir?.has(m.taxpayerId)) out.push({ taxpayerId: m.taxpayerId, ad: m.ad || null });
+      else if (m.asamalar?.isleme) islenmemis.push({ taxpayerId: m.taxpayerId, ad: m.ad || null });
+    }
+    return { donem: d.beyannameDonem || null, mukellefler: out, islenmemis };
+  }
   const suzgec: ((m: PanoMukellefi) => boolean) | null =
     kapsam === 'pano:kontrol_bekleyen'
       ? (m) => Boolean(m.asamalar?.isleme) && !m.asamalar?.kontrol

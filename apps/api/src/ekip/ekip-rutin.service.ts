@@ -68,7 +68,7 @@ export const VARSAYILAN_RUTIN = {
   ad: 'KDV kontrolü — kontrol bekleyenler',
   ajanId: 'beyanname',
   sablon: '{mukellef} için {donem} dönemi KDV kontrolünü yap (R1).',
-  kapsam: 'pano:kontrol_bekleyen',
+  kapsam: 'kdv:islenmis',
   zaman: { tur: 'haftalik', gunler: [1, 2, 3, 4, 5], baslangic: '09:30', bitis: '17:00' } as RutinZamani,
   gunlukTavan: 8,
   dryRun: false,
@@ -288,6 +288,23 @@ export class EkipRutinService implements OnApplicationBootstrap {
    * Rutinin bir koşusu: kapsam → bugün açılmış olanları ele → tavana kadar kuyruk aç → sonKosuAt/sonSonuc yaz.
    * sonKosuAt: öğe eklendiğinde ya da bugünkü ilk değerlendirmede yazılır (aylık "bugün koştu" bayrağı; haftalıkta her 5 dk yazılmaz).
    */
+  /**
+   * 'kdv:islenmis' kapsamı için HAZIR kümesi (2026-09-22): panodaki son beyanname döneminde (YYYY/MM) KDV Kontrol oturumu
+   * AÇILMIŞ ve Luca'dan kayıt gelmiş mükellefler. Aylık Takip'teki "İşlendi" kutusuna güvenilmez (canlı: 37 işaretliden
+   * 11'inin Luca'sı boştu) — evrakı Luca'ya girilmemiş mükellefe rutin iş açılmaz.
+   */
+  private async kdvHazirlar(tenantId: string, pano: any): Promise<Set<string> | null> {
+    const donem = pano?.donemler?.[0]?.beyannameDonem || null; // "2026-08"
+    if (!donem || !/^\d{4}-\d{2}$/.test(String(donem))) return null;
+    const periodLabel = String(donem).replace('-', '/');
+    const ses: any[] = await this.db.kdvControlSession
+      .findMany({ where: { tenantId, periodLabel }, select: { taxpayerId: true, _count: { select: { kdvRecords: true } } } })
+      .catch((e: any) => (this.logger.warn(`[rutin] kdv oturumları okunamadı: ${e?.message || e}`), []));
+    const hazir = new Set<string>();
+    for (const s of ses) if (s?.taxpayerId && Number(s?._count?.kdvRecords || 0) > 0) hazir.add(String(s.taxpayerId));
+    return hazir;
+  }
+
   async rutinKos(
     r: any,
     opts: { tavanUygula: boolean; simdi: Date },
@@ -302,12 +319,19 @@ export class EkipRutinService implements OnApplicationBootstrap {
     const tavan = opts.tavanUygula ? gunlukTavan - acilan.sayi : SIMDI_CALISTIR_TAVANI;
 
     let sonuc: { eklenen: number; aday: number; kuyrukId: string | null; donem: string | null; neden: string | null };
+    /** 'kdv:islenmis': işaretçe işlenmiş ama Luca'sı boş olanlar — rutin almaz, Muzaffer Bey'e raporlanır. */
+    let islenmemisNot: { sayi: number; adlar: string[] } | null = null;
     if (tavan <= 0) {
       sonuc = { eklenen: 0, aday: 0, kuyrukId: null, donem: null, neden: `günlük tavan doldu (${acilan.sayi}/${gunlukTavan})` };
     } else {
       const kapsam = String(r.kapsam || '');
-      const pano = kapsam.startsWith('pano:') || sablonDonemGerekli(r.sablon) ? await this.runner.pano(tenantId, 2).catch((e: any) => (this.logger.warn(`[rutin] pano okunamadı (${tenantId}): ${e?.message || e}`), null)) : null;
-      const k = kapsamMukellefleri(kapsam, pano, Array.isArray(r.taxpayerIds) ? r.taxpayerIds : []);
+      const panoGerek = kapsam.startsWith('pano:') || kapsam === 'kdv:islenmis' || sablonDonemGerekli(r.sablon);
+      const pano = panoGerek ? await this.runner.pano(tenantId, 2).catch((e: any) => (this.logger.warn(`[rutin] pano okunamadı (${tenantId}): ${e?.message || e}`), null)) : null;
+      const kdvHazirIdler = kapsam === 'kdv:islenmis' ? await this.kdvHazirlar(tenantId, pano) : null;
+      const k = kapsamMukellefleri(kapsam, pano, Array.isArray(r.taxpayerIds) ? r.taxpayerIds : [], { kdvHazirIdler });
+      if (Array.isArray(k.islenmemis) && k.islenmemis.length) {
+        islenmemisNot = { sayi: k.islenmemis.length, adlar: k.islenmemis.map((m) => m.ad || m.taxpayerId || '?').slice(0, 20) };
+      }
       const secilen = secilecekOgeler(k.mukellefler, acilan, tavan);
       if (!secilen.length) {
         const neden = !k.mukellefler.length
@@ -337,7 +361,7 @@ export class EkipRutinService implements OnApplicationBootstrap {
     const ilkDegerlendirme = !ayniIstanbulGunuMu(r.sonKosuAt, simdi);
     if (sonuc.eklenen > 0 || ilkDegerlendirme || !opts.tavanUygula) {
       await this.db.ekipRutin
-        .update({ where: { id: r.id }, data: { sonKosuAt: simdi, sonSonuc: { zaman: simdi.toISOString(), ...sonuc, elle: !opts.tavanUygula } } })
+        .update({ where: { id: r.id }, data: { sonKosuAt: simdi, sonSonuc: { zaman: simdi.toISOString(), ...sonuc, ...(islenmemisNot ? { islenmemis: islenmemisNot } : {}), elle: !opts.tavanUygula } } })
         .catch((e: any) => this.logger.warn(`[rutin] sonuç yazılamadı ${r.id}: ${e?.message || e}`));
     }
     if (sonuc.eklenen > 0 || !opts.tavanUygula) {

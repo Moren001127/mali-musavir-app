@@ -913,6 +913,8 @@ export class EkipRunnerService implements OnApplicationShutdown {
       evrak: r.evraklarGeldi === true,
       isleme: r.evraklarIslendi === true,
       kontrol: r.kontrolBitti === true || r.kontrolEdildi === true,
+      // KDV Kontrol modülünün kendi bayrağı (kontrolBitti = İND+HES+ARŞİV kutuları; ikisi AYNI ŞEY DEĞİL — 2026-09-22).
+      kdvKontrol: r.kdvKontrolEdildi === true,
       beyannameHazir: r.beyannameHazir === true,
       beyanname: r.beyannameVerildi === true,
     });
@@ -935,6 +937,7 @@ export class EkipRunnerService implements OnApplicationShutdown {
           evrak: say((r) => r.evraklarGeldi === true),
           isleme: say((r) => r.evraklarIslendi === true),
           kontrol: say((r) => r.kontrolBitti === true || r.kontrolEdildi === true),
+          kdvKontrol: say((r) => r.kdvKontrolEdildi === true),
           beyannameHazir: say((r) => r.beyannameHazir === true),
           beyanname: say((r) => r.beyannameVerildi === true),
         },

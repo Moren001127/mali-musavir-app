@@ -69,7 +69,7 @@ const PANO = {
       hata: null,
       mukellefler: [
         { taxpayerId: 'a', ad: 'A Ltd', asamalar: { evrak: true, isleme: true, kontrol: false, beyannameHazir: false, beyanname: false } },
-        { taxpayerId: 'b', ad: 'B AŞ', asamalar: { evrak: true, isleme: true, kontrol: true, beyannameHazir: false, beyanname: false } },
+        { taxpayerId: 'b', ad: 'B AŞ', asamalar: { evrak: true, isleme: true, kontrol: true, kdvKontrol: true, beyannameHazir: false, beyanname: false } },
         { taxpayerId: 'c', ad: 'C', asamalar: { evrak: true, isleme: false, kontrol: false, beyannameHazir: false, beyanname: false } },
         { taxpayerId: 'd', ad: 'D', asamalar: { evrak: false, isleme: false, kontrol: false, beyannameHazir: false, beyanname: false } },
         { taxpayerId: 'e', ad: 'E', asamalar: { evrak: true, isleme: true, kontrol: false, beyannameHazir: false, beyanname: false } },
@@ -80,6 +80,27 @@ const PANO = {
     { istenenDonem: '2026-08', beyannameDonem: '2026-07', hata: null, mukellefler: [{ taxpayerId: 'z', ad: 'Z', asamalar: { evrak: true, isleme: true, kontrol: false, beyannameHazir: false, beyanname: false } }] },
   ],
 };
+
+describe('ekip rutin — kapsam kdv:islenmis (2026-09-22)', () => {
+  // Muzaffer Bey: "KDV kontrol edildi işaretsizlerin bir kısmının evrakı Luca'ya işlenmemiş; işlenmeden neyi kontrol edeceksin."
+  // → aday YALNIZ hazır kümesindekiler (o dönem KDV oturumu + Luca kaydı olanlar); kalanı 'islenmemis' raporuna.
+  it('hazır kümesindekiler aday olur; işlendi işaretli ama Luca boş olanlar islenmemis listesine düşer; kdvKontrol bitmiş elenir', () => {
+    const k = kapsamMukellefleri('kdv:islenmis', PANO, null, { kdvHazirIdler: new Set(['a']) });
+    expect(k.donem).toBe('2026-08');
+    expect(k.mukellefler).toEqual([{ taxpayerId: 'a', ad: 'A Ltd' }]);
+    expect(k.islenmemis).toEqual([{ taxpayerId: 'e', ad: 'E' }]);
+  });
+
+  it('hazır kümesi yoksa (oturum/kayıt yok) aday üretilmez, işlenmemiş listesi dolar', () => {
+    const k = kapsamMukellefleri('kdv:islenmis', PANO, null, { kdvHazirIdler: new Set() });
+    expect(k.mukellefler).toEqual([]);
+    expect(k.islenmemis?.map((m) => m.taxpayerId)).toEqual(['a', 'e']);
+  });
+
+  it('tohum rutini bu kapsamı kullanır', () => {
+    expect(VARSAYILAN_RUTIN.kapsam).toBe('kdv:islenmis');
+  });
+});
 
 describe('ekip rutin — kapsam hesabı', () => {
   it('pano:kontrol_bekleyen = işleme ∧ ¬kontrol (yalnız EN SON dönem, tekrar ve kimliksiz elenir)', () => {
@@ -366,7 +387,7 @@ describe('ekip rutin — CRUD doğrulama + tohum', () => {
         ad: 'KDV kontrolü — kontrol bekleyenler',
         ajanId: 'beyanname',
         sablon: '{mukellef} için {donem} dönemi KDV kontrolünü yap (R1).',
-        kapsam: 'pano:kontrol_bekleyen',
+        kapsam: 'kdv:islenmis',
         zaman: { tur: 'haftalik', gunler: [1, 2, 3, 4, 5], baslangic: '09:30', bitis: '17:00' },
         gunlukTavan: 8,
         dryRun: false,

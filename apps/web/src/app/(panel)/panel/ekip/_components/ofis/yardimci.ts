@@ -65,6 +65,7 @@ export function zamanEtiketi(z: RutinZaman): string {
 }
 
 export const KAPSAM_ETIKETI: Record<RutinKapsam, string> = {
+  'kdv:islenmis': 'KDV kontrolü bekleyenler (evrakı işlenmiş)',
   'pano:kontrol_bekleyen': 'Kontrol bekleyenler',
   'pano:isleme_bekleyen': 'İşleme bekleyenler',
   'pano:hazirlik_bekleyen': 'Hazırlık bekleyenler',
