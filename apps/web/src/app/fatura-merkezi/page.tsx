@@ -2717,7 +2717,12 @@ function ScreenSorgu({ taxpayerId, period, source, onOpenEntegrator }: { taxpaye
     enabled: !!taxpayerId && source === 'efatura',
     refetchInterval: source === 'efatura' && efaturaPollUntil > Date.now() ? 2500 : 6000,
   });
-  const efaturaRows: any[] = Array.isArray(efaturaInboxQ.data) ? efaturaInboxQ.data : [];
+  // ENTEGRATÖR BAZINDA LİSTE (Muzaffer Bey, 2026-09-22): birden çok entegratörü olan mükellefte liste, sayaçlar
+  //   ve "… faturayı aktar" YALNIZ seçili entegratörü gösterir — hepsi bir arada görünmesin. Tek entegratörde süzgeç yok.
+  const efaturaTumRows: any[] = Array.isArray(efaturaInboxQ.data) ? efaturaInboxQ.data : [];
+  const efaturaRows: any[] = connectedEfaturaProviders.length > 1 && activeEfaturaProvider?.provider
+    ? efaturaTumRows.filter((r: any) => String(r?.entegrator || '').toUpperCase() === String(activeEfaturaProvider.provider).toUpperCase())
+    : efaturaTumRows;
   // Arka plan sorgu (Turkcell gibi çok-faturalı) durumu — kullanıcı çekimin BİTİP bitmediğini görebilsin.
   const efaturaSyncStatusQ = useQuery({
     queryKey: ['fm-efatura-syncstatus', taxpayerId, efaturaChannel],
@@ -2777,7 +2782,7 @@ function ScreenSorgu({ taxpayerId, period, source, onOpenEntegrator }: { taxpaye
   useEffect(() => {
     setLastEfaturaSync(null);
     setSel(new Set());
-  }, [source, taxpayerId, donem, efaturaChannel]);
+  }, [source, taxpayerId, donem, efaturaChannel, secilenEfaturaProv]); // entegratör değişince seçim de sıfırlanır
   useEffect(() => { setSecilenEfaturaProv(null); setProvMenuAcik(false); }, [taxpayerId]); // mükellef değişince entegratör seçimi sıfırlanır
   // Menü açıkken dışarı tıklayınca / ESC ile kapansın.
   useEffect(() => {

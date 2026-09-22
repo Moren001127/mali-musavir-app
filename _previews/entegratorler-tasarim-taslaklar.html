@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="tr"><meta charset="utf-8"><title>Entegratörler — 4 tasarım taslağı</title>
+<style>
+  :root{
+    --accent:#0f766e; --ink:#0f172a; --mut:#64748b; --soluk:#94a3b8; --cizgi:#e6ebf3;
+    --mi:#7c3aed;  /* Mikro */  --ps:#7c3aed; --pk:#2563eb; --yesil:#15803d;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:#eceff5;font-family:Inter,'Segoe UI',system-ui,sans-serif;color:var(--ink);padding:14px;zoom:.62}
+  .sayfa{display:flex;flex-direction:column;gap:16px;max-width:1180px}
+  .blok{background:#fff;border:1px solid var(--cizgi);border-radius:20px;overflow:hidden;box-shadow:0 2px 10px rgba(15,23,42,.04)}
+  .blokust{display:flex;align-items:center;gap:11px;padding:13px 18px;border-bottom:1px solid var(--cizgi);background:linear-gradient(90deg,#f8fafc,#fff)}
+  .no{width:28px;height:28px;border-radius:9px;background:var(--accent);color:#fff;display:grid;place-items:center;font-size:14px;font-weight:900}
+  .blokad{font-size:14px;font-weight:850;letter-spacing:.2px}
+  .govde{padding:18px;background:#f7f9fc}
+  .notx{padding:12px 18px 16px;font-size:12.5px;color:var(--mut);line-height:1.6;background:#fff;border-top:1px dashed var(--cizgi)}
+  .notx b{color:var(--ink)}
+  .rozet{border-radius:12px;display:grid;place-items:center;color:#fff;font-weight:900;flex-shrink:0}
+  .cip{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 11px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap}
+  .cip.ok{background:#e7f6ec;color:#15803d;border:1px solid #bfe5cc}
+  .cip.ok::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor}
+  .anh{width:38px;height:21px;border-radius:999px;background:#d7dee8;position:relative;flex-shrink:0}
+  .anh i{position:absolute;top:2.5px;left:2.5px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(15,23,42,.3)}
+  .anh.on{background:var(--yesil)} .anh.on i{left:19.5px}
+  .saat{height:26px;padding:0 7px;border-radius:8px;border:1px solid #d7dee8;background:#fff;font:inherit;font-size:11.5px;font-weight:750;color:#475569}
+  .dg{height:32px;padding:0 14px;border-radius:9px;border:1px solid #dbe2ec;background:#fff;font:inherit;font-size:12px;font-weight:750;color:#475569;cursor:pointer}
+  .dg.ana{background:var(--accent);border-color:transparent;color:#fff;font-weight:800}
+  .dg.sil{color:#b91c1c;border-color:#f0d2d2}
+
+  /* ---------- 1 · ÜST ŞERİTLİ KART ---------- */
+  .g1{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .k1{background:#fff;border:1px solid var(--cizgi);border-radius:16px;overflow:hidden;box-shadow:0 6px 18px -12px rgba(15,23,42,.4)}
+  .k1 .serit{height:4px;background:var(--c)}
+  .k1 .ust{display:flex;align-items:center;gap:11px;padding:14px 15px 11px}
+  .k1 .rozet{width:42px;height:42px;font-size:13px;background:linear-gradient(140deg,var(--c),color-mix(in srgb,var(--c) 62%,#000))}
+  .k1 .ad{display:flex;flex-direction:column;line-height:1.35;min-width:0}
+  .k1 .ad b{font-size:14.5px;font-weight:850}
+  .k1 .ad small{font-size:11.5px;color:var(--soluk);font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .k1 .ic{margin:0 15px 13px;background:#f7f9fc;border:1px solid #edf1f7;border-radius:12px;padding:11px 13px;display:flex;flex-direction:column;gap:9px}
+  .k1 .st{display:flex;align-items:center;gap:9px;font-size:12px}
+  .k1 .st .et{color:var(--mut);font-weight:700;min-width:84px}
+  .k1 .st .dg2{margin-left:auto;font-weight:800;font-size:12.5px}
+  .k1 .alt{display:flex;gap:8px;padding:0 15px 15px}
+
+  /* ---------- 2 · LİSTE SATIRI ---------- */
+  .t2{background:#fff;border:1px solid var(--cizgi);border-radius:16px;overflow:hidden}
+  .t2 .bas,.t2 .sat{display:grid;grid-template-columns:2.1fr 1fr 1.35fr auto;align-items:center;gap:14px;padding:12px 16px}
+  .t2 .bas{background:#f7f9fc;border-bottom:1px solid var(--cizgi);font-size:10.5px;font-weight:900;letter-spacing:.6px;color:var(--soluk);text-transform:uppercase}
+  .t2 .sat+.sat{border-top:1px solid #f1f5f9}
+  .t2 .sol{display:flex;align-items:center;gap:11px;min-width:0}
+  .t2 .rozet{width:36px;height:36px;font-size:12px;background:linear-gradient(140deg,var(--c),color-mix(in srgb,var(--c) 62%,#000))}
+  .t2 .ad{display:flex;flex-direction:column;line-height:1.3;min-width:0}
+  .t2 .ad b{font-size:13.5px;font-weight:850}
+  .t2 .ad small{font-size:11px;color:var(--soluk);font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .t2 .gece{display:flex;align-items:center;gap:8px;font-size:11.5px;font-weight:750;color:var(--mut)}
+  .t2 .ops{display:flex;gap:7px}
+
+  /* ---------- 3 · GRADYAN PANEL ---------- */
+  .g3{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .k3{border-radius:18px;overflow:hidden;border:1px solid var(--cizgi);background:#fff}
+  .k3 .hd{padding:15px 16px;background:linear-gradient(135deg,color-mix(in srgb,var(--c) 15%,#fff),#fff 78%);display:flex;align-items:center;gap:12px;position:relative}
+  .k3 .hd::after{content:'';position:absolute;right:-30px;top:-40px;width:130px;height:130px;border-radius:50%;background:radial-gradient(circle,color-mix(in srgb,var(--c) 22%,transparent),transparent 65%)}
+  .k3 .rozet{width:46px;height:46px;border-radius:50%;font-size:14px;background:linear-gradient(140deg,var(--c),color-mix(in srgb,var(--c) 58%,#000));box-shadow:0 8px 18px -8px var(--c)}
+  .k3 .ad b{font-size:15px;font-weight:900;display:block}
+  .k3 .ad small{font-size:11.5px;color:var(--mut);font-weight:650}
+  .k3 .kutular{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:14px 16px}
+  .k3 .kt{background:#f7f9fc;border:1px solid #edf1f7;border-radius:12px;padding:10px 12px}
+  .k3 .kt .e{font-size:10px;font-weight:900;letter-spacing:.5px;color:var(--soluk);text-transform:uppercase}
+  .k3 .kt .v{font-size:13px;font-weight:850;margin-top:4px;display:flex;align-items:center;gap:8px}
+  .k3 .alt{display:flex;gap:8px;padding:0 16px 16px}
+
+  /* ---------- 4 · SOL ŞERİTLİ SADE ---------- */
+  .g4{display:flex;flex-direction:column;gap:11px}
+  .k4{display:flex;align-items:center;gap:14px;background:#fff;border:1px solid var(--cizgi);border-left:4px solid var(--c);border-radius:13px;padding:13px 16px}
+  .k4 .rozet{width:34px;height:34px;border-radius:10px;font-size:11.5px;background:color-mix(in srgb,var(--c) 12%,#fff);color:var(--c);border:1px solid color-mix(in srgb,var(--c) 26%,#fff)}
+  .k4 .ad{display:flex;flex-direction:column;line-height:1.3}
+  .k4 .ad b{font-size:13.5px;font-weight:850}
+  .k4 .ad small{font-size:11px;color:var(--soluk);font-weight:650}
+  .k4 .meta{margin-left:auto;display:flex;align-items:center;gap:18px}
+  .k4 .m{display:flex;flex-direction:column;line-height:1.3;text-align:right}
+  .k4 .m span{font-size:10px;font-weight:900;letter-spacing:.4px;color:var(--soluk);text-transform:uppercase}
+  .k4 .m b{font-size:12.5px;font-weight:800;color:#334155}
+  .k4 .ops{display:flex;gap:7px}
+</style>
+
+<div class="sayfa">
+
+  <!-- 1 -->
+  <div class="blok">
+    <div class="blokust"><div class="no">1</div><div class="blokad">ÜST ŞERİTLİ KART — entegratörün rengi kartın tepesinde</div></div>
+    <div class="govde">
+      <div class="g1">
+        <div class="k1" style="--c:#7c3aed">
+          <div class="serit"></div>
+          <div class="ust">
+            <div class="rozet">MI</div>
+            <div class="ad"><b>Mikro</b><small>aygenmutfak@gmail.com</small></div>
+            <span class="cip ok" style="margin-left:auto">Bağlı</span>
+          </div>
+          <div class="ic">
+            <div class="st"><span class="et">Son çekim</span><span class="dg2" style="color:#94a3b8">—</span></div>
+            <div class="st"><span class="et">Gece çekim</span><span class="anh"><i></i></span><b style="color:#64748b;font-size:12px">Kapalı</b><select class="saat" style="margin-left:auto"><option>02:00</option></select></div>
+          </div>
+          <div class="alt"><button class="dg ana">Sorgula</button><button class="dg">Güncelle</button><button class="dg sil">Kaldır</button></div>
+        </div>
+        <div class="k1" style="--c:#2563eb">
+          <div class="serit"></div>
+          <div class="ust">
+            <div class="rozet">PŞ</div>
+            <div class="ad"><b>Paraşüt</b><small>aygenmutfak@gmail.com</small></div>
+            <span class="cip ok" style="margin-left:auto">Bağlı</span>
+          </div>
+          <div class="ic">
+            <div class="st"><span class="et">Son çekim</span><span class="dg2">07.08.2026 18:17</span></div>
+            <div class="st"><span class="et">Gece çekim</span><span class="anh on"><i></i></span><b style="color:#15803d;font-size:12px">Açık</b><select class="saat" style="margin-left:auto"><option>02:00</option></select></div>
+          </div>
+          <div class="alt"><button class="dg ana">Sorgula</button><button class="dg">Güncelle</button><button class="dg sil">Kaldır</button></div>
+        </div>
+      </div>
+    </div>
+    <div class="notx">Her entegratör <b>kendi renginde</b> ince bir şeritle ayrılır; bilgiler açık gri iç panelde toplanır, düğmeler altta hizalı. Şimdiki düzene en yakın ama toparlanmış hâli.</div>
+  </div>
+
+  <!-- 2 -->
+  <div class="blok">
+    <div class="blokust"><div class="no">2</div><div class="blokad">LİSTE SATIRI — tablo düzeni, çok entegratörde bozulmaz</div></div>
+    <div class="govde">
+      <div class="t2">
+        <div class="bas"><span>Entegratör</span><span>Son çekim</span><span>Gece çekim</span><span></span></div>
+        <div class="sat">
+          <div class="sol"><div class="rozet" style="--c:#7c3aed">MI</div><div class="ad"><b>Mikro</b><small>aygenmutfak@gmail.com</small></div><span class="cip ok">Bağlı</span></div>
+          <span style="font-size:12.5px;color:#94a3b8;font-weight:750">—</span>
+          <div class="gece"><span class="anh"><i></i></span>Kapalı<select class="saat"><option>02:00</option></select></div>
+          <div class="ops"><button class="dg ana">Sorgula</button><button class="dg">Güncelle</button><button class="dg sil">Kaldır</button></div>
+        </div>
+        <div class="sat">
+          <div class="sol"><div class="rozet" style="--c:#2563eb">PŞ</div><div class="ad"><b>Paraşüt</b><small>aygenmutfak@gmail.com</small></div><span class="cip ok">Bağlı</span></div>
+          <span style="font-size:12.5px;font-weight:800;color:#334155">07.08.2026 18:17</span>
+          <div class="gece"><span class="anh on"><i></i></span><b style="color:#15803d">Açık</b><select class="saat"><option>02:00</option></select></div>
+          <div class="ops"><button class="dg ana">Sorgula</button><button class="dg">Güncelle</button><button class="dg sil">Kaldır</button></div>
+        </div>
+      </div>
+    </div>
+    <div class="notx">Tek satır = tek entegratör. <b>5 entegratörlü mükellefte bile</b> ekran uzamaz, hepsi tek bakışta karşılaştırılır. Hattat tablo diline en yakın seçenek.</div>
+  </div>
+
+  <!-- 3 -->
+  <div class="blok">
+    <div class="blokust"><div class="no">3</div><div class="blokad">GRADYAN PANEL — portal tasarım dili (parıltılı başlık)</div></div>
+    <div class="govde">
+      <div class="g3">
+        <div class="k3" style="--c:#7c3aed">
+          <div class="hd"><div class="rozet">MI</div><div class="ad"><b>Mikro</b><small>aygenmutfak@gmail.com</small></div><span class="cip ok" style="margin-left:auto;position:relative;z-index:1">Bağlı</span></div>
+          <div class="kutular">
+            <div class="kt"><div class="e">Son çekim</div><div class="v" style="color:#94a3b8">—</div></div>
+            <div class="kt"><div class="e">Gece çekim</div><div class="v"><span class="anh"><i></i></span><span style="font-size:12px;color:#64748b">Kapalı</span></div></div>
+          </div>
+          <div class="alt"><button class="dg ana">Sorgula</button><button class="dg">Güncelle</button><button class="dg sil">Kaldır</button></div>
+        </div>
+        <div class="k3" style="--c:#2563eb">
+          <div class="hd"><div class="rozet">PŞ</div><div class="ad"><b>Paraşüt</b><small>aygenmutfak@gmail.com</small></div><span class="cip ok" style="margin-left:auto;position:relative;z-index:1">Bağlı</span></div>
+          <div class="kutular">
+            <div class="kt"><div class="e">Son çekim</div><div class="v">07.08.2026</div></div>
+            <div class="kt"><div class="e">Gece çekim</div><div class="v"><span class="anh on"><i></i></span><span style="font-size:12px;color:#15803d;font-weight:800">Açık · 02:00</span></div></div>
+          </div>
+          <div class="alt"><button class="dg ana">Sorgula</button><button class="dg">Güncelle</button><button class="dg sil">Kaldır</button></div>
+        </div>
+      </div>
+    </div>
+    <div class="notx">Portalın kendi dili: <b>yumuşak gradyan başlık + radial parıltı</b>, yuvarlak rozet, bilgiler ikili kutularda. En "premium" duran seçenek, yer kaplaması 1 ile aynı.</div>
+  </div>
+
+  <!-- 4 -->
+  <div class="blok">
+    <div class="blokust"><div class="no">4</div><div class="blokad">SOL ŞERİTLİ SADE SATIR — alt alta, ferah</div></div>
+    <div class="govde">
+      <div class="g4">
+        <div class="k4" style="--c:#7c3aed">
+          <div class="rozet">MI</div>
+          <div class="ad"><b>Mikro</b><small>aygenmutfak@gmail.com</small></div>
+          <span class="cip ok">Bağlı</span>
+          <div class="meta">
+            <div class="m"><span>Son çekim</span><b style="color:#94a3b8">—</b></div>
+            <div class="m"><span>Gece çekim</span><b style="display:flex;align-items:center;gap:7px;justify-content:flex-end"><span class="anh"><i></i></span>Kapalı</b></div>
+            <div class="ops"><button class="dg ana">Sorgula</button><button class="dg">Güncelle</button><button class="dg sil">Kaldır</button></div>
+          </div>
+        </div>
+        <div class="k4" style="--c:#2563eb">
+          <div class="rozet">PŞ</div>
+          <div class="ad"><b>Paraşüt</b><small>aygenmutfak@gmail.com</small></div>
+          <span class="cip ok">Bağlı</span>
+          <div class="meta">
+            <div class="m"><span>Son çekim</span><b>07.08.2026 18:17</b></div>
+            <div class="m"><span>Gece çekim</span><b style="display:flex;align-items:center;gap:7px;justify-content:flex-end;color:#15803d"><span class="anh on"><i></i></span>Açık 02:00</b></div>
+            <div class="ops"><button class="dg ana">Sorgula</button><button class="dg">Güncelle</button><button class="dg sil">Kaldır</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="notx">Beyaz kart + <b>sol renk şeridi</b>; her şey tek satırda, sağda hizalı. Kart hissi korunur ama tablo kadar derli toplu durur.</div>
+  </div>
+
+</div>
+</html>
