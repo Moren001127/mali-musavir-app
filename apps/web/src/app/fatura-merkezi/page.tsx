@@ -1272,7 +1272,14 @@ export default function FaturaMerkeziPage() {
           </div>
 
           <div className="content">
-            {(screen === 'faturalar' || screen === 'satis') && <ScreenFaturalar taxpayerId={taxpayerId} period={period} kind={screen === 'satis' ? 'SATIS' : 'ALIS'} isIsletme={(() => { const t = taxpayers.find((x) => x.id === taxpayerId); return /i[şs]letme|defter.?beyan|basit/i.test(`${t?.defterTuru || ''} ${(t as any)?.mihsapDefterTuru || ''}`); })()} taxpayerNace={(taxpayers.find((t) => t.id === taxpayerId) as any)?.naceKodu || ''} taxpayerFaaliyet={(taxpayers.find((t) => t.id === taxpayerId) as any)?.faaliyetAciklama || ''} onOpenSorgu={() => sorguGit(screen === 'satis' ? (efaturaMi === true ? 'efaturaSorgu' : 'earsivSorgu') : 'efaturaSorgu')} onOpenMuhasebe={(id) => { try { localStorage.setItem('fm-open-doc', id); } catch { /* yok say */ } setScreen('muhasebe'); }} />}
+            {(screen === 'faturalar' || screen === 'satis') && <ScreenFaturalar taxpayerId={taxpayerId} period={period} kind={screen === 'satis' ? 'SATIS' : 'ALIS'} isIsletme={(() => { const t = taxpayers.find((x) => x.id === taxpayerId); return /i[şs]letme|defter.?beyan|basit/i.test(`${t?.defterTuru || ''} ${(t as any)?.mihsapDefterTuru || ''}`); })()} taxpayerNace={(taxpayers.find((t) => t.id === taxpayerId) as any)?.naceKodu || ''} taxpayerFaaliyet={(taxpayers.find((t) => t.id === taxpayerId) as any)?.faaliyetAciklama || ''} onOpenSorgu={() => sorguGit(screen === 'satis' ? (efaturaMi === true ? 'efaturaSorgu' : 'earsivSorgu') : 'efaturaSorgu')} onOpenMuhasebe={(id, donem) => {
+              // DÖNEM TAŞIMA (2026-09-23): Gelen Faturalar BÜTÜN DÖNEMLERİ listeler, Muhasebeleştir ise
+              //   SEÇİLİ döneme bakar. Belge başka aya aitse ekran "Hazır belge yok" diyordu. Artık
+              //   belgenin dönemi de taşınıyor (İş Akışı ekranı bunu zaten yapıyordu).
+              try { localStorage.setItem('fm-open-doc', id); } catch { /* yok say */ }
+              if (donem) setPeriod(donem);
+              setScreen('muhasebe');
+            }} />}
             {screen === 'earsivSorgu' && <ScreenSorgu taxpayerId={taxpayerId} period={period} source="earsiv" onOpenEntegrator={() => go('entegrator')} />}
             {screen === 'efaturaSorgu' && <ScreenSorgu taxpayerId={taxpayerId} period={period} source="efatura" onOpenEntegrator={() => go('entegrator')} />}
             {screen === 'mukellefler' && <ScreenMukellefler taxpayers={taxpayers} period={period} onOpen={(id) => { setTaxpayerId(id); setScreen('faturalar'); }} />}
@@ -1346,7 +1353,16 @@ function gfKumeOf(d: any, du: { cat: string }, guven: GfGuven): GfKume {
   if (!engelVar && du.cat === 'ready' && d?.status !== 'APPROVED') return 'hazir';
   return 'incele';
 }
-function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false, taxpayerNace = '', taxpayerFaaliyet = '', onOpenSorgu, onOpenMuhasebe }: { taxpayerId: string; period: string; kind?: 'ALIS' | 'SATIS'; isIsletme?: boolean; taxpayerNace?: string; taxpayerFaaliyet?: string; onOpenSorgu?: () => void; onOpenMuhasebe?: (id: string) => void }) {
+function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false, taxpayerNace = '', taxpayerFaaliyet = '', onOpenSorgu, onOpenMuhasebe }: { taxpayerId: string; period: string; kind?: 'ALIS' | 'SATIS'; isIsletme?: boolean; taxpayerNace?: string; taxpayerFaaliyet?: string; onOpenSorgu?: () => void; onOpenMuhasebe?: (id: string, donem?: string) => void }) {
+  /** Belgenin dönemi (YYYY-MM) — fatura tarihinden, yoksa kayıt tarihinden. Muhasebeleştir'e geçerken taşınır. */
+  const belgeDonemi = (d: any): string | undefined => {
+    const t = d?.faturaTarihi || d?.createdAt;
+    if (!t) return undefined;
+    const g = new Date(t);
+    if (Number.isNaN(g.getTime())) return undefined;
+    return `${g.getFullYear()}-${String(g.getMonth() + 1).padStart(2, '0')}`;
+  };
+
   const qc = useQueryClient();
   // Mükellef seçiliyken DÖNEMSİZ (Mihsap Gelen Belgeler gibi); "Tüm mükellefler" görünümü ağır kaçmasın diye dönemli kalır.
   const docsQ = useDocuments(taxpayerId, taxpayerId ? 'all' : period, 'PENDING');
@@ -2208,7 +2224,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                     {/* Eylemler: 4 küçük ikon düğme (ipuçlu) — tek satır, sabit 140px; taşmaz. */}
                     <td className="gf-eylem"><div className="gf-acts">
                       <button type="button" className={`gf-act incele${fisAcik ? ' on' : ''}`} onClick={() => setFisDetayId(fisAcik ? '' : d.id)} title={fisAcik ? 'Detayı gizle' : (isIsletme ? 'İncele: kayıt türü + uyarılar + AI yorumu' : 'İncele: yevmiye fişi + uyarılar + AI yorumu')} aria-label="İncele"><Ico html={I.ledger} size={14} /></button>
-                      <button type="button" className="gf-act duzenle" onClick={() => onOpenMuhasebe?.(d.id)} title="Düzenle: Muhasebeleştir ekranında aç" aria-label="Düzenle"><Ico html={I.edit} size={14} /></button>
+                      <button type="button" className="gf-act duzenle" onClick={() => onOpenMuhasebe?.(d.id, belgeDonemi(d))} title="Düzenle: Muhasebeleştir ekranında aç" aria-label="Düzenle"><Ico html={I.edit} size={14} /></button>
                       <button type="button" className="gf-act onizle" onClick={() => openDocFile(d.id)} title="Önizle: belgeyi aç (PDF/görsel/XML)" aria-label="Önizle"><Ico html={I.eye} size={14} /></button>
                       <button type="button" className="gf-act sil" disabled={delMut.isPending || bulkDelMut.isPending} title="Sil" aria-label="Sil" onClick={() => { if (window.confirm(`Bu belge silinsin mi?\n${firma} · ${fmtMoney(d.totalAmount)} ₺${d.belgeNo ? ' · ' + d.belgeNo : ''}`)) delMut.mutate(d.id); }}><Ico html={I.trash} size={14} /></button>
                     </div></td>
@@ -2245,7 +2261,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                           {docUyarilar.length > 0 && (
                             <UyariKutusu doc={d} taxpayerId={taxpayerId}
                               onIlkBelge={(ilk) => { if (docs.some((x: any) => x.id === ilk)) setFisDetayId(ilk); else onOpenMuhasebe?.(ilk); }}
-                              onAcEditor={(id) => onOpenMuhasebe?.(id)} />
+                              onAcEditor={(id) => onOpenMuhasebe?.(id, belgeDonemi(d))} />
                           )}
                           {Array.isArray((d.ocrData as any)?.kalemler) && (d.ocrData as any).kalemler.length > 0 ? (
                             <div style={{ padding: '6px 10px', marginBottom: 8, background: 'rgba(255,255,255,0.025)', border: '1px solid var(--line)', borderRadius: 5, fontSize: 11.5, maxWidth: 940 }}>
