@@ -86,7 +86,7 @@
   //   Luca'nın beklediği adlarla TEK SEFERDE hizalanır (her denemede tek sütun hatası okumak yerine).
   // v1.47.48 (2026-09-15): firma onay düğmesi regex'indeki `\b` sınırları kaynakta gerçek backspace (0x08) baytına
   //   dönüşmüştü (sec/aç/ac seçenekleri ölüydü) → düzeltildi.
-  const AGENT_VERSION = '1.47.56';
+  const AGENT_VERSION = '1.47.57';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -2942,16 +2942,33 @@
                       }
                       await sleep(1800);
                       // onay kutusu çıkarsa evetle
+                      // Onay kutusu: popupNativeClick bu kapsamda TANIMLI DEĞİL (23.09 hatası) → DOM'dan bas.
                       for (const lbl of ['Evet', 'Tamam', 'Onayla']) {
-                        if (await popupNativeClick(lbl, { exact: true, settleMs: 700, timeoutMs: 1500 })) break;
+                        let bs = false;
+                        try {
+                          for (const d2 of lucaDocuments()) {
+                            for (const el of d2.querySelectorAll('button, input[type="button"], input[type="submit"], a')) {
+                              const t2 = String(el.value || el.textContent || '').replace(/\s+/g, ' ').trim();
+                              if (t2 === lbl) { try { el.click(); } catch {} bs = true; break; }
+                            }
+                            if (bs) break;
+                          }
+                        } catch {}
+                        if (bs) { await log(`↳ temizleme onayı "${lbl}" verildi`); break; }
                       }
                       await sleep(1200);
-                      if (!temizlendi) await log('⚠ "Toplu Temizle" düğmesi bulunamadı — kalıntı satırlar duruyor olabilir');
+                      if (!temizlendi) throw new Error('HIZLI FİŞ ekranında kalıntı satırlar var ama "Toplu Temizle" düğmesi bulunamadı — mükerrer fiş riski, aktarım durduruldu.');
+                      let kalan = 0;
+                      try { const s3 = new Set(); for (const el of hazirlikDoc.querySelectorAll('[name^="detaylar["]')) { const m = String(el.name || '').match(/^detaylar\[(\d+)\]/); if (m) s3.add(m[1]); } kalan = s3.size; } catch {}
+                      await log(`🧹 temizlik sonrası satır=${kalan}`);
+                      if (kalan > 1) throw new Error(`"Toplu Temizle" sonrası ekranda hâlâ ${kalan} satır var — mükerrer fiş kesilmesin diye aktarım durduruldu. Luca'da HIZLI FİŞ ekranını elle temizleyip tekrar deneyin.`);
                     }
                   }
                 } catch (e) {
-                  if (/dönemi .* yapılamadı/i.test(String((e && e.message) || ''))) throw e;
-                  await log(`ekran hazırlık uyarısı: ${(e && e.message) || e}`);
+                  const msj = String((e && e.message) || e);
+                  // Dönem ve KALINTI hataları YUTULMAZ — ikisi de yanlış/mükerrer fiş demek.
+                  if (/dönemi .* yapılamadı|mükerrer fiş|kalıntı satır/i.test(msj)) throw e;
+                  await log(`ekran hazırlık uyarısı: ${msj}`);
                 }
               }
 
@@ -3319,7 +3336,13 @@
                         }
                       } catch {}
                     }
-                  } catch (e) { await log(`satır kutusu doldurma uyarısı: ${(e && e.message) || e}`); }
+                  } catch (e) {
+                    // v1.47.57: KALINTI hatasi YUTULMAZ — yoksa mukerrer fis kesiliyor (23.09 canli olay:
+                    //   24 kalinti + 12 yeni = 36 satirlik fis kesildi). Diger uyarilar sadece loglanir.
+                    const msj = String((e && e.message) || e);
+                    if (/KALINTI satırlar var/i.test(msj)) throw e;
+                    await log(`satır kutusu doldurma uyarısı: ${msj}`);
+                  }
                   await log(`🧩 Satır açılır kutusu dolduruldu=${kutuDolduruldu}${bosKutular.length ? ` · BOŞ KALAN=${bosKutular.slice(0, 6).join(', ')}` : ''}`);
                   // v1.47.55 — CARİ SORGULAMA: TCKN/VKN'den vergi dairesi + ünvan + adres çekilir.
                   //   Muzaffer Bey: "onu yapmayınca kesilen fişte cariyi falan dolu göstermiyor."
