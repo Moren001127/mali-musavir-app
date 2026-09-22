@@ -5522,13 +5522,12 @@ function ScreenEntegrator({ taxpayerId, period }: { taxpayerId: string; period: 
           ) : (
             <div className="egrid">
               {configured.map((c: any) => (
-                <div key={c.provider} className="ecard">
+                <div key={c.provider} className="ecard" style={{ ['--pc' as any]: sorguProvRenk(c.provider) }}>
                   <div className="eh">
                     <div className="ei">{provKisalt(c.label, c.provider)}</div>
-                    <div className="en"><b>{c.label || c.provider}</b><small>{c.username ? `Kullanıcı: ${c.username}` : c.kind}</small></div>
-                    <span className={`pill ${c.isActive ? 'ok' : 'warn'}`} style={{ marginLeft: 'auto' }}>{c.isActive ? 'Bağlı' : 'Pasif'}</span>
+                    <div className="en"><b>{c.label || c.provider}</b><small>{c.username ? c.username : c.kind}</small></div>
+                    <span className={`epill ${c.isActive ? 'ok' : 'warn'}`}>{c.isActive ? 'Bağlı' : 'Pasif'}</span>
                   </div>
-                  <div className="erow"><span>Son çekim</span><span title={c.lastSyncAt ? 'Son gece / elle çekim zamanı' : 'Henüz çekim yapılmadı'}>{c.lastSyncAt ? ghTarihSaat(c.lastSyncAt) : '—'}</span></div>
                   {(() => {
                     // PLAN16-H: gece çekim anahtarı (varsayılan KAPALI) + saat seçimi. Yalnız bağlı (connected) sağlayıcıda
                     //   etkin; değilse kilitli + ipucu "önce kimlik tanımla". Hepsini aç/kapat YOK — her kart kendi anahtarı.
@@ -5539,9 +5538,14 @@ function ScreenEntegrator({ taxpayerId, period }: { taxpayerId: string; period: 
                     const saatler = GH_GECE_SAATLERI.includes(saat) ? GH_GECE_SAATLERI : [...GH_GECE_SAATLERI, saat].sort();
                     return (
                       <>
-                        <div className="erow gh-gece">
-                          <span>Gece çekim</span>
-                          <span className="gh-gece-ctl">
+                        <div className="ekutu">
+                        <div className="ek">
+                          <div className="e">Son çekim</div>
+                          <div className={`v${c.lastSyncAt ? '' : ' bos'}`} title={c.lastSyncAt ? 'Son gece / elle çekim zamanı' : 'Henüz çekim yapılmadı'}>{c.lastSyncAt ? ghTarihSaat(c.lastSyncAt) : 'Henüz yok'}</div>
+                        </div>
+                        <div className="ek gh-gece">
+                          <div className="e">Gece çekim</div>
+                          <div className="v">
                             <button type="button" role="switch" aria-checked={acik} className={`gh-switch${acik ? ' on' : ''}`} disabled={kilit || busy}
                               title={kilit ? 'Önce kimlik tanımla — bağlı olmayan entegratörde gece çekimi açılamaz' : acik ? 'Gece çekimini kapat' : 'Gece çekimini aç (yalnız bu mükellef × entegratör)'}
                               onClick={() => talimatMut.mutate({ provider: c.provider, active: !acik })}><i /></button>
@@ -5550,7 +5554,8 @@ function ScreenEntegrator({ taxpayerId, period }: { taxpayerId: string; period: 
                               onChange={(e) => talimatMut.mutate({ provider: c.provider, active: acik, saat: e.target.value })}>
                               {saatler.map((s) => <option key={s} value={s}>{s}</option>)}
                             </select>
-                          </span>
+                          </div>
+                        </div>
                         </div>
                         <div className={`gh-gece-hint${kilit ? ' kilit' : acik ? ' on' : ''}`}>
                           {kilit
@@ -5563,9 +5568,9 @@ function ScreenEntegrator({ taxpayerId, period }: { taxpayerId: string; period: 
                     );
                   })()}
                   <div className="ebtns">
-                    <button className="btn ghost sm" disabled={fetchMut.isPending} onClick={() => fetchMut.mutate(c.provider)}>{fetchMut.isPending ? 'Sorgulanıyor…' : 'Sorgula'}</button>
+                    <button className="btn sm eana" disabled={fetchMut.isPending} onClick={() => fetchMut.mutate(c.provider)}>{fetchMut.isPending ? 'Sorgulanıyor…' : 'Sorgula'}</button>
                     <button className="btn ghost sm" onClick={() => openEdit(c)}>Güncelle</button>
-                    <button className="btn ghost sm" disabled={delMut.isPending} onClick={() => { if (window.confirm(`${c.label || c.provider} kaldırılsın mı?`)) delMut.mutate(c.provider); }}>Kaldır</button>
+                    <button className="btn ghost sm esil" disabled={delMut.isPending} onClick={() => { if (window.confirm(`${c.label || c.provider} kaldırılsın mı?`)) delMut.mutate(c.provider); }}>Kaldır</button>
                   </div>
                 </div>
               ))}
@@ -7690,14 +7695,31 @@ const CSS = `
 #fm-root .seg button:disabled{opacity:.55;cursor:default}
 #fm-root .autoseg{margin-left:auto}
 #fm-root .src{font-size:10px;color:var(--accent);display:flex;align-items:center;gap:4px;margin-top:2px}
-#fm-root .egrid{display:grid;grid-template-columns:repeat(2,1fr);gap:13px}
-#fm-root .ecard{border:1px solid var(--line);border-radius:12px;padding:15px 16px;background:#fff}
-#fm-root .ecard .eh{display:flex;align-items:center;gap:11px;margin-bottom:10px}
-#fm-root .ecard .ei{height:38px;width:38px;border-radius:10px;display:grid;place-items:center;background:var(--accent-soft);color:var(--accent);font-weight:800;font-size:13px}
-#fm-root .ecard .en b{font-size:13.5px}
-#fm-root .ecard .en small{display:block;color:var(--faint);font-size:11px}
-#fm-root .ecard .erow{display:flex;align-items:center;justify-content:space-between;font-size:12px;padding:5px 0;border-top:1px dashed var(--line)}
-#fm-root .ecard .ebtns{display:flex;gap:8px;margin-top:11px;flex-wrap:wrap}
+/* Entegratör kartı — TASLAK 3 (Muzaffer Bey seçimi 2026-09-22): gradyan başlık + radial parıltı,
+   yuvarlak rozet, bilgiler ikili kutuda, altta dolu "Sorgula". Renk entegratöre göre (--pc). */
+#fm-root .egrid{display:grid;grid-template-columns:repeat(2,1fr);gap:15px}
+#fm-root .ecard{border:1px solid var(--line);border-radius:18px;background:#fff;overflow:hidden;box-shadow:0 10px 26px -20px rgba(15,23,42,.55);transition:box-shadow .16s,transform .16s}
+#fm-root .ecard:hover{box-shadow:0 16px 34px -20px rgba(15,23,42,.6);transform:translateY(-1px)}
+#fm-root .ecard .eh{display:flex;align-items:center;gap:13px;padding:16px 17px;position:relative;background:linear-gradient(135deg,color-mix(in srgb,var(--pc,var(--accent)) 14%,#fff),#fff 78%)}
+#fm-root .ecard .eh::after{content:'';position:absolute;right:-34px;top:-46px;width:140px;height:140px;border-radius:50%;background:radial-gradient(circle,color-mix(in srgb,var(--pc,var(--accent)) 20%,transparent),transparent 66%);pointer-events:none}
+#fm-root .ecard .ei{height:46px;width:46px;border-radius:50%;display:grid;place-items:center;color:#fff;font-weight:900;font-size:13px;letter-spacing:.3px;flex-shrink:0;position:relative;z-index:1;background:linear-gradient(140deg,var(--pc,var(--accent)),color-mix(in srgb,var(--pc,var(--accent)) 58%,#000));box-shadow:0 8px 18px -8px var(--pc,var(--accent))}
+#fm-root .ecard .en{min-width:0;position:relative;z-index:1}
+#fm-root .ecard .en b{font-size:15px;font-weight:900;display:block;line-height:1.3}
+#fm-root .ecard .en small{display:block;color:var(--faint);font-size:11.5px;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#fm-root .ecard .epill{margin-left:auto;position:relative;z-index:1;display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 11px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap}
+#fm-root .ecard .epill::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor}
+#fm-root .ecard .epill.ok{background:#e7f6ec;color:#15803d;border:1px solid #bfe5cc}
+#fm-root .ecard .epill.warn{background:#fff4e0;color:#b45309;border:1px solid #f6d7a4}
+#fm-root .ecard .ekutu{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:14px 17px 4px}
+#fm-root .ecard .ek{background:#f7f9fc;border:1px solid #edf1f7;border-radius:13px;padding:10px 12px;min-width:0}
+#fm-root .ecard .ek .e{font-size:10px;font-weight:900;letter-spacing:.5px;color:var(--faint);text-transform:uppercase}
+#fm-root .ecard .ek .v{font-size:13px;font-weight:850;margin-top:5px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+#fm-root .ecard .ek .v.bos{color:var(--faint);font-weight:700}
+#fm-root .ecard .ebtns{display:flex;gap:8px;padding:12px 17px 16px;flex-wrap:wrap}
+#fm-root .ecard .btn.eana{background:var(--accent);border-color:transparent;color:#fff;font-weight:800}
+#fm-root .ecard .btn.eana:hover:not(:disabled){filter:brightness(1.07);color:#fff}
+#fm-root .ecard .btn.esil{color:#b91c1c;border-color:#f0d2d2}
+#fm-root .ecard .btn.esil:hover:not(:disabled){background:#fdeaea;color:#b91c1c}
 #fm-root .eform{border:1px dashed var(--line2);border-radius:12px;padding:16px;background:#fbfcfd}
 #fm-root .eform .erw{display:grid;grid-template-columns:1fr 1fr;gap:11px;margin-bottom:11px}
 #fm-root .endcol{justify-content:flex-end}
@@ -9053,7 +9075,9 @@ const CSS = `
 #fm-root .gh-band b{font-weight:800;color:#0d1626}
 #fm-root .gh-band code{font-family:"Consolas","SF Mono",ui-monospace,monospace;font-size:11.5px;background:#fff;border:1px solid var(--accent-line);border-radius:5px;padding:0 5px;color:var(--accent)}
 /* Gece çekim satırı: anahtar + durum + saat (mükellef × entegratör; "hepsini aç/kapat" YOK) */
-#fm-root .ecard .erow.gh-gece{align-items:center;padding:7px 0}
+#fm-root .ecard .ek.gh-gece .v{gap:8px;flex-wrap:nowrap}
+#fm-root .ecard .ek.gh-gece .gh-gece-durum{min-width:0}
+#fm-root .ecard .ek.gh-gece .gh-saat{margin-left:auto}
 #fm-root .gh-gece-ctl{display:inline-flex;align-items:center;gap:8px}
 #fm-root .gh-switch{position:relative;width:38px;height:22px;padding:0;border-radius:999px;border:1px solid #cbd5e1;background:#d9dee7;cursor:pointer;transition:background .16s,border-color .16s,box-shadow .16s;flex-shrink:0}
 #fm-root .gh-switch i{position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(15,23,42,.35);transition:left .16s}
@@ -9067,7 +9091,7 @@ const CSS = `
 #fm-root .gh-saat{height:26px;padding:0 6px;border:1px solid var(--line2);border-radius:7px;background:#fff;color:var(--text);font-family:"Consolas","SF Mono",ui-monospace,monospace;font-size:12px;font-weight:700;cursor:pointer}
 #fm-root .gh-saat:focus{outline:none;border-color:var(--accent)}
 #fm-root .gh-saat:disabled{opacity:.5;cursor:not-allowed}
-#fm-root .gh-gece-hint{font-size:11px;color:var(--faint);padding:0 0 4px;line-height:1.4}
+#fm-root .gh-gece-hint{font-size:11px;color:var(--faint);padding:8px 17px 0;line-height:1.45}
 #fm-root .gh-gece-hint.on{color:var(--accent);font-weight:600}
 #fm-root .gh-gece-hint.kilit{color:#b45309}
 /* === PLAN16-D: KDV TEYIT === */
