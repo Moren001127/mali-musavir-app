@@ -352,7 +352,8 @@ export function buildLucaIsletmeHizliFisCsv(payload: BatchPayload): Buffer {
     //                 (eskiden DBS kayıt türü adı "Mal Satışı" yazılıyordu → "KATEGORI sütunu … değerlerinden biri olabilir" reddi)
     //   3 BELGE TURU = Luca fiş türü: Gelir → Satış | Diğer Satışlar | Alıştan İade | Diğer Alıştan İade | Z Raporu | Envanter;
     //                 Gider → Alış | Diğer Alışlar | Satıştan İade | Diğer Satıştan İadeler | Devir (eskiden DBS belge adı yazılıyordu)
-    //   15 KOD      = KDV istisna/tevkifat TABLO kodu (14 KDV İSTİSNASI ile birlikte) — DBS işlem türü (1100) DEĞİL → boş
+    //   15 KOD      = 14 KDV İSTİSNASI tablosunun KOD'u. Normal satışta 1100 (Yurtiçi Teslim ve Hizmetler),
+    //                 kısmi tevkifatta tevkifat kodu (6xx). 2026-09-23'e kadar boş bırakılıyordu — yanlıştı.
     //   16 BELGE TÜRÜ(DB) = Defter-Beyan belge türü ADI (Z Raporu, e-Arşiv, e-Fatura, Fatura, ÖKC Fişi …)
     //   24 TEVKİFAT = Luca sözlüğü: 2/10, 3/10, 4/10, 5/10, 7/10, 9/10, Tam (10/10 → Tam)
     const isZ = normalizeDocumentType(inv.documentType) === 'Z_RAPORU';
@@ -407,8 +408,21 @@ export function buildLucaIsletmeHizliFisCsv(payload: BatchPayload): Buffer {
       const tevkPay = tevkPayOf(tevkOranTxt);
       const satisTevkifatli = isSale && tevkPay > 0;
       const tamTevkifat = tevkPay >= 10;
-      const kdvIstisnasi = satisTevkifatli ? (tamTevkifat ? 'Tablo (İSTEĞE BAĞLI TAM TEVKİFAT UYGULANAN İŞLEMLER)' : 'Tablo 2(KISMİ TEVKİFAT UYGULANAN İŞLEMLER)') : '';
-      const tevkifatKod = satisTevkifatli ? String(isl.tevkifatKodu || '').replace(/\D/g, '') : '';
+      // KDV İSTİSNASI + KOD (2026-09-23, Muzaffer Bey'in HIZLI FİŞ ekranı):
+      //   Bu iki alan NORMAL satışta da DOLU olmalı. Eskiden yalnız tevkifatlıda dolduruluyordu;
+      //   boş kalınca Luca ekranda "KDV İstisnası" ve "Kod" kutularını boş bırakıyor.
+      //   · Normal satış  → Tablo 1(TEVKİFAT UYGULANMAYAN İŞLEMLER) + kod 1100 (Yurtiçi Teslim ve Hizmetler)
+      //   · Kısmi tevkifat → Tablo 2(KISMİ TEVKİFAT UYGULANAN İŞLEMLER) + tevkifat kodu (6xx)
+      //   · Tam tevkifat   → Tablo (İSTEĞE BAĞLI TAM TEVKİFAT UYGULANAN İŞLEMLER)
+      //   ALIŞ satırlarında bu alanlar kullanılmaz → boş.
+      const kdvIstisnasi = isSale
+        ? (satisTevkifatli
+            ? (tamTevkifat ? 'Tablo (İSTEĞE BAĞLI TAM TEVKİFAT UYGULANAN İŞLEMLER)' : 'Tablo 2(KISMİ TEVKİFAT UYGULANAN İŞLEMLER)')
+            : 'Tablo 1(TEVKİFAT UYGULANMAYAN İŞLEMLER)')
+        : '';
+      const tevkifatKod = satisTevkifatli
+        ? String(isl.tevkifatKodu || '').replace(/\D/g, '')
+        : (isSale ? '1100' : '');
       const alisSatisTuruCsv = satisTevkifatli
         ? (tamTevkifat ? 'İsteğe Bağlı Tam Tevkifat Uygulanan İşlemler' : 'Kısmi Tevkifat Uygulanan İşlemler')
         : lucaAlisSatisTuru(alisSatisAdResolved);
@@ -443,7 +457,7 @@ export function buildLucaIsletmeHizliFisCsv(payload: BatchPayload): Buffer {
         '',                                           // 12 ADRES
         st.hesapKodu || '',                           // 13 CARİ HESAP
         kdvIstisnasi,                                 // 14 KDV İSTİSNASI (KDV tablo türü: tevkifatlı satışta Tablo 2 / isteğe bağlı tam)
-        tevkifatKod,                                  // 15 KOD (tevkifat tablo kodu: 614 servis taşımacılığı … — satıcı kodu 6xx)
+        tevkifatKod,                                  // 15 KOD (normal satış 1100 · kısmi tevkifat 6xx)
         belgeTuruAdResolved,                          // 16 BELGE TÜRÜ(DB) — Defter-Beyan belge türü ADI
         alisSatisTuruCsv,                             // 17 ALIŞ/SATIŞ TÜRÜ (Luca adları; tevkifatlı satışta Kısmi Tevkifat …)
         kayitAltAdResolved,                           // 18 KAYIT ALT TÜRÜ
