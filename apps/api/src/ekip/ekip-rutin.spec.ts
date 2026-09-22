@@ -81,35 +81,6 @@ const PANO = {
   ],
 };
 
-describe('ekip rutin — kapsam kdv:islenmis (2026-09-22)', () => {
-  // Muzaffer Bey: "KDV kontrol edildi işaretsizlerin bir kısmının evrakı Luca'ya işlenmemiş; işlenmeden neyi kontrol edeceksin."
-  // → aday YALNIZ hazır kümesindekiler (o dönem KDV oturumu + Luca kaydı olanlar); kalanı 'islenmemis' raporuna.
-  it('yarım kalmış (hazır) + hiç başlanmamış ama İşlendi ✔ olanlar aday; başlanmamışlar ayrıca raporlanır; kdvKontrol bitmiş elenir', () => {
-    const k = kapsamMukellefleri('kdv:islenmis', PANO, null, { kdvHazirIdler: new Set(['a']) });
-    expect(k.donem).toBe('2026-08');
-    expect(k.mukellefler).toEqual([{ taxpayerId: 'a', ad: 'A Ltd' }, { taxpayerId: 'e', ad: 'E' }]);
-    expect(k.baslanmamis).toEqual([{ taxpayerId: 'e', ad: 'E' }]);
-  });
-
-  // 2026-09-22 canlı bulgu: Aylık Takip "KDV kontrol edildi" işareti BEYANNAME ayına yazılır, pano satırı İŞLEM ayıdır →
-  // kilitli (bitmiş) oturumlar "kontrol edilmemiş" görünüp rutine giriyordu (26 mükellefin hepsi kilitliyken 8 iş açıldı).
-  it('oturumları kilitli olan (bitmis) mükellef ne aday olur ne raporlanır', () => {
-    const k = kapsamMukellefleri('kdv:islenmis', PANO, null, { kdvHazirIdler: new Set(['a']), kdvBitmisIdler: new Set(['a', 'e']) });
-    expect(k.mukellefler).toEqual([]);
-    expect(k.baslanmamis).toEqual([]);
-  });
-
-  it('hiç oturum yokken (yeni dönem) İşlendi ✔ olanlar aday olur — ekip kontrolü kendisi başlatır', () => {
-    const k = kapsamMukellefleri('kdv:islenmis', PANO, null, { kdvHazirIdler: new Set() });
-    expect(k.mukellefler.map((m) => m.taxpayerId)).toEqual(['a', 'e']);
-    expect(k.baslanmamis?.map((m) => m.taxpayerId)).toEqual(['a', 'e']);
-  });
-
-  it('tohum rutini bu kapsamı kullanır', () => {
-    expect(VARSAYILAN_RUTIN.kapsam).toBe('kdv:islenmis');
-  });
-});
-
 describe('ekip rutin — kapsam hesabı', () => {
   it('pano:kontrol_bekleyen = işleme ∧ ¬kontrol (yalnız EN SON dönem, tekrar ve kimliksiz elenir)', () => {
     const k = kapsamMukellefleri('pano:kontrol_bekleyen', PANO, null);
@@ -118,6 +89,12 @@ describe('ekip rutin — kapsam hesabı', () => {
       { taxpayerId: 'a', ad: 'A Ltd' },
       { taxpayerId: 'e', ad: 'E' },
     ]);
+  });
+
+  // 2026-09-22 (Muzaffer Bey): "zaten kontrolü yapılmışa tekrar gitmesin" — o dönem oturumları kilitli olan elenir.
+  it('pano:kontrol_bekleyen: KDV oturumları kilitli (bitmiş) mükellef aday olmaz', () => {
+    const k = kapsamMukellefleri('pano:kontrol_bekleyen', PANO, null, { kdvBitmisIdler: new Set(['a']) });
+    expect(k.mukellefler).toEqual([{ taxpayerId: 'e', ad: 'E' }]);
   });
 
   it('pano:isleme_bekleyen = evrak ∧ ¬işleme; pano:hazirlik_bekleyen = kontrol ∧ ¬beyannameHazir', () => {
@@ -154,7 +131,7 @@ describe('ekip rutin — kapsam hesabı', () => {
 
 // ─── Servis (sahte Prisma + runner.pano + kuyruk.olustur) ───
 
-function servisKur(o: { rutinler?: any[]; kuyruklar?: any[]; pano?: any; kotaDolu?: boolean; tenantVar?: boolean } = {}) {
+function servisKur(o: { rutinler?: any[]; kuyruklar?: any[]; pano?: any; kotaDolu?: boolean; tenantVar?: boolean; kdvOturumlari?: any[] } = {}) {
   const rutinler: any[] = (o.rutinler || []).map((r) => ({ ...r }));
   const kuyruklar: any[] = o.kuyruklar || [];
   const acilanKuyruklar: any[] = [];
@@ -199,6 +176,10 @@ function servisKur(o: { rutinler?: any[]; kuyruklar?: any[]; pano?: any; kotaDol
     },
     ekipKuyruk: {
       findMany: async (q: any) => suz(kuyruklar, q?.where),
+    },
+    // 2026-09-22: kapsam 'pano:kontrol_bekleyen' iken kilitli KDV oturumları elenir (kdvBitmisler).
+    kdvControlSession: {
+      findMany: async () => o.kdvOturumlari ?? [],
     },
   };
   const runner = { pano: async () => o.pano ?? PANO, kapaniyorMu: () => false };
@@ -395,7 +376,7 @@ describe('ekip rutin — CRUD doğrulama + tohum', () => {
         ad: 'KDV kontrolü — kontrol bekleyenler',
         ajanId: 'beyanname',
         sablon: '{mukellef} için {donem} dönemi KDV kontrolünü yap (R1).',
-        kapsam: 'kdv:islenmis',
+        kapsam: 'pano:kontrol_bekleyen',
         zaman: { tur: 'haftalik', gunler: [1, 2, 3, 4, 5], baslangic: '09:30', bitis: '17:00' },
         gunlukTavan: 8,
         dryRun: false,

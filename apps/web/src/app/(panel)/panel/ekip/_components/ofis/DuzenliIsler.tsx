@@ -35,7 +35,7 @@ const HAZIR: HazirKalem[] = [
   {
     ad: 'KDV kontrolü — kontrol bekleyenler',
     ajanId: 'beyanname',
-    kapsam: 'kdv:islenmis',
+    kapsam: 'pano:kontrol_bekleyen',
     zaman: { tur: 'haftalik', gunler: [1, 2, 3, 4, 5], baslangic: '09:30', bitis: '17:00' },
     gunlukTavan: 8,
     dryRun: false,

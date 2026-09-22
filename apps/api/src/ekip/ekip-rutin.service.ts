@@ -68,7 +68,7 @@ export const VARSAYILAN_RUTIN = {
   ad: 'KDV kontrolü — kontrol bekleyenler',
   ajanId: 'beyanname',
   sablon: '{mukellef} için {donem} dönemi KDV kontrolünü yap (R1).',
-  kapsam: 'kdv:islenmis',
+  kapsam: 'pano:kontrol_bekleyen',
   zaman: { tur: 'haftalik', gunler: [1, 2, 3, 4, 5], baslangic: '09:30', bitis: '17:00' } as RutinZamani,
   gunlukTavan: 8,
   dryRun: false,
@@ -289,33 +289,27 @@ export class EkipRutinService implements OnApplicationBootstrap {
    * sonKosuAt: öğe eklendiğinde ya da bugünkü ilk değerlendirmede yazılır (aylık "bugün koştu" bayrağı; haftalıkta her 5 dk yazılmaz).
    */
   /**
-   * 'kdv:islenmis' kapsamı için HAZIR kümesi (2026-09-22): panodaki son beyanname döneminde (YYYY/MM) KDV Kontrol oturumu
-   * AÇILMIŞ ve Luca'dan kayıt gelmiş mükellefler. Aylık Takip'teki "İşlendi" kutusuna güvenilmez (canlı: 37 işaretliden
-   * 11'inin Luca'sı boştu) — evrakı Luca'ya girilmemiş mükellefe rutin iş açılmaz.
+   * KDV kontrolü o dönem BİTMİŞ olanlar (2026-09-22): oturum(lar) açılmış ve hepsi COMPLETED. Aylık Takip kutusu geç
+   * işaretlense bile ekip tekrar kontrole kalkmasın diye kapsamdan elenir.
    */
-  private async kdvHazirlar(tenantId: string, pano: any): Promise<{ hazir: Set<string>; bitmis: Set<string> } | null> {
+  private async kdvBitmisler(tenantId: string, pano: any): Promise<Set<string> | null> {
     const donem = pano?.donemler?.[0]?.beyannameDonem || null; // "2026-08"
     if (!donem || !/^\d{4}-\d{2}$/.test(String(donem))) return null;
     const periodLabel = String(donem).replace('-', '/');
     const ses: any[] = await this.db.kdvControlSession
-      .findMany({ where: { tenantId, periodLabel }, select: { taxpayerId: true, status: true, _count: { select: { kdvRecords: true } } } })
+      .findMany({ where: { tenantId, periodLabel }, select: { taxpayerId: true, status: true } })
       .catch((e: any) => (this.logger.warn(`[rutin] kdv oturumları okunamadı: ${e?.message || e}`), []));
-    const lucaVar = new Set<string>();
-    const acikVar = new Set<string>();
     const oturumVar = new Set<string>();
+    const acikVar = new Set<string>();
     for (const s of ses) {
       const id = s?.taxpayerId ? String(s.taxpayerId) : '';
       if (!id) continue;
       oturumVar.add(id);
-      if (Number(s?._count?.kdvRecords || 0) > 0) lucaVar.add(id);
       if (String(s?.status || '') !== 'COMPLETED') acikVar.add(id);
     }
-    // hazır = evrakı Luca'ya işlenmiş VE işi kalmış (en az bir oturum açık); bitmiş = oturumları kilitli (iş yok).
-    const hazir = new Set<string>();
-    for (const id of lucaVar) if (acikVar.has(id)) hazir.add(id);
     const bitmis = new Set<string>();
     for (const id of oturumVar) if (!acikVar.has(id)) bitmis.add(id);
-    return { hazir, bitmis };
+    return bitmis;
   }
 
   async rutinKos(
@@ -332,22 +326,14 @@ export class EkipRutinService implements OnApplicationBootstrap {
     const tavan = opts.tavanUygula ? gunlukTavan - acilan.sayi : SIMDI_CALISTIR_TAVANI;
 
     let sonuc: { eklenen: number; aday: number; kuyrukId: string | null; donem: string | null; neden: string | null };
-    /** 'kdv:islenmis': kontrolü hiç başlamamış olanlar (aday ama Luca boş çıkabilir) — rapora yazılır. */
-    let islenmemisNot: { sayi: number; adlar: string[] } | null = null;
     if (tavan <= 0) {
       sonuc = { eklenen: 0, aday: 0, kuyrukId: null, donem: null, neden: `günlük tavan doldu (${acilan.sayi}/${gunlukTavan})` };
     } else {
       const kapsam = String(r.kapsam || '');
-      const panoGerek = kapsam.startsWith('pano:') || kapsam === 'kdv:islenmis' || sablonDonemGerekli(r.sablon);
+      const panoGerek = kapsam.startsWith('pano:') || sablonDonemGerekli(r.sablon);
       const pano = panoGerek ? await this.runner.pano(tenantId, 2).catch((e: any) => (this.logger.warn(`[rutin] pano okunamadı (${tenantId}): ${e?.message || e}`), null)) : null;
-      const kdvDurum = kapsam === 'kdv:islenmis' ? await this.kdvHazirlar(tenantId, pano) : null;
-      const k = kapsamMukellefleri(kapsam, pano, Array.isArray(r.taxpayerIds) ? r.taxpayerIds : [], {
-        kdvHazirIdler: kdvDurum?.hazir || null,
-        kdvBitmisIdler: kdvDurum?.bitmis || null,
-      });
-      if (Array.isArray(k.baslanmamis) && k.baslanmamis.length) {
-        islenmemisNot = { sayi: k.baslanmamis.length, adlar: k.baslanmamis.map((m) => m.ad || m.taxpayerId || '?').slice(0, 20) };
-      }
+      const kdvBitmisIdler = kapsam === 'pano:kontrol_bekleyen' ? await this.kdvBitmisler(tenantId, pano) : null;
+      const k = kapsamMukellefleri(kapsam, pano, Array.isArray(r.taxpayerIds) ? r.taxpayerIds : [], { kdvBitmisIdler });
       const secilen = secilecekOgeler(k.mukellefler, acilan, tavan);
       if (!secilen.length) {
         const neden = !k.mukellefler.length
@@ -377,7 +363,7 @@ export class EkipRutinService implements OnApplicationBootstrap {
     const ilkDegerlendirme = !ayniIstanbulGunuMu(r.sonKosuAt, simdi);
     if (sonuc.eklenen > 0 || ilkDegerlendirme || !opts.tavanUygula) {
       await this.db.ekipRutin
-        .update({ where: { id: r.id }, data: { sonKosuAt: simdi, sonSonuc: { zaman: simdi.toISOString(), ...sonuc, ...(islenmemisNot ? { baslanmamis: islenmemisNot } : {}), elle: !opts.tavanUygula } } })
+        .update({ where: { id: r.id }, data: { sonKosuAt: simdi, sonSonuc: { zaman: simdi.toISOString(), ...sonuc, elle: !opts.tavanUygula } } })
         .catch((e: any) => this.logger.warn(`[rutin] sonuç yazılamadı ${r.id}: ${e?.message || e}`));
     }
     if (sonuc.eklenen > 0 || !opts.tavanUygula) {

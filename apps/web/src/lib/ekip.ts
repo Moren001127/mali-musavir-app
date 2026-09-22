@@ -812,7 +812,7 @@ export async function istekKapat(bildirimId: string): Promise<{ ok: boolean; id?
 // Kuyruk = sıralı işleyici (rutinden ya da panodan "Personele ver" ile); Durdur / Devam; kota dolunca `kota_bekliyor`.
 // Bu uçlar 404 dönerse (eski backend) OmurgaYok fırlatılmaz: `destek:false` ile boş liste döner, ekran çökmeden "yayında değil" der.
 
-export type RutinKapsam = 'kdv:islenmis' | 'pano:kontrol_bekleyen' | 'pano:isleme_bekleyen' | 'pano:hazirlik_bekleyen' | 'liste' | 'ofis';
+export type RutinKapsam = 'pano:kontrol_bekleyen' | 'pano:isleme_bekleyen' | 'pano:hazirlik_bekleyen' | 'liste' | 'ofis';
 
 export type RutinZaman =
   | { tur: 'haftalik'; gunler: number[]; baslangic: string; bitis: string }
@@ -872,7 +872,7 @@ function zamanNormalle(z: any): RutinZaman {
   return { tur: 'haftalik', gunler: gunler.length ? gunler : [1, 2, 3, 4, 5], baslangic: String(z?.baslangic || '09:30'), bitis: String(z?.bitis || '17:00') };
 }
 
-const KAPSAMLAR: RutinKapsam[] = ['kdv:islenmis', 'pano:kontrol_bekleyen', 'pano:isleme_bekleyen', 'pano:hazirlik_bekleyen', 'liste', 'ofis'];
+const KAPSAMLAR: RutinKapsam[] = ['pano:kontrol_bekleyen', 'pano:isleme_bekleyen', 'pano:hazirlik_bekleyen', 'liste', 'ofis'];
 
 function rutinNormalle(r: any): Rutin | null {
   if (!r || !r.id) return null;

@@ -10,7 +10,7 @@ import { ogeleriOku } from './ekip-kuyruk';
  * Zaman: {tur:'haftalik', gunler:[1..7], baslangic:'09:30', bitis:'17:00'} | {tur:'aylik', ayGunu:5, saat:'09:30', aylar?:[1,4,7,10]} (aylar boşsa her ay).
  */
 
-export const RUTIN_KAPSAMLARI = ['kdv:islenmis', 'pano:kontrol_bekleyen', 'pano:isleme_bekleyen', 'pano:hazirlik_bekleyen', 'ofis', 'liste'] as const;
+export const RUTIN_KAPSAMLARI = ['pano:kontrol_bekleyen', 'pano:isleme_bekleyen', 'pano:hazirlik_bekleyen', 'ofis', 'liste'] as const;
 export type RutinKapsami = (typeof RUTIN_KAPSAMLARI)[number];
 
 export type RutinZamani =
@@ -116,8 +116,6 @@ export interface PanoDonemi {
 }
 
 export interface KapsamSonucu {
-  /** 'kdv:islenmis': kontrolü hiç başlamamış (oturum/Luca kaydı yok) ama "İşlendi" işaretli olanlar — aday, ama Luca boş çıkabilir. */
-  baslanmamis?: Array<{ taxpayerId: string | null; ad: string | null }>;
   donem: string | null;
   mukellefler: Array<{ taxpayerId: string | null; ad: string | null }>;
 }
@@ -136,7 +134,7 @@ export function kapsamMukellefleri(
   kapsam: string,
   pano: { donemler?: PanoDonemi[] } | null | undefined,
   taxpayerIds: string[] | null | undefined,
-  ek?: { kdvHazirIdler?: Set<string> | null; kdvBitmisIdler?: Set<string> | null },
+  ek?: { kdvBitmisIdler?: Set<string> | null },
 ): KapsamSonucu {
   if (kapsam === 'ofis') return { donem: panoSonDonemi(pano)?.beyannameDonem || null, mukellefler: [{ taxpayerId: null, ad: null }] };
   if (kapsam === 'liste') {
@@ -148,28 +146,6 @@ export function kapsamMukellefleri(
   // 'kdv:islenmis' (2026-09-22, Muzaffer Bey'in kararı): "KDV kontrol edildi" işaretsiz AMA evrakı gerçekten Luca'ya
   // işlenmiş olanlar. "İşlendi" kutusuna güvenilmiyor (canlıda 37 işaretliden 11'inin Luca'sı boştu) → hazır kümesi
   // servis tarafında ölçülür: o dönem KDV oturumu var VE Luca kaydı gelmiş. Kalanlar 'islenmemis' olarak raporlanır.
-  if (kapsam === 'kdv:islenmis') {
-    const hazir = ek?.kdvHazirIdler || null;   // Luca kaydı var + en az bir oturum AÇIK (iş yarım kalmış)
-    const bitmis = ek?.kdvBitmisIdler || null; // o dönemin oturumları kilitli (COMPLETED) → iş yok
-    const out: KapsamSonucu['mukellefler'] = [];
-    const baslanmamis: KapsamSonucu['mukellefler'] = [];
-    const gorulenK = new Set<string>();
-    for (const m of d.mukellefler || []) {
-      if (!m?.taxpayerId || gorulenK.has(m.taxpayerId)) continue;
-      // Aylık Takip "KDV kontrol edildi" işareti BEYANNAME ayına yazılır, pano satırı İŞLEM ayıdır (2026-09-22 bulgusu)
-      // → tek başına güvenilmez; asıl ölçüt oturum durumu (bitmis kümesi).
-      if (m.asamalar?.kdvKontrol || bitmis?.has(m.taxpayerId)) continue;
-      gorulenK.add(m.taxpayerId);
-      // Muzaffer Bey (2026-09-22): yeni dönemde oturum hiç açılmamış olur → "İşlendi" işaretliyi de al; ekip Luca'yı çeker,
-      // kayıt gelmezse "Luca'ya işlenmemiş" deyip bırakır (kilitlemez). Yarım kalmış işler (hazır) her hâlükârda aday.
-      if (hazir?.has(m.taxpayerId)) out.push({ taxpayerId: m.taxpayerId, ad: m.ad || null });
-      else if (m.asamalar?.isleme) {
-        out.push({ taxpayerId: m.taxpayerId, ad: m.ad || null });
-        baslanmamis.push({ taxpayerId: m.taxpayerId, ad: m.ad || null });
-      }
-    }
-    return { donem: d.beyannameDonem || null, mukellefler: out, baslanmamis };
-  }
   const suzgec: ((m: PanoMukellefi) => boolean) | null =
     kapsam === 'pano:kontrol_bekleyen'
       ? (m) => Boolean(m.asamalar?.isleme) && !m.asamalar?.kontrol
@@ -181,9 +157,13 @@ export function kapsamMukellefleri(
   if (!suzgec) return { donem: d.beyannameDonem || null, mukellefler: [] };
   const gorulen = new Set<string>();
   const out: KapsamSonucu['mukellefler'] = [];
+  // GÜVENLİK (2026-09-22): o dönem KDV Kontrol oturumları KİLİTLİ olan mükellef aday olmaz — kontrolü zaten yapılmış,
+  // Aylık Takip kutusu geç işaretlenmiş olsa bile ekip tekrar kontrol etmeye kalkmasın.
+  const bitmis = ek?.kdvBitmisIdler || null;
   for (const m of d.mukellefler || []) {
     if (!m?.taxpayerId || gorulen.has(m.taxpayerId)) continue;
     if (!suzgec(m)) continue;
+    if (bitmis?.has(m.taxpayerId)) continue;
     gorulen.add(m.taxpayerId);
     out.push({ taxpayerId: m.taxpayerId, ad: m.ad || null });
   }
