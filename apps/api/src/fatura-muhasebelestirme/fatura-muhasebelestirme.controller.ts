@@ -695,6 +695,13 @@ export class FaturaMuhasebelestirmeController {
     return this.service.syncEfaturaInboxFromIntegrations(req.user.tenantId, req.user?.userId || req.user?.sub, opts);
   }
 
+  /** DIŞARIDAN BELGE ALIMI: ajan/ofis tarayıcısı entegratörden indirdiği UBL'leri buraya bırakır
+   *  (Mikro e-Portal girişi sunucu IP'sinden engelli). Belgeler normal çekim yolundan kaydedilir. */
+  @Post('efatura-inbox/ingest')
+  async efaturaInboxIngest(@Req() req: any, @Body() body: any) {
+    return this.service.ingestProviderInvoices(req.user.tenantId, req.user?.userId || req.user?.sub, body);
+  }
+
   /** Arka plan sorgu durumu (Turkcell gibi uzun çekimler için) */
   @Get('efatura-sync/status')
   efaturaSyncStatus(@Req() req: any, @Query() q: any) {

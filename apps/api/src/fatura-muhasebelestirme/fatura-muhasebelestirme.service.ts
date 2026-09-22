@@ -5436,10 +5436,45 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     return { started: true, background: true, statusKey: key };
   }
 
+  /**
+   * DIŞARIDAN BELGE ALIMI (2026-09-22) — entegratöre sunucudan bağlanılamayan hâller için.
+   * Ajan (ya da ofis tarayıcısı) faturaları indirip buraya bırakır; belgeler NORMAL çekim yolundan
+   * (aynı ayrıştırma, mükerrer koruması, görsel, onay alanları) e-Fatura kutusuna yazılır.
+   * Kullanan: Mikro e-Portal — Cloudflare girişi veri merkezi IP'lerinden engelliyor.
+   */
+  async ingestProviderInvoices(
+    tenantId: string,
+    userId: string | undefined,
+    body: { taxpayerId: string; provider: string; period?: string; direction?: 'IN' | 'OUT'; channel?: string;
+            belgeler: Array<{ externalId?: string; faturaNo?: string; xml: string }> },
+  ) {
+    const saglayici = String(body?.provider || '').trim().toUpperCase();
+    if (!saglayici) throw new BadRequestException('provider gerekli');
+    const belgeler = Array.isArray(body?.belgeler) ? body.belgeler.filter((b) => b && String(b.xml || '').includes('<')) : [];
+    if (!belgeler.length) throw new BadRequestException('belgeler bos');
+    const payloadlar: ProviderInvoicePayload[] = belgeler.map((b, i) => ({
+      externalId: String(b.externalId || b.faturaNo || `dis-${i}`),
+      originalName: `${String(b.faturaNo || b.externalId || `belge-${i}`)}.xml`,
+      xml: String(b.xml),
+    }));
+    this.logger.log(`[DIS-ALIM] ${saglayici} · ${belgeler.length} belge · mükellef ${body.taxpayerId} · dönem ${body.period || '-'}`);
+    return this.syncEfaturaInboxFromIntegrations(tenantId, userId, {
+      taxpayerId: body.taxpayerId,
+      period: body.period,
+      direction: body.direction || 'IN',
+      channel: body.channel,
+      providers: [saglayici],
+      limit: payloadlar.length,
+      hazirPayloadlar: payloadlar,
+    });
+  }
+
   async syncEfaturaInboxFromIntegrations(
     tenantId: string,
     userId: string | undefined,
-    opts: { taxpayerId: string; period?: string; dateFrom?: string; dateTo?: string; direction?: 'IN' | 'OUT'; channel?: string; limit?: number; providers?: string[] } = {} as any,
+    opts: { taxpayerId: string; period?: string; dateFrom?: string; dateTo?: string; direction?: 'IN' | 'OUT'; channel?: string; limit?: number; providers?: string[];
+            /** Dışarıdan (ajan/tarayıcı) indirilen belgeler — entegratöre bağlanılmaz, doğrudan kaydedilir. */
+            hazirPayloadlar?: ProviderInvoicePayload[] } = {} as any,
   ) {
     if (!opts.taxpayerId) throw new BadRequestException('taxpayerId gerekli');
     const taxpayer = await (this.prisma as any).taxpayer.findFirst({
@@ -5876,6 +5911,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         const tcProgress = { rateLimited: false };
         const payloads = await this.fetchProviderInvoices(cfg, {
           taxpayer, direction, period, limit, channel,
+          hazirPayloadlar: opts.hazirPayloadlar,
           onPayload: incremental ? persistOne : undefined,
           skipExistingExternalIds,
           progress: tcProgress,
@@ -9275,8 +9311,17 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       onPayload?: (p: ProviderInvoicePayload) => Promise<void>; // ARTIMLI persistence (Turkcell)
       skipExistingExternalIds?: Set<string>; // yeniden-indirmeyi önle (Turkcell resumable)
       progress?: { rateLimited?: boolean }; // 429 ile kısmi-bitiş sinyali (oto-tekrar için)
+      /** DIŞARIDAN GELEN BELGELER (2026-09-22): ajan/tarayıcı entegratörden indirip API'ye getirdiyse
+       *  burada ağa çıkılmaz, gelen belgeler aynı kayıt yolundan (persistOne) geçer. Mikro e-Portal
+       *  girişi sunucu IP'sinden engelli olduğu için bu yol gerekiyor. */
+      hazirPayloadlar?: ProviderInvoicePayload[];
     },
   ): Promise<ProviderInvoicePayload[]> {
+    if (Array.isArray(opts.hazirPayloadlar)) {
+      const gelen = opts.hazirPayloadlar;
+      if (opts.onPayload) { for (const pl of gelen) await opts.onPayload(pl); return []; }
+      return gelen;
+    }
     if (cfg.provider === 'UYUMSOFT') return this.fetchUyumsoftInvoices(cfg, opts);
     if (I2I_SOAP_PROVIDERS.has(cfg.provider) || /EInvoiceWS/i.test(cfg.baseUrl)) {
       return this.fetchI2iInvoices(cfg, opts);
