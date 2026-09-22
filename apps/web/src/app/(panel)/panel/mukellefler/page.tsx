@@ -95,14 +95,15 @@ const STAGES: Record<Stage, { label: string }> = {
   'verildi':          { label: 'Verildi' },
 };
 
-/** Sayaç kartları: anahtar → ton (CSS data-tone) ve simge */
+/** Sayaç kartları: anahtar → ton (CSS data-tone) ve simge. Dolu gradyan kart (gösterge paneli sayaçlarıyla aynı dil);
+ *  toplam nötr kurşuni, aşamalar kendi renginde. */
 const STAGE_CARD_META: Record<Exclude<FilterKey, 'islenmedi' | 'beyanname-verilmedi'>, { tone: string; icon: LucideIcon }> = {
-  'all':                { tone: 'indigo', icon: Users },
+  'all':                { tone: 'slate', icon: Users },
   'evrak-gelmedi':      { tone: 'amber', icon: Inbox },
   'yukleme-bekliyor':   { tone: 'teal', icon: Upload },
   'islem-bekliyor':     { tone: 'blue', icon: Settings2 },
   'kontrol-bekliyor':   { tone: 'violet', icon: ScanSearch },
-  'beyanname-bekliyor': { tone: 'indigo-light', icon: FileCheck2 },
+  'beyanname-bekliyor': { tone: 'indigo', icon: FileCheck2 },
   'verildi':            { tone: 'green', icon: CheckCircle2 },
 };
 
@@ -115,13 +116,6 @@ function getName(t: Taxpayer): string {
   return t.companyName || `${t.firstName || ''} ${t.lastName || ''}`.trim() || '—';
 }
 
-function getInitials(t: Taxpayer): string {
-  const name = getName(t);
-  const parts = name.split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return '—';
-}
 
 function hasText(value: unknown): boolean {
   return typeof value === 'string' ? value.trim().length > 0 : Boolean(value);
@@ -467,7 +461,7 @@ export default function MukelleflerPage() {
         })}
       </div>
 
-      {/* AŞAMA SAYAÇLARI — beyaz kart + gradyan simge + koyu sayı + ton çubuğu; tıklanınca süzer */}
+      {/* AŞAMA SAYAÇLARI — dolu gradyan kart (gösterge paneli dili): yarı saydam simge dairesi + yüzde çipi + beyaz sayı + ince çubuk; tıklanınca süzer */}
       <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 lg:grid-cols-7">
         {stageCards.map((c) => {
           const active = filter === c.key;
@@ -485,17 +479,19 @@ export default function MukelleflerPage() {
                 setPage(1);
               }}
               data-tone={meta.tone}
+              data-zero={c.count === 0 ? 'true' : undefined}
               aria-pressed={active}
-              className="at-kpi rounded-[14px] px-3.5 pb-3 pt-3 text-left transition"
+              className="at-kpi relative overflow-hidden rounded-[14px] px-3.5 pb-3 pt-3 text-left transition"
               title={active && c.key !== 'all' ? 'Süzgeci kaldır' : `${c.label} olanları göster`}
             >
-              <div className="flex items-center justify-between gap-2">
-                <span className="at-kpi-icon grid h-[34px] w-[34px] place-items-center rounded-[10px]"><Icon size={17} /></span>
-                {c.key !== 'all' && <span className="at-kpi-pct rounded-full px-2 py-0.5 text-[10.5px] font-semibold tabular-nums">%{pct}</span>}
+              <span className="at-kpi-halka pointer-events-none absolute -right-5 -top-7 h-[92px] w-[92px] rounded-full" aria-hidden />
+              <div className="relative flex items-center justify-between gap-2">
+                <span className="at-kpi-icon grid h-8 w-8 place-items-center rounded-full"><Icon size={16} strokeWidth={2.2} /></span>
+                {c.key !== 'all' && <span className="at-kpi-pct rounded-full px-2 py-0.5 text-[11px] font-bold tabular-nums">%{pct}</span>}
               </div>
-              <div className="at-kpi-num mt-2.5 text-[24px] font-extrabold leading-none tabular-nums" data-zero={c.count === 0 ? 'true' : undefined}>{c.count}</div>
-              <div className="at-kpi-label mt-1 truncate text-[12px] font-semibold">{c.label}</div>
-              <div className="at-kpi-bar mt-2.5 h-[5px] overflow-hidden rounded-full">
+              <div className="at-kpi-num relative mt-2.5 text-[26px] font-extrabold leading-none tabular-nums">{c.count}</div>
+              <div className="at-kpi-label relative mt-1 truncate text-[12px] font-semibold">{c.label}</div>
+              <div className="at-kpi-bar relative mt-2.5 h-[4px] overflow-hidden rounded-full">
                 <div className="at-kpi-bar-fill h-full rounded-full" style={{ width: `${c.key === 'all' ? 100 : pct}%` }} />
               </div>
             </button>
@@ -505,19 +501,27 @@ export default function MukelleflerPage() {
 
       {/* TABLO */}
       <div className="at-table-wrap overflow-x-auto rounded-[12px]">
-        <table className="at-table w-full min-w-[1120px] border-collapse text-left">
+        <table className="at-table w-full min-w-[1080px] table-fixed border-collapse text-left">
+          <colgroup>
+            <col />
+            <col style={{ width: 168 }} />
+            <col style={{ width: 62 }} /><col style={{ width: 66 }} /><col style={{ width: 62 }} />
+            <col style={{ width: 70 }} /><col style={{ width: 70 }} /><col style={{ width: 66 }} />
+            <col style={{ width: 62 }} />
+            <col style={{ width: 280 }} />
+          </colgroup>
           <thead>
             <tr>
               <th className="at-th">Mükellef</th>
-              <th className="at-th w-[178px]">Durum</th>
-              <th className="at-th at-th-center w-[64px]" title="Evrak geldi">Evrak</th>
-              <th className="at-th at-th-center w-[64px]" title="Sisteme yüklendi (fiş görselleri / portal faturaları)">Yüklendi</th>
-              <th className="at-th at-th-center w-[64px]" title="Evraklar işlendi">İşlem</th>
-              <th className="at-th at-th-center at-th-group w-[64px]" title="İndirilecek KDV kontrol">İnd. KDV</th>
-              <th className="at-th at-th-center w-[64px]" title="Hesaplanan KDV kontrol">Hes. KDV</th>
-              <th className="at-th at-th-center w-[64px]" title="e-Arşiv fatura kontrol">e-Arşiv</th>
-              <th className="at-th at-th-center at-th-group w-[64px]" title="Beyanname verildi">Beyan</th>
-              <th className="at-th w-[240px]">Not / Açıklama</th>
+              <th className="at-th">Durum</th>
+              <th className="at-th at-th-center" title="Evrak geldi">Evrak</th>
+              <th className="at-th at-th-center" title="Sisteme yüklendi (fiş görselleri / portal faturaları)">Yüklendi</th>
+              <th className="at-th at-th-center" title="Evraklar işlendi">İşlem</th>
+              <th className="at-th at-th-center at-th-group" title="İndirilecek KDV kontrol">İnd. KDV</th>
+              <th className="at-th at-th-center" title="Hesaplanan KDV kontrol">Hes. KDV</th>
+              <th className="at-th at-th-center" title="e-Arşiv fatura kontrol">e-Arşiv</th>
+              <th className="at-th at-th-center at-th-group" title="Beyanname verildi">Beyan</th>
+              <th className="at-th">Not / Açıklama</th>
             </tr>
           </thead>
           <tbody>
@@ -641,15 +645,12 @@ function TaxpayerRow({
 
   return (
     <tr className="at-tr">
-      {/* Mükellef adı — kart bağlantısı; sağ üst köşede profil tamamlık noktası */}
-      <td className="at-td">
-        <Link href={`/panel/mukellefler/${taxpayer.id}`} className="flex min-w-0 items-center gap-3" title="Mükellef kartını aç">
-          <span className="relative shrink-0">
-            <span className="at-avatar grid h-8 w-8 place-items-center rounded-[9px] text-[11.5px] font-bold">{getInitials(taxpayer)}</span>
-            <span className="at-dot-comp absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full" data-level={level} title={compTooltip} />
-          </span>
+      {/* Mükellef adı — kart bağlantısı; önünde profil tamamlık noktası (baş harf kutusu kaldırıldı, yer Not/Açıklama'ya) */}
+      <td className="at-td at-td-name">
+        <Link href={`/panel/mukellefler/${taxpayer.id}`} className="flex min-w-0 items-center gap-2.5" title="Mükellef kartını aç">
+          <span className="at-dot-comp h-2 w-2 shrink-0 rounded-full" data-level={level} title={compTooltip} />
           <span className="flex min-w-0 items-center gap-2">
-            <span className="at-name truncate text-[13.5px] font-semibold">{getName(taxpayer)}</span>
+            <span className="at-name truncate text-[13.5px] font-semibold" title={getName(taxpayer)}>{getName(taxpayer)}</span>
             {completeness && completeness.score < 80 && (
               <span className="at-score shrink-0 rounded-full px-1.5 py-0.5 text-[10.5px] font-bold tabular-nums" data-level={level} title={compTooltip}>
                 %{completeness.score}
