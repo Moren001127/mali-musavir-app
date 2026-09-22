@@ -4566,6 +4566,14 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
   };
   const [isl, setIsl] = useState<any>({ satirlar: [] });
   const [islExp, setIslExp] = useState<Record<string, boolean>>({});
+  // TEVKİFAT KOD LİSTESİ (2026-09-23): mevzuat tablosundan (tevkifat-kurallari.ts) gelir — uydurma kod yok.
+  //   Satıcı tarafı kodu (6xx) gösterilir; seçilince oran da kendiliğinden dolar.
+  const tevkKodQ = useQuery({
+    queryKey: ['fm2', 'tevkifat-kodlari'],
+    queryFn: () => api.get('/fatura-muhasebelestirme/tevkifat-kodlari').then((r) => (Array.isArray(r.data) ? r.data : [])).catch(() => []),
+    staleTime: 60 * 60 * 1000,
+  });
+  const tevkKodlari: any[] = tevkKodQ.data || [];
   const [islMenu, setIslMenu] = useState<number | null>(null);
   useEffect(() => {
     if (!isIsletme || !selDoc) { setIsl({ satirlar: [] }); return; }
@@ -4876,13 +4884,32 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                               </div>
                               {islRef.tevkifat && (
                                 <div>
-                                  <span onClick={() => toggleExp(i, 'tevkifat')} style={{ fontSize: 12, color: '#1862ad', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }}>Tevkifat İşlemleri <span style={{ color: '#7a93b5' }}>{islExp[expKey(i, 'tevkifat')] ? '⌃' : '⌄'}</span></span>
-                                  {islExp[expKey(i, 'tevkifat')] && (
-                                    <div className="islgrid" style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', marginTop: 5 }}>
+                                  <span onClick={() => toggleExp(i, 'tevkifat')} style={{ fontSize: 12, color: '#1862ad', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }}>Tevkifat İşlemleri{(st.tevkifatOrani || st.tevkifatKodu) ? <b style={{ marginLeft: 6, color: '#b45309' }}>{st.tevkifatKodu ? `${st.tevkifatKodu} · ` : ''}{st.tevkifatOrani || ''}</b> : null} <span style={{ color: '#7a93b5' }}>{(islExp[expKey(i, 'tevkifat')] ?? !!(st.tevkifatOrani || st.tevkifatKodu)) ? '⌃' : '⌄'}</span></span>
+                                  {/* Tevkifat VARSA bölüm kendiliğinden açık gelir — kapalı kalıp gözden kaçmasın (2026-09-23). */}
+                                  {(islExp[expKey(i, 'tevkifat')] ?? !!(st.tevkifatOrani || st.tevkifatKodu)) && (
+                                    <div className="islgrid" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', marginTop: 5 }}>
+                                      <div className="dm" style={{ gridColumn: '1 / -1' }}><span className="dml">Tevkifat Kodu (KDV1 · satıcı)</span>
+                                        <PlainSelect
+                                          value={st.tevkifatKodu || ''}
+                                          onChange={(v) => {
+                                            const k = tevkKodlari.find((x: any) => String(x.kod) === String(v));
+                                            const oran = k?.oran || st.tevkifatOrani || '';
+                                            const pay = Number(String(oran).split('/')[0]);
+                                            const payda = Number(String(oran).split('/')[1]);
+                                            setSatir(i, {
+                                              tevkifatKodu: v,
+                                              ...(oran ? { tevkifatOrani: oran } : {}),
+                                              ...(oran && payda ? { tevkifatTutar: Math.round((Number(st.kdvTutar) || 0) * (pay / payda) * 100) / 100 } : {}),
+                                            });
+                                          }}
+                                          options={[{ value: '', label: 'Yok' }, ...tevkKodlari.map((x: any) => ({ value: String(x.kod), label: String(x.etiket) }))]}
+                                        />
+                                      </div>
                                       <div className="dm"><span className="dml">Tevkifat Oranı</span>
                                         <PlainSelect value={st.tevkifatOrani || ''} onChange={(v) => setSatir(i, { tevkifatOrani: v, tevkifatTutar: v ? Math.round((Number(st.kdvTutar) || 0) * (Number(v.split('/')[0]) / Number(v.split('/')[1])) * 100) / 100 : 0 })} options={[{ value: '', label: 'Yok' }, ...['2/10', '3/10', '4/10', '5/10', '7/10', '9/10', '10/10'].map((o) => ({ value: o, label: o }))]} />
                                       </div>
-                                      <div className="dm"><span className="dml">Tevkifat Tutarı (sorumlu KDV)</span><MoneyInput value={Number(st.tevkifatTutar) || 0} onChange={(n) => setSatir(i, { tevkifatTutar: n })} /></div>
+                                      <div className="dm"><span className="dml">Tevkifat Tutarı</span><MoneyInput value={Number(st.tevkifatTutar) || 0} onChange={(n) => setSatir(i, { tevkifatTutar: n })} /></div>
+                                      <div className="dm"><span className="dml">Tam KDV (tevkifat öncesi)</span><MoneyInput value={Math.round(((Number(st.kdvTutar) || 0) + (Number(st.tevkifatTutar) || 0)) * 100) / 100} onChange={() => undefined} /></div>
                                     </div>
                                   )}
                                 </div>

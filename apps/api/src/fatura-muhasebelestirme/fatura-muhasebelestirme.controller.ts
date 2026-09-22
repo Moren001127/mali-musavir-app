@@ -35,6 +35,8 @@ const documentUploadInterceptor = () =>
     fileFilter: (_req, _file, cb) => cb(null, true),
   });
 
+import { TEVKIFAT_KURALLARI } from './tevkifat-kurallari';
+
 @Controller('fatura-muhasebelestirme')
 @UseGuards(AuthGuard('jwt'))
 export class FaturaMuhasebelestirmeController {
@@ -49,6 +51,24 @@ export class FaturaMuhasebelestirmeController {
     // Kalıcı belge kuyruğu (2026-09-13): durum + tekrar-dene uçları.
     private readonly belgeKuyruk: BelgeKuyrukService,
   ) {}
+
+  /**
+   * TEVKİFAT KOD LİSTESİ (2026-09-23, Muzaffer Bey): İşletme fatura formundaki "Tevkifat İşlemleri"
+   * bölümünde kod seçilebilsin diye. Tablo tek kaynak: tevkifat-kurallari.ts (KDVGUT I/C-2.1.3).
+   *   · Tabloda kod ALICI tarafı (2xx, KDV2). SATICI tarafı KDV1/UBL kodu = 2xx + 400 → 6xx.
+   *   · Örnek: 214 Servis taşımacılığı (5/10) → satıcı kodu 614.
+   * Uydurma kod YOK; liste mevzuat tablosundan türetilir.
+   */
+  @Get('tevkifat-kodlari')
+  tevkifatKodlari(@Query('taraf') taraf?: string) {
+    const satici = String(taraf || 'satici').toLowerCase() !== 'alici';
+    return TEVKIFAT_KURALLARI.map((k) => {
+      const kodNo = Number(k.kod);
+      const kod = satici ? String(kodNo + 400) : k.kod;
+      return { kod, aliciKodu: k.kod, ad: k.ad, oran: k.oran, tur: k.tur, etiket: `${kod} - (${k.oran}) ${k.ad}` };
+    }).sort((a, b) => a.kod.localeCompare(b.kod));
+  }
+
 
   /** Kalıcı belge kuyruğu durumu: {pending:{CLASSIFY,AI_READ}, running, done24h, failed24h, sonHata[]}. */
   @Get('kuyruk/durum')

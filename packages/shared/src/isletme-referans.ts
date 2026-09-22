@@ -162,11 +162,12 @@ export type IsletmeContext = {
   plaka: boolean;
   islemTuru: boolean; // İşlem Türü alanı bu bağlamda görünür mü (sadece satış)
   kredili: boolean;   // Kredili Tutar alanı (sadece satış)
-  tevkifat: boolean;  // Tevkifat İşlemleri satırı (sadece gider)
+  tevkifat: boolean;  // Tevkifat İşlemleri satırı (2026-09-23: SATIŞTA DA açık — kısmi tevkifatlı satış faturasında
+                      //   oran + KOD (614 gibi) girilmeli; eskiden yalnız giderde açıktı ve satıcı tarafı boş kalıyordu)
 };
 
 export const ISLETME_REFERANS: Record<'SATIS' | 'ALIS', IsletmeContext> = {
-  SATIS: { belgeTuru: SATIS_BELGE, alisSatisTuru: SATIS_AS, kayitTuru: SATIS_KAYIT, plaka: false, islemTuru: true, kredili: true, tevkifat: false },
+  SATIS: { belgeTuru: SATIS_BELGE, alisSatisTuru: SATIS_AS, kayitTuru: SATIS_KAYIT, plaka: false, islemTuru: true, kredili: true, tevkifat: true },
   ALIS: { belgeTuru: GIDER_BELGE, alisSatisTuru: GIDER_AS, kayitTuru: GIDER_KAYIT, plaka: true, islemTuru: false, kredili: false, tevkifat: true },
 };
 
