@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="tr"><meta charset="utf-8"><title>Entegratör seçimi — 4 taslak</title>
+<style>
+  :root{--accent:#0f766e;--tc:#ca8a04;--ec:#15803d;--ink:#0f172a;--mut:#64748b;--cizgi:#e5eaf2}
+  *{box-sizing:border-box}
+  body{margin:0;background:#eef2f7;font-family:Inter,'Segoe UI',system-ui,sans-serif;color:var(--ink);padding:16px;zoom:.74}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:1400px}
+  .kart{background:#fff;border:1px solid var(--cizgi);border-radius:16px;overflow:hidden}
+  .ust{display:flex;align-items:center;gap:10px;padding:11px 16px;background:linear-gradient(90deg,#f8fafc,#fff);border-bottom:1px solid var(--cizgi)}
+  .no{width:26px;height:26px;border-radius:8px;background:var(--accent);color:#fff;display:grid;place-items:center;font-size:13px;font-weight:900}
+  .ad{font-size:13px;font-weight:800;letter-spacing:.2px}
+  .ic{padding:16px}
+  .satir{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .segmini{display:inline-flex;background:#eef2f7;border-radius:999px;padding:3px}
+  .segmini span{font-size:11.5px;font-weight:700;color:#64748b;padding:5px 11px;border-radius:999px}
+  .segmini span.on{background:#fff;color:var(--ink);box-shadow:0 1px 2px rgba(15,23,42,.12)}
+  .sp{flex:1}
+  .sorgula{height:34px;padding:0 15px;border-radius:10px;border:0;background:var(--accent);color:#fff;font:inherit;font-size:12.5px;font-weight:800;display:inline-flex;align-items:center;gap:7px}
+  .aciklama{margin-top:13px;font-size:12px;color:var(--mut);line-height:1.6;border-top:1px dashed var(--cizgi);padding-top:11px}
+  .aciklama b{color:var(--ink)}
+  .rozet{width:19px;height:19px;border-radius:50%;display:grid;place-items:center;color:#fff;font-size:8.5px;font-weight:900;flex-shrink:0}
+
+  /* 1 — SEKME GRUBU (kanal sekmeleriyle aynı dil) */
+  .etiket{font-size:10px;font-weight:900;letter-spacing:.6px;color:#94a3b8;text-transform:uppercase}
+  .seg2{display:inline-flex;background:#eef2f7;border-radius:999px;padding:3px;gap:2px}
+  .seg2 button{border:0;background:transparent;font:inherit;font-size:11.5px;font-weight:800;color:#64748b;padding:5px 12px 5px 5px;border-radius:999px;display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+  .seg2 button.on{background:#fff;box-shadow:0 1px 3px rgba(15,23,42,.16)}
+  .seg2 button.on.tc{color:var(--tc)} .seg2 button.on.ec{color:var(--ec)}
+  .seg2 button .rozet{background:#c3ccda}
+  .seg2 button.on.tc .rozet{background:var(--tc)} .seg2 button.on.ec .rozet{background:var(--ec)}
+
+  /* 2 — AÇILIR LİSTE */
+  .drop{display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 11px 0 5px;border-radius:10px;border:1.5px solid #cbd5e1;background:#fff;font-size:12.5px;font-weight:800}
+  .drop .ok{color:#94a3b8;font-size:10px;margin-left:2px}
+  .drop .rozet{background:var(--tc)}
+  .liste{margin-top:8px;width:232px;border:1px solid var(--cizgi);border-radius:12px;box-shadow:0 12px 28px rgba(15,23,42,.12);overflow:hidden;background:#fff}
+  .liste div{display:flex;align-items:center;gap:8px;padding:9px 11px;font-size:12px;font-weight:700;color:#475569}
+  .liste div+div{border-top:1px solid #f1f5f9}
+  .liste div.sec{background:#f0fdf9;color:var(--ink)}
+  .liste .tik{margin-left:auto;color:var(--accent);font-weight:900}
+
+  /* 3 — SEÇİM KUTULARI (radio kart) */
+  .kutular{display:flex;gap:9px;flex-wrap:wrap}
+  .kt{display:inline-flex;align-items:center;gap:9px;padding:8px 13px 8px 9px;border-radius:12px;border:1.5px solid #e2e8f0;background:#fbfcfe;min-width:178px}
+  .kt .rozet{width:24px;height:24px;font-size:10px;background:#c3ccda}
+  .kt .met{display:flex;flex-direction:column;line-height:1.25}
+  .kt .met b{font-size:12.5px;font-weight:800;color:#64748b}
+  .kt .met span{font-size:10.5px;color:#94a3b8;font-weight:600}
+  .kt.sec{border-color:var(--tc);background:color-mix(in srgb,var(--tc) 8%,#fff);box-shadow:0 0 0 3px color-mix(in srgb,var(--tc) 14%,#fff)}
+  .kt.sec .rozet{background:var(--tc)}
+  .kt.sec .met b{color:var(--tc)}
+  .kt.sec .met span{color:color-mix(in srgb,var(--tc) 70%,#334155)}
+  .kt .tik{margin-left:auto;width:17px;height:17px;border-radius:50%;border:1.5px solid #cbd5e1;display:grid;place-items:center;font-size:9px;color:transparent}
+  .kt.sec .tik{border-color:var(--tc);background:var(--tc);color:#fff}
+
+  /* 4 — SORGULA DÜĞMESİNİN İÇİNDE */
+  .split{display:inline-flex;align-items:stretch;border-radius:10px;overflow:hidden;box-shadow:0 2px 6px rgba(15,23,42,.18)}
+  .split .ana{height:36px;padding:0 15px;border:0;background:var(--accent);color:#fff;font:inherit;font-size:12.5px;font-weight:800;display:inline-flex;align-items:center;gap:8px}
+  .split .ana .rozet{background:rgba(255,255,255,.25)}
+  .split .cat{height:36px;width:32px;border:0;border-left:1px solid rgba(255,255,255,.28);background:var(--accent);color:#fff;font-size:10px;display:grid;place-items:center}
+  .mini{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--mut);font-weight:700}
+  .mini .nk{width:7px;height:7px;border-radius:50%;background:var(--ec)}
+</style>
+<div class="grid">
+
+  <!-- 1 -->
+  <div class="kart">
+    <div class="ust"><div class="no">1</div><div class="ad">SEKME GRUBU — kanal sekmeleriyle aynı dil</div></div>
+    <div class="ic">
+      <div class="satir">
+        <div class="segmini"><span class="on">Alış e-Fatura</span><span>Satış e-Fatura</span><span>Satış e-Arşiv</span></div>
+        <div class="sp"></div>
+        <span class="etiket">Entegratör</span>
+        <div class="seg2">
+          <button class="on tc"><i class="rozet">TU</i>Turkcell</button>
+          <button class="ec"><i class="rozet">EC</i>Eczacıkart</button>
+        </div>
+      </div>
+      <div class="aciklama">Seçili entegratör <b>beyaz kabartma</b> ile öne çıkar, diğeri gri zeminde kalır. Kanal sekmeleriyle birebir aynı dil, öğrenmesi sıfır.</div>
+    </div>
+  </div>
+
+  <!-- 2 -->
+  <div class="kart">
+    <div class="ust"><div class="no">2</div><div class="ad">AÇILIR LİSTE — sorgu çubuğunun içinde</div></div>
+    <div class="ic">
+      <div class="satir">
+        <span class="etiket">Entegratör</span>
+        <div class="drop"><i class="rozet">TU</i>Turkcell e-Şirket<span class="ok">▼</span></div>
+        <div class="sp"></div>
+        <button class="sorgula">Sorgula</button>
+      </div>
+      <div class="liste">
+        <div class="sec"><i class="rozet" style="background:var(--tc)">TU</i>Turkcell e-Şirket<span class="tik">✓</span></div>
+        <div><i class="rozet" style="background:var(--ec)">EC</i>Eczacıkart</div>
+      </div>
+      <div class="aciklama">Tek satır yer kaplar, <b>5-6 entegratörde de bozulmaz</b>. Hangisinin sorgulanacağı kutunun içinde yazılı.</div>
+    </div>
+  </div>
+
+  <!-- 3 -->
+  <div class="kart">
+    <div class="ust"><div class="no">3</div><div class="ad">SEÇİM KUTULARI — işaretli/işaretsiz</div></div>
+    <div class="ic">
+      <div class="satir" style="margin-bottom:11px"><span class="etiket">Sorgulanacak entegratör</span></div>
+      <div class="kutular">
+        <div class="kt sec"><i class="rozet">TU</i><div class="met"><b>Turkcell e-Şirket</b><span>son çekim 22.09 · 704 fatura</span></div><span class="tik">✓</span></div>
+        <div class="kt"><i class="rozet">EC</i><div class="met"><b>Eczacıkart</b><span>son çekim 22.09 · 374 fatura</span></div><span class="tik">✓</span></div>
+      </div>
+      <div class="aciklama">En açık seçenek: <b>tik işareti + renkli çerçeve</b>. Altında son çekim ve fatura sayısı da görünür. Yer kaplar ama hiç şüphe bırakmaz.</div>
+    </div>
+  </div>
+
+  <!-- 4 -->
+  <div class="kart">
+    <div class="ust"><div class="no">4</div><div class="ad">SORGULA DÜĞMESİNİN İÇİNDE</div></div>
+    <div class="ic">
+      <div class="satir">
+        <div class="segmini"><span class="on">Alış e-Fatura</span><span>Satış e-Fatura</span><span>Satış e-Arşiv</span></div>
+        <div class="sp"></div>
+        <span class="mini"><span class="nk"></span>2 entegratör bağlı</span>
+        <div class="split">
+          <button class="ana"><i class="rozet">TU</i>Turkcell'i Sorgula</button>
+          <button class="cat">▼</button>
+        </div>
+      </div>
+      <div class="aciklama">Düğme <b>ne yapacağını yazar</b>: "Turkcell'i Sorgula". Oktan diğer entegratöre geçilir. Ekranda en az yer kaplayan çözüm.</div>
+    </div>
+  </div>
+
+</div>
+</html>

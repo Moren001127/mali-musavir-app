@@ -2530,6 +2530,7 @@ function ScreenSorgu({ taxpayerId, period, source, onOpenEntegrator }: { taxpaye
   // ENTEGRATÖR BAZINDA SORGU (Muzaffer Bey, 2026-09-22): birden çok entegratörü olan mükellefte hangisinin
   //   sorgulanacağı seçilir; "Sorgula" yalnız SEÇİLİ entegratörü çeker (diğeri boşuna sorgulanmaz).
   const [secilenEfaturaProv, setSecilenEfaturaProv] = useState<string | null>(null);
+  const [provMenuAcik, setProvMenuAcik] = useState(false);
   const [lastEfaturaSync, setLastEfaturaSync] = useState<any>(null);
   const [efaturaPollUntil, setEfaturaPollUntil] = useState(0);
   const [efaturaSyncPollUntil, setEfaturaSyncPollUntil] = useState(0);
@@ -2777,7 +2778,16 @@ function ScreenSorgu({ taxpayerId, period, source, onOpenEntegrator }: { taxpaye
     setLastEfaturaSync(null);
     setSel(new Set());
   }, [source, taxpayerId, donem, efaturaChannel]);
-  useEffect(() => { setSecilenEfaturaProv(null); }, [taxpayerId]); // mükellef değişince entegratör seçimi sıfırlanır
+  useEffect(() => { setSecilenEfaturaProv(null); setProvMenuAcik(false); }, [taxpayerId]); // mükellef değişince entegratör seçimi sıfırlanır
+  // Menü açıkken dışarı tıklayınca / ESC ile kapansın.
+  useEffect(() => {
+    if (!provMenuAcik) return;
+    const kapat = (e: any) => { if (!(e.target as HTMLElement)?.closest?.('.sq-split')) setProvMenuAcik(false); };
+    const esc = (e: any) => { if (e?.key === 'Escape') setProvMenuAcik(false); };
+    document.addEventListener('mousedown', kapat);
+    document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('mousedown', kapat); document.removeEventListener('keydown', esc); };
+  }, [provMenuAcik]);
   const efaturaFetchMut = useMutation({
     mutationFn: (v: { provider: string }) => api.post('/fatura-muhasebelestirme/efatura-sync', {
       taxpayerId,
@@ -3162,9 +3172,45 @@ function ScreenSorgu({ taxpayerId, period, source, onOpenEntegrator }: { taxpaye
             </div>
           )}
           <div className="sp" />
-          <button type="button" className="btn sq-main" disabled={sorgulaDisabled} title={rangeInvalid ? 'Tarih aralığı hatalı: başlangıç bitişten sonra' : !taxpayerId ? 'Önce mükellef seç' : (source === 'efatura' && !activeEfaturaProvider) ? 'Bu mükellefe e-Fatura entegratörü tanımlanmamış — Entegratörler ekranından tanımla' : (source === 'efatura' && !providerConnected(activeEfaturaProvider)) ? 'Entegratör kimliği eksik/pasif — Entegratörler ekranından tamamla' : undefined} onClick={sorgula}>
-            <Ico html={I.sync} size={14} /> {sorgulaMetin}
-          </button>
+          {/* ENTEGRATÖR BAZINDA SORGU (Muzaffer Bey seçimi 2026-09-22, taslak 4): düğme NE YAPACAĞINI yazar
+              ("Turkcell'i Sorgula"); oktan açılan listeden diğer entegratöre geçilir. Tek entegratörde düz düğme. */}
+          {source === 'efatura' && connectedEfaturaProviders.length > 1 ? (
+            <div className="sq-split">
+              <span className="sq-bagli" title={connectedEfaturaProviders.map((p) => efaturaProviderLabel(p)).join(' · ')}>
+                <i /> {connectedEfaturaProviders.length} entegratör bağlı
+              </span>
+              <div className="sq-splitbtn">
+                <button type="button" className="ana" disabled={sorgulaDisabled} title={`Yalnız ${efaturaProviderLabel(activeEfaturaProvider)} sorgulanır`} onClick={sorgula}>
+                  <i className="rz" style={{ ['--sc' as any]: sorguProvRenk(activeEfaturaProvider?.provider) }}>{provKisalt(String(activeEfaturaProvider?.label || ''), String(activeEfaturaProvider?.provider || ''))}</i>
+                  {(efaturaFetchMut.isPending || efaturaQueuedSync) ? 'Sorgulanıyor…' : `${belirtmeHali(provKisaAd(String(activeEfaturaProvider?.label || ''), String(activeEfaturaProvider?.provider || '')))} Sorgula`}
+                </button>
+                <button type="button" className="cat" aria-label="Entegratör seç" title="Başka entegratörü sorgula" onClick={() => setProvMenuAcik((a) => !a)}>▼</button>
+                {provMenuAcik && (
+                  <div className="sq-provmenu">
+                    <div className="bas">Hangi entegratör sorgulansın?</div>
+                    {connectedEfaturaProviders.map((p) => {
+                      const kod = String(p.provider || '');
+                      const secili = kod === String(activeEfaturaProvider?.provider || '');
+                      return (
+                        <button key={kod} type="button" className={secili ? 'sec' : ''} onClick={() => { setSecilenEfaturaProv(kod); setProvMenuAcik(false); }}>
+                          <i className="rz" style={{ ['--sc' as any]: sorguProvRenk(kod) }}>{provKisalt(String(p.label || ''), kod)}</i>
+                          <span className="ad">
+                            {efaturaProviderLabel(p)}
+                            <small>{p?.lastSyncAt ? `son çekim ${fmtDate(p.lastSyncAt)}` : 'henüz çekim yok'}</small>
+                          </span>
+                          {secili && <span className="tik">✓</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <button type="button" className="btn sq-main" disabled={sorgulaDisabled} title={rangeInvalid ? 'Tarih aralığı hatalı: başlangıç bitişten sonra' : !taxpayerId ? 'Önce mükellef seç' : (source === 'efatura' && !activeEfaturaProvider) ? 'Bu mükellefe e-Fatura entegratörü tanımlanmamış — Entegratörler ekranından tanımla' : (source === 'efatura' && !providerConnected(activeEfaturaProvider)) ? 'Entegratör kimliği eksik/pasif — Entegratörler ekranından tamamla' : undefined} onClick={sorgula}>
+              <Ico html={I.sync} size={14} /> {sorgulaMetin}
+            </button>
+          )}
         </div>
         <div className="sq-row sq-meta">
           <span className="sq-pill"><Ico html={I.clock} size={12} /> Sorgu aralığı: <b>{aralikMetin}</b></span>
@@ -3349,26 +3395,7 @@ function ScreenSorgu({ taxpayerId, period, source, onOpenEntegrator }: { taxpaye
             </div>
             {/* Entegratör adı + kimlik rozeti (integrations: connected = configured && isActive; hasApiKey/hasPassword/username ayrıntı) */}
             <div className="sq-prov">
-              {connectedEfaturaProviders.length > 1 ? (
-                // Birden çok bağlı entegratör: her biri TIKLANABİLİR çip; "Sorgula" yalnız seçili olanı çeker.
-                connectedEfaturaProviders.map((p) => {
-                  const kod = String(p.provider || '');
-                  const secili = kod === String(activeEfaturaProvider?.provider || '');
-                  return (
-                    <button
-                      key={kod}
-                      type="button"
-                      className={`sq-src pick${secili ? ' sel' : ''}`}
-                      style={{ ['--sc' as any]: sorguProvRenk(kod) }}
-                      onClick={() => setSecilenEfaturaProv(kod)}
-                      title={`${secili ? 'Sorgu bu entegratöre yapılır' : 'Sorguyu bu entegratöre çevir'}${providerKimlikDetay(p) ? ` · ${providerKimlikDetay(p)}` : ''}`}
-                    >
-                      <i>{provKisalt(String(p.label || ''), kod)}</i>
-                      {efaturaProviderLabel(p)}
-                    </button>
-                  );
-                })
-              ) : activeEfaturaProvider ? (
+              {activeEfaturaProvider ? (
                 <span className="sq-src" style={{ ['--sc' as any]: sorguProvRenk(activeEfaturaProvider?.provider) }} title={providerKimlikDetay(activeEfaturaProvider) || undefined}>
                   <i>{provKisalt(String(activeEfaturaProvider.label || ''), String(activeEfaturaProvider.provider || ''))}</i>
                   {efaturaProviderLabel(activeEfaturaProvider)}
@@ -5350,6 +5377,23 @@ const PROVIDER_OPTS = [
   // Mikro = e-Mikro / Mikrogrup e-Portal (eportal.mikrogrup.com). Kimlik: e-Portal e-postası + parolası.
   { v: 'MIKRO', l: 'Mikro (e-Portal)' },
 ];
+/** Düğme metni için KISA entegratör adı: "Turkcell e-Şirket" → "Turkcell", "TÜRMOB e-Fatura" → "TÜRMOB". */
+function provKisaAd(label: string, provider: string): string {
+  const ham = String(label || provider || '').trim();
+  if (/^TURMOB/i.test(String(provider || ''))) return 'TÜRMOB';
+  if (ham.length <= 12) return ham;
+  return ham.split(/[\s·/-]+/)[0] || ham;
+}
+/** Belirtme hâli (ekran metni): Turkcell → Turkcell'i · Eczacıkart → Eczacıkart'ı · Paraşüt → Paraşüt'ü. */
+function belirtmeHali(ad: string): string {
+  const metin = String(ad || '').trim();
+  if (!metin) return metin;
+  const sesliler = 'aeıioöuüAEIİOÖUÜ';
+  const uyum: Record<string, string> = { a: 'ı', 'ı': 'ı', o: 'u', u: 'u', e: 'i', i: 'i', 'ö': 'ü', 'ü': 'ü' };
+  const sonSesli = [...metin].reverse().find((h) => sesliler.includes(h)) || 'e';
+  const ek = uyum[sonSesli.toLocaleLowerCase('tr-TR')] || 'i';
+  return sesliler.includes(metin[metin.length - 1]) ? `${metin}'y${ek}` : `${metin}'${ek}`;
+}
 function provKisalt(label: string, provider: string): string {
   if (provider === 'TURMOB_EFATURA') return 'TR';
   if (provider === 'PARASUT') return 'PŞ';
@@ -8645,11 +8689,27 @@ const CSS = `
 #fm-root .sq-table .sq-pill{height:22px;font-size:10.5px}
 /* Entegratör / kaynak rozeti: --sc sağlayıcı rengi */
 #fm-root .sq-src{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px 0 3px;border-radius:999px;font-size:11px;font-weight:800;background:color-mix(in srgb,var(--sc,var(--accent)) 10%,#fff);color:var(--sc,var(--accent));border:1px solid color-mix(in srgb,var(--sc,var(--accent)) 32%,#fff);white-space:nowrap;letter-spacing:.1px}
-#fm-root .sq-src.pick{cursor:pointer;font-family:inherit;transition:background .12s,border-color .12s,color .12s,box-shadow .12s}
-#fm-root .sq-src.pick:not(.sel){background:#f4f6fa;color:#64748b;border-color:#dfe5ee}
-#fm-root .sq-src.pick:not(.sel) i{background:#c3ccda}
-#fm-root .sq-src.pick:not(.sel):hover{background:#eef2f7;color:#475569;border-color:#cfd8e5}
-#fm-root .sq-src.pick.sel{box-shadow:0 0 0 2px color-mix(in srgb,var(--sc,var(--accent)) 18%,#fff)}
+/* Entegratör bazında sorgu: "…'i Sorgula" bölünmüş düğmesi + açılan entegratör listesi (taslak 4) */
+#fm-root .sq-split{display:inline-flex;align-items:center;gap:10px}
+#fm-root .sq-bagli{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:750;color:var(--muted);white-space:nowrap}
+#fm-root .sq-bagli i{width:7px;height:7px;border-radius:50%;background:#15803d;flex-shrink:0}
+#fm-root .sq-splitbtn{position:relative;display:inline-flex;align-items:stretch;border-radius:11px;box-shadow:0 10px 20px -10px var(--accent)}
+#fm-root .sq-splitbtn .ana,#fm-root .sq-splitbtn .cat{height:40px;border:0;color:#fff;font:inherit;font-weight:800;background:linear-gradient(135deg,#0f766e 0%,var(--accent) 55%,#14b8a6 100%);transition:filter .14s}
+#fm-root .sq-splitbtn .ana{padding:0 16px 0 7px;font-size:13px;display:inline-flex;align-items:center;gap:8px;border-radius:11px 0 0 11px}
+#fm-root .sq-splitbtn .cat{width:34px;font-size:10px;border-radius:0 11px 11px 0;border-left:1px solid rgba(255,255,255,.3);display:grid;place-items:center}
+#fm-root .sq-splitbtn .ana:hover:not(:disabled),#fm-root .sq-splitbtn .cat:hover{filter:brightness(1.07)}
+#fm-root .sq-splitbtn .ana:disabled{opacity:.55;cursor:not-allowed}
+#fm-root .sq-splitbtn .rz{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.22);color:#fff;font-size:9.5px;font-style:normal;font-weight:900;letter-spacing:.2px;flex-shrink:0}
+#fm-root .sq-provmenu{position:absolute;top:calc(100% + 7px);right:0;z-index:40;min-width:268px;background:#fff;border:1px solid var(--line,#e5eaf2);border-radius:13px;box-shadow:0 18px 40px -14px rgba(15,23,42,.35);overflow:hidden}
+#fm-root .sq-provmenu .bas{padding:9px 13px;font-size:10.5px;font-weight:900;letter-spacing:.5px;text-transform:uppercase;color:#94a3b8;background:#f8fafc;border-bottom:1px solid #eef2f7}
+#fm-root .sq-provmenu button{width:100%;display:flex;align-items:center;gap:9px;padding:10px 13px;border:0;background:#fff;font:inherit;text-align:left;cursor:pointer}
+#fm-root .sq-provmenu button+button{border-top:1px solid #f1f5f9}
+#fm-root .sq-provmenu button:hover{background:#f8fafc}
+#fm-root .sq-provmenu button.sec{background:color-mix(in srgb,var(--accent) 7%,#fff)}
+#fm-root .sq-provmenu .rz{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;background:var(--sc,var(--accent));color:#fff;font-size:9px;font-style:normal;font-weight:900;flex-shrink:0}
+#fm-root .sq-provmenu .ad{display:flex;flex-direction:column;line-height:1.3;font-size:12.5px;font-weight:800;color:#0f172a}
+#fm-root .sq-provmenu .ad small{font-size:10.5px;font-weight:650;color:#94a3b8}
+#fm-root .sq-provmenu .tik{margin-left:auto;color:var(--accent);font-weight:900;font-size:13px}
 #fm-root .sq-src i{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;background:var(--sc,var(--accent));color:#fff;font-size:8.5px;font-style:normal;font-weight:900;letter-spacing:.2px;flex-shrink:0}
 /* ONAY hapı */
 #fm-root .sq-onay{display:inline-flex;align-items:center;gap:5px;height:23px;padding:0 9px;border-radius:999px;font-size:11px;font-weight:750;white-space:nowrap;border:1px solid transparent;line-height:1}
