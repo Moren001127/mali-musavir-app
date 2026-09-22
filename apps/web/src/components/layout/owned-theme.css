@@ -505,3 +505,77 @@ html[data-theme='D'] header[data-moren-owned='surface'] a[href='/panel/bildiriml
 html[data-theme='D'] header[data-moren-owned='surface'] a[href='/panel/bildirimler']:hover { background: #e5dbff !important; border-color: #b197fc !important; }
 html[data-theme='D'] header[data-moren-owned='surface'] a[href='/panel/bildirimler'] > span { border-color: #f3f0ff; }
 html[data-theme='D'] header[data-moren-owned='surface'] div[data-health-state] > span { border-color: #fff; }
+
+
+/* ═════════════════════════════════════════════════════════════════════════════════════════════
+   2026-09-22 — SOL MENÜ — İKON KUTULU SATIRLAR (Muzaffer Bey: "sol şeridin yazıları vs çok basit
+   duruyor, burayı bir tasarla" → 4 taslaktan 3'ü seçildi).
+   · Madde = 38px ferah satır; her maddede 24px yumuşak kare simge kutusu (beyaz %9 yıkama).
+   · Grup başlığı 10px/700 aralıklı, yanında sağa doğru sönen ince çizgi; gruplar arası ayraç.
+   · Etkin madde: beyaz %12 zemin + beyaz kalın yazı + NANE DOLU simge kutusu (sol şerit yok).
+   · Fare: simge kutusu beyaz %16'ya çıkar, yazı beyazlaşır. Renk yalnız etkin maddeyi söyler.
+   Daraltılmış menü (data-collapsed='true') etkilenmez.
+   ═════════════════════════════════════════════════════════════════════════════════════════════ */
+html[data-theme='D'] [data-moren-sidebar][data-collapsed='false'] nav > div + div {
+  margin-top: 15px;
+  padding-top: 13px;
+  border-top: 1px solid rgba(222, 238, 244, 0.08);
+}
+html[data-theme='D'] [data-moren-sidebar][data-collapsed='false'] [data-moren-sidebar-group] {
+  padding: 0 4px 0 10px !important;
+  margin-bottom: 7px;
+  gap: 10px !important;
+}
+html[data-theme='D'] [data-moren-sidebar][data-collapsed='false'] [data-moren-sidebar-group] p {
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.16em !important;
+  color: rgba(222, 238, 244, 0.55) !important;
+}
+/* Grup adının yanındaki ince çizgi (TSX'te var; D temasında dekor gizliydi, burada geri açılır) */
+html[data-theme='D'] [data-moren-sidebar][data-collapsed='false'] [data-moren-sidebar-group] > div:last-child {
+  display: block !important;
+  opacity: 1 !important;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(222, 238, 244, 0.18), transparent) !important;
+}
+html[data-theme='D'] [data-moren-sidebar][data-collapsed='false'] [data-moren-sidebar-item] {
+  min-height: 38px;
+  padding: 6px 8px 6px 6px !important;
+  border-radius: 10px !important;
+  gap: 9px !important;
+  font-size: 13.5px !important;
+  font-weight: 500 !important;
+  color: rgba(232, 241, 248, 0.88) !important;
+}
+html[data-theme='D'] [data-moren-sidebar][data-collapsed='false'] [data-moren-sidebar-item] [data-moren-sidebar-icon] {
+  width: 24px !important;
+  height: 24px !important;
+  border-radius: 7px !important;
+  background: rgba(255, 255, 255, 0.09) !important;
+}
+html[data-theme='D'] [data-moren-sidebar][data-collapsed='false'] [data-moren-sidebar-item] [data-moren-sidebar-icon] svg {
+  width: 15px;
+  height: 15px;
+  color: rgba(226, 240, 248, 0.82) !important;
+}
+html[data-theme='D'] [data-moren-sidebar][data-collapsed='false'] [data-moren-sidebar-item]:hover [data-moren-sidebar-icon],
+html[data-theme='D'] [data-moren-sidebar][data-collapsed='false'] [data-moren-sidebar-item]:focus-visible [data-moren-sidebar-icon] {
+  background: rgba(255, 255, 255, 0.16) !important;
+}
+html[data-theme='D'] [data-moren-sidebar][data-collapsed='false'] [data-moren-sidebar-active='true'] {
+  background: rgba(255, 255, 255, 0.12) !important;
+  color: #ffffff !important;
+  font-weight: 650 !important;
+}
+html[data-theme='D'] [data-moren-sidebar][data-collapsed='false'] [data-moren-sidebar-active='true'] [data-moren-sidebar-icon] {
+  background: linear-gradient(135deg, #2fd7b5, #0d9d8e) !important;
+}
+html[data-theme='D'] [data-moren-sidebar][data-collapsed='false'] [data-moren-sidebar-active='true'] [data-moren-sidebar-icon] svg {
+  color: #06312f !important;
+  stroke-width: 2.2;
+}
+/* Etkin maddede sol nane şerit yerine simge kutusu konuşuyor */
+html[data-theme='D'] [data-moren-sidebar][data-collapsed='false'] [data-moren-sidebar-indicator] {
+  display: none !important;
+}
