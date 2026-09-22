@@ -22,6 +22,28 @@ export class GenelSorgularController {
   }
 
   /**
+   * GET /genel-sorgular/guncel?tur=VERGI_BORCU&taxpayerId=&donem=&page=1&pageSize=50 → güncel durum satırları
+   * (borç: mükellef başına · haciz: bildiri başına · yoklama: tutanak başına · POS: ay+banka başına · e-Arşiv: fatura başına)
+   */
+  @Get('guncel')
+  guncel(
+    @Req() req: any,
+    @Query('tur') tur: string,
+    @Query('taxpayerId') taxpayerId?: string,
+    @Query('donem') donem?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
+    return this.genelSorgular.guncel(req.user.tenantId, {
+      tur,
+      taxpayerId: taxpayerId || undefined,
+      donem: donem || undefined,
+      page: page ? parseInt(page, 10) : undefined,
+      pageSize: pageSize ? parseInt(pageSize, 10) : undefined,
+    });
+  }
+
+  /**
    * GET /genel-sorgular/earsiv-eksik?taxpayerId=&donem=YYYY-MM
    * → { rows:[{ taxpayerId, taxpayer, donem, sorguTarihi, faturaNo, duzenlenmeTarihi, saticiUnvan, saticiVkn,
    *             toplamTutar, vergilerTutari, odenecekTutar, durum:'LUCA_YOK'|'GORSEL_YOK' }],

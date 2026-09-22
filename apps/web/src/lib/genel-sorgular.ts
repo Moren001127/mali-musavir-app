@@ -134,6 +134,40 @@ export interface SorguBaslatmaSonucu {
   message?: string;
 }
 
+/**
+ * GÜNCEL DURUM satırı (GET /genel-sorgular/guncel) — sorgu koşusu değil, mükellefin bugünkü durumu.
+ * Tür başına alanlar dolu gelir: borc (mükellef), haciz (bildiri), yoklama (tutanak), pos (ay+banka), fatura (e-Arşiv).
+ */
+export interface GuncelSatir {
+  kind: 'borc' | 'haciz' | 'yoklama' | 'pos' | 'fatura';
+  sonucId: string;
+  taxpayerId: string;
+  taxpayer?: SorguMukellef | null;
+  sorguTarihi: string;
+  kaynak?: string | null;
+  donem?: string | null;
+  // borc
+  vadesiGecmis: number; vadesiGelmemis: number; toplam: number; gecikmeZammi: number; kalemSayisi: number;
+  kalemler?: VergiBorcuVeri['kalemler']; hesaplamaZamani?: string | null;
+  // haciz
+  kapsam?: 'BANKA' | 'ARAC'; bildiriNo?: string; vergiDairesi?: string | null; vergiDairesiKodu?: string; tutar: number; durum: string; tatbikEdildi?: boolean;
+  borclar?: Array<{ vergiTuru: string; vergiDonem: string }>;
+  // yoklama
+  kayit?: 'YOKLAMA' | 'DENETIM'; kod?: string; turu?: string; tarih?: string | null; sonuc?: string | null; pdfDocumentId?: string | null; pdfVarMi?: boolean;
+  // pos
+  unvan?: string; vkn?: string; uyeIsyeriNo?: string; donemToplami?: number;
+  // fatura
+  faturaNo?: string; duzenlenmeTarihi?: string | null; saticiUnvan?: string; saticiVkn?: string; gonderimSekli?: string;
+  toplamTutar: number; vergilerTutari: number; odenecekTutar: number; iptalItirazDurum?: string | null;
+}
+export interface GuncelYaniti {
+  rows: GuncelSatir[];
+  total: number;
+  page: number;
+  pageSize: number;
+  ozet: { mukellef: number; bos: number; enEskiSorgu: string | null; enYeniSorgu: string | null };
+}
+
 /** Görseli eksik fatura satırı (DVD gelen e-Arşiv listesi ↔ Luca alış e-Arşiv/e-Fatura çekimi). */
 export interface EksikGorselSatiri {
   taxpayerId: string;
@@ -201,6 +235,27 @@ export const genelSorgularApi = {
   },
 
   ozet: () => api.get('/genel-sorgular/ozet').then((r) => (r.data ?? {}) as SorguOzeti),
+
+  /** Güncel durum satırları (tür zorunlu). Sayısal alanlar eksik gelirse 0'a çekilir. */
+  guncel: (params: { tur: SorguTuru; taxpayerId?: string; donem?: string; page?: number; pageSize?: number }) =>
+    api
+      .get('/genel-sorgular/guncel', { params: { tur: params.tur, taxpayerId: params.taxpayerId || undefined, donem: params.donem || undefined, page: params.page ?? 1, pageSize: params.pageSize ?? 50 } })
+      .then((r) => {
+        const d = (r.data ?? {}) as Partial<GuncelYaniti>;
+        const rows = (Array.isArray(d.rows) ? d.rows : []).map((s) => ({
+          ...s,
+          vadesiGecmis: Number(s.vadesiGecmis) || 0, vadesiGelmemis: Number(s.vadesiGelmemis) || 0, toplam: Number(s.toplam) || 0,
+          gecikmeZammi: Number(s.gecikmeZammi) || 0, kalemSayisi: Number(s.kalemSayisi) || 0, tutar: Number(s.tutar) || 0,
+          durum: String(s.durum || ''), toplamTutar: Number(s.toplamTutar) || 0, vergilerTutari: Number(s.vergilerTutari) || 0, odenecekTutar: Number(s.odenecekTutar) || 0,
+        })) as GuncelSatir[];
+        return {
+          rows,
+          total: Number(d.total ?? rows.length) || 0,
+          page: Number(d.page ?? params.page ?? 1) || 1,
+          pageSize: Number(d.pageSize ?? params.pageSize ?? 50) || 50,
+          ozet: d.ozet ?? { mukellef: 0, bos: 0, enEskiSorgu: null, enYeniSorgu: null },
+        } satisfies GuncelYaniti;
+      }),
 
   /** Görseli eksik faturalar: DVD gelen e-Arşiv listesi ↔ Luca'dan inen görselli alış e-Arşiv/e-Fatura. */
   eksikGorseller: (params: { taxpayerId?: string; donem?: string }) =>

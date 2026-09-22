@@ -3,19 +3,20 @@ import './genel-sorgular.css';
 
 import { Suspense, useCallback, useMemo, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { useQueries, useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { ScanSearch } from 'lucide-react';
 import { toast } from 'sonner';
 import { PdfOnizlemeModali, type PdfModalDurumu } from '@/components/portal-automation/belge-ortak';
 import { boyutParamOku, sayfaParamOku, type SayfaBoyutu } from '@/components/ui/Sayfalama';
 import { SORGU_TURLERI, genelSorgularApi, sorguTuruMu, type SorguKosusu, type SorguTuru } from '@/lib/genel-sorgular';
 import { AracCubugu, type Suzgec } from './_components/AracCubugu';
-import { SonucGrubu } from './_components/SonucTablosu';
+import { GuncelTablo } from './_components/GuncelTablo';
 import { tarihKisa } from './_lib/bicim';
 
 /*
  * Genel Sorgulamalar (2026-09-22, sade sürüm — Muzaffer Bey: "manuel sorgu için ufak bir ekran yeter").
- *   Başlık + gece sorgusu tek satır not · tek araç çubuğu (mükellef · tür · dönem · Sorgula) · tür başına kenarlıklı tablo.
+ *   Başlık + gece sorgusu tek satır not · tek araç çubuğu (mükellef · tür · dönem · Sorgula) · tür başına GÜNCEL DURUM tablosu
+ *   (koşu geçmişi değil: borç mükellef başına, haciz bildiri başına, yoklama tutanak başına, POS ay+banka, e-Arşiv fatura başına).
  *   Gece sorgusu mükellef kartındaki Otomatik Sorgulama Ayarı'na göre çalışır; burada kurulum/koşu listesi YOK.
  * Adres çubuğu: ?mukellef=<id>&tur=VERGI_BORCU&donem=2026-09&boyut=50&s_VERGI_BORCU=2&renk=1..4
  * (renk = Muzaffer Bey'in seçeceği vurgu varyantı; karar sonrası sabitlenir.)
@@ -83,13 +84,6 @@ function GenelSorgularIcerik() {
   const gece = useMemo(() => geceOzeti(sonKosular), [sonKosular]);
 
   const gosterilenTurler = suzgec.tur ? [suzgec.tur] : [...SORGU_TURLERI];
-  const sorgular = useQueries({
-    queries: gosterilenTurler.map((t) => ({
-      queryKey: ['genel-sorgular', 'liste', t, suzgec.mukellefId, suzgec.donem, sayfaOku(t), boyut],
-      queryFn: () => genelSorgularApi.liste({ taxpayerId: suzgec.mukellefId || undefined, tur: t, donem: suzgec.donem || undefined, page: sayfaOku(t), pageSize: boyut }),
-      placeholderData: (onceki: Awaited<ReturnType<typeof genelSorgularApi.liste>> | undefined) => onceki,
-    })),
-  });
 
   // Yoklama tutanağı PDF'i — sayfa içi pencere (e-Tebligat kalıbı).
   const [pdf, setPdf] = useState<PdfModalDurumu>(null);
@@ -120,26 +114,19 @@ function GenelSorgularIcerik() {
       <AracCubugu suzgec={suzgec} onSuzgec={suzgecYaz} mukellefler={mukellefler} />
 
       <div className="gs-gruplar">
-        {gosterilenTurler.map((t, i) => {
-          const q = sorgular[i];
-          return (
-            <SonucGrubu
-              key={t}
-              tur={t}
-              rows={q.data?.rows ?? []}
-              total={q.data?.total ?? 0}
-              sayfa={sayfaOku(t)}
-              sayfaBoyutu={boyut}
-              onSayfa={(n) => sayfaYaz(t, n)}
-              onSayfaBoyutu={boyutYaz}
-              yukleniyor={q.isFetching}
-              hata={q.isError ? hataMetni(q.error) : null}
-              suzgec={{ taxpayerId: suzgec.mukellefId || undefined, donem: suzgec.donem || undefined }}
-              vurgu={RENK_VURGU[renk]}
-              onTutanak={tutanakAc}
-            />
-          );
-        })}
+        {gosterilenTurler.map((t) => (
+          <GuncelTablo
+            key={t}
+            tur={t}
+            suzgec={{ taxpayerId: suzgec.mukellefId || undefined, donem: suzgec.donem || undefined }}
+            sayfa={sayfaOku(t)}
+            sayfaBoyutu={boyut}
+            onSayfa={(n) => sayfaYaz(t, n)}
+            onSayfaBoyutu={boyutYaz}
+            vurgu={RENK_VURGU[renk]}
+            onTutanak={tutanakAc}
+          />
+        ))}
       </div>
 
       <PdfOnizlemeModali modal={pdf} onClose={() => setPdf(null)} />
@@ -160,8 +147,3 @@ function geceOzeti(kosular: SorguKosusu[]): { tarih: string; mukellef: number; h
   };
 }
 
-function hataMetni(e: unknown): string {
-  const err = e as { response?: { data?: { message?: string | string[] } }; message?: string };
-  const m = err?.response?.data?.message;
-  return (Array.isArray(m) ? m.join(', ') : m) || err?.message || 'Bilinmeyen hata';
-}

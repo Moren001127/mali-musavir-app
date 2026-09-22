@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { GENEL_SORGU_TURLERI, type GenelSorguTuru } from '@mali-musavir/shared';
+import { enSonSonuclar, guncelSatirlar, type GuncelTur, type HamSonuc } from './guncel-durum';
 
 export type GenelSorguListeSecenekleri = {
   taxpayerId?: string;
@@ -98,6 +99,37 @@ export class GenelSorgularService {
       }
     }
     return sonuc;
+  }
+
+  /**
+   * GET /genel-sorgular/guncel?tur=&taxpayerId=&donem=&page=&pageSize= — GÜNCEL DURUM (koşu geçmişi değil).
+   * Mükellef (POS/e-Arşiv'de mükellef+ay) başına EN SON sonucu alır, ekran satırlarına açar (bkz. guncel-durum.ts).
+   * `donem` yalnız POS ve GELEN_EARSIV'de anlamlıdır; diğer türlerde yok sayılır (güncel durum ay bağımsız).
+   * pageSize 1-5000 (Excel için büyük sayfa).
+   */
+  async guncel(tenantId: string, secenek: { tur: string; taxpayerId?: string; donem?: string; page?: number; pageSize?: number }) {
+    const tur = this.turDogrula(secenek.tur);
+    if (!tur) throw new BadRequestException(`tur zorunlu: ${GENEL_SORGU_TURLERI.join(' | ')}`);
+    if (secenek.donem && !DONEM_DESENI.test(secenek.donem)) {
+      throw new BadRequestException('donem YYYY-MM biçiminde olmalı');
+    }
+    const page = Math.max(1, Number(secenek.page) || 1);
+    const pageSize = Math.min(5000, Math.max(1, Number(secenek.pageSize) || 50));
+    const ayBazli = tur === 'POS' || tur === 'GELEN_EARSIV';
+
+    const where: any = { tenantId, tur };
+    if (secenek.taxpayerId) where.taxpayerId = secenek.taxpayerId;
+    if (ayBazli && secenek.donem) where.donem = secenek.donem;
+    const ham: HamSonuc[] = await (this.prisma as any).genelSorguSonucu.findMany({
+      where,
+      orderBy: { sorguTarihi: 'desc' },
+      take: 4000,
+      select: { id: true, taxpayerId: true, taxpayer: { select: TAXPAYER_SELECT }, tur: true, donem: true, sorguTarihi: true, kaynak: true, veri: true },
+    });
+    const enSon = enSonSonuclar(tur as GuncelTur, ham);
+    const { rows, ozet } = guncelSatirlar(tur as GuncelTur, enSon);
+    const total = rows.length;
+    return { rows: rows.slice((page - 1) * pageSize, page * pageSize), total, page, pageSize, ozet };
   }
 
   /**

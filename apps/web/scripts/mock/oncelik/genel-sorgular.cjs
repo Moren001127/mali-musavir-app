@@ -312,6 +312,30 @@ function uclar(yol, yontem, q, govde, jsonGonder, res) {
     }
     return jsonGonder(res, 200, out);
   }
+  // GÜNCEL DURUM — gerçek çözümleyicinin (apps/api/src/genel-sorgular/guncel-durum.ts) sahte kopyası: mükellef (+ay) başına en son sonuç → düz satırlar
+  if (yontem === 'GET' && yol === '/genel-sorgular/guncel') {
+    const tur = String(q.tur || '');
+    const ayBazli = tur === 'POS' || tur === 'GELEN_EARSIV';
+    const gorulen = new Set();
+    const enSon = sirala().filter((r) => r.tur === tur && (!q.taxpayerId || r.taxpayerId === q.taxpayerId) && (!(ayBazli && q.donem) || r.donem === q.donem)).filter((r) => {
+      const k = ayBazli ? `${r.taxpayerId}::${r.donem || ''}` : r.taxpayerId; if (gorulen.has(k)) return false; gorulen.add(k); return true;
+    });
+    const n = (v) => Number(v) || 0;
+    const ortak = (r) => ({ sonucId: r.id, taxpayerId: r.taxpayerId, taxpayer: r.taxpayer, sorguTarihi: r.sorguTarihi, kaynak: r.kaynak, donem: r.donem });
+    let rows = []; let bos = 0;
+    for (const r of enSon) {
+      const v = r.veri || {};
+      if (tur === 'VERGI_BORCU') { if (!n(v.toplam)) bos++; rows.push({ kind: 'borc', ...ortak(r), vadesiGecmis: n(v.vadesiGecmis), vadesiGelmemis: n(v.vadesiGelmemis), toplam: n(v.toplam), gecikmeZammi: n(v.gecikmeZammiToplam), kalemSayisi: (v.kalemler || []).length, kalemler: v.kalemler || [], hesaplamaZamani: v.hesaplamaZamani || null }); }
+      else if (tur === 'E_HACIZ') { const l = v.bildiriler || []; if (!l.length) bos++; for (const b of l) rows.push({ kind: 'haciz', ...ortak(r), kapsam: b.kapsam, bildiriNo: b.bildiriNo, vergiDairesi: b.vergiDairesi, vergiDairesiKodu: b.vergiDairesiKodu, tutar: n(b.tutar), durum: b.durum, tatbikEdildi: /EDİLMİŞTİR$/i.test(b.durum || ''), borclar: b.borclar || [] }); }
+      else if (tur === 'YOKLAMA_DENETIM') { const y = v.yoklamalar || [], d = v.denetimler || []; if (!y.length && !d.length) bos++; for (const x of y) rows.push({ kind: 'yoklama', ...ortak(r), kayit: 'YOKLAMA', kod: x.yoklamaKodu, vergiDairesi: x.vergiDairesi, turu: x.yoklamaTuru, tarih: x.tarih, sonuc: null, pdfDocumentId: x.pdfDocumentId || null, pdfVarMi: !!x.pdfVarMi }); for (const x of d) rows.push({ kind: 'yoklama', ...ortak(r), kayit: 'DENETIM', kod: x.belgeKodu, vergiDairesi: '', turu: x.denetimAdi || x.denetimTuru, tarih: x.tarih, sonuc: x.sonuc || null, pdfDocumentId: null, pdfVarMi: false }); }
+      else if (tur === 'POS') { const l = v.satirlar || []; if (!l.length) bos++; for (const x of l) rows.push({ kind: 'pos', ...ortak(r), kaynak: x.kaynak, unvan: x.unvan, vkn: x.vkn, uyeIsyeriNo: x.uyeIsyeriNo, tutar: n(x.tutar), donemToplami: n(v.toplamTutar) }); }
+      else if (tur === 'GELEN_EARSIV') { const l = v.faturalar || []; if (!l.length) bos++; for (const f of l) rows.push({ kind: 'fatura', ...ortak(r), faturaNo: f.faturaNo, duzenlenmeTarihi: f.duzenlenmeTarihi, saticiUnvan: f.saticiUnvan, saticiVkn: f.saticiVkn, gonderimSekli: f.gonderimSekli, toplamTutar: n(f.toplamTutar), vergilerTutari: n(f.vergilerTutari), odenecekTutar: n(f.odenecekTutar), iptalItirazDurum: f.iptalItirazDurum || null }); }
+    }
+    if (tur === 'VERGI_BORCU') rows.sort((a, b) => b.toplam - a.toplam);
+    const page = Math.max(1, Number(q.page) || 1); const pageSize = Math.min(5000, Math.max(1, Number(q.pageSize) || 50));
+    const z = enSon.map((r) => r.sorguTarihi).sort();
+    return jsonGonder(res, 200, { rows: rows.slice((page - 1) * pageSize, page * pageSize), total: rows.length, page, pageSize, ozet: { mukellef: new Set(enSon.map((r) => r.taxpayerId)).size, bos, enEskiSorgu: z[0] || null, enYeniSorgu: z[z.length - 1] || null } });
+  }
   if (yontem === 'GET' && yol === '/genel-sorgular') {
     const page = Math.max(1, Number(q.page) || 1);
     const pageSize = Math.min(200, Math.max(1, Number(q.pageSize) || 50));

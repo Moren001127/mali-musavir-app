@@ -166,6 +166,8 @@ html[data-theme='D'] [data-panel-main] .gs table.gs-tablo tbody tr.gs-satir[data
 html[data-theme='D'] [data-panel-main] .gs table.gs-tablo :is(th, td).sag { text-align: right; font-variant-numeric: tabular-nums; }
 html[data-theme='D'] [data-panel-main] .gs table.gs-tablo :is(th, td).orta { text-align: center; }
 html[data-theme='D'] [data-panel-main] .gs table.gs-tablo td.gs-detay { padding: 12px 16px 16px; background: var(--gs-wash); border-bottom: 1px solid var(--gs-line) !important; overflow: visible; }
+.gs-tablo td.gs-tek-satir { white-space: nowrap; }
+.gs-tablo td.gs-tek-satir > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; max-width: 100%; }
 .gs-tablo .gs-sifir { color: var(--gs-zero); }
 .gs-tablo .gs-kirmizi { color: var(--gs-red-ink); font-weight: 600; }
 .gs-tablo .gs-yesil { color: var(--gs-green-ink); font-weight: 600; }
