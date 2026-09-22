@@ -12246,7 +12246,28 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       </LoginRequest>`;
     const loginText = await this.soapPost(baseUrl, '', loginBody);
     const sessionId = this.tagText(loginText, 'SESSION_ID');
-    if (!sessionId) throw new Error('Izibiz/i2i oturum alinamadi');
+    if (!sessionId) {
+      // SESSİZ HATA TUZAĞI (2026-09-23, Zeyrek Lojistik/Akınsoft): oturum açılmayınca ekranda yalnız
+      //   "oturum alinamadi" yazıyordu; şifre mi yanlış, kullanıcı mı yetkisiz, entegratör mü başka —
+      //   anlaşılmıyordu. Sunucunun kendi hata metni (SOAP fault / ERROR_MESSAGE) mesaja eklenir.
+      const sunucu = [
+        this.tagText(loginText, 'faultstring'),
+        this.tagText(loginText, 'ERROR_MESSAGE'),
+        this.tagText(loginText, 'ERROR_SHORT_DES'),
+        this.tagText(loginText, 'MESSAGE'),
+      ].find((m) => m && m.length > 2) || '';
+      const akinsoft = String(cfg.provider || '').toUpperCase() === 'AKINSOFT';
+      throw new Error(
+        `${akinsoft ? 'Akınsoft' : 'İzibiz'} web servisi oturum açmadı`
+        + (sunucu ? ` — sunucu: "${sunucu.slice(0, 180)}"` : ' (sunucu sebep bildirmedi)')
+        + (akinsoft
+          ? '. Akınsoft kendi entegratör DEĞİL: Wolvox e-Fatura\'yı İzibiz, EDM, Digital Planet ya da '
+            + 'Süper Entegratör üzerinden gönderir. Buradaki yol İZİBİZ içindir — mükellefin Wolvox '
+            + 'e-Fatura ayarlarındaki entegratör İzibiz değilse hiçbir şifre çalışmaz. Ayrıca girilen '
+            + 'bilgi Wolvox/portal şifresi değil, entegratörün WEB SERVİS kullanıcı adı ve şifresi olmalı.'
+          : '. Kullanıcı adı/şifre İzibiz WEB SERVİS kimliği mi, kontrol edin.'),
+      );
+    }
     const direction = opts.direction === 'SATIS' ? 'OUT' : 'IN';
     const fetchBody = `
       <GetInvoiceRequest xmlns="http://schemas.i2i.com/ei/wsdl">
