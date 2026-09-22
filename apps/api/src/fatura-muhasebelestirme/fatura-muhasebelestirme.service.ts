@@ -8920,7 +8920,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       if (!groupMap.has(key)) groupMap.set(key, { kind, period, docs: [] });
       groupMap.get(key)!.docs.push(d);
     }
-    let groups = [...groupMap.values()];
+    let groups: any[] = [...groupMap.values()];
 
     // ═══ LUCA 200 SATIR SINIRI (2026-09-23, Muzaffer Bey — YORGUN NAKLİYAT 501 belge) ═══
     //   Luca'nın Excel/CSV aktarımı TEK SEFERDE en çok ~200 SATIR alıyor. Satır = BELGE DEĞİL,
@@ -8953,6 +8953,23 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           sayac += n;
         }
         if (parca.length) bolunmus.push({ ...g, docs: parca });
+      }
+      // Parça numarası: Luca'da fişler birbirinden ayırt edilsin (hepsi aynı açıklamayı taşımasın).
+      const sayac = new Map<string, number>();
+      for (const b2 of bolunmus as any[]) {
+        const k = `${b2.kind}|${b2.period}`;
+        sayac.set(k, (sayac.get(k) || 0) + 1);
+      }
+      const gecen = new Map<string, number>();
+      for (const b2 of bolunmus as any[]) {
+        const k = `${b2.kind}|${b2.period}`;
+        const toplam = sayac.get(k) || 1;
+        if (toplam > 1) {
+          const no = (gecen.get(k) || 0) + 1;
+          gecen.set(k, no);
+          b2.parcaNo = no;
+          b2.parcaToplam = toplam;
+        }
       }
       if (bolunmus.length !== groups.length) {
         this.logger.log(`[LUCA-200] ${groups.length} grup → ${bolunmus.length} parçaya bölündü (satır tavanı ${tavan})`);
@@ -8993,7 +9010,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             direction: g.kind,
             period: dominantPeriod,
             totalCount: g.docs.length,
-            fisAciklama: `${kindLabel} faturaları - ${dominantPeriod} (${g.docs.length} belge)`, // parçalıysa her parça ayrı fiş açıklaması alır
+            fisAciklama: `${kindLabel} faturaları - ${dominantPeriod} (${g.docs.length} belge)${(g as any).parcaNo ? ` ${(g as any).parcaNo}/${(g as any).parcaToplam}` : ''}`, // 200 satır sınırında parçalandıysa numaralı
             invoices: g.docs.map(toInvoicePayload),
           },
         },
