@@ -101,6 +101,8 @@ export interface DetayRow {
     vergiDonem: string;
     tahakkukTutari: number | null;
     onayTarihi: string | null;
+    /** Yalnız BILDIRGE: "çalışan yok" işaretiyle Verildi sayılan dönem */
+    calisanYok?: boolean;
   }>;
 }
 
@@ -252,5 +254,14 @@ export const beyannameTakipApi = {
   ) =>
     api
       .put(`/beyanname-takip/durum/${taxpayerId}/${beyanTipi}/${donem}`, data)
+      .then((r) => r.data),
+
+  /**
+   * SGK Bildirge "çalışan var / yok" — vergi dönemi bazlı. calisanVar=false → o dönem Verildi sayılır (çalışan yok);
+   * true → işaret kaldırılır (indirilmiş fiş / gerçek onay kaydına dokunulmaz).
+   */
+  bildirgeCalisan: (taxpayerId: string, donem: string, calisanVar: boolean) =>
+    api
+      .put<{ calisanYok: boolean; degisti: boolean; neden?: string }>(`/beyanname-takip/bildirge-calisan/${taxpayerId}/${donem}`, { calisanVar })
       .then((r) => r.data),
 };

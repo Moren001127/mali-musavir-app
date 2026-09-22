@@ -546,6 +546,38 @@ export class BeyannameTakipService {
     };
   }
 
+  /**
+   * SGK Bildirge — "çalışan var / yok" (2026-09-22, Muzaffer Bey).
+   * SGK şifresi tanımlı ama o dönem personel çalıştırmayan mükellef için bildirge verilmez; "çalışan yok" işareti o
+   * VERGİ DÖNEMİ için mükellefi Verildi saydırır (BeyanDurumu BILDIRGE + dönem: onaylandi, notlar CALISAN_YOK).
+   * Dönem bazlıdır, sonraki aya taşınmaz. "Çalışan var"a dönüş yalnız CALISAN_YOK notlu kaydı siler — indirilmiş
+   * SGK fişi (PortalDocument) ya da gerçek onay kaydına dokunmaz.
+   */
+  async bildirgeCalisanDurumu(tenantId: string, taxpayerId: string, donem: string, calisanVar: boolean) {
+    const tp = await (this.prisma as any).taxpayer.findFirst({ where: { id: taxpayerId, tenantId }, select: { id: true } });
+    if (!tp) throw new NotFoundException('Mükellef bulunamadı');
+    const where = { tenantId_taxpayerId_beyanTipi_donem: { tenantId, taxpayerId, beyanTipi: 'BILDIRGE', donem } };
+    const mevcut = await (this.prisma as any).beyanDurumu.findUnique({ where });
+    if (!calisanVar) {
+      if (mevcut && mevcut.durum === 'onaylandi' && mevcut.notlar !== BILDIRGE_CALISAN_YOK_NOTU) {
+        // Gerçekten verilmiş görünen kaydı ezme.
+        return { calisanYok: false, degisti: false, neden: 'Bu dönemin bildirgesi zaten verilmiş görünüyor.' };
+      }
+      const veri = { durum: 'onaylandi', onayTarihi: new Date(), notlar: BILDIRGE_CALISAN_YOK_NOTU };
+      await (this.prisma as any).beyanDurumu.upsert({
+        where,
+        create: { tenantId, taxpayerId, beyanTipi: 'BILDIRGE', donem, ...veri },
+        update: veri,
+      });
+      return { calisanYok: true, degisti: true };
+    }
+    if (mevcut && mevcut.notlar === BILDIRGE_CALISAN_YOK_NOTU) {
+      await (this.prisma as any).beyanDurumu.delete({ where });
+      return { calisanYok: false, degisti: true };
+    }
+    return { calisanYok: false, degisti: false };
+  }
+
   /** Belirli bir mükellefin belirli bir beyannamesinin durumunu güncelle */
   async upsertDurum(
     tenantId: string,
@@ -641,6 +673,8 @@ export class BeyannameTakipService {
             vergiDonem: resolved.matchedDonem ?? vergiDonemForTip(tip, yil, ay, donem, donemTuru),
             tahakkukTutari: resolved.durumKaydi?.tahakkukTutari || resolved.beyanKaydi?.tahakkukTutari || null,
             onayTarihi: resolved.durumKaydi?.onayTarihi || resolved.beyanKaydi?.beyanTarihi || null,
+            // Bildirge: "çalışan yok" işaretiyle Verildi sayılan dönem (pencerede ayrı etiket + geri alma).
+            calisanYok: tip === 'BILDIRGE' && resolved.durumKaydi?.notlar === BILDIRGE_CALISAN_YOK_NOTU,
           };
         });
         return {
@@ -674,6 +708,9 @@ type EDefterMukellefSonucu = {
 // ══════════════════════════════════════════════════════════
 // YARDIMCILAR
 // ══════════════════════════════════════════════════════════
+
+/** BeyanDurumu.notlar değeri: bildirge "çalışan yok" işareti (bkz. bildirgeCalisanDurumu). */
+export const BILDIRGE_CALISAN_YOK_NOTU = 'CALISAN_YOK';
 
 function blank(tip: BeyanTipi) {
   return { beyanTipi: tip, toplam: 0, onaylanan: 0, bekleyen: 0, hatali: 0, muaf: 0, kalan: 0 };

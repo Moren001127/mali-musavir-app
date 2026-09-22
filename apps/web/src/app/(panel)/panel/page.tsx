@@ -1,7 +1,8 @@
 'use client';
 import { portalStyle } from '@/lib/portal-theme';
 import '@/components/dashboard/dashboard-white.css';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import {
   Users,
@@ -175,10 +176,32 @@ function ToplubeyannamePanel({ donem, setDonem, donemTuru, setDonemTuru }: Panor
 
 function BeyanDetayModal({ state, onClose }: { state: { beyanTipi: BeyanTipi; filter: BeyanFilter; donem: string; donemTuru: DonemTuru }; onClose: () => void }) {
   const [mounted, setMounted] = useState(false);
+  const qc = useQueryClient();
   const { data: detay, isLoading } = useQuery({
     queryKey: ['beyanname-detay', state.donem, state.donemTuru, state.beyanTipi, state.filter],
     queryFn: () => beyannameTakipApi.listDetay(state.donem, state.donemTuru),
     staleTime: 2 * 60 * 1000,
+  });
+  // Bildirge: "Çalışan var / yok" (2026-09-22, Muzaffer Bey) — SGK şifresi tanımlı ama o dönem personel çalıştırmayan
+  // mükellef "Yok" işaretlenince o vergi döneminde Verildi sayılır; "Var" işareti kaldırır. Yalnız BILDIRGE'de sütun var.
+  const bildirge = state.beyanTipi === 'BILDIRGE';
+  const [degisen, setDegisen] = useState<string | null>(null);
+  const calisanMut = useMutation({
+    mutationFn: ({ taxpayerId, donem, calisanVar }: { taxpayerId: string; donem: string; calisanVar: boolean }) =>
+      beyannameTakipApi.bildirgeCalisan(taxpayerId, donem, calisanVar),
+    onMutate: (v) => setDegisen(v.taxpayerId),
+    onSuccess: (sonuc, v) => {
+      if (!sonuc.degisti && sonuc.neden) toast.info(sonuc.neden);
+      else toast.success(v.calisanVar ? 'Çalışan var: bildirge yeniden takipte.' : 'Çalışan yok: bu dönem verildi sayıldı.');
+      qc.invalidateQueries({ queryKey: ['beyanname-detay'] });
+      qc.invalidateQueries({ queryKey: ['beyanname-ozet'] });
+    },
+    onError: (e: unknown) => {
+      const err = e as { response?: { data?: { message?: string | string[] } }; message?: string };
+      const m = err?.response?.data?.message;
+      toast.error(`Kaydedilemedi: ${Array.isArray(m) ? m.join(', ') : m || err?.message || 'bilinmeyen hata'}`);
+    },
+    onSettled: () => setDegisen(null),
   });
 
   useEffect(() => {
@@ -235,6 +258,9 @@ function BeyanDetayModal({ state, onClose }: { state: { beyanTipi: BeyanTipi; fi
     muaf: 'Muaf',
     kalan: 'Verilmedi',
   };
+  // Çalışan yok işaretli bildirge: rozette kısa "Çalışan yok" (Verildi sayılır); dışa aktarımda açık yazılır.
+  const durumMetni = (b: { durum: string; calisanYok?: boolean }, uzun = false) =>
+    b.calisanYok ? (uzun ? 'Verildi (çalışan yok)' : 'Çalışan yok') : durumEtiket[b.durum] || b.durum;
   const formatDate = (value: string | null) => {
     if (!value) return '-';
     const date = new Date(value);
@@ -247,16 +273,17 @@ function BeyanDetayModal({ state, onClose }: { state: { beyanTipi: BeyanTipi; fi
   };
   const csvCell = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
   const downloadList = () => {
-    const header = ['Sıra', 'Mükellef', 'Beyanname', 'Verilme Dönemi', 'Vergi Dönemi', 'Durum', 'Onay/Tarih', 'Tahakkuk'];
+    const header = ['Sıra', 'Mükellef', 'Beyanname', 'Verilme Dönemi', 'Vergi Dönemi', 'Durum', 'Onay/Tarih', 'Tahakkuk', ...(bildirge ? ['Çalışan'] : [])];
     const body = filteredItems.map(({ taxpayer, beyan }, index) => [
       index + 1,
       taxpayer.ad,
       BEYAN_ETIKETLER[state.beyanTipi],
       donemEtiket(state.donem),
       donemEtiket(beyan.vergiDonem),
-      durumEtiket[beyan.durum] || beyan.durum,
+      durumMetni(beyan, true),
       formatDate(beyan.onayTarihi),
       formatMoney(beyan.tahakkukTutari),
+      ...(bildirge ? [beyan.calisanYok ? 'Yok' : 'Var'] : []),
     ]);
     const csv = [header, ...body].map((row) => row.map(csvCell).join(';')).join('\r\n');
     const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
@@ -268,6 +295,9 @@ function BeyanDetayModal({ state, onClose }: { state: { beyanTipi: BeyanTipi; fi
     URL.revokeObjectURL(url);
   };
   const periodModeText = state.donemTuru === 'VERILME' ? 'Verilme dönemi' : 'Vergi dönemi';
+  const izgara = bildirge
+    ? 'grid-cols-[48px_minmax(200px,1.6fr)_150px_104px_120px_128px]'
+    : 'grid-cols-[64px_minmax(260px,1.6fr)_160px_130px_150px]';
   const vergiDonemKey = filteredItems[0]?.beyan?.vergiDonem || '';
   const emptyText = state.filter === 'onaylanan'
     ? 'Bu grupta verilmiş beyanname yok.'
@@ -327,20 +357,24 @@ function BeyanDetayModal({ state, onClose }: { state: { beyanTipi: BeyanTipi; fi
           )}
           {!isLoading && filteredItems.length > 0 && (
             <div className="overflow-hidden rounded-xl" style={portalStyle({ border: '1px solid rgba(255,255,255,0.08)' })}>
-              <div className="grid grid-cols-[64px_minmax(260px,1.6fr)_160px_130px_150px] gap-0 px-4 py-3 text-[11px] font-black uppercase tracking-[0.11em]" style={portalStyle({ background: 'rgba(255,255,255,0.04)', color: 'rgba(250,250,249,0.52)' })}>
+              <div className={`grid ${izgara} gap-0 px-4 py-3 text-[11px] font-black uppercase tracking-[0.11em]`} style={portalStyle({ background: 'rgba(255,255,255,0.04)', color: 'rgba(250,250,249,0.52)' })}>
                 <div>No</div>
                 <div>Mükellef</div>
                 <div>Durum</div>
                 <div>Tarih</div>
                 <div className="text-right">Tahakkuk</div>
+                {bildirge && <div className="text-right" title="O dönem personel çalıştırmayan mükellef için 'Yok' seçin; bildirge o dönemde verildi sayılır.">Çalışan</div>}
               </div>
               <div className="divide-y" style={portalStyle({ borderColor: 'rgba(255,255,255,0.055)' })}>
                 {filteredItems.map(({ taxpayer, beyan }, i) => {
                   const tone = durumRenk[beyan.durum] || 'rgba(250,250,249,0.6)';
+                  // Gerçekten verilmiş (fiş inmiş / onaylı) bildirgede seçici yok; verilmemiş ya da "çalışan yok" işaretlide var.
+                  const gercekVerildi = beyan.durum === 'onaylandi' && !beyan.calisanYok;
+                  const bekliyor = degisen === taxpayer.taxpayerId;
                   return (
                     <div
                       key={`${taxpayer.taxpayerId}-${state.beyanTipi}`}
-                      className="grid grid-cols-[64px_minmax(260px,1.6fr)_160px_130px_150px] items-center gap-0 px-4 py-3 text-[13px]"
+                      className={`grid ${izgara} items-center gap-0 px-4 py-3 text-[13px]`}
                       style={portalStyle({ background: i % 2 === 0 ? `${tone}10` : 'rgba(255,255,255,0.012)' })}
                     >
                       <div className="font-black tabular-nums" style={portalStyle({ color: 'rgba(250,250,249,0.42)', fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif' })}>{i + 1}</div>
@@ -355,7 +389,7 @@ function BeyanDetayModal({ state, onClose }: { state: { beyanTipi: BeyanTipi; fi
                           className="inline-flex rounded-md px-2.5 py-1 text-[10.5px] font-black uppercase tracking-[0.08em]"
                           style={portalStyle({ background: `${tone}1f`, border: `1px solid ${tone}55`, color: tone })}
                         >
-                          {durumEtiket[beyan.durum] || beyan.durum}
+                          {durumMetni(beyan)}
                         </span>
                       </div>
                       <div className="text-[12px] font-semibold tabular-nums" style={portalStyle({ color: 'rgba(250,250,249,0.66)' })}>
@@ -364,6 +398,36 @@ function BeyanDetayModal({ state, onClose }: { state: { beyanTipi: BeyanTipi; fi
                       <div className="text-right text-[12px] font-black tabular-nums" style={portalStyle({ color: 'rgba(250,250,249,0.78)', fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif' })}>
                         {formatMoney(beyan.tahakkukTutari)}
                       </div>
+                      {bildirge && (
+                        <div className="flex justify-end">
+                          {gercekVerildi ? (
+                            <span className="text-[11.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })} title="Bildirge verilmiş; çalışan işareti gerekmez">—</span>
+                          ) : (
+                            <div className="inline-flex rounded-lg p-0.5" role="group" aria-label="Çalışan var / yok" style={portalStyle({ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.10)' })}>
+                              {([{ v: true, ad: 'Var' }, { v: false, ad: 'Yok' }] as const).map((s) => {
+                                const secili = beyan.calisanYok ? !s.v : s.v;
+                                const ton = s.v ? TRACK_BLUE : '#22c55e';
+                                return (
+                                  <button
+                                    key={s.ad}
+                                    type="button"
+                                    disabled={bekliyor || secili}
+                                    aria-pressed={secili}
+                                    onClick={() => calisanMut.mutate({ taxpayerId: taxpayer.taxpayerId, donem: beyan.vergiDonem, calisanVar: s.v })}
+                                    className="rounded-md px-2.5 py-1 text-[10.5px] font-black uppercase tracking-[0.06em] transition disabled:cursor-default"
+                                    style={portalStyle(secili
+                                      ? { background: `${ton}22`, border: `1px solid ${ton}66`, color: ton }
+                                      : { background: 'transparent', border: '1px solid transparent', color: 'rgba(250,250,249,0.45)', opacity: bekliyor ? 0.5 : 1, cursor: bekliyor ? 'wait' : 'pointer' })}
+                                    title={s.v ? 'Çalışan var — bildirge takipte kalır' : 'Çalışan yok — bu dönem bildirge verildi sayılır'}
+                                  >
+                                    {s.ad}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 })}

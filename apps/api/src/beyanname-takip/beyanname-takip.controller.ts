@@ -83,6 +83,25 @@ export class BeyannameTakipController {
     }
     return this.svc.upsertDurum(req.user.tenantId, taxpayerId, beyanTipi as BeyanTipi, donem, body);
   }
+
+  // ── SGK BİLDİRGE: çalışan var / yok (vergi dönemi bazlı) ───────────
+  // PUT /beyanname-takip/bildirge-calisan/:taxpayerId/:donem  { calisanVar: boolean }
+  // calisanVar=false → o dönem Verildi sayılır (çalışan yok); true → işaret kaldırılır.
+  @Put('bildirge-calisan/:taxpayerId/:donem')
+  bildirgeCalisan(
+    @Req() req: any,
+    @Param('taxpayerId') taxpayerId: string,
+    @Param('donem') donem: string,
+    @Body() body: { calisanVar?: boolean },
+  ) {
+    if (!/^\d{4}-\d{2}$/.test(donem)) {
+      throw new BadRequestException('donem yyyy-mm formatında olmalı');
+    }
+    if (typeof body?.calisanVar !== 'boolean') {
+      throw new BadRequestException('calisanVar (true/false) zorunlu');
+    }
+    return this.svc.bildirgeCalisanDurumu(req.user.tenantId, taxpayerId, donem, body.calisanVar);
+  }
 }
 
 function normalizeDonemTuru(value?: string): DonemTuru {
