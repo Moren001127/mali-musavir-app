@@ -86,7 +86,7 @@
   //   Luca'nın beklediği adlarla TEK SEFERDE hizalanır (her denemede tek sütun hatası okumak yerine).
   // v1.47.48 (2026-09-15): firma onay düğmesi regex'indeki `\b` sınırları kaynakta gerçek backspace (0x08) baytına
   //   dönüşmüştü (sec/aç/ac seçenekleri ölüydü) → düzeltildi.
-  const AGENT_VERSION = '1.47.54';
+  const AGENT_VERSION = '1.47.55';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -2898,6 +2898,63 @@
               }
               if (!input) throw new Error((isCsv ? 'HIZLI FİŞ Excel Aktarım' : 'Excel Veri Aktarımı') + ' ekranındaki dosya alanı bulunamadı. Luca\'da o ekranı açıp tekrar deneyin.');
 
+              // v1.47.55 — YÜKLEMEDEN ÖNCE EKRANI HAZIRLA (yalnız İşletme HIZLI FİŞ).
+              //   Muzaffer Bey'in ekran görüntüsü iki şeyi gösterdi:
+              //   (A) "Dönem" seçici AĞUSTOS'ta kalmıştı ama satırlar EYLÜL → fiş dönem dışına
+              //       kesilemiyor, "Fiş Kes" sessizce çıkıyordu.
+              //   (B) Başarısız denemelerden kalan satırlar ekranda birikiyordu (12 → 24) →
+              //       mükerrer fiş riski. Alttaki "Toplu Temizle" ile ekran sıfırlanır.
+              if (isCsv) {
+                try {
+                  const hazirlikDoc = (() => {
+                    try { for (const d of lucaDocuments()) { try { if (d.querySelector('[name="ay"], [name^="detaylar["]')) return d; } catch {} } } catch {}
+                    return null;
+                  })();
+                  if (hazirlikDoc) {
+                    // (A) DÖNEM = belgelerin ayı (p.period "2026-09" → "09")
+                    const hedefAy = String(p.period || '').slice(5, 7);
+                    const aySel = hazirlikDoc.querySelector('select[name="ay"]');
+                    if (aySel && hedefAy) {
+                      const oncekiAy = String(aySel.value || '');
+                      if (oncekiAy !== hedefAy) {
+                        aySel.value = hedefAy;
+                        try { aySel.dispatchEvent(new (hazirlikDoc.defaultView || window).Event('change', { bubbles: true })); } catch {}
+                        await sleep(1200);
+                      }
+                      await log(`📅 HIZLI FİŞ dönemi: ${oncekiAy || '?'} → ${String(aySel.value || '')} (belge ayı ${hedefAy})`);
+                      if (String(aySel.value || '') !== hedefAy) throw new Error(`HIZLI FİŞ dönemi ${hedefAy} yapılamadı (ekranda ${aySel.value}). Fiş yanlış döneme kesilmesin diye durduruldu.`);
+                    } else {
+                      await log(`⚠ HIZLI FİŞ dönem seçici bulunamadı (ay=${hedefAy}) — ekrandaki dönem elle kontrol edilmeli`);
+                    }
+                    // (B) TOPLU TEMİZLE — ekranda kalıntı satır varsa sıfırla
+                    let kalinti = 0;
+                    try { const s = new Set(); for (const el of hazirlikDoc.querySelectorAll('[name^="detaylar["]')) { const m = String(el.name || '').match(/^detaylar\[(\d+)\]/); if (m) s.add(m[1]); } kalinti = s.size; } catch {}
+                    if (kalinti > 1) {
+                      let temizlendi = false;
+                      for (const etiket of ['Toplu Temizle', 'Temizle']) {
+                        try {
+                          for (const el of hazirlikDoc.querySelectorAll('button, input[type="button"], input[type="submit"], a')) {
+                            const t = String(el.value || el.textContent || '').replace(/\s+/g, ' ').trim();
+                            if (t === etiket) { try { el.click(); } catch {} temizlendi = true; break; }
+                          }
+                        } catch {}
+                        if (temizlendi) { await log(`🧹 "${etiket}" basıldı (ekranda ${kalinti} kalıntı satır vardı)`); break; }
+                      }
+                      await sleep(1800);
+                      // onay kutusu çıkarsa evetle
+                      for (const lbl of ['Evet', 'Tamam', 'Onayla']) {
+                        if (await popupNativeClick(lbl, { exact: true, settleMs: 700, timeoutMs: 1500 })) break;
+                      }
+                      await sleep(1200);
+                      if (!temizlendi) await log('⚠ "Toplu Temizle" düğmesi bulunamadı — kalıntı satırlar duruyor olabilir');
+                    }
+                  }
+                } catch (e) {
+                  if (/dönemi .* yapılamadı/i.test(String((e && e.message) || ''))) throw e;
+                  await log(`ekran hazırlık uyarısı: ${(e && e.message) || e}`);
+                }
+              }
+
               // 4) Dosyayi input'a koy (DataTransfer) + change tetikle
               const dt = new DataTransfer();
               dt.items.add(file);
@@ -3264,6 +3321,33 @@
                     }
                   } catch (e) { await log(`satır kutusu doldurma uyarısı: ${(e && e.message) || e}`); }
                   await log(`🧩 Satır açılır kutusu dolduruldu=${kutuDolduruldu}${bosKutular.length ? ` · BOŞ KALAN=${bosKutular.slice(0, 6).join(', ')}` : ''}`);
+                  // v1.47.55 — CARİ SORGULAMA: TCKN/VKN'den vergi dairesi + ünvan + adres çekilir.
+                  //   Muzaffer Bey: "onu yapmayınca kesilen fişte cariyi falan dolu göstermiyor."
+                  //   Alttaki "Cari Sorgulama" düğmesi tüm satırlar için çalışır.
+                  try {
+                    const cd = hizliFisDoc();
+                    let basildi = false;
+                    if (cd) {
+                      for (const el of cd.querySelectorAll('button, input[type="button"], input[type="submit"], a')) {
+                        const t = String(el.value || el.textContent || '').replace(/\s+/g, ' ').trim();
+                        if (/^Cari\s*Sorgulama$/i.test(t)) { try { el.click(); } catch {} basildi = true; break; }
+                      }
+                    }
+                    if (basildi) {
+                      // sorgulama AJAX — vergi dairesi kutuları dolana kadar bekle (en çok ~20 sn)
+                      for (let b = 0; b < 20; b++) {
+                        let bosVd = 0;
+                        try { for (const s2 of cd.querySelectorAll('select[name$=".vergiDairesiKod"]')) { if (!String(s2.value || '').trim()) bosVd++; } } catch {}
+                        if (!bosVd) break;
+                        await sleep(1000);
+                      }
+                      let kalanVd = 0;
+                      try { for (const s2 of cd.querySelectorAll('select[name$=".vergiDairesiKod"]')) { if (!String(s2.value || '').trim()) kalanVd++; } } catch {}
+                      await log(`🔎 "Cari Sorgulama" yapıldı${kalanVd ? ` · ${kalanVd} satırda vergi dairesi yine boş` : ' · tüm satırların cari bilgisi doldu'}`);
+                    } else {
+                      await log('⚠ "Cari Sorgulama" düğmesi bulunamadı — kesilen fişte cari boş kalabilir');
+                    }
+                  } catch (e) { await log(`cari sorgulama uyarısı: ${(e && e.message) || e}`); }
                   if (bosKutular.length) throw new Error(`Satır açılır kutuları dolmadı (${bosKutular.slice(0, 4).join(', ')}). "Fiş Kes" BASILMADI — eksik fiş kesilmesin.`);
 
                   // 3) "Fiş Kes" — sayfa fonksiyonu (fn:gonder) → popup-trusted → ana native → fireEl
