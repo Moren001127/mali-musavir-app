@@ -292,6 +292,16 @@ function tutanakPdf() {
 
 // ── Uçlar ────────────────────────────────────────────────────────────────────────
 function uclar(yol, yontem, q, govde, jsonGonder, res) {
+  // Görseli eksik faturalar (DVD ↔ Luca) — sahte karşılaştırma
+  if (yontem === 'GET' && yol === '/genel-sorgular/earsiv-eksik') {
+    const tp = (id, ad, vkn) => ({ id, companyName: ad, firstName: null, lastName: null, taxNumber: vkn });
+    const rows = [
+      { taxpayerId: 'gs1', taxpayer: tp('gs1', 'EDELER YEMEK ÜRETİM SAN. LTD. ŞTİ.', '3241199696'), donem: '2026-08', sorguTarihi: new Date().toISOString(), faturaNo: 'ANE2026000000178', duzenlenmeTarihi: '2026-08-26T14:34:33', saticiUnvan: 'ANDON GIDA SANAYİ VE TİCARET LİMİTED ŞİRKETİ', saticiVkn: '0691547818', toplamTutar: 69982.5, vergilerTutari: 9528.3, odenecekTutar: 79510.8, durum: 'LUCA_YOK' },
+      { taxpayerId: 'gs1', taxpayer: tp('gs1', 'EDELER YEMEK ÜRETİM SAN. LTD. ŞTİ.', '3241199696'), donem: '2026-08', sorguTarihi: new Date().toISOString(), faturaNo: 'G292026002743927', duzenlenmeTarihi: '2026-08-29T16:53:00', saticiUnvan: 'YENİ MAĞAZACILIK ANONİM ŞİRKETİ', saticiVkn: '9480423762', toplamTutar: 2355.45, vergilerTutari: 23.55, odenecekTutar: 2379, durum: 'GORSEL_YOK' },
+      { taxpayerId: 'gs1', taxpayer: tp('gs1', 'EDELER YEMEK ÜRETİM SAN. LTD. ŞTİ.', '3241199696'), donem: '2026-09', sorguTarihi: new Date().toISOString(), faturaNo: 'EAR2026000000261', duzenlenmeTarihi: '2026-09-09T02:47:37', saticiUnvan: 'YAĞMUR NUR TARIM ÜRÜNLERİ LİMİTED ŞİRKETİ', saticiVkn: '9280886533', toplamTutar: 72600, vergilerTutari: 726, odenecekTutar: 73326, durum: 'LUCA_YOK' },
+    ].filter((r) => (!q.taxpayerId || r.taxpayerId === q.taxpayerId) && (!q.donem || r.donem === q.donem));
+    return jsonGonder(res, 200, { rows, ozet: { dvd: 27, lucaVar: 27 - rows.length, lucaYok: rows.filter((r) => r.durum === 'LUCA_YOK').length, gorselYok: rows.filter((r) => r.durum === 'GORSEL_YOK').length, sorguSayisi: 2 } });
+  }
   if (yontem === 'GET' && yol === '/taxpayers') return jsonGonder(res, 200, MUKELLEFLER);
 
   if (yontem === 'GET' && yol === '/genel-sorgular/ozet') {

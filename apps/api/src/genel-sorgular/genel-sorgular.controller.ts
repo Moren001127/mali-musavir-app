@@ -22,6 +22,17 @@ export class GenelSorgularController {
   }
 
   /**
+   * GET /genel-sorgular/earsiv-eksik?taxpayerId=&donem=YYYY-MM
+   * → { rows:[{ taxpayerId, taxpayer, donem, sorguTarihi, faturaNo, duzenlenmeTarihi, saticiUnvan, saticiVkn,
+   *             toplamTutar, vergilerTutari, odenecekTutar, durum:'LUCA_YOK'|'GORSEL_YOK' }],
+   *     ozet:{ dvd, lucaVar, lucaYok, gorselYok, sorguSayisi } }
+   */
+  @Get('earsiv-eksik')
+  eksikGorseller(@Req() req: any, @Query('taxpayerId') taxpayerId?: string, @Query('donem') donem?: string) {
+    return this.genelSorgular.eksikGorseller(req.user.tenantId, { taxpayerId: taxpayerId || undefined, donem: donem || undefined });
+  }
+
+  /**
    * GET /genel-sorgular?taxpayerId=&tur=&donem=YYYY-MM&page=1&pageSize=50
    * → { rows:[{ id, taxpayerId, taxpayer:{id,companyName,firstName,lastName,taxNumber}, tur, donem,
    *              sorguTarihi, ozet, veri, kaynak, whatsappGonderildiMi }], total, page, pageSize }

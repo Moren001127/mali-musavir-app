@@ -174,13 +174,25 @@ export function EDefterDetayPenceresi({
     }
   }, [kosu, ilerleme, qc]);
 
+  // Sorgulanacak aylar: aralık seçildiyse başlangıç–bitiş (en çok 12 ay); yoksa EKRANDAKİ dönemlerin ayları.
+  //   (Arka uç ay verilmezse bugüne göre güncel dönemi seçer; Ekim'e alınmış ekranda Haziran sorgulanmıyordu.)
+  const [aralik, setAralik] = useState<{ bas: string; bit: string }>({ bas: '', bit: '' });
+  const ekranAylari = useMemo(() => {
+    const aylar = new Set<string>();
+    for (const m of mukellefler) for (const d of m.donemler) for (const a of d.aylar) aylar.add(a.ay);
+    return Array.from(aylar).sort();
+  }, [mukellefler]);
+  const aralikAylari = useMemo(() => ayAraligi(aralik.bas, aralik.bit), [aralik]);
+  const aralikHatasi = aralik.bas && aralik.bit && aralikAylari.length === 0 ? 'Bitiş, başlangıçtan önce olamaz' : aralikAylari.length > 12 ? 'En fazla 12 ay' : null;
+  const sorgulanacakAylar = aralikAylari.length > 0 && !aralikHatasi ? aralikAylari : ekranAylari;
+
   const sorgula = async () => {
     const ids = mukellefler.map((m) => m.taxpayerId);
-    if (ids.length === 0 || baslatiliyor) return;
+    if (ids.length === 0 || baslatiliyor || aralikHatasi) return;
     setBaslatiliyor(true);
     setSorguHatasi(null);
     try {
-      const yanit = await beyannameTakipApi.dvdSorguBaslat(ids);
+      const yanit = await beyannameTakipApi.dvdSorguBaslat(ids, sorgulanacakAylar);
       const created = yanit?.created || [];
       const skipped = yanit?.skipped || [];
       const sebepler = Array.from(new Set(skipped.map((s) => s.reason).filter(Boolean)));
@@ -250,7 +262,7 @@ export function EDefterDetayPenceresi({
             </p>
           </div>
           <div className="edd-eylemler">
-            <button type="button" className="edd-dugme edd-dugme--birincil" onClick={sorgula} disabled={baslatiliyor || izleniyor || mukellefler.length === 0} title="Listedeki e-Defter mükellefleri için Dijital Vergi Dairesi sorgusu başlat">
+            <button type="button" className="edd-dugme edd-dugme--birincil" onClick={sorgula} disabled={baslatiliyor || izleniyor || mukellefler.length === 0 || !!aralikHatasi} title={sorgulanacakAylar.length ? `Listedeki e-Defter mükellefleri için ${sorgulanacakAylar.map(ayEtiketi).join(', ')} beratlarını Dijital Vergi Dairesi'nden sorgula` : 'Sorgulanacak ay yok'}>
               {baslatiliyor ? 'Başlatılıyor…' : izleniyor ? 'Sorgu sürüyor…' : 'Sorgula'}
             </button>
             <button type="button" className="edd-dugme" onClick={listeyiIndir} disabled={liste.length === 0}>Listeyi İndir</button>
@@ -260,9 +272,14 @@ export function EDefterDetayPenceresi({
 
         <div className="edd-not" role="note">
           <p>3 Aylık mükellefler yalnızca çeyrek son yükleme aylarında sorgulanır: Haziran, Eylül, Aralık (4. çeyrek: Şahıs Nisan · Firma Mayıs).</p>
-          <p>Otomatik e-Defter kontrolü yalnızca güncel dönemi sorgular; geçmiş dönem için Genel Sorgulamalar&apos;dan tarih aralığı ile sorgulayın.</p>
+          <p>Gece sorgusu güncel dönemi kontrol eder. <b>Sorgula</b> ekrandaki dönemi ({ekranAylari.length ? ekranAylari.map(ayEtiketi).join(', ') : '—'}) sorgular; başka dönem için başlangıç–bitiş ayı seçin (en fazla 12 ay).</p>
+          <div className="edd-aralik">
+            <label>Başlangıç <input type="month" value={aralik.bas} onChange={(e) => setAralik({ ...aralik, bas: e.target.value })} aria-label="Başlangıç dönemi" /></label>
+            <label>Bitiş <input type="month" value={aralik.bit} onChange={(e) => setAralik({ ...aralik, bit: e.target.value })} aria-label="Bitiş dönemi" /></label>
+            {aralikHatasi ? <span className="edd-hata">{aralikHatasi}</span> : aralikAylari.length > 0 ? <span className="edd-aralik-not">{aralikAylari.length} ay sorgulanacak</span> : null}
+            {(aralik.bas || aralik.bit) && <button type="button" className="edd-dugme edd-dugme--kucuk" onClick={() => setAralik({ bas: '', bit: '' })}>Temizle</button>}
+          </div>
           <div className="edd-not-baglantilar">
-            <Link href="/panel/genel-sorgular" className="edd-dugme edd-dugme--kucuk">Genel Sorgulamalar</Link>
             <Link href="/panel/mukellefler" className="edd-dugme edd-dugme--kucuk" title="Mükellef kartı › Mükellefiyet Bilgileri › E-Defter dönemi ve başlangıç ayı">Dönem Ayarları</Link>
           </div>
         </div>
@@ -385,3 +402,16 @@ function DonemOzeti({ d }: { d: EDefterDonem }) {
 }
 
 export default EDefterDetayPenceresi;
+
+/** "2026-04".."2026-06" → ["2026-04","2026-05","2026-06"]; biri boşsa []; bitiş küçükse []. */
+function ayAraligi(bas: string, bit: string): string[] {
+  if (!/^\d{4}-\d{2}$/.test(bas) || !/^\d{4}-\d{2}$/.test(bit)) return [];
+  const [by, bm] = bas.split('-').map(Number);
+  const [ey, em] = bit.split('-').map(Number);
+  const basIdx = by * 12 + (bm - 1);
+  const bitIdx = ey * 12 + (em - 1);
+  if (bitIdx < basIdx) return [];
+  const out: string[] = [];
+  for (let i = basIdx; i <= bitIdx && out.length <= 13; i++) out.push(`${Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, '0')}`);
+  return out;
+}

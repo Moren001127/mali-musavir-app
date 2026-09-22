@@ -235,8 +235,10 @@ export const beyannameTakipApi = {
     api.get<EDefterDetayYaniti>('/beyanname-takip/edefter', { params: { donem, donemTuru } }).then((r) => r.data),
 
   // "Sorgula": listedeki e-Defter mükellefleri için Dijital Vergi Dairesi e-Defter sorgusu başlat
-  dvdSorguBaslat: (taxpayerIds: string[]) =>
-    api.post<DvdSorguYaniti>('/portal-automation/dvd-sorgu', { taxpayerIds, sorgular: ['eDefter'] }).then((r) => r.data),
+  /** e-Defter sorgusu başlat. `eDefterAylar` ("YYYY-MM"[]) verilirse yalnız o aylar sorgulanır; verilmezse arka uç
+   *  bugüne göre güncel dönemi seçer (ekrandaki dönem farklıysa MUTLAKA gönderin — 2026-09-22 Haziran hatası). */
+  dvdSorguBaslat: (taxpayerIds: string[], eDefterAylar?: string[]) =>
+    api.post<DvdSorguYaniti>('/portal-automation/dvd-sorgu', { taxpayerIds, sorgular: ['eDefter'], ...(eDefterAylar?.length ? { eDefterAylar } : {}) }).then((r) => r.data),
 
   // Sorgu koşuları (5 sn'de bir ilerleme için)
   dvdSorguIsleri: (limit = 50) =>

@@ -451,17 +451,20 @@ export class BeyannameTakipService {
     const sonuclar = await this.eDefterHesapla(tenantId, taxpayers, donem, donemTuru, { tumBelgeler: true });
     const ids = Array.from(sonuclar.keys());
 
-    // Son sorgu kaydı (mükellef başına en yeni).
-    const sonSorguMap = new Map<string, { sorguTarihi: string; hata: string | null; paketSayisi: number; kaynak: string }>();
+    // Son sorgu kaydı — mükellef + AY başına en yeni (EKRANDAKİ dönemin ayları için; başka ayın sorgusu gösterilmez —
+    //   Ekim ekranında Haziran satırının altında Mayıs sorgusunun "3 paket"i görünüyordu, 2026-09-22).
+    type SonSorgu = { sorguTarihi: string; hata: string | null; paketSayisi: number; kaynak: string };
+    const sonSorguAyMap = new Map<string, SonSorgu>(); // taxpayerId::YYYY-MM
     if (ids.length > 0) {
       const sorgular: any[] = await (this.prisma as any).eDefterSorguKaydi.findMany({
         where: { tenantId, taxpayerId: { in: ids } },
         orderBy: { sorguTarihi: 'desc' },
-        select: { taxpayerId: true, sorguTarihi: true, hata: true, paketSayisi: true, kaynak: true },
+        select: { taxpayerId: true, donem: true, sorguTarihi: true, hata: true, paketSayisi: true, kaynak: true },
       }).catch(() => []);
       for (const s of sorgular || []) {
-        if (sonSorguMap.has(s.taxpayerId)) continue;
-        sonSorguMap.set(s.taxpayerId, {
+        const k = `${s.taxpayerId}::${s.donem}`;
+        if (sonSorguAyMap.has(k)) continue;
+        sonSorguAyMap.set(k, {
           sorguTarihi: s.sorguTarihi instanceof Date ? s.sorguTarihi.toISOString() : String(s.sorguTarihi),
           hata: s.hata ?? null,
           paketSayisi: Number(s.paketSayisi) || 0,
@@ -469,6 +472,18 @@ export class BeyannameTakipService {
         });
       }
     }
+    /** Ekrandaki dönemlerin ayları içinde en yeni sorgu (paket sayısı toplanır; hata varsa ilk hata). */
+    const sonSorguSec = (taxpayerId: string, aylar: string[]): SonSorgu | null => {
+      const kayitlar = aylar.map((a) => sonSorguAyMap.get(`${taxpayerId}::${a}`)).filter((x): x is SonSorgu => !!x);
+      if (!kayitlar.length) return null;
+      const enYeni = kayitlar.reduce((a, b) => (a.sorguTarihi >= b.sorguTarihi ? a : b));
+      return {
+        sorguTarihi: enYeni.sorguTarihi,
+        hata: kayitlar.find((k) => k.hata)?.hata ?? null,
+        paketSayisi: kayitlar.reduce((n, k) => n + k.paketSayisi, 0),
+        kaynak: enYeni.kaynak,
+      };
+    };
 
     const collator = new Intl.Collator('tr', { sensitivity: 'base' });
     const mukellefler = Array.from(sonuclar.values()).map((sonuc) => {
@@ -514,7 +529,7 @@ export class BeyannameTakipService {
         baslangic: sonuc.baslangic,
         donemler,
         verildi,
-        sonSorgu: sonSorguMap.get(tp.id) || null,
+        sonSorgu: sonSorguSec(tp.id, donemler.flatMap((d) => d.aylar.map((a) => a.ay))),
         sonYukleme: sonYuklemeler.length > 0 ? sonYuklemeler[sonYuklemeler.length - 1] : null,
       };
     }).sort((a, b) => collator.compare(a.ad, b.ad));

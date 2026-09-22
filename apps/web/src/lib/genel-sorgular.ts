@@ -134,6 +134,28 @@ export interface SorguBaslatmaSonucu {
   message?: string;
 }
 
+/** Görseli eksik fatura satırı (DVD gelen e-Arşiv listesi ↔ Luca alış e-Arşiv/e-Fatura çekimi). */
+export interface EksikGorselSatiri {
+  taxpayerId: string;
+  taxpayer?: SorguMukellef | null;
+  donem: string | null;
+  sorguTarihi: string;
+  faturaNo: string;
+  duzenlenmeTarihi: string | null;
+  saticiUnvan: string;
+  saticiVkn: string;
+  toplamTutar: number;
+  vergilerTutari: number;
+  odenecekTutar: number;
+  /** LUCA_YOK: Luca çekiminde hiç yok · GORSEL_YOK: kayıt var, PDF/HTML görseli inmemiş */
+  durum: 'LUCA_YOK' | 'GORSEL_YOK';
+}
+export interface EksikGorselYaniti {
+  rows: EksikGorselSatiri[];
+  ozet: { dvd: number; lucaVar: number; lucaYok: number; gorselYok: number; sorguSayisi: number };
+}
+export const EKSIK_DURUM_ADI: Record<EksikGorselSatiri['durum'], string> = { LUCA_YOK: "Luca'da yok", GORSEL_YOK: 'Görsel yok' };
+
 export interface DvdSifresi {
   id: string;
   provider: string;
@@ -179,6 +201,18 @@ export const genelSorgularApi = {
   },
 
   ozet: () => api.get('/genel-sorgular/ozet').then((r) => (r.data ?? {}) as SorguOzeti),
+
+  /** Görseli eksik faturalar: DVD gelen e-Arşiv listesi ↔ Luca'dan inen görselli alış e-Arşiv/e-Fatura. */
+  eksikGorseller: (params: { taxpayerId?: string; donem?: string }) =>
+    api
+      .get('/genel-sorgular/earsiv-eksik', { params: { taxpayerId: params.taxpayerId || undefined, donem: params.donem || undefined } })
+      .then((r) => {
+        const d = (r.data ?? {}) as Partial<EksikGorselYaniti>;
+        return {
+          rows: Array.isArray(d.rows) ? d.rows : [],
+          ozet: d.ozet ?? { dvd: 0, lucaVar: 0, lucaYok: 0, gorselYok: 0, sorguSayisi: 0 },
+        } satisfies EksikGorselYaniti;
+      }),
 
   /** Elle sorgu: mükellef seçilmezse (taxpayerIds yok) DVD şifresi olan tüm mükellefler. */
   sorguBaslat: (govde: { taxpayerIds?: string[]; sorgular: DvdSorguTuru[] }) =>

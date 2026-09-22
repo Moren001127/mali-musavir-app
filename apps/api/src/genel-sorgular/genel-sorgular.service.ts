@@ -101,6 +101,95 @@ export class GenelSorgularService {
   }
 
   /**
+   * GET /genel-sorgular/earsiv-eksik — "Görseli eksik faturalar" (2026-09-22).
+   * Dijital Vergi Dairesi'nden çekilen GELEN e-Arşiv listesi (GenelSorguSonucu GELEN_EARSIV; mükellef+dönem başına
+   * EN SON sorgu) ile Luca'dan indirilen alış e-Arşiv/e-Fatura kayıtları (EarsivFatura tip ALIS) karşılaştırılır.
+   *   LUCA_YOK   → fatura Luca çekiminde hiç yok (fatura no + satıcı VKN eşleşmedi)
+   *   GORSEL_YOK → Luca'da kayıt var ama PDF/HTML görseli inmemiş
+   * Eşleşme anahtarı: faturaNo + satıcı VKN (GİB belge no küresel benzersiz DEĞİL); VKN yoksa yalnız faturaNo.
+   * Fatura Merkezi'ne hiçbir şey yazılmaz (yalnız liste).
+   */
+  async eksikGorseller(tenantId: string, secenek: { taxpayerId?: string; donem?: string }) {
+    if (secenek.donem && !DONEM_DESENI.test(secenek.donem)) {
+      throw new BadRequestException('donem YYYY-MM biçiminde olmalı');
+    }
+    const db = this.prisma as any;
+    const where: any = { tenantId, tur: 'GELEN_EARSIV' };
+    if (secenek.taxpayerId) where.taxpayerId = secenek.taxpayerId;
+    if (secenek.donem) where.donem = secenek.donem;
+    const sonuclar: any[] = await db.genelSorguSonucu.findMany({
+      where,
+      orderBy: { sorguTarihi: 'desc' },
+      take: 600,
+      select: { taxpayerId: true, donem: true, sorguTarihi: true, veri: true, taxpayer: { select: TAXPAYER_SELECT } },
+    });
+    // Mükellef + dönem başına en son sorgu
+    const sonSorgu = new Map<string, any>();
+    for (const r of sonuclar) {
+      const k = `${r.taxpayerId}::${r.donem || ''}`;
+      if (!sonSorgu.has(k)) sonSorgu.set(k, r);
+    }
+    type DvdFatura = { taxpayerId: string; taxpayer: any; donem: string | null; sorguTarihi: Date; faturaNo: string; saticiVkn: string; saticiUnvan: string; duzenlenmeTarihi: string | null; odenecekTutar: number; toplamTutar: number; vergilerTutari: number };
+    const dvd: DvdFatura[] = [];
+    for (const r of sonSorgu.values()) {
+      const faturalar: any[] = Array.isArray(r.veri?.faturalar) ? r.veri.faturalar : [];
+      for (const f of faturalar) {
+        const faturaNo = String(f?.faturaNo || '').trim();
+        if (!faturaNo) continue;
+        dvd.push({
+          taxpayerId: r.taxpayerId, taxpayer: r.taxpayer, donem: r.donem ?? null, sorguTarihi: r.sorguTarihi,
+          faturaNo, saticiVkn: String(f?.saticiVkn || '').trim(), saticiUnvan: String(f?.saticiUnvan || '').trim(),
+          duzenlenmeTarihi: f?.duzenlenmeTarihi ?? null,
+          odenecekTutar: Number(f?.odenecekTutar) || 0, toplamTutar: Number(f?.toplamTutar) || 0, vergilerTutari: Number(f?.vergilerTutari) || 0,
+        });
+      }
+    }
+    if (!dvd.length) return { rows: [], ozet: { dvd: 0, lucaVar: 0, lucaYok: 0, gorselYok: 0, sorguSayisi: sonSorgu.size } };
+
+    const taxpayerIds = Array.from(new Set(dvd.map((d) => d.taxpayerId)));
+    const faturaNolar = Array.from(new Set(dvd.map((d) => d.faturaNo)));
+    const lucaKayitlari: any[] = [];
+    for (let i = 0; i < faturaNolar.length; i += 500) {
+      const parca = await db.earsivFatura.findMany({
+        where: { tenantId, taxpayerId: { in: taxpayerIds }, tip: 'ALIS', faturaNo: { in: faturaNolar.slice(i, i + 500) } },
+        select: { taxpayerId: true, faturaNo: true, saticiVergiNo: true, pdfStorageKey: true, htmlStorageKey: true, belgeKaynak: true, faturaTarihi: true },
+      });
+      lucaKayitlari.push(...parca);
+    }
+    // Anahtar: mükellef::faturaNo::vkn ve mükellef::faturaNo (VKN'siz yedek)
+    const gorselli = new Set<string>();
+    const kayitli = new Set<string>();
+    for (const k of lucaKayitlari) {
+      const vkn = String(k.saticiVergiNo || '').trim();
+      const anahtarlar = [`${k.taxpayerId}::${k.faturaNo}::${vkn}`, `${k.taxpayerId}::${k.faturaNo}::`];
+      for (const a of anahtarlar) {
+        kayitli.add(a);
+        if (k.pdfStorageKey || k.htmlStorageKey) gorselli.add(a);
+      }
+    }
+    const rows = [];
+    let lucaVar = 0;
+    for (const d of dvd) {
+      const tam = `${d.taxpayerId}::${d.faturaNo}::${d.saticiVkn}`;
+      const kisa = `${d.taxpayerId}::${d.faturaNo}::`;
+      const varMi = kayitli.has(tam) || kayitli.has(kisa);
+      const gorselVarMi = gorselli.has(tam) || gorselli.has(kisa);
+      if (varMi && gorselVarMi) { lucaVar++; continue; }
+      rows.push({
+        taxpayerId: d.taxpayerId, taxpayer: d.taxpayer, donem: d.donem, sorguTarihi: d.sorguTarihi,
+        faturaNo: d.faturaNo, duzenlenmeTarihi: d.duzenlenmeTarihi, saticiUnvan: d.saticiUnvan, saticiVkn: d.saticiVkn,
+        toplamTutar: d.toplamTutar, vergilerTutari: d.vergilerTutari, odenecekTutar: d.odenecekTutar,
+        durum: varMi ? 'GORSEL_YOK' : 'LUCA_YOK',
+      });
+    }
+    rows.sort((a, b) => String(b.duzenlenmeTarihi || '').localeCompare(String(a.duzenlenmeTarihi || '')));
+    return {
+      rows,
+      ozet: { dvd: dvd.length, lucaVar, lucaYok: rows.filter((r) => r.durum === 'LUCA_YOK').length, gorselYok: rows.filter((r) => r.durum === 'GORSEL_YOK').length, sorguSayisi: sonSorgu.size },
+    };
+  }
+
+  /**
    * Sonuç yazma — ileride sorgu işleri (gece cron / elle "Şimdi sorgula") bunu çağıracak.
    * Her çağrı YENİ satır açar (geçmiş korunur). Mükellef tenant'a ait değilse hata.
    */

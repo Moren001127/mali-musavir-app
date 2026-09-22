@@ -20,6 +20,7 @@ import {
 import { adet, donemEtiketi, tarihKisa, tarihSaat, tutar, yilAyEtiketi } from '../_lib/bicim';
 import { csvIndir, disaAktarimTablosu } from '../_lib/disa-aktar';
 import { EHacizDetay, GelenEArsivDetay, PosDetay, VergiBorcuDetay, YoklamaDetay } from './Detaylar';
+import { EksikGorseller } from './EksikGorseller';
 
 /*
  * Tür başına kenarlıklı GERÇEK tablo — grup başlığı düz kurşuni bant (büyük harf) + sol ince vurgu çizgisi.
@@ -113,6 +114,9 @@ export interface SonucGrubuProps {
 export function SonucGrubu(p: SonucGrubuProps) {
   const [acik, setAcik] = useState<string | null>(null);
   const [indiriliyor, setIndiriliyor] = useState(false);
+  // Gelen e-Arşiv: ikinci sekme — DVD listesi ↔ Luca çekimi karşılaştırması ("Görseli eksik faturalar")
+  const [sekme, setSekme] = useState<'sonuc' | 'eksik'>('sonuc');
+  const earsiv = p.tur === 'GELEN_EARSIV';
   const sutunlar = SUTUNLAR[p.tur];
   const SUTUN = sutunlar.length + 1;
 
@@ -137,14 +141,24 @@ export function SonucGrubu(p: SonucGrubuProps) {
       <div className="gs-grup-bas">
         <span className="gs-grup-adi">{SORGU_TURU_ADI[p.tur]}</span>
         <span className="gs-grup-sayi">{adet(p.total)} sorgu{p.yukleniyor ? ' · yükleniyor…' : ''}</span>
+        {earsiv && (
+          <div className="gs-sekmeler" role="tablist" aria-label="Gelen e-Arşiv görünümü">
+            <button type="button" role="tab" aria-selected={sekme === 'sonuc'} className="gs-sekme" onClick={() => setSekme('sonuc')}>Sorgu sonuçları</button>
+            <button type="button" role="tab" aria-selected={sekme === 'eksik'} className="gs-sekme" onClick={() => setSekme('eksik')} title="Dijital Vergi Dairesi listesinde olup Luca çekiminde görseli olmayan faturalar">Görseli eksik faturalar</button>
+          </div>
+        )}
         <div className="gs-grup-sag">
-          <button type="button" className="gs-dugme-ikincil" onClick={excelIndir} disabled={indiriliyor || p.total === 0} title="Süzgece uyan tüm sonuçları Excel'de açılan dosya olarak indir">
-            {indiriliyor ? 'Hazırlanıyor…' : 'Excel indir'}
-          </button>
+          {!(earsiv && sekme === 'eksik') && (
+            <button type="button" className="gs-dugme-ikincil" onClick={excelIndir} disabled={indiriliyor || p.total === 0} title="Süzgece uyan tüm sonuçları Excel'de açılan dosya olarak indir">
+              {indiriliyor ? 'Hazırlanıyor…' : 'Excel indir'}
+            </button>
+          )}
         </div>
       </div>
 
-      {p.hata ? (
+      {earsiv && sekme === 'eksik' ? (
+        <EksikGorseller suzgec={p.suzgec} />
+      ) : p.hata ? (
         <div className="gs-hata">Sonuçlar alınamadı: {p.hata}</div>
       ) : p.total === 0 && !p.yukleniyor ? (
         <div className="gs-bos">
