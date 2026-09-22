@@ -86,7 +86,7 @@
   //   Luca'nın beklediği adlarla TEK SEFERDE hizalanır (her denemede tek sütun hatası okumak yerine).
   // v1.47.48 (2026-09-15): firma onay düğmesi regex'indeki `\b` sınırları kaynakta gerçek backspace (0x08) baytına
   //   dönüşmüştü (sec/aç/ac seçenekleri ölüydü) → düzeltildi.
-  const AGENT_VERSION = '1.47.57';
+  const AGENT_VERSION = '1.47.58';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -3344,32 +3344,30 @@
                     await log(`satır kutusu doldurma uyarısı: ${msj}`);
                   }
                   await log(`🧩 Satır açılır kutusu dolduruldu=${kutuDolduruldu}${bosKutular.length ? ` · BOŞ KALAN=${bosKutular.slice(0, 6).join(', ')}` : ''}`);
-                  // v1.47.55 — CARİ SORGULAMA: TCKN/VKN'den vergi dairesi + ünvan + adres çekilir.
-                  //   Muzaffer Bey: "onu yapmayınca kesilen fişte cariyi falan dolu göstermiyor."
-                  //   Alttaki "Cari Sorgulama" düğmesi tüm satırlar için çalışır.
+                  // v1.47.58 — CARİ SORGULAMA SATIR SATIR (Muzaffer Bey'in tespiti + sayfa kaynağı):
+                  //   Her satırda TCKN/VKN'nin yanında <img onclick="tcknSorgula(true, this)"> var; vergi dairesi,
+                  //   ünvan ve adresi O simge çekiyor. Alttaki toplu "Cari Sorgulama" düğmesi bunu YAPMIYOR
+                  //   (23.09 denemesinde 36 satırda vergi dairesi boş kaldı, kesilen fişte cari boş çıktı).
+                  //   Bu yüzden simgeler SATIR SATIR, aralarında nefes bırakılarak tıklanır.
                   try {
                     const cd = hizliFisDoc();
-                    let basildi = false;
-                    if (cd) {
-                      for (const el of cd.querySelectorAll('button, input[type="button"], input[type="submit"], a')) {
-                        const t = String(el.value || el.textContent || '').replace(/\s+/g, ' ').trim();
-                        if (/Cari\s*Sorgulama/i.test(t)) { try { el.click(); } catch {} basildi = true; break; }
-                      }
+                    const simgeler = cd ? [...cd.querySelectorAll('img[onclick*="tcknSorgula"]')] : [];
+                    let tiklanan = 0;
+                    for (const im of simgeler) {
+                      try { im.click(); tiklanan++; } catch {}
+                      await sleep(900); // her sorgu Luca'ya AJAX gidiyor — üst üste bindirme
                     }
-                    if (basildi) {
-                      // sorgulama AJAX — vergi dairesi kutuları dolana kadar bekle (en çok ~20 sn)
-                      for (let b = 0; b < 20; b++) {
-                        let bosVd = 0;
-                        try { for (const s2 of cd.querySelectorAll('select[name$=".vergiDairesiKod"]')) { if (!String(s2.value || '').trim()) bosVd++; } } catch {}
-                        if (!bosVd) break;
-                        await sleep(1000);
-                      }
-                      let kalanVd = 0;
-                      try { for (const s2 of cd.querySelectorAll('select[name$=".vergiDairesiKod"]')) { if (!String(s2.value || '').trim()) kalanVd++; } } catch {}
-                      await log(`🔎 "Cari Sorgulama" yapıldı${kalanVd ? ` · ${kalanVd} satırda vergi dairesi yine boş` : ' · tüm satırların cari bilgisi doldu'}`);
-                    } else {
-                      await log('⚠ "Cari Sorgulama" düğmesi bulunamadı — kesilen fişte cari boş kalabilir');
+                    // vergi dairesi kutuları dolana kadar bekle (en çok ~20 sn)
+                    for (let b = 0; b < 20; b++) {
+                      let bosVd = 0;
+                      try { for (const s2 of cd.querySelectorAll('select[name$=".vergiDairesiKod"]')) { if (!String(s2.value || '').trim()) bosVd++; } } catch {}
+                      if (!bosVd) break;
+                      await sleep(1000);
                     }
+                    let kalanVd = 0, toplamVd = 0;
+                    try { for (const s2 of cd.querySelectorAll('select[name$=".vergiDairesiKod"]')) { toplamVd++; if (!String(s2.value || '').trim()) kalanVd++; } } catch {}
+                    await log(`🔎 Cari sorgu simgesi ${tiklanan} satırda tıklandı · vergi dairesi dolan ${toplamVd - kalanVd}/${toplamVd}`);
+                    if (!simgeler.length) await log('⚠ Cari sorgu simgesi (tcknSorgula) bulunamadı — kesilen fişte cari boş kalabilir');
                   } catch (e) { await log(`cari sorgulama uyarısı: ${(e && e.message) || e}`); }
                   if (bosKutular.length) throw new Error(`Satır açılır kutuları dolmadı (${bosKutular.slice(0, 4).join(', ')}). "Fiş Kes" BASILMADI — eksik fiş kesilmesin.`);
 
