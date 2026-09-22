@@ -686,7 +686,8 @@ export class FaturaMuhasebelestirmeController {
     //   takılmasın → "bağlantı koptu" hatası olmasın). Artımlı yazım sayesinde satırlar geldikçe
     //   efatura-inbox'ta görünür; durum efatura-sync/status'tan izlenir.
     //   - TURKCELL: 47k+ fatura, hız-sınırı.  - TURMOB_EFATURA: Türkiye proxy üzerinden (yavaş) → zaman aşımı.
-    const BACKGROUND_PROVIDERS = new Set(['TURKCELL', 'TURMOB_EFATURA']);
+    //   - ECZACIKART: her belge ayrı indiriliyor (2026-09-22 canlı: bir ayda 374 fatura) → 5 dk duvarına yaklaşıyor.
+    const BACKGROUND_PROVIDERS = new Set(['TURKCELL', 'TURMOB_EFATURA', 'ECZACIKART']);
     const isBackground = (providers || []).some((p: any) => BACKGROUND_PROVIDERS.has(String(p).toUpperCase()));
     if (isBackground) {
       return this.service.startEfaturaSyncBackground(req.user.tenantId, req.user?.userId || req.user?.sub, opts);
