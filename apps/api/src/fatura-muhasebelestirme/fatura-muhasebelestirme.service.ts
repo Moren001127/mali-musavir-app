@@ -8910,7 +8910,45 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       if (!groupMap.has(key)) groupMap.set(key, { kind, period, docs: [] });
       groupMap.get(key)!.docs.push(d);
     }
-    const groups = [...groupMap.values()];
+    let groups = [...groupMap.values()];
+
+    // ═══ LUCA 200 SATIR SINIRI (2026-09-23, Muzaffer Bey — YORGUN NAKLİYAT 501 belge) ═══
+    //   Luca'nın Excel/CSV aktarımı TEK SEFERDE en çok ~200 SATIR alıyor. Satır = BELGE DEĞİL,
+    //   MUHASEBE SATIRI (153 / 191 / 320 … her hesap kodu ayrı satır). 501 belgelik aktarımda
+    //   sınırı aşan satırlar SESSİZCE düşüyordu → arşivde "aktarıldı" görünüyor ama Luca'da yok.
+    //   Çözüm: grup, satır sayısı tavanı aşmayacak şekilde parçalara bölünür ve her parça AYRI
+    //   iş olur; ajan işleri sırayla çalıştırdığı için dosyalar arka planda peş peşe yüklenir.
+    //   Tek belge tek başına tavanı aşıyorsa bölünmez (fiş parçalanmasın), kendi işine gider.
+    {
+      const tavan = Math.max(20, Number(process.env.LUCA_EXCEL_SATIR_TAVANI || 200));
+      const satirSayisi = (d: any): number => {
+        if (isIsletme) {
+          const sat = (d?.ocrData as any)?.isletme?.satirlar;
+          return Math.max(1, Array.isArray(sat) ? sat.length : 1);
+        }
+        return Math.max(1, Array.isArray(d?.lines) ? d.lines.length : 1);
+      };
+      const bolunmus: typeof groups = [];
+      for (const g of groups) {
+        let parca: any[] = [];
+        let sayac = 0;
+        for (const d of g.docs) {
+          const n = satirSayisi(d);
+          if (parca.length && sayac + n > tavan) {
+            bolunmus.push({ ...g, docs: parca });
+            parca = [];
+            sayac = 0;
+          }
+          parca.push(d);
+          sayac += n;
+        }
+        if (parca.length) bolunmus.push({ ...g, docs: parca });
+      }
+      if (bolunmus.length !== groups.length) {
+        this.logger.log(`[LUCA-200] ${groups.length} grup → ${bolunmus.length} parçaya bölündü (satır tavanı ${tavan})`);
+      }
+      groups = bolunmus;
+    }
 
     // AUTO-ENTEGRASYON (kullanıcı: önce hesap, sonra fiş): mükellefin Luca'ya GÖNDERİLMEMİŞ yerel
     //   hesabı varsa, fiş işinden ÖNCE bir ACCOUNT_PLAN_PUSH işi yarat. Ajan bunu INVOICE_POST'tan
@@ -8945,7 +8983,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             direction: g.kind,
             period: dominantPeriod,
             totalCount: g.docs.length,
-            fisAciklama: `${kindLabel} faturaları - ${dominantPeriod} (${g.docs.length} belge)`,
+            fisAciklama: `${kindLabel} faturaları - ${dominantPeriod} (${g.docs.length} belge)`, // parçalıysa her parça ayrı fiş açıklaması alır
             invoices: g.docs.map(toInvoicePayload),
           },
         },
