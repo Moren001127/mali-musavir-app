@@ -197,7 +197,25 @@ html[data-theme='D'] .is-yuku [data-akis-asama='TAMAM']              { --st-a: #
 }
 
 /* ── Şimdi yapılacak ───────────────────────────────────────────────────────── */
-.is-yuku .ay-hero { position: relative; padding: 18px 22px 20px; border-left: 4px solid var(--ay-accent); border-radius: 16px; }
+/* ŞİMDİ YAPILACAK — aşama renginde HAFİF yıkama (Muzaffer Bey 2026-09-22: "içini de hafiften renklendir"):
+   sol şerit ve zemin o mükellefin aşama tonundan; sağ üstte çok soluk halka; yazılar beyaz kartla aynı okunur. */
+.is-yuku .ay-hero {
+  position: relative; overflow: hidden; padding: 18px 22px 20px; border-radius: 16px;
+  border-left: 4px solid var(--st-a);
+  border-color: var(--st-line);
+  border-left-color: var(--st-a);
+  background:
+    radial-gradient(120% 140% at 100% 0%, color-mix(in srgb, var(--st-a) 9%, transparent), transparent 62%),
+    linear-gradient(100deg, color-mix(in srgb, var(--st-a) 7%, var(--ay-surface)) 0%, var(--ay-surface) 58%);
+}
+.is-yuku .ay-hero::after {
+  content: ''; position: absolute; right: -54px; top: -78px; width: 210px; height: 210px; border-radius: 50%;
+  border: 26px solid color-mix(in srgb, var(--st-a) 12%, transparent); pointer-events: none;
+}
+.is-yuku .ay-hero > * { position: relative; z-index: 1; }
+.is-yuku .ay-hero .ay-eyebrow { color: var(--st-ink); }
+.is-yuku .ay-hero .ay-btn-primary { background: linear-gradient(135deg, var(--st-a), var(--st-b)); border-color: transparent; color: #fff; box-shadow: 0 10px 20px -12px var(--st-a); }
+.is-yuku .ay-hero .ay-btn-secondary { background: color-mix(in srgb, var(--ay-surface) 88%, transparent); }
 .is-yuku .ay-hero-name { font-size: 20px; font-weight: 700; line-height: 1.2; letter-spacing: -0.01em; color: var(--ay-ink); }
 .is-yuku .ay-vkn { font-size: 12px; color: var(--ay-faint); }
 .is-yuku .ay-btn {
