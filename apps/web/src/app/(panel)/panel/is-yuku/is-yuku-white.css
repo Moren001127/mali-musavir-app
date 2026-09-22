@@ -149,22 +149,52 @@ html[data-theme='D'] .is-yuku [data-akis-asama='TAMAM']              { --st-a: #
 .is-yuku .ay-chip-kirmizi { background: var(--ay-kirmizi-soft); border-color: var(--ay-kirmizi-line); color: var(--ay-kirmizi-ink); }
 .is-yuku .ay-chip-asama { background: var(--st-soft); border-color: var(--st-line); color: var(--st-ink); }
 
-/* ── Aşama kutucukları (gösterge paneli kalıbı b): beyaz kart + gradyan simge kutusu + koyu sayı + ton çubuğu ── */
-.is-yuku .ay-counter {
-  padding: 13px 14px 12px; border-radius: 14px; background: var(--ay-surface); border: 1px solid var(--ay-line);
-  box-shadow: var(--ay-shadow-soft); transition: border-color .15s, box-shadow .15s, transform .15s;
+/* ── AKIŞ RAYI (Aylık Akış Özeti) ──────────────────────────────────────────────
+   Muzaffer Bey (2026-09-22): "sayaçlar her yerde aynı tarz; daha farklı, yaratıcı; çok göz yormayan ama
+   çok sade de olmayacak." Altı aşama TEK HAT üzerinde düğüm: halka o aşamanın payını çizer (conic),
+   sayı halkanın içinde, aşama simgesi küçük rozet olarak halkanın sağ altında; düğümler arasında ok.
+   Altta ayın kapanma oranı tek şerit. Renk yalnız aşamayı söyler, zemin beyaz kalır. */
+.is-yuku .ay-ray-sar { padding: 18px 18px 14px; }
+.is-yuku .ay-ray { display: flex; align-items: flex-start; justify-content: space-between; gap: 2px; }
+.is-yuku .ay-ray-bag { display: grid; place-items: center; flex: 1 1 auto; min-width: 10px; height: 64px; color: var(--ay-faint); opacity: .55; }
+.is-yuku .ay-dugum {
+  display: flex; flex-direction: column; align-items: center; gap: 4px; flex: 0 0 auto; width: 134px;
+  padding: 6px 6px 8px; border-radius: 14px; text-align: center; transition: background .15s, transform .15s;
 }
-.is-yuku .ay-counter:hover { transform: translateY(-1px); border-color: color-mix(in srgb, var(--st-a) 45%, var(--ay-line)); box-shadow: 0 12px 24px -16px color-mix(in srgb, var(--st-a) 70%, transparent); }
-.is-yuku .ay-counter-icon {
-  display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; color: #fff;
-  background: linear-gradient(135deg, var(--st-a), var(--st-b)); box-shadow: 0 6px 14px -8px var(--st-a);
+.is-yuku .ay-dugum:hover { background: var(--ay-hover); transform: translateY(-1px); }
+.is-yuku .ay-dugum-halka {
+  position: relative; display: grid; place-items: center; width: 64px; height: 64px; border-radius: 50%;
+  background: conic-gradient(var(--st-a) calc(var(--p, 0) * 1%), var(--ay-bar-bg) 0);
+  transition: filter .15s;
 }
-.is-yuku .ay-counter-pct { padding: 3px 8px; border-radius: 999px; font-size: 10.5px; font-weight: 700; background: var(--st-soft); color: var(--st-ink); }
-.is-yuku .ay-counter-num { font-size: 24px; font-weight: 750; letter-spacing: -0.02em; line-height: 1; color: var(--ay-ink); }
-.is-yuku .ay-counter-title { margin-top: 5px; font-size: 12.5px; font-weight: 600; color: var(--ay-ink-2); }
-.is-yuku .ay-counter-sub { margin-top: 1px; font-size: 10.5px; color: var(--ay-faint); }
-.is-yuku .ay-counter-bar { height: 5px; overflow: hidden; border-radius: 999px; background: var(--ay-bar-bg); }
-.is-yuku .ay-counter-bar > div { height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--st-a), var(--st-b)); transition: width .5s; }
+.is-yuku .ay-dugum:hover .ay-dugum-halka { filter: saturate(1.08); }
+.is-yuku .ay-dugum-ic {
+  display: grid; place-items: center; width: 52px; height: 52px; border-radius: 50%;
+  background: var(--ay-surface); box-shadow: inset 0 0 0 1px var(--st-line);
+}
+.is-yuku .ay-dugum-sayi { font-size: 21px; font-weight: 750; letter-spacing: -0.02em; line-height: 1; color: var(--st-ink); }
+.is-yuku .ay-dugum[data-bos='true'] .ay-dugum-sayi { color: var(--ay-faint); }
+.is-yuku .ay-dugum[data-bos='true'] .ay-dugum-halka { background: var(--ay-bar-bg); }
+.is-yuku .ay-dugum-rozet {
+  position: absolute; right: -2px; bottom: -2px; display: grid; place-items: center; width: 22px; height: 22px;
+  border-radius: 50%; background: var(--st-soft); color: var(--st-ink); box-shadow: 0 0 0 2px var(--ay-surface);
+}
+.is-yuku .ay-dugum-ad { margin-top: 4px; font-size: 12.5px; font-weight: 650; color: var(--ay-ink); line-height: 1.2; }
+.is-yuku .ay-dugum-alt { min-height: 26px; font-size: 10.5px; color: var(--ay-muted); line-height: 1.25; }
+.is-yuku .ay-dugum[data-bos='true'] .ay-dugum-alt { color: var(--ay-faint); }
+
+.is-yuku .ay-ilerleme { display: flex; align-items: center; gap: 10px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--ay-line-soft); }
+.is-yuku .ay-ilerleme-yazi { font-size: 12px; color: var(--ay-muted); white-space: nowrap; }
+.is-yuku .ay-ilerleme-yazi b { font-weight: 700; color: var(--ay-ink); font-variant-numeric: tabular-nums; }
+.is-yuku .ay-ilerleme-cubuk { flex: 1; height: 6px; border-radius: 999px; background: var(--ay-bar-bg); overflow: hidden; }
+.is-yuku .ay-ilerleme-cubuk > span { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #2f9e44, #51cf66); transition: width .5s; }
+.is-yuku .ay-ilerleme-yuzde { font-size: 12px; font-weight: 700; color: var(--ay-yesil-ink); }
+
+@media (max-width: 1100px) {
+  .is-yuku .ay-ray { flex-wrap: wrap; justify-content: flex-start; gap: 10px 4px; }
+  .is-yuku .ay-ray-bag { display: none; }
+  .is-yuku .ay-dugum { width: calc(33.333% - 4px); }
+}
 
 /* ── Şimdi yapılacak ───────────────────────────────────────────────────────── */
 .is-yuku .ay-hero { position: relative; padding: 18px 22px 20px; border-left: 4px solid var(--ay-accent); border-radius: 16px; }

@@ -275,39 +275,52 @@ function WorkflowSummary({ data, donemAdi }: { data: WorkflowData; donemAdi: str
           <span className="ay-chip ay-chip-yesil">{counts.tamam} tamamlandı</span>
         </div>
       </div>
-      <div className="px-4 py-4">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 xl:grid-cols-6">
-          {STAGE_ORDER.map((stage) => {
+      <div className="ay-ray-sar">
+        {/* AKIŞ RAYI — 6 aşama tek hat üzerinde: halka payı gösterir, sayı içinde; aralarda ok.
+            (Muzaffer Bey 2026-09-22: "sayaçlar her yerde aynı tarz, daha farklı ve yaratıcı olsun".) */}
+        <div className="ay-ray" role="list">
+          {STAGE_ORDER.map((stage, idx) => {
             const cfg = STAGE_CONFIG[stage];
             const Icon = cfg.icon;
             const count = counts[cfg.countKey] ?? data.grouped?.[stage]?.length ?? 0;
             const pct = data.total ? Math.round((count / data.total) * 100) : 0;
             return (
-              <Link key={stage} href="#pipeline" data-akis-asama={stage} className="ay-counter block">
-                <div className="flex items-start justify-between gap-2">
-                  <span className="ay-counter-icon"><Icon size={16} /></span>
-                  <span className="ay-counter-pct tabular-nums">%{pct}</span>
-                </div>
-                <div className="mt-2.5">
-                  <div className="ay-counter-num tabular-nums">{count}</div>
-                  <div className="ay-counter-title truncate">{cfg.title}</div>
-                  <div className="ay-counter-sub truncate">{cfg.sub}</div>
-                </div>
-                <div className="ay-counter-bar mt-2.5">
-                  <div style={{ width: `${pct}%` }} />
-                </div>
-              </Link>
+              <React.Fragment key={stage}>
+                {idx > 0 && <span className="ay-ray-bag" aria-hidden><ChevronRight size={15} /></span>}
+                <Link
+                  href="#pipeline"
+                  role="listitem"
+                  data-akis-asama={stage}
+                  data-bos={count === 0 ? 'true' : undefined}
+                  className="ay-dugum"
+                  style={{ ['--p' as string]: pct }}
+                  title={`${cfg.title} — ${count} mükellef (akışın %${pct}'i)`}
+                >
+                  <span className="ay-dugum-halka">
+                    <span className="ay-dugum-ic">
+                      <span className="ay-dugum-sayi tabular-nums">{count}</span>
+                    </span>
+                    <span className="ay-dugum-rozet"><Icon size={12} /></span>
+                  </span>
+                  <span className="ay-dugum-ad">{cfg.title}</span>
+                  <span className="ay-dugum-alt">{count === 0 ? 'boş' : `%${pct} · ${cfg.sub}`}</span>
+                </Link>
+              </React.Fragment>
             );
           })}
+        </div>
+
+        {/* Ay ilerlemesi — tamamlanan iş oranı tek şeritte */}
+        <div className="ay-ilerleme">
+          <span className="ay-ilerleme-yazi"><b>{counts.tamam}</b> / {data.total} mükellefin ayı kapandı</span>
+          <span className="ay-ilerleme-cubuk"><span style={{ width: `${data.total ? Math.round((counts.tamam / data.total) * 100) : 0}%` }} /></span>
+          <span className="ay-ilerleme-yuzde tabular-nums">%{data.total ? Math.round((counts.tamam / data.total) * 100) : 0}</span>
         </div>
       </div>
     </section>
   );
 }
 
-// ════════════════════════════════════════════════════════════════════
-// ŞİMDİ YAPILACAK — öne çıkan iş
-// ════════════════════════════════════════════════════════════════════
 function HeroCard({
   item, sira, total, onSkip, canSkip, canGoBack, onBack,
 }: {
