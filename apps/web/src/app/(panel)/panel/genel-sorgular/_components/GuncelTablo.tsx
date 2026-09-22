@@ -9,6 +9,7 @@ import { SORGU_TURU_ADI, genelSorgularApi, sorguMukellefAdi, type GuncelSatir, t
 import { adet, donemEtiketi, tarihKisa, tarihSaat, tutar } from '../_lib/bicim';
 import { csvIndir } from '../_lib/disa-aktar';
 import { EksikGorseller } from './EksikGorseller';
+import { TurIkonu } from './TurIkonu';
 
 /*
  * GÜNCEL DURUM tabloları (2026-09-22, Muzaffer Bey: "her gün bir sorgu satırı mı gelecek? mantığı saçma").
@@ -178,7 +179,7 @@ export function GuncelTablo(p: GuncelTabloProps) {
   return (
     <section className="gs-grup" data-gs-grup={p.tur}>
       <div className="gs-grup-bas">
-        <span className="gs-grup-adi">{SORGU_TURU_ADI[p.tur]}</span>
+        <span className="gs-grup-adi"><TurIkonu tur={p.tur} buyuk />{SORGU_TURU_ADI[p.tur]}</span>
         <span className="gs-grup-sayi">{q.isLoading ? 'Yükleniyor…' : ozetCumlesi(p.tur, total, ozet)}{!ayBazli && p.suzgec.donem ? ' · dönem süzgeci bu türde uygulanmaz' : ''}</span>
         {earsiv && (
           <div className="gs-sekmeler" role="tablist" aria-label="Gelen e-Arşiv görünümü">

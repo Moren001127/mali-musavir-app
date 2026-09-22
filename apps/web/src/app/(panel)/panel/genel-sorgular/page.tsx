@@ -21,12 +21,13 @@ import { tarihKisa } from './_lib/bicim';
  *   (Tümü + 5 tür, kayıt sayılı) · tür başına GÜNCEL DURUM tablosu (koşu geçmişi değil: borç mükellef başına,
  *   haciz bildiri başına, yoklama tutanak başına, POS ay+banka, e-Arşiv fatura başına).
  *   Gece sorgusu mükellef kartındaki Otomatik Sorgulama Ayarı'na göre çalışır; burada kurulum/koşu listesi YOK.
- * Adres çubuğu: ?mukellef=<id>&tur=VERGI_BORCU&donem=2026-09&boyut=50&s_VERGI_BORCU=2&renk=1..4
- * (renk = Muzaffer Bey'in seçeceği vurgu varyantı; karar sonrası sabitlenir.)
+ * Adres çubuğu: ?mukellef=<id>&tur=VERGI_BORCU&donem=2026-09&boyut=50&s_VERGI_BORCU=2
+ * Vurgu rengi KARAR: deniz yeşili (4 varyant görselinden 3; 2026-09-22) — CSS paydalarında sabit.
  */
 
 const VARSAYILAN_BOYUT: SayfaBoyutu = 50;
-const RENK_VURGU: Record<string, string> = { '1': '#4263eb', '2': '#5c6b7f', '3': '#0ca678', '4': '#1971c2' };
+/** Sayfalama gibi satır içi renk isteyen ortak bileşenler için vurgu (CSS --gs-vurgu ile aynı). */
+const VURGU = '#0ca678';
 
 export default function GenelSorgularPage() {
   // useSearchParams statik ön-derlemede Suspense sınırı ister (Next 15).
@@ -43,7 +44,6 @@ function GenelSorgularIcerik() {
   const searchParams = useSearchParams();
 
   // ---- Adres çubuğundan süzgeç ----
-  const renk = RENK_VURGU[searchParams.get('renk') || ''] ? (searchParams.get('renk') as string) : '1';
   const suzgec: Suzgec = useMemo(() => {
     const turHam = (searchParams.get('tur') || '').split(',').find(sorguTuruMu) || null;
     const donemHam = searchParams.get('donem') || '';
@@ -102,7 +102,7 @@ function GenelSorgularIcerik() {
   };
 
   return (
-    <div className="gs mx-auto w-full max-w-[1280px]" data-renk={renk} data-gs-kok>
+    <div className="gs mx-auto w-full max-w-[1280px]" data-gs-kok>
       <div className="gs-baslik">
         <span className="gs-baslik-simge"><ScanSearch size={18} /></span>
         <div className="min-w-0">
@@ -129,7 +129,7 @@ function GenelSorgularIcerik() {
             sayfaBoyutu={boyut}
             onSayfa={(n) => sayfaYaz(t, n)}
             onSayfaBoyutu={boyutYaz}
-            vurgu={RENK_VURGU[renk]}
+            vurgu={VURGU}
             onTutanak={tutanakAc}
           />
         ))}

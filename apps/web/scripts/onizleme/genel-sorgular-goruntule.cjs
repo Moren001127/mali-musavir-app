@@ -3,7 +3,7 @@
 //   node apps/web/scripts/onizleme/genel-sorgular-goruntule.cjs [cikisKlasoru]
 // Sahte veri: scripts/mock/oncelik/genel-sorgular.cjs. Çıktılar _previews/genel-sorgular/:
 //   01-tam (Tümü) · 02-ust (başlık + araç çubuğu + sekmeler) · 03-tablo-detay · 04-mukellef-suzgec · 05-sorgu-suruyor
-//   06-tek-tur-haciz · 07-earsiv-eksik · renk-1..4 (vurgu varyantları, üst kesit)
+//   06-tek-tur-haciz · 07-earsiv-eksik (vurgu rengi karar: deniz yeşili — varyant döngüsü kaldırıldı)
 const path = require('path');
 const fs = require('fs');
 const { chromium } = require(path.join(__dirname, '..', '..', '..', '..', 'node_modules', '.pnpm', 'playwright@1.60.0', 'node_modules', 'playwright'));
@@ -94,13 +94,6 @@ async function sayfayaGit(pg, adres) {
   await pg.waitForTimeout(1500);
   await ustKesit(pg, path.join(CIKIS, '07-earsiv-eksik.png'), 1000);
 
-  for (const renk of ['1', '2', '3', '4']) {
-    await sayfayaGit(pg, `${KOK}/panel/genel-sorgular?renk=${renk}&mukellef=gs1`);
-    await pg.locator('.gs-grup').first().waitFor({ state: 'visible', timeout: 30000 });
-    await pg.locator('.gs-satir').first().click().catch(() => {});
-    await pg.waitForTimeout(500);
-    await ustKesit(pg, path.join(CIKIS, `renk-${renk}.png`), 1500);
-  }
   await b.close();
   console.log('bitti →', CIKIS);
 })().catch((e) => { console.error(e); process.exit(1); });

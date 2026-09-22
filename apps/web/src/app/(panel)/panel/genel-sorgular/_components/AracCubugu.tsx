@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { CalendarDays, Search, Users } from 'lucide-react';
 import { GENEL_SORGU_DVD_ANAHTARI, type DvdSorguTuru } from '@mali-musavir/shared';
 import TaxpayerSelect, { type TaxpayerLite } from '@/components/ui/TaxpayerSelect';
 import { DVD_SORGULARI, SORGU_TURU_ADI, genelSorgularApi, sorguMukellefAdi, type SorguKosusu, type SorguTuru } from '@/lib/genel-sorgular';
@@ -107,26 +108,33 @@ export function AracCubugu({ suzgec, onSuzgec, mukellefler }: { suzgec: Suzgec; 
       <div className="gs-arac-satir">
         <label className="gs-alan gs-alan-mukellef">
           <span className="gs-alan-etiket">Mükellef</span>
-          <TaxpayerSelect
-            taxpayers={mukellefler}
-            value={suzgec.mukellefId || TUMU}
-            onChange={(id) => onSuzgec({ ...suzgec, mukellefId: id === TUMU ? '' : id })}
-            allLabel="Tüm mükellefler"
-            allValue={TUMU}
-            className="gs-mukellef-secici"
-          />
+          <span className="gs-alan-govde">
+            <span className="gs-alan-ikon" data-ton="mukellef" aria-hidden><Users size={14} strokeWidth={2} /></span>
+            <TaxpayerSelect
+              taxpayers={mukellefler}
+              value={suzgec.mukellefId || TUMU}
+              onChange={(id) => onSuzgec({ ...suzgec, mukellefId: id === TUMU ? '' : id })}
+              allLabel="Tüm mükellefler"
+              allValue={TUMU}
+              className="gs-mukellef-secici"
+            />
+          </span>
         </label>
         <label className="gs-alan gs-alan-donem" title={donemKapali ? 'Dönem süzgeci yalnız POS ve Gelen e-Arşiv tablolarında uygulanır' : undefined}>
           <span className="gs-alan-etiket">Dönem</span>
-          <select className="gs-secim" value={tumDonemler ? '' : suzgec.donem} disabled={donemKapali} onChange={(e) => onSuzgec({ ...suzgec, donem: e.target.value })} aria-label="Dönem">
-            <option value="">Tüm dönemler</option>
-            {sonAylar(12).map((a) => (
-              <option key={a.deger} value={a.deger}>{a.etiket}</option>
-            ))}
-          </select>
+          <span className="gs-alan-govde">
+            <span className="gs-alan-ikon" data-ton="donem" aria-hidden><CalendarDays size={14} strokeWidth={2} /></span>
+            <select className="gs-secim" value={tumDonemler ? '' : suzgec.donem} disabled={donemKapali} onChange={(e) => onSuzgec({ ...suzgec, donem: e.target.value })} aria-label="Dönem">
+              <option value="">Tüm dönemler</option>
+              {sonAylar(12).map((a) => (
+                <option key={a.deger} value={a.deger}>{a.etiket}</option>
+              ))}
+            </select>
+          </span>
         </label>
 
         <button type="button" className="gs-dugme gs-arac-dugme" disabled={!sorgulanabilir} title={dugmeIpucu} onClick={() => { setNot(null); mutate(); }} data-gs-sorgula>
+          <Search size={15} strokeWidth={2.2} aria-hidden />
           {izlenen.length ? 'Sorgu sürüyor…' : isPending ? 'Kuyruğa alınıyor…' : 'Sorgula'}
         </button>
       </div>

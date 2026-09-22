@@ -3,6 +3,7 @@
 import { useQueries } from '@tanstack/react-query';
 import { SORGU_TURLERI, SORGU_TURU_ADI, genelSorgularApi, type GuncelYaniti, type SorguTuru } from '@/lib/genel-sorgular';
 import { adet } from '../_lib/bicim';
+import { TurIkonu } from './TurIkonu';
 
 /**
  * Tür sekmeleri: Tümü + 5 sorgu türü. Her sekmede süzgece uyan GÜNCEL kayıt sayısı (kurşuni rozet):
@@ -26,12 +27,14 @@ export function TurSekmeleri({ secili, onSec, suzgec }: { secili: SorguTuru | nu
   return (
     <div className="gs-turler" role="tablist" aria-label="Sorgu türü">
       <button type="button" role="tab" className="gs-tur" aria-selected={secili === null} onClick={() => onSec(null)} title="Bütün türler alt alta">
+        <TurIkonu tur="TUMU" />
         Tümü
       </button>
       {SORGU_TURLERI.map((t, i) => {
         const n = sayilar[i].data?.total ?? null;
         return (
           <button key={t} type="button" role="tab" className="gs-tur" aria-selected={secili === t} onClick={() => onSec(t)} title={`${SORGU_TURU_ADI[t]} — ${n === null ? 'sayılıyor' : `${adet(n)} ${birim(t)}`}`}>
+            <TurIkonu tur={t} />
             {SORGU_TURU_ADI[t]}
             {n !== null && n > 0 && <span className="gs-tur-sayi">{adet(n)}</span>}
           </button>

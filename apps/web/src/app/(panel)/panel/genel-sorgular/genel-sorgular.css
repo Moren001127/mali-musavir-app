@@ -3,8 +3,9 @@
    tür sekmeleri (Tümü + 5 tür, kayıt sayılı) · tür başına beyaz kart + kenarlıklı gerçek tablo.
    Kurulum kartı / koşu listesi / sayaç yığını yok (Muzaffer Bey: "ufak bir ekran yeter").
    Kurallar: bilgi/BEYAZ-TEMA-TASARIM-DILI.md §1–3; renk TEK AİLE (vurgu), yeşil=tamam, kehribar=uyarı,
-   kırmızı=hata/vadesi geçmiş; ikon yerine yazı.
-   Renk varyantı: kök öğede data-renk="1|2|3|4" yalnız vurgu ailesini değiştirir (düğme, seçili sekme, bağlantı). */
+   kırmızı=hata/vadesi geçmiş; simge yazının YANINDA (yerine değil).
+   Vurgu KARARI (Muzaffer Bey, 2026-09-22): DENİZ YEŞİLİ (4 varyant görselinden 3). Tür simgeleri kendi renginde
+   (borç çivit · haciz kırmızı · yoklama kehribar · POS mor · e-Arşiv mavi) — "çok düz duruyor" geri bildirimi. */
 
 .gs {
   /* Metin */
@@ -29,14 +30,23 @@
   --gs-amber-bg: #fff4e6; --gs-amber-line: #ffd8a8; --gs-amber-ink: #d9480f; --gs-amber: #f08c00;
   --gs-red-bg: #fff5f5;   --gs-red-line: #ffc9c9;   --gs-red-ink: #c92a2a;   --gs-red: #e03131;
   --gs-slate-bg: #f1f5f9; --gs-slate-line: #e2e8f0; --gs-slate-ink: #475569;
-  /* Vurgu ailesi — varsayılan 1: çivit */
-  --gs-vurgu: #4263eb;
-  --gs-vurgu-2: #5c7cfa;
-  --gs-vurgu-yazi: #3b5bdb;
-  --gs-vurgu-yumusak: #edf2ff;
-  --gs-vurgu-kenar: #dbe4ff;
-  --gs-vurgu-halka: #dbe4ff;
-  --gs-vurgu-golge: 0 8px 16px -10px #4263eb;
+  /* Vurgu ailesi — deniz yeşili (karar 2026-09-22) */
+  --gs-vurgu: #0ca678;
+  --gs-vurgu-2: #20c997;
+  --gs-vurgu-yazi: #099268;
+  --gs-vurgu-yumusak: #e6fcf5;
+  --gs-vurgu-kenar: #c3fae8;
+  --gs-vurgu-halka: #c3fae8;
+  --gs-vurgu-golge: 0 8px 16px -10px #0ca678;
+  /* Tür / süzgeç simge renkleri (rehber ailesi) */
+  --gs-ikon-tumu: #5c6b7f;    --gs-ikon-tumu-bg: #eef2f6;
+  --gs-ikon-borc: #4263eb;    --gs-ikon-borc-bg: #edf2ff;
+  --gs-ikon-haciz: #e03131;   --gs-ikon-haciz-bg: #fff5f5;
+  --gs-ikon-yoklama: #f08c00; --gs-ikon-yoklama-bg: #fff4e6;
+  --gs-ikon-pos: #7048e8;     --gs-ikon-pos-bg: #f3f0ff;
+  --gs-ikon-earsiv: #1971c2;  --gs-ikon-earsiv-bg: #e7f5ff;
+  --gs-ikon-mukellef: #1971c2; --gs-ikon-mukellef-bg: #e7f5ff;
+  --gs-ikon-donem: #f08c00;   --gs-ikon-donem-bg: #fff4e6;
 
   /* Ortak bileşenler (Sayfalama) satır içi renkleri --portal-* paydalarından okur */
   --portal-ink: var(--gs-ink);
@@ -60,21 +70,6 @@
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   font-size: 13px;
   line-height: 1.45;
-}
-/* 2 = kurşuni / gri-lavanta nötr */
-.gs[data-renk='2'] {
-  --gs-vurgu: #5c6b7f; --gs-vurgu-2: #8494a7; --gs-vurgu-yazi: #475569;
-  --gs-vurgu-yumusak: #eef2ff; --gs-vurgu-kenar: #dfe5f0; --gs-vurgu-halka: #e2e8f0; --gs-vurgu-golge: 0 8px 16px -10px #5c6b7f;
-}
-/* 3 = deniz yeşili */
-.gs[data-renk='3'] {
-  --gs-vurgu: #0ca678; --gs-vurgu-2: #20c997; --gs-vurgu-yazi: #099268;
-  --gs-vurgu-yumusak: #e6fcf5; --gs-vurgu-kenar: #c3fae8; --gs-vurgu-halka: #c3fae8; --gs-vurgu-golge: 0 8px 16px -10px #0ca678;
-}
-/* 4 = mavi */
-.gs[data-renk='4'] {
-  --gs-vurgu: #1971c2; --gs-vurgu-2: #339af0; --gs-vurgu-yazi: #1971c2;
-  --gs-vurgu-yumusak: #e7f5ff; --gs-vurgu-kenar: #c5e3fb; --gs-vurgu-halka: #c5e3fb; --gs-vurgu-golge: 0 8px 16px -10px #1971c2;
 }
 
 /* ── Sayfa başlığı: simge kutusu + başlık + tek satır açıklama · sağda gece sorgusu durum çipi ────────── */
@@ -103,7 +98,14 @@
 .gs-alan { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .gs-alan-etiket { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--gs-muted); white-space: nowrap; }
 .gs-alan-mukellef { flex: 1 1 340px; min-width: 280px; max-width: 540px; }
-.gs-alan-donem { flex: 0 0 auto; width: 200px; }
+.gs-alan-donem { flex: 0 0 auto; width: 214px; }
+/* Alan gövdesi: solda renkli simge kutusu, girdi onun yanından başlar */
+.gs-alan-govde { position: relative; display: flex; align-items: center; min-width: 0; }
+.gs-alan-govde > .gs-alan-ikon { position: absolute; left: 7px; top: 50%; transform: translateY(-50%); z-index: 1; pointer-events: none; }
+.gs-alan-ikon { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 7px; background: var(--gs-band); color: var(--gs-ink-2); }
+.gs-alan-ikon[data-ton='mukellef'] { background: var(--gs-ikon-mukellef-bg); color: var(--gs-ikon-mukellef); }
+.gs-alan-ikon[data-ton='donem'] { background: var(--gs-ikon-donem-bg); color: var(--gs-ikon-donem); }
+.gs .gs-alan-govde > .gs-secim, .gs .gs-alan-govde > .gs-mukellef-secici { padding-left: 40px !important; }
 .gs .gs-secim {
   height: 38px; width: 100%; padding: 0 36px 0 12px; border: 1px solid var(--gs-input-line); border-radius: 10px; background: #fff;
   font: inherit; font-size: 13.5px; color: var(--gs-ink); appearance: none; -webkit-appearance: none; cursor: pointer;
@@ -156,6 +158,14 @@ html[data-theme='D'] .gs :is(button, a, input, select):focus-visible { outline: 
 }
 .gs .gs-tur:hover { color: var(--gs-ink); }
 .gs .gs-tur[aria-selected='true'] { background: #fff; color: var(--gs-vurgu-yazi); box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08), 0 0 0 1px rgba(15, 23, 42, 0.04); }
+.gs-tur-ikon { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; flex-shrink: 0; background: var(--gs-ikon-tumu-bg); color: var(--gs-ikon-tumu); }
+.gs-tur-ikon[data-buyuk='true'] { width: 30px; height: 30px; border-radius: 9px; }
+.gs-tur-ikon[data-tur='VERGI_BORCU'] { background: var(--gs-ikon-borc-bg); color: var(--gs-ikon-borc); }
+.gs-tur-ikon[data-tur='E_HACIZ'] { background: var(--gs-ikon-haciz-bg); color: var(--gs-ikon-haciz); }
+.gs-tur-ikon[data-tur='YOKLAMA_DENETIM'] { background: var(--gs-ikon-yoklama-bg); color: var(--gs-ikon-yoklama); }
+.gs-tur-ikon[data-tur='POS'] { background: var(--gs-ikon-pos-bg); color: var(--gs-ikon-pos); }
+.gs-tur-ikon[data-tur='GELEN_EARSIV'] { background: var(--gs-ikon-earsiv-bg); color: var(--gs-ikon-earsiv); }
+.gs .gs-tur { padding-left: 10px; }
 .gs-tur-sayi { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--gs-slate-line); font-size: 11px; font-weight: 650; color: var(--gs-ink-2); font-variant-numeric: tabular-nums; }
 .gs .gs-tur[aria-selected='true'] .gs-tur-sayi { background: var(--gs-vurgu-yumusak); color: var(--gs-vurgu-yazi); }
 
@@ -178,8 +188,8 @@ html[data-theme='D'] .gs :is(button, a, input, select):focus-visible { outline: 
 /* ── Tür kartı: beyaz başlık satırı (ad · özet · sağda Excel) + kenarlıklı gerçek tablo ────────────── */
 .gs-gruplar { display: flex; flex-direction: column; gap: 16px; }
 .gs-grup { border: 1px solid var(--gs-line); border-radius: 14px; overflow: hidden; background: var(--gs-card); box-shadow: var(--gs-shadow); }
-.gs-grup-bas { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; min-height: 54px; padding: 10px 18px; background: var(--gs-card); border-bottom: 1px solid var(--gs-line); }
-.gs-grup-adi { font-size: 14.5px; font-weight: 650; letter-spacing: -0.005em; color: var(--gs-ink); }
+.gs-grup-bas { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; min-height: 56px; padding: 10px 18px 10px 14px; background: var(--gs-card); border-bottom: 1px solid var(--gs-line); }
+.gs-grup-adi { display: inline-flex; align-items: center; gap: 10px; font-size: 14.5px; font-weight: 650; letter-spacing: -0.005em; color: var(--gs-ink); }
 .gs-grup-sayi { font-size: 12.5px; color: var(--gs-muted); }
 .gs-grup-sag { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 .gs-tablo-sar { overflow-x: auto; }
