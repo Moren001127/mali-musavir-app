@@ -1395,6 +1395,19 @@ export const EKIP_IS_ZINCIRI_ARACLARI: ToolDefinition[] = [
       required: ['sessionId', 'teyitler'],
     },
   },
+  // ─── BOŞ DÖNEM KİLİDİ (2026-09-22) — Muzaffer Bey: "Luca'dan çekilen veri de fatura da 0 ise (o ay belge yok) açılan kontrolü ekip
+  //   kendisi kilitlesin." Genel kilit (kdv_kontrol_kilitle) yine hiçbir ajanda YOK; bu araç yalnız TAMAMEN BOŞ oturumu kilitler.
+  {
+    name: 'kdv_kontrol_bos_oturum_kilitle',
+    description:
+      'YALNIZ tamamen boş oturumu kilitler (ekrandaki kilit düğmesi): Luca çekimi bitmiş ve 0 kayıt, bağlı fatura görseli 0 (o ay hiç belge yok). ' +
+      'Luca kaydı ya da görsel varsa ya da Luca çekimi yapılmamışsa {ok:false, neden} döner ve kilitlemez — kilit Muzaffer Bey’de. Kuru testte çalışmaz.',
+    input_schema: {
+      type: 'object',
+      properties: { sessionId: { type: 'string' } },
+      required: ['sessionId'],
+    },
+  },
   // ─── FATURA ÇEKİMİ ZİNCİRİ (R5, 2026-09-15) — Fatura İşleme Merkezi'ndeki "Sorgula / Aktar" düğmelerinin ekip karşılığı.
   //   Muzaffer Bey: "faturaları çek ve işle → Fatura İşleme Merkezi; e-Fatura mükellefi ise e-Fatura sorgulama, değilse GİB e-Arşiv
   //   sorgulama". Yol seçimi araç içinde (Taxpayer.isEFaturaMukellefi / eFaturaEntegrator); ajan yol seçmez, onay kodu (PRV) yok.

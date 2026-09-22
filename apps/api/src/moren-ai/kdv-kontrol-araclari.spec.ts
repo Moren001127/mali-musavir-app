@@ -66,6 +66,8 @@ describe('araç şemaları', () => {
       // OCR teyit (R1 7b/9b, 2026-09-22)
       'kdv_kontrol_belge_yeniden_oku',
       'kdv_kontrol_ocr_teyit',
+      // Boş dönem kilidi (2026-09-22)
+      'kdv_kontrol_bos_oturum_kilitle',
       // Fatura çekimi zinciri (R5, 2026-09-15)
       'fm_cekim_baslat',
       'fm_cekim_durum',
@@ -570,6 +572,44 @@ describe('kdv_kontrol_belge_yeniden_oku / kdv_kontrol_ocr_teyit (R1 7b/9b, 2026-
     expect(s1).toMatchObject({ sinif: 'fatura_yok', ipucuTuru: 'MATRAH_KDV_SANILMIS', ocrSupheli: true, adayImageId: 'i1', adayKdvRecordIds: ['k1'] });
     expect(s2).toMatchObject({ sinif: 'luca_yok', ipucuTuru: 'MATRAH_KDV_SANILMIS', adayKdvRecordIds: ['k1'] });
     expect(s2.ipucu).toMatch(/100 katı/);
+  });
+});
+
+describe('kdv_kontrol_bos_oturum_kilitle (boş dönem kilidi, 2026-09-22)', () => {
+  const svcKur = (status = 'PROCESSING') => {
+    const complete = jest.fn(async () => ({}));
+    return { svc: { findSession: async () => ({ status }), completeSession: complete }, complete };
+  };
+  it('Luca 0 + görsel 0 + Luca işi done → completeSession çağrılır, kilitlendi:true', async () => {
+    const { svc, complete } = svcKur();
+    const pr = prismaKur({ kdvRecord: { count: () => 0 }, receiptImage: { count: () => 0 }, lucaFetchJob: { findFirst: () => ({ id: 'lj1', recordCount: 0, finishedAt: new Date() }) } });
+    const { tool } = aracKur({ prisma: pr.prisma, servisler: { KdvControlService: svc } });
+    const r = await tool.execute('kdv_kontrol_bos_oturum_kilitle', { sessionId: 's1' }, ctx);
+    expect(r).toMatchObject({ ok: true, kilitlendi: true, lucaIsId: 'lj1' });
+    expect(complete).toHaveBeenCalledWith('s1', 't1');
+  });
+  it('Luca kaydı ya da görsel varsa kilitlemez; Luca işi yoksa kilitlemez; zaten kilitliyse dokunmaz', async () => {
+    const { svc, complete } = svcKur();
+    const dolu = prismaKur({ kdvRecord: { count: () => 21 }, receiptImage: { count: () => 0 } });
+    const { tool } = aracKur({ prisma: dolu.prisma, servisler: { KdvControlService: svc } });
+    expect((await tool.execute('kdv_kontrol_bos_oturum_kilitle', { sessionId: 's1' }, ctx)).ok).toBe(false);
+    const issiz = prismaKur({ kdvRecord: { count: () => 0 }, receiptImage: { count: () => 0 }, lucaFetchJob: { findFirst: () => null } });
+    const { tool: t2 } = aracKur({ prisma: issiz.prisma, servisler: { KdvControlService: svc } });
+    const r2 = await t2.execute('kdv_kontrol_bos_oturum_kilitle', { sessionId: 's1' }, ctx);
+    expect(r2.ok).toBe(false);
+    expect(r2.neden).toMatch(/Luca çekimi/);
+    expect(complete).not.toHaveBeenCalled();
+    const { svc: kilitli } = svcKur('COMPLETED');
+    const { tool: t3 } = aracKur({ prisma: issiz.prisma, servisler: { KdvControlService: kilitli } });
+    expect(await t3.execute('kdv_kontrol_bos_oturum_kilitle', { sessionId: 's1' }, ctx)).toMatchObject({ ok: true, zatenKilitli: true });
+  });
+  it('kdv_kontrol_eslestir: Luca 0 + görsel 0 → bosDonemOlabilir + boş dönem kilidi yönlendirmesi', async () => {
+    const svc = { findSession: async () => ({ status: 'PROCESSING', _count: { kdvRecords: 0 } }), getImages: async () => [], runReconciliation: jest.fn() };
+    const { tool } = aracKur({ servisler: { KdvControlService: svc } });
+    const r = await tool.execute('kdv_kontrol_eslestir', { sessionId: 's1' }, ctx);
+    expect(r).toMatchObject({ ok: false, bosDonemOlabilir: true });
+    expect(r.sonraki).toMatch(/kdv_kontrol_bos_oturum_kilitle/);
+    expect(svc.runReconciliation).not.toHaveBeenCalled();
   });
 });
 

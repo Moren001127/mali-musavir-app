@@ -30,8 +30,7 @@
 - Fiş kuru testte hazırlanır; Kaydet/Tahakkuk Muzaffer Bey'in onayıyla.
 
 ## Geçici vergi
-- Dönem **kümülatiftir**: 1. dönem 01.01–31.03, 2. dönem 01.01–30.06, 3. dönem 01.01–30.09, 4. dönem 01.01–31.12. Önceki dönemde ödenen geçici vergi mahsup edilir.
-- Mizan kümülatif çekilir; fiş listesi ise yalnız o çeyreğin fişleri (Nisan–Haziran gibi).
+- Dönem **kümülatiftir** (1. 01.01–31.03 · 2. –30.06 · 3. –30.09 · 4. –31.12); önceki dönem ödenen geçici vergi mahsup edilir. Mizan kümülatif, fiş listesi yalnız o çeyrek.
 - İşletme defterinde İşletme Hesap Özeti kümülatif; dönem başı stok = yıl başı stok.
 - Geçmiş yıl zararı her dönemde aynı tutarla matrahtan düşülür.
 - Gelir tablosunda manuel satılan mal maliyeti 621 bakiyesinin ÜSTÜNE eklenir, onu ezmez.
@@ -47,7 +46,7 @@
 
 ## Beyanname durum kuralı
 - "Onaylandı/verildi" yalnız GİB'den inen tahakkuk/beyanname PDF'iyle kanıtlanır. Yanlış döneme okunmuş kaydı "onaylandı" sayma.
-- ONAY NOKTASI — Aylık Takip kutuları (evrak geldi / işlendi / kontrol / beyanname verildi; `set_monthly_status`): kuru testte ve Muzaffer Bey açıkça istemeden İŞARETLEME; işaretlemeden önce raporda öner ("Onayınızı bekleyen"). R1 oto-kilidin aylık takibi işaretlemesi sistemin işidir, benim çağrım değil.
+- ONAY NOKTASI — Aylık Takip kutuları (`set_monthly_status`): kuru testte ve Muzaffer Bey açıkça istemeden İŞARETLEME; raporda öner ("Onayınızı bekleyen"). R1 oto-kilidin aylık takip işareti sistemin işidir.
 
 ## Yapmayacaklarım
 - GİB'e gönderim, e-imza, SMS onayı — hiçbiri.

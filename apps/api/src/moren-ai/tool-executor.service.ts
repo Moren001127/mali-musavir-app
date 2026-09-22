@@ -169,6 +169,7 @@ export class ToolExecutorService {
         case 'kdv_kontrol_sonuc_satirlari': return this.kdvKontrolSonucSatirlari(input, ctx);
         case 'kdv_kontrol_belge_yeniden_oku': return this.kdvKontrolBelgeYenidenOku(input, ctx);
         case 'kdv_kontrol_ocr_teyit':   return this.kdvKontrolOcrTeyit(input, ctx);
+        case 'kdv_kontrol_bos_oturum_kilitle': return this.kdvKontrolBosOturumKilitle(input, ctx);
         // FATURA ÇEKİMİ ZİNCİRİ (R5 — 2026-09-15): Fatura İşleme Merkezi "Sorgula / Aktar" düğmelerinin ekip karşılığı.
         case 'fm_cekim_baslat':        return this.fmCekimBaslat(input, ctx);
         case 'fm_cekim_durum':         return this.fmCekimDurum(input, ctx);
@@ -4653,7 +4654,15 @@ export class ToolExecutorService {
     if (say.toplam <= 0) eksik.push('fatura görseli yok (kdv_kontrol_fatura_bagla)');
     if (say.pending + say.processing > 0) eksik.push(`OCR bitmedi (${say.pending} bekliyor, ${say.processing} işleniyor — kdv_kontrol_ocr_bekle)`);
     if (eksik.length) {
-      return { ok: false, neden: `Ön koşul sağlanmadı, eşleştirme çağrılmadı: ${eksik.join('; ')}`, kdvRecord: lucaKayit, receiptImage: say.toplam, ocr: say };
+      const bosDonem = lucaKayit <= 0 && say.toplam <= 0;
+      return {
+        ok: false,
+        neden: `Ön koşul sağlanmadı, eşleştirme çağrılmadı: ${eksik.join('; ')}`,
+        kdvRecord: lucaKayit,
+        receiptImage: say.toplam,
+        ocr: say,
+        ...(bosDonem ? { bosDonemOlabilir: true, sonraki: 'Luca çekimi bitmiş ve 0 döndüyse, fatura da yoksa kdv_kontrol_bos_oturum_kilitle {sessionId} ile oturumu kilitle (Muzaffer Bey’in kararı 2026-09-22).' } : {}),
+      };
     }
 
     try {
@@ -5003,6 +5012,50 @@ export class ToolExecutorService {
           ? 'oneri "teyit" olanların teyitGirdisi listesini kdv_kontrol_ocr_teyit {teyitler} ile AYNEN gönder; sonra kdv_kontrol_eslestir.'
           : 'teyit önerisi yok; muzaffer olanları rapora "teyit Muzaffer Bey’de" yaz.',
     };
+  }
+
+  /**
+   * BOŞ DÖNEM KİLİDİ (2026-09-22) — Muzaffer Bey: "Luca'dan çekilen veri de fatura da 0 ise açılan kontrolü ekip kendisi kilitlesin."
+   * Kapı: oturum kilitli değil · Luca çekim işi bu oturum için bitmiş (done) ve kayıt 0 · görsel 0. Aksi hâlde kilitlemez.
+   * Kilit ekrandaki düğmeyle aynı yol (completeSession: boş oturuma izin verir; iki taraf da kilitliyse aylık işaret + olay).
+   */
+  private async kdvKontrolBosOturumKilitle(input: any, ctx: { tenantId: string }) {
+    const sessionId = String(input?.sessionId || '').trim();
+    if (!sessionId) return { ok: false, error: 'sessionId gerekli.' };
+    const svc = await this.kdvKontrolServisi();
+    if (!svc?.completeSession || !svc?.findSession) return { ok: false, error: 'KDV Kontrol servisi kullanılamıyor.' };
+    let session: any;
+    try {
+      session = await svc.findSession(sessionId, ctx.tenantId);
+    } catch (e: any) {
+      return { ok: false, neden: this.hataBilgisi(e).mesaj };
+    }
+    if (session?.status === 'COMPLETED') return { ok: true, sessionId, zatenKilitli: true, mesaj: 'Oturum zaten kilitli.' };
+    const [lucaKayit, gorsel, lucaIs] = await Promise.all([
+      this.prisma.kdvRecord.count({ where: { sessionId } }).catch(() => -1),
+      this.prisma.receiptImage.count({ where: { sessionId } }).catch(() => -1),
+      (this.prisma as any).lucaFetchJob
+        .findFirst({ where: { sessionId, tenantId: ctx.tenantId, status: 'done' }, orderBy: { finishedAt: 'desc' }, select: { id: true, recordCount: true, finishedAt: true } })
+        .catch(() => null),
+    ]);
+    if (lucaKayit !== 0 || gorsel !== 0) {
+      return { ok: false, neden: `Oturum boş değil (Luca kaydı ${lucaKayit}, görsel ${gorsel}) — boş dönem kilidi uygulanmaz; eşleştirme yolu ve kilit Muzaffer Bey’de.`, kdvRecord: lucaKayit, receiptImage: gorsel };
+    }
+    if (!lucaIs) {
+      return { ok: false, neden: 'Luca çekimi bu oturum için tamamlanmamış — 0 kaydın nedeni çekim yapılmamış olabilir; önce kdv_kontrol_luca_cek + luca_is_bekle.', kdvRecord: 0, receiptImage: 0 };
+    }
+    try {
+      await svc.completeSession(sessionId, ctx.tenantId);
+      return {
+        ok: true,
+        sessionId,
+        kilitlendi: true,
+        lucaIsId: lucaIs.id,
+        aciklama: 'Boş dönem: Luca 0 kayıt (çekim bitti) ve fatura 0 → oturum kilitlendi (Muzaffer Bey’in kararı 2026-09-22). Raporda "boş dönem, kilitlendi" yaz.',
+      };
+    } catch (e: any) {
+      return { ok: false, neden: `kilitlenemedi: ${this.hataBilgisi(e).mesaj}` };
+    }
   }
 
   /** R1 7b/9b — "Teyit Et & Sonraki" karşılığı (toplu, kanıt kapılı). */

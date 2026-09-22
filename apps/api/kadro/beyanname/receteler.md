@@ -8,17 +8,18 @@ Tetik: "X'in Ağustos KDV kontrolünü yap", "alış-satış mutabakatı", "KDV'
 Dal: BILANCO → KDV_191+KDV_391; ISLETME → ISLETME_GIDER+ISLETME_GELIR (çekim türü oturumdan türer). Adım 3-4-5 paralel.
 1) Mükellef + defterTuru + dönem 'YYYY/MM' — list_taxpayers → get_taxpayer — oku — senkron — tek id — çoklu eşleşme / defterTuru boş → DUR.
 2) İki oturumu bul/aç; COMPLETED varsa "kilitli, açayım mı" sor — kdv_kontrol_oturum_bul_olustur — portal_yaz_agir — senkron — 2×{sessionId,type,status} — "Mükellef bulunamadı" → DUR.
-3) Luca ajanı çevrimiçi mi; oturum başına çekim — get_agent_status → kdv_kontrol_luca_cek — luca_yaz — asenkron jobId — 2 jobId (mevcutIs olabilir) — çevrimdışı → DUR; kuru test → "yapılacaktı", adım 6/8/9 ÇAĞRILMAZ.
+3) Luca ajanı çevrimiçi mi; oturum başına çekim — get_agent_status → kdv_kontrol_luca_cek — luca_yaz — asenkron — 2 jobId (mevcutIs olabilir) — çevrimdışı → DUR; kuru test → "yapılacaktı", 6/8/9 ÇAĞRILMAZ.
 4) Mihsap faturalarını bağla — kdv_kontrol_fatura_bagla — portal_yaz_agir — senkron — linked+alreadyLinked>0 — "faturası yok" → "HAZIR DEĞİL: faturalar portala inmemiş (Mihsap çekimi Muzaffer Bey'de)".
 5) OCR başlat (forceFresh YOK) — kdv_kontrol_ocr_baslat — portal_yaz_agir — asenkron — {queued,total,cacheHits} — FAILED'i say.
 6) Luca işini bekle — luca_is_bekle {jobId,maxSaniye:60} — oku — ≤10 çağrı — done, recordCount>0 — failed → hata satırı, tekrar YOK; retryCount>0 → "teknik kilit, otomatik tekrar"; captcha → "güvenlik kodu bekliyor".
 7) OCR'ı bekle — kdv_kontrol_ocr_bekle {sessionId,maxSaniye:60} — oku — ≤15 çağrı — bitti:true — aşıldı → "OCR sürüyor" DUR.
 7b) needsOcrConfirm>0 → teyit bekleyenleri yeniden oku (imageIds boş → araç seçer; `kalan` doluysa tekrar) — kdv_kontrol_belge_yeniden_oku — portal_yaz_agir — ≤60 sn/çağrı — okunan — ok:false (Max yok) → rapora "teyit Muzaffer Bey'de", adım 8.
 7c) oneri "teyit" olanların teyitGirdisi'ni AYNEN teyit et; degismedi/muzaffer olana DOKUNMA — kdv_kontrol_ocr_teyit {teyitler} — portal_yaz_agir — senkron — teyitEdilen — reddedilen = belgede görülmeyen değer → tekrar YOK, Muzaffer Bey'e.
+8a) Luca çekimi bitti ve 0 kayıt VE fatura 0 (o ay belge yok) → oturumu kilitle, 8-9'u atla, rapora "boş dönem, kilitlendi" — kdv_kontrol_bos_oturum_kilitle — portal_yaz_agir — senkron — kilitlendi:true — ok:false → nedenini rapora, kilit Muzaffer Bey'de.
 8) Eşleştir (kapı: Luca>0, görsel>0, OCR bitti) — kdv_kontrol_eslestir — portal_yaz_agir — senkron — sayaçlar; otoKilit:true → raporda "sorunsuz; oturum portaldaki gibi kilitlendi, fiş Word raporu oluştu (yazdırma sizde), aylık takip işaretlendi, Luca KDV çekimi başladı" (kilit için ayrıca sorulmaz — Muzaffer Bey'in kararı)
-9) Satırları oku, sınıfla; karar VERME — kdv_kontrol_sonuc_satirlari {yalnizSorunlu:true,limit:100} — oku — — — tam=MATCHED/CONFIRMED · incele=PARTIAL/NEEDS_REVIEW/fark>%1 · "Luca'da var, fatura yok"=UNMATCHED+görsel yok · "Fatura var, Luca'da yok"=UNMATCHED+Luca yok · red=MISMATCH/REJECTED — boş → adım 8 bir kez tekrar.
+9) Satırları oku (araç sınıflar: tam · incele · fatura_yok · luca_yok · red); karar VERME — kdv_kontrol_sonuc_satirlari {yalnizSorunlu:true,limit:100} — oku — — — sayaçlar — boş → adım 8 bir kez tekrar.
 9b) yenidenOkunacakImageIds doluysa (ipucu: ×100 matrah · KDV okunamadı · oran/tevkifat/belge no farkı) 7b–7c'yi o görsellerle yap, adım 8+9'u TEKRARLA — en çok 2 tur; ADAY_YOK / TEYITLI_FARK satırına dokunma. Sonra hâlâ hatalı satır varsa rapora "UYARI: OCR düzeltmesine rağmen N satır eşleşmedi".
-10) Onay kaydı YALNIZ hatalı satır varsa: "N hatalı satır; düzeltilsin mi" (0 hatalıysa onay kaydı AÇMA; kilitlenme ve otomasyonlar raporda bildirilir) — create_pending_action — portal_yaz — — — id — "KAYDEDİLEMEDİ:".
+10) Onay kaydı YALNIZ hatalı satır varsa: "N hatalı satır; düzeltilsin mi" (0 hatalıysa AÇMA) — create_pending_action — portal_yaz — — — id — "KAYDEDİLEMEDİ:".
 Kuru test: adım 1 + 2'nin "bul" kısmı çalışır; gerisi "yapılacaktı"; rapor "HAZIR DEĞİL (kuru test): zincir kurulu, canlı için 'canlı yap' de".
 Rapor:
 ```

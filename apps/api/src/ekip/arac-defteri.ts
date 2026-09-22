@@ -128,6 +128,12 @@ const PORTAL_KADEMELERI: Record<string, BekleyenPortalAraci> = {
     aciklama: 'OCR değerlerini teyit eder (Teyit Et karşılığı, ≤20); belge metninde görülmeyen değer reddedilir; elle teyitli görsel atlanır',
     parametreler: ['sessionId*', 'teyitler*'],
   },
+  // Boş dönem kilidi (2026-09-22): yalnız Luca çekimi bitmiş+0 kayıt ve 0 görsel olan oturumu kilitler; genel kilit yine ajanda yok.
+  kdv_kontrol_bos_oturum_kilitle: {
+    kademe: 'portal_yaz_agir',
+    aciklama: 'YALNIZ tamamen boş oturumu (Luca çekimi bitmiş ve 0 kayıt, görsel 0) kilitler; dolu oturumu kilitlemez, kilit Muzaffer Bey’de',
+    parametreler: ['sessionId*'],
+  },
   mali_yorum_oku: {
     kademe: 'oku',
     aciklama: "Muzaffer Bey’in kayıtlı Mali Yorum'unu okur (GELIR_TABLOSU/BILANCO/MIZAN/IHO); yoksa null",

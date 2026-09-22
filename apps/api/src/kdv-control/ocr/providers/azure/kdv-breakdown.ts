@@ -150,6 +150,38 @@ export function extractMultiRateKdv(text: string, deps: KdvBreakdownDeps): KdvBr
 }
 
 /**
+ * Hal e-Arşiv (YILMAZ GÖKTAŞ 2026/08, 2026-09-22): Azure "Gerçek usülde katma değer vergisi %1 (Matrah:" satırını sonda
+ * AÇIK parantezle bitirip matrahı alt satıra ("4.335,00)") düşürüyor; matrah parçası ayrı satırda kaldığı için
+ * stripMatrahFragments göremiyor ve 4.335,00 KDV sanılıyordu (doğrusu bir alt satırdaki 43,35 — ×100 hata, 9 fatura).
+ * Açık "(Matrah" parantezi kapanana kadar (en çok 2 satır) satırları birleştirir; başka satırlara dokunmaz.
+ */
+export function mergeOpenMatrahParens(lines: string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const acik = line.search(/\(\s*(?:KDV\s*)?MATRAH/i);
+    if (acik < 0 || /\)/.test(line.slice(acik))) {
+      out.push(line);
+      continue;
+    }
+    let merged = line;
+    let j = i;
+    while (j + 1 < lines.length && j < i + 2) {
+      j++;
+      merged += ' ' + lines[j];
+      if (/\)/.test(lines[j])) break;
+    }
+    if (/\)/.test(merged.slice(acik))) {
+      out.push(merged);
+      i = j;
+    } else {
+      out.push(line);
+    }
+  }
+  return out;
+}
+
+/**
  * Tek toplam KDV ekstraksiyonu — 4 strateji sirayla.
  *
  *   0) Electricity adapter (callback) — elektrik faturalari icin ozel
@@ -186,7 +218,7 @@ export function extractKdvFromInvoiceTotals(
   }
 
   const normalized = normalizeAzureText(text);
-  const lines = normalized.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const lines = mergeOpenMatrahParens(normalized.split(/\r?\n/).map((l) => l.trim()).filter(Boolean));
   const amountRe = /([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})\s*(?:TL|TRY|₺)?/i;
   const amountGlobalRe = /([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})\s*(?:TL|TRY|₺)?/gi;
 

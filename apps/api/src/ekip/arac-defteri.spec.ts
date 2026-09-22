@@ -148,15 +148,15 @@ describe('portal_yaz_agir + KDV Kontrol zinciri araçları (PLAN/17)', () => {
     expect(aracAcikMi(tumAjan, 'ekip_ajan_baslat', true).acik).toBe(true);
   });
 
-  it('beyanname ajanı: 9 kdv_kontrol_* aracı + luca_is_bekle + get_agent_status listede; kuru testte oturum açma/OCR/eşleştirme/yeniden okuma/teyit çalışmaz', () => {
+  it('beyanname ajanı: 10 kdv_kontrol_* aracı + luca_is_bekle + get_agent_status listede; kuru testte oturum açma/OCR/eşleştirme/yeniden okuma/teyit/boş kilit çalışmaz', () => {
     const b = ajanBul('beyanname')!;
     expect(b.araclar).toEqual(expect.arrayContaining([...AGIR, 'kdv_kontrol_luca_cek', 'kdv_kontrol_ocr_bekle', 'kdv_kontrol_sonuc_satirlari', 'luca_is_bekle', 'get_agent_status', 'kdv_kontrol_belge_yeniden_oku', 'kdv_kontrol_ocr_teyit']));
     // OCR teyit araçları (2026-09-22): Max kotası harcar / confirmed* yazar → portal_yaz_agir, kuru testte kapalı; yalnız beyanname listesinde.
-    for (const ad of ['kdv_kontrol_belge_yeniden_oku', 'kdv_kontrol_ocr_teyit']) {
+    for (const ad of ['kdv_kontrol_belge_yeniden_oku', 'kdv_kontrol_ocr_teyit', 'kdv_kontrol_bos_oturum_kilitle']) {
       expect(aracKademesi(ad)).toBe('portal_yaz_agir');
       expect(AJAN_TANIMLARI.filter((a) => a.araclar.includes(ad)).map((a) => a.id)).toEqual(['beyanname']);
     }
-    for (const ad of [...AGIR, 'kdv_kontrol_luca_cek', 'kdv_kontrol_belge_yeniden_oku', 'kdv_kontrol_ocr_teyit']) expect(aracAcikMi(b, ad, true).neden).toBe('kuru_test');
+    for (const ad of [...AGIR, 'kdv_kontrol_luca_cek', 'kdv_kontrol_belge_yeniden_oku', 'kdv_kontrol_ocr_teyit', 'kdv_kontrol_bos_oturum_kilitle']) expect(aracAcikMi(b, ad, true).neden).toBe('kuru_test');
     for (const ad of ['kdv_kontrol_ocr_bekle', 'kdv_kontrol_sonuc_satirlari', 'luca_is_bekle', 'get_agent_status']) expect(aracAcikMi(b, ad, true).acik).toBe(true);
   });
 

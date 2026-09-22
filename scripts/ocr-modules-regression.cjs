@@ -879,7 +879,20 @@ const earsivIskontoText = [
 ].join('\n');
 const earsivIskonto = kdvBreakdown.extractKdvFromInvoiceTotals(earsivIskontoText, breakdownDeps);
 assert(earsivIskonto && Math.abs(earsivIskonto.kdv - 546) < 0.01, `iskontolu tek-oran e-arsiv Hesaplanan KDV 546 okunmali (gercek=${JSON.stringify(earsivIskonto)})`);
-ok('azure/kdv-breakdown.ts extractKdvFromInvoiceTotals tek-oran e-arsiv (3 assertion)');
+// (4) Hal e-Arşiv (ANKA TROPİK / YILMAZ GÖKTAŞ 2026/08, gerçek Azure metni): "…vergisi %1 (Matrah:" satır sonunda AÇIK
+// parantez, matrah alt satırda "4.335,00)", KDV bir alt satırda "43,35 TL". Eskiden 4.335,00 KDV sanılıyordu (×100, 9 fatura);
+// Max-vision doğru okusa bile cross-check "Açık KDV satırı override" ile eziyordu.
+const halText = [
+  "Mal Hizmet Toplam Tutarı","4.335,00 TL","Rüsum %1 (Matrah: 4.335,00)","43,35 TL",
+  "Gerçek usülde katma değer vergisi %1 (Matrah:","4.335,00)","43,35 TL","Vergiler Dahil Toplam Tutar","4.421,70 TL",
+  "Fatura Tutarı","4.421,70 TL","Rehin Dahil Toplam Tutar","4.637,70 TL",
+].join('\n');
+const hal = kdvBreakdown.extractKdvFromInvoiceTotals(halText, breakdownDeps);
+assert(hal && Math.abs(hal.kdv - 43.35) < 0.01, `hal e-arsiv acik "(Matrah:" parantezi: KDV 43,35 okunmali, matrah 4.335,00 DEGIL (gercek=${JSON.stringify(hal)})`);
+const birlesik = kdvBreakdown.mergeOpenMatrahParens(["Gerçek usülde katma değer vergisi %1 (Matrah:", "4.335,00)", "43,35 TL", "(Matrah: 10,00) x", "acik (Matrah:", "a", "b", "c)"]);
+assert(birlesik[0] === "Gerçek usülde katma değer vergisi %1 (Matrah: 4.335,00)" && birlesik[1] === "43,35 TL" && birlesik[2] === "(Matrah: 10,00) x", `mergeOpenMatrahParens birlestirme (gercek=${JSON.stringify(birlesik)})`);
+assert(birlesik.length === 7 && birlesik[3] === "acik (Matrah:", `2 satir tavani asan acik parantez dokunulmaz (gercek=${JSON.stringify(birlesik)})`);
+ok('azure/kdv-breakdown.ts extractKdvFromInvoiceTotals tek-oran e-arsiv + hal acik parantez (6 assertion)');
 
 // ─── azure/kdv-item-rows.ts (e-fatura alt-toplam cift-sayim regresyonu) ───
 const kdvItemRows = require(path.join(ROOT, 'apps/api/src/kdv-control/ocr/providers/azure/kdv-item-rows.ts'));
