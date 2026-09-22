@@ -136,7 +136,7 @@ export function kapsamMukellefleri(
   kapsam: string,
   pano: { donemler?: PanoDonemi[] } | null | undefined,
   taxpayerIds: string[] | null | undefined,
-  ek?: { kdvHazirIdler?: Set<string> | null },
+  ek?: { kdvHazirIdler?: Set<string> | null; kdvBitmisIdler?: Set<string> | null },
 ): KapsamSonucu {
   if (kapsam === 'ofis') return { donem: panoSonDonemi(pano)?.beyannameDonem || null, mukellefler: [{ taxpayerId: null, ad: null }] };
   if (kapsam === 'liste') {
@@ -149,13 +149,16 @@ export function kapsamMukellefleri(
   // işlenmiş olanlar. "İşlendi" kutusuna güvenilmiyor (canlıda 37 işaretliden 11'inin Luca'sı boştu) → hazır kümesi
   // servis tarafında ölçülür: o dönem KDV oturumu var VE Luca kaydı gelmiş. Kalanlar 'islenmemis' olarak raporlanır.
   if (kapsam === 'kdv:islenmis') {
-    const hazir = ek?.kdvHazirIdler || null;
+    const hazir = ek?.kdvHazirIdler || null;   // Luca kaydı var + en az bir oturum AÇIK (iş kalmış)
+    const bitmis = ek?.kdvBitmisIdler || null; // o dönemin oturumları kilitli (COMPLETED) → iş yok
     const out: KapsamSonucu['mukellefler'] = [];
     const islenmemis: KapsamSonucu['mukellefler'] = [];
     const gorulenK = new Set<string>();
     for (const m of d.mukellefler || []) {
       if (!m?.taxpayerId || gorulenK.has(m.taxpayerId)) continue;
-      if (m.asamalar?.kdvKontrol) continue; // kontrolü bitmiş
+      // Aylık Takip "KDV kontrol edildi" işareti BEYANNAME ayına yazılır, pano satırı İŞLEM ayıdır (2026-09-22 bulgusu)
+      // → tek başına güvenilmez; asıl ölçüt oturum durumu (bitmis kümesi).
+      if (m.asamalar?.kdvKontrol || bitmis?.has(m.taxpayerId)) continue;
       gorulenK.add(m.taxpayerId);
       if (hazir?.has(m.taxpayerId)) out.push({ taxpayerId: m.taxpayerId, ad: m.ad || null });
       else if (m.asamalar?.isleme) islenmemis.push({ taxpayerId: m.taxpayerId, ad: m.ad || null });

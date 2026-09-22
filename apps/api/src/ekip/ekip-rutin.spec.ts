@@ -91,6 +91,14 @@ describe('ekip rutin — kapsam kdv:islenmis (2026-09-22)', () => {
     expect(k.islenmemis).toEqual([{ taxpayerId: 'e', ad: 'E' }]);
   });
 
+  // 2026-09-22 canlı bulgu: Aylık Takip "KDV kontrol edildi" işareti BEYANNAME ayına yazılır, pano satırı İŞLEM ayıdır →
+  // kilitli (bitmiş) oturumlar "kontrol edilmemiş" görünüp rutine giriyordu (26 mükellefin hepsi kilitliyken 8 iş açıldı).
+  it('oturumları kilitli olan (bitmis) mükellef ne aday olur ne işlenmemiş sayılır', () => {
+    const k = kapsamMukellefleri('kdv:islenmis', PANO, null, { kdvHazirIdler: new Set(['a']), kdvBitmisIdler: new Set(['a', 'e']) });
+    expect(k.mukellefler).toEqual([]);
+    expect(k.islenmemis).toEqual([]);
+  });
+
   it('hazır kümesi yoksa (oturum/kayıt yok) aday üretilmez, işlenmemiş listesi dolar', () => {
     const k = kapsamMukellefleri('kdv:islenmis', PANO, null, { kdvHazirIdler: new Set() });
     expect(k.mukellefler).toEqual([]);

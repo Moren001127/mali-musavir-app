@@ -293,16 +293,29 @@ export class EkipRutinService implements OnApplicationBootstrap {
    * AÇILMIŞ ve Luca'dan kayıt gelmiş mükellefler. Aylık Takip'teki "İşlendi" kutusuna güvenilmez (canlı: 37 işaretliden
    * 11'inin Luca'sı boştu) — evrakı Luca'ya girilmemiş mükellefe rutin iş açılmaz.
    */
-  private async kdvHazirlar(tenantId: string, pano: any): Promise<Set<string> | null> {
+  private async kdvHazirlar(tenantId: string, pano: any): Promise<{ hazir: Set<string>; bitmis: Set<string> } | null> {
     const donem = pano?.donemler?.[0]?.beyannameDonem || null; // "2026-08"
     if (!donem || !/^\d{4}-\d{2}$/.test(String(donem))) return null;
     const periodLabel = String(donem).replace('-', '/');
     const ses: any[] = await this.db.kdvControlSession
-      .findMany({ where: { tenantId, periodLabel }, select: { taxpayerId: true, _count: { select: { kdvRecords: true } } } })
+      .findMany({ where: { tenantId, periodLabel }, select: { taxpayerId: true, status: true, _count: { select: { kdvRecords: true } } } })
       .catch((e: any) => (this.logger.warn(`[rutin] kdv oturumları okunamadı: ${e?.message || e}`), []));
+    const lucaVar = new Set<string>();
+    const acikVar = new Set<string>();
+    const oturumVar = new Set<string>();
+    for (const s of ses) {
+      const id = s?.taxpayerId ? String(s.taxpayerId) : '';
+      if (!id) continue;
+      oturumVar.add(id);
+      if (Number(s?._count?.kdvRecords || 0) > 0) lucaVar.add(id);
+      if (String(s?.status || '') !== 'COMPLETED') acikVar.add(id);
+    }
+    // hazır = evrakı Luca'ya işlenmiş VE işi kalmış (en az bir oturum açık); bitmiş = oturumları kilitli (iş yok).
     const hazir = new Set<string>();
-    for (const s of ses) if (s?.taxpayerId && Number(s?._count?.kdvRecords || 0) > 0) hazir.add(String(s.taxpayerId));
-    return hazir;
+    for (const id of lucaVar) if (acikVar.has(id)) hazir.add(id);
+    const bitmis = new Set<string>();
+    for (const id of oturumVar) if (!acikVar.has(id)) bitmis.add(id);
+    return { hazir, bitmis };
   }
 
   async rutinKos(
@@ -327,8 +340,11 @@ export class EkipRutinService implements OnApplicationBootstrap {
       const kapsam = String(r.kapsam || '');
       const panoGerek = kapsam.startsWith('pano:') || kapsam === 'kdv:islenmis' || sablonDonemGerekli(r.sablon);
       const pano = panoGerek ? await this.runner.pano(tenantId, 2).catch((e: any) => (this.logger.warn(`[rutin] pano okunamadı (${tenantId}): ${e?.message || e}`), null)) : null;
-      const kdvHazirIdler = kapsam === 'kdv:islenmis' ? await this.kdvHazirlar(tenantId, pano) : null;
-      const k = kapsamMukellefleri(kapsam, pano, Array.isArray(r.taxpayerIds) ? r.taxpayerIds : [], { kdvHazirIdler });
+      const kdvDurum = kapsam === 'kdv:islenmis' ? await this.kdvHazirlar(tenantId, pano) : null;
+      const k = kapsamMukellefleri(kapsam, pano, Array.isArray(r.taxpayerIds) ? r.taxpayerIds : [], {
+        kdvHazirIdler: kdvDurum?.hazir || null,
+        kdvBitmisIdler: kdvDurum?.bitmis || null,
+      });
       if (Array.isArray(k.islenmemis) && k.islenmemis.length) {
         islenmemisNot = { sayi: k.islenmemis.length, adlar: k.islenmemis.map((m) => m.ad || m.taxpayerId || '?').slice(0, 20) };
       }
