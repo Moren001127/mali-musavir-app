@@ -12819,9 +12819,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
    *   değilse davranış DEĞİŞMEZ (doğrudan çıkış) — yerelde/proxysiz ortamda kırılmaz.
    */
   private _trDispatcher: any;
+  private _trProxyUrl: string | null = null;
   private trFetch(url: string, init: any = {}): Promise<Response> {
     if (this._trDispatcher === undefined) {
       const purl = String(process.env.TURMOB_PROXY_URL || process.env.PORTAL_TR_PROXY_URL || '').trim();
+      this._trProxyUrl = purl || null;
       if (purl) {
         try {
           this._trDispatcher = new (require('undici').ProxyAgent)(purl);
@@ -12834,7 +12836,48 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         this._trDispatcher = null;
       }
     }
+    // DÜZ HTTP + VEKİL TUZAĞI (2026-09-22, Uyumsoft'ta yakalandı): undici ProxyAgent her isteği CONNECT
+    //   tüneliyle geçiriyor; vekilimiz 80 portuna tünel VERMİYOR → "fetch failed | Request was cancelled".
+    //   Aynı istek curl ile çalışıyordu çünkü curl düz http'de MUTLAK ADRES (absolute-form) kullanıyor.
+    //   Bu yüzden http:// hedeflerde istek doğrudan vekile, tam adresle gönderilir (tünel yok).
+    if (this._trProxyUrl && /^http:\/\//i.test(String(url))) return this.trFetchDuzHttp(url, init);
     return fetch(url, this._trDispatcher ? { ...init, dispatcher: this._trDispatcher } : init) as any;
+  }
+
+  /** http:// hedef + vekil: isteği vekile MUTLAK ADRESLE gönderir (CONNECT tüneli yok). */
+  private async trFetchDuzHttp(url: string, init: any = {}): Promise<Response> {
+    const purl = String(this._trProxyUrl || '');
+    try {
+      const { Client } = require('undici');
+      const pu = new URL(purl);
+      const client = new Client(`${pu.protocol}//${pu.host}`);
+      const headers: Record<string, string> = { ...(init.headers || {}) };
+      if (pu.username) {
+        const kimlik = Buffer.from(`${decodeURIComponent(pu.username)}:${decodeURIComponent(pu.password || '')}`).toString('base64');
+        headers['Proxy-Authorization'] = `Basic ${kimlik}`;
+      }
+      const hedef = new URL(url);
+      if (!headers.Host && !headers.host) headers.Host = hedef.host;
+      const r = await client.request({
+        method: String(init.method || 'GET').toUpperCase() as any,
+        path: url, // MUTLAK adres — vekil böyle yönlendirir
+        headers,
+        body: init.body ?? undefined,
+        signal: init.signal,
+      });
+      const govde = Buffer.from(await r.body.arrayBuffer());
+      await client.close().catch(() => undefined);
+      const cikti: Record<string, string> = {};
+      for (const [k, v] of Object.entries(r.headers || {})) {
+        if (v == null) continue;
+        // set-cookie dizi gelebilir; Response başlıklarına tek tek eklenemediği için birleştirilir.
+        cikti[k] = Array.isArray(v) ? v.join(', ') : String(v);
+      }
+      return new Response(govde, { status: r.statusCode, headers: cikti }) as any;
+    } catch (e: any) {
+      this.logger.warn(`Türkiye vekili düz http'de başarısız (${e?.message || e}) — doğrudan denenecek: ${url.slice(0, 80)}`);
+      return fetch(url, init) as any;
+    }
   }
 
   private async soapPost(url: string, soapAction: string, body: string, opts: { trProxy?: boolean } = {}) {
