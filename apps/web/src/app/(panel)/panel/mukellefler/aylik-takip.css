@@ -133,38 +133,40 @@ html[data-theme='D'] .at-root {
 .at-root .at-chip:hover { filter: brightness(0.97); }
 .at-root .at-chip[aria-pressed='true'] { box-shadow: 0 0 0 2px var(--at-card), 0 0 0 4px currentColor; }
 
-/* ── Aşama sayaçları — DOLU GRADYAN KART (rehber a tipi; gösterge paneli sayaçlarıyla aynı dil) ─────────
-   Muzaffer Bey (2026-09-22): "sayaçların rengi olmamış, farklı bir tasarım yap". Beyaz kart + soluk simge yerine
-   tonun gradyanı zemin, yazı beyaz, sol üst yarı saydam simge dairesi, sağ üst yüzde çipi, sağ üst köşede büyük
-   yarı saydam halka, altta ince beyaz çubuk. Toplam kurşuni (nötr); sıfır sayaç soluk; seçili kartta beyaz iç halka. */
-.at-root .at-kpi {
-  --k: var(--at-indigo); --k2: var(--at-indigo-2);
-  background: linear-gradient(135deg, var(--k) 0%, var(--k2) 100%);
-  border: 1px solid color-mix(in srgb, var(--k) 70%, #000 30%);
-  border-color: color-mix(in srgb, var(--k) 85%, transparent);
-  color: #fff;
-  box-shadow: 0 10px 22px -14px var(--k);
-  cursor: pointer;
-}
-.at-root .at-kpi[data-tone='slate'] { --k: var(--at-slate); --k2: var(--at-slate-2); }
-.at-root .at-kpi[data-tone='indigo-light'] { --k: var(--at-indigo-light); --k2: var(--at-indigo-light-2); }
-.at-root .at-kpi[data-tone='amber'] { --k: var(--at-amber); --k2: var(--at-amber-2); }
-.at-root .at-kpi[data-tone='teal'] { --k: var(--at-teal); --k2: var(--at-teal-2); }
-.at-root .at-kpi[data-tone='blue'] { --k: var(--at-blue); --k2: var(--at-blue-2); }
-.at-root .at-kpi[data-tone='violet'] { --k: var(--at-violet); --k2: var(--at-violet-2); }
-.at-root .at-kpi[data-tone='green'] { --k: var(--at-green); --k2: var(--at-green-2); }
-.at-root .at-kpi:hover { filter: brightness(1.04); transform: translateY(-1px); box-shadow: 0 14px 26px -14px var(--k); }
-.at-root .at-kpi[aria-pressed='true'] { box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.9), 0 0 0 2px var(--k), 0 14px 26px -14px var(--k); }
-.at-root .at-kpi[data-zero='true']:not([aria-pressed='true']) { opacity: 0.6; box-shadow: none; }
-.at-root .at-kpi[data-zero='true']:hover { opacity: 1; }
-.at-root .at-kpi-halka { background: rgba(255, 255, 255, 0.14); }
-.at-root .at-kpi-icon { background: rgba(255, 255, 255, 0.24); color: #fff; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25); }
-.at-root .at-kpi-pct { background: rgba(255, 255, 255, 0.22); color: #fff; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22); }
-.at-root .at-kpi-num { color: #fff; letter-spacing: -0.02em; text-shadow: 0 1px 0 rgba(0, 0, 0, 0.08); }
-.at-root .at-kpi-label { color: rgba(255, 255, 255, 0.92); }
-.at-root .at-kpi-bar { background: rgba(255, 255, 255, 0.28); }
-.at-root .at-kpi-bar-fill { background: #fff; box-shadow: 0 0 6px rgba(255, 255, 255, 0.5); }
-.at-root .at-kpi:focus-visible { outline: 2px solid var(--at-ink); outline-offset: 2px; }
+/* ── Aşama sayaçları — DAĞILIM ÇUBUĞU + LEJANT ÇİPLERİ (Muzaffer Bey'in 4 taslaktan seçimi, 2026-09-22) ──────
+   Ortak: [data-tone] → --k / --k2 / --k-bg / --k-line / --k-ink; aria-pressed seçili; data-zero soluk. */
+.at-root [data-tone] { --k: var(--at-slate); --k2: var(--at-slate-2); --k-bg: var(--at-slate-bg); --k-line: var(--at-slate-line); --k-ink: var(--at-slate-ink); }
+.at-root [data-tone='indigo'] { --k: var(--at-indigo); --k2: var(--at-indigo-2); --k-bg: var(--at-indigo-bg); --k-line: var(--at-indigo-line); --k-ink: var(--at-indigo-ink); }
+.at-root [data-tone='indigo-light'] { --k: var(--at-indigo-light); --k2: var(--at-indigo-light-2); --k-bg: var(--at-indigo-light-bg); --k-line: var(--at-indigo-light-line); --k-ink: var(--at-indigo-light-ink); }
+.at-root [data-tone='amber'] { --k: var(--at-amber); --k2: var(--at-amber-2); --k-bg: var(--at-amber-bg); --k-line: var(--at-amber-line); --k-ink: var(--at-amber-ink); }
+.at-root [data-tone='teal'] { --k: var(--at-teal); --k2: var(--at-teal-2); --k-bg: var(--at-teal-bg); --k-line: var(--at-teal-line); --k-ink: var(--at-teal-ink); }
+.at-root [data-tone='blue'] { --k: var(--at-blue); --k2: var(--at-blue-2); --k-bg: var(--at-blue-bg); --k-line: var(--at-blue-line); --k-ink: var(--at-blue-ink); }
+.at-root [data-tone='violet'] { --k: var(--at-violet); --k2: var(--at-violet-2); --k-bg: var(--at-violet-bg); --k-line: var(--at-violet-line); --k-ink: var(--at-violet-ink); }
+.at-root [data-tone='green'] { --k: var(--at-green); --k2: var(--at-green-2); --k-bg: var(--at-green-bg); --k-line: var(--at-green-line); --k-ink: var(--at-green-ink); }
+/* Profil çipleri kendi renk kurallarını korur (yukarıdaki --k paydaları onları etkilemez). */
+
+/* 2 · Dağılım çubuğu + lejant çipleri: tek kart, tek yığılmış çubuk */
+.at-root .at-dagilim { padding: 14px 18px 12px; background: var(--at-card); border: 1px solid var(--at-card-line); border-radius: 14px; box-shadow: var(--at-shadow); }
+.at-root .at-dagilim-ust { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.at-root .at-dagilim-toplam { padding: 0; border: 0; background: none; font: inherit; font-size: 13.5px; color: var(--at-ink-2); cursor: pointer; }
+.at-root .at-dagilim-toplam b { font-size: 22px; font-weight: 800; color: var(--at-ink); letter-spacing: -0.02em; margin-right: 4px; font-variant-numeric: tabular-nums; }
+.at-root .at-dagilim-toplam[aria-pressed='true'] { text-decoration: underline; text-decoration-color: var(--at-primary); text-underline-offset: 4px; }
+.at-root .at-dagilim-not { font-size: 12.5px; color: var(--at-muted); }
+.at-root .at-dagilim-not b { color: var(--at-green-ink); font-weight: 700; }
+.at-root .at-dagilim-cubuk { display: flex; height: 12px; gap: 2px; border-radius: 999px; overflow: hidden; background: var(--at-line-soft); }
+.at-root .at-dagilim-cubuk > span { display: block; min-width: 4px; background: linear-gradient(90deg, var(--k), var(--k2)); }
+.at-root .at-dagilim-lejant { display: flex; flex-wrap: wrap; gap: 6px 8px; margin-top: 12px; }
+.at-root .at-dagilim-cip { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 11px 0 9px; border: 1px solid var(--at-card-line); border-radius: 999px; background: var(--at-card); font: inherit; font-size: 12.5px; color: var(--at-ink-2); cursor: pointer; transition: background 0.12s, border-color 0.12s; }
+.at-root .at-dagilim-cip:hover { border-color: var(--k-line); background: var(--k-bg); }
+.at-root .at-dagilim-cip[aria-pressed='true'] { border-color: var(--k); background: var(--k-bg); color: var(--k-ink); box-shadow: 0 0 0 1px var(--k); }
+.at-root .at-dagilim-cip b { font-weight: 800; color: var(--at-ink); font-variant-numeric: tabular-nums; }
+.at-root .at-dagilim-cip[aria-pressed='true'] b { color: var(--k-ink); }
+.at-root .at-dagilim-cip small { font-size: 11px; color: var(--at-faint); }
+.at-root .at-dagilim-cip[data-zero='true'] { color: var(--at-faint); }
+.at-root .at-dagilim-cip[data-zero='true'] b { color: var(--at-zero); }
+.at-root .at-dagilim-nokta { width: 10px; height: 10px; flex-shrink: 0; border-radius: 50%; background: var(--k); }
+
+@media (max-width: 900px) { .at-root .at-dagilim-lejant { gap: 6px; } .at-root .at-dagilim-cip { height: 28px; font-size: 12px; } }
 
 /* ── Tablo ─────────────────────────────────────────────────────────────────── */
 .at-root .at-table-wrap { background: var(--at-card); border: 1px solid var(--at-card-line); box-shadow: var(--at-shadow); }

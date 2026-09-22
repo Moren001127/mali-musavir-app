@@ -48,10 +48,10 @@ async function sahteYonlendir(pg) {
   const tablo = pg.locator('.at-table-wrap').first();
   await tamSayfa(pg, path.join(CIKIS, '03-tablo.png'), '.at-table-wrap');
   // 4) Aşama süzgeci: Evrak bekleniyor
-  await pg.locator('.at-kpi[data-tone="amber"]').click();
+  await pg.locator('.at-dagilim-cip[data-tone="amber"]').click();
   await pg.waitForTimeout(500);
   await tamSayfa(pg, path.join(CIKIS, '04-suzgec-evrak.png'));
-  await pg.locator('.at-kpi[data-tone="amber"]').click();
+  await pg.locator('.at-dagilim-cip[data-tone="amber"]').click();
   await pg.waitForTimeout(300);
   // 5) Profil eksik çipi
   await pg.locator('.at-chip[data-tone="amber"]').click();

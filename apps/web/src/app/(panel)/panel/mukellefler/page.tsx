@@ -7,20 +7,14 @@ import Link from 'next/link';
 import { api } from '@/lib/api';
 import {
   AlertCircle,
-  CheckCircle2,
   ClipboardCheck,
   Download,
-  FileCheck2,
-  Inbox,
   PhoneOff,
-  ScanSearch,
   Search,
-  Settings2,
-  Upload,
-  Users,
   Check as CheckIcon,
   type LucideIcon,
 } from 'lucide-react';
+import { AsamaSayaclari, STAGE_CARD_META } from './_components/AsamaSayaclari';
 
 /* Renkler aylik-takip.css içindeki değişkenlerden gelir: A teması koyu, D teması beyaz kurumsal.
    Bu dosyada yalnız yerleşim ve işlev vardır. */
@@ -95,17 +89,6 @@ const STAGES: Record<Stage, { label: string }> = {
   'verildi':          { label: 'Verildi' },
 };
 
-/** Sayaç kartları: anahtar → ton (CSS data-tone) ve simge. Dolu gradyan kart (gösterge paneli sayaçlarıyla aynı dil);
- *  toplam nötr kurşuni, aşamalar kendi renginde. */
-const STAGE_CARD_META: Record<Exclude<FilterKey, 'islenmedi' | 'beyanname-verilmedi'>, { tone: string; icon: LucideIcon }> = {
-  'all':                { tone: 'slate', icon: Users },
-  'evrak-gelmedi':      { tone: 'amber', icon: Inbox },
-  'yukleme-bekliyor':   { tone: 'teal', icon: Upload },
-  'islem-bekliyor':     { tone: 'blue', icon: Settings2 },
-  'kontrol-bekliyor':   { tone: 'violet', icon: ScanSearch },
-  'beyanname-bekliyor': { tone: 'indigo', icon: FileCheck2 },
-  'verildi':            { tone: 'green', icon: CheckCircle2 },
-};
 
 function getQueryParam(key: string): string | null {
   if (typeof window === 'undefined') return null;
@@ -461,43 +444,18 @@ export default function MukelleflerPage() {
         })}
       </div>
 
-      {/* AŞAMA SAYAÇLARI — dolu gradyan kart (gösterge paneli dili): yarı saydam simge dairesi + yüzde çipi + beyaz sayı + ince çubuk; tıklanınca süzer */}
-      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 lg:grid-cols-7">
-        {stageCards.map((c) => {
-          const active = filter === c.key;
-          const meta = STAGE_CARD_META[c.key];
-          const Icon = meta.icon;
-          const pct = counts.total > 0 ? Math.round((c.count / counts.total) * 100) : 0;
-          return (
-            <button
-              key={c.key}
-              type="button"
-              onClick={() => {
-                const next: FilterKey = active && c.key !== 'all' ? 'all' : c.key;
-                setFilter(next);
-                if (next === 'all') setProfileFilter('all');
-                setPage(1);
-              }}
-              data-tone={meta.tone}
-              data-zero={c.count === 0 ? 'true' : undefined}
-              aria-pressed={active}
-              className="at-kpi relative overflow-hidden rounded-[14px] px-3.5 pb-3 pt-3 text-left transition"
-              title={active && c.key !== 'all' ? 'Süzgeci kaldır' : `${c.label} olanları göster`}
-            >
-              <span className="at-kpi-halka pointer-events-none absolute -right-5 -top-7 h-[92px] w-[92px] rounded-full" aria-hidden />
-              <div className="relative flex items-center justify-between gap-2">
-                <span className="at-kpi-icon grid h-8 w-8 place-items-center rounded-full"><Icon size={16} strokeWidth={2.2} /></span>
-                {c.key !== 'all' && <span className="at-kpi-pct rounded-full px-2 py-0.5 text-[11px] font-bold tabular-nums">%{pct}</span>}
-              </div>
-              <div className="at-kpi-num relative mt-2.5 text-[26px] font-extrabold leading-none tabular-nums">{c.count}</div>
-              <div className="at-kpi-label relative mt-1 truncate text-[12px] font-semibold">{c.label}</div>
-              <div className="at-kpi-bar relative mt-2.5 h-[4px] overflow-hidden rounded-full">
-                <div className="at-kpi-bar-fill h-full rounded-full" style={{ width: `${c.key === 'all' ? 100 : pct}%` }} />
-              </div>
-            </button>
-          );
-        })}
-      </div>
+      {/* AŞAMA SAYAÇLARI — dağılım çubuğu + lejant çipleri (karar 2026-09-22); tıklanınca süzer */}
+      <AsamaSayaclari
+        kartlar={stageCards}
+        toplam={counts.total}
+        secili={filter === 'islenmedi' || filter === 'beyanname-verilmedi' ? 'all' : filter}
+        onSec={(key) => {
+          const next: FilterKey = filter === key && key !== 'all' ? 'all' : key;
+          setFilter(next);
+          if (next === 'all') setProfileFilter('all');
+          setPage(1);
+        }}
+      />
 
       {/* TABLO */}
       <div className="at-table-wrap overflow-x-auto rounded-[12px]">
