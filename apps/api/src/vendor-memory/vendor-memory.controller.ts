@@ -104,6 +104,22 @@ export class VendorMemoryController {
     return this.service.getVendorDetail(tenantId, firmaKimlikNo);
   }
 
+  /** CARİ DEFTERİ — VKN/TCKN yazılınca ünvan + vergi dairesi + adres döner (fatura formu için). */
+  @Get('cari/:kimlikNo')
+  cariAra(@Req() req: any, @Param('kimlikNo') kimlikNo: string) {
+    const tenantId = req?.user?.tenantId;
+    if (!tenantId) throw new BadRequestException('tenantId yok');
+    return this.service.cariAra(tenantId, kimlikNo);
+  }
+
+  /** CARİ DEFTERİNİ KUR — arşivdeki UBL XML'lerini tarayıp defteri doldurur (bakım işlemi). */
+  @Post('cari-defteri-kur')
+  cariDefteriKur(@Req() req: any, @Query('limit') limit?: string) {
+    const tenantId = req?.user?.tenantId;
+    if (!tenantId) throw new BadRequestException('tenantId yok');
+    return this.service.cariDefteriKur(tenantId, { limit: limit ? parseInt(limit, 10) : undefined });
+  }
+
   /** Yanlis ogrenme durumunu temizleme */
   @Delete(':firmaKimlikNo')
   async remove(@Req() req: any, @Param('firmaKimlikNo') firmaKimlikNo: string) {

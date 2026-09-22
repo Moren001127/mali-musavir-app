@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { faturadanCariler, cariBirlestir, CariBilgi } from './cari-defteri';
 
 export type MihsapMemoryImportResult = {
   scanned: number;
@@ -860,6 +861,81 @@ Yanlış ipucuna uyup yanlış karar vermek, ipucu olmamasından DAHA KÖTÜDÜR
       const replaceIndex = samples.findIndex((s) => s.reason !== 'ready');
       if (replaceIndex >= 0) samples[replaceIndex] = sample;
     }
+  }
+
+  /* ═══════════ CARİ DEFTERİ — VKN/TCKN → ünvan + vergi dairesi + adres ═══════════
+     Mihsap bunu TÜRMOB KPS anahtarıyla yapıyor ama o anahtar GÜNDE 10 İSTEKLE sınırlı.
+     Bizim asıl kaynağımız kendi arşivimiz: elimizdeki e-Fatura/e-Arşiv UBL XML'lerinde
+     karşı tarafın vergi dairesi ve adresi zaten yazılı (canlı ölçüm: ünvan %97, vergi
+     dairesi %93, adres %100). TÜRMOB yalnız defterde olmayan VKN için son çare. */
+
+  /** Tek VKN/TCKN sorgusu — fatura formunda alan doldurmak için. */
+  async cariAra(tenantId: string, kimlikNo: string) {
+    const no = String(kimlikNo || '').replace(/\D/g, '');
+    if (no.length !== 10 && no.length !== 11) return null;
+    const k: any = await (this.prisma as any).vendorMemory.findUnique({
+      where: { tenantId_firmaKimlikNo: { tenantId, firmaKimlikNo: no } },
+      select: { firmaKimlikNo: true, firmaUnvan: true, vergiDairesi: true, adres: true, cariKaynak: true, sonKullanim: true },
+    }).catch(() => null);
+    if (!k) return null;
+    return {
+      kimlikNo: k.firmaKimlikNo,
+      unvan: k.firmaUnvan || '',
+      vergiDairesi: k.vergiDairesi || '',
+      adres: k.adres || '',
+      kaynak: k.cariKaynak || 'ubl',
+      sonGorulme: k.sonKullanim,
+    };
+  }
+
+  /**
+   * DEFTERİ KUR — elimizdeki UBL XML'lerini tarayıp cari defterini doldurur/günceller.
+   * Faturanın HER İKİ tarafı da alınır (satıcı + alıcı). Var olan kayıtta boş alan varsa doldurulur;
+   * dolu alan yeni bilgiyle güncellenir (ünvan/adres zamanla değişir, en son görülen esastır).
+   */
+  async cariDefteriKur(tenantId: string, opts: { limit?: number } = {}) {
+    const tavan = Math.min(20000, Math.max(1, Number(opts.limit || 20000)));
+    const kayitlar: any[] = await (this.prisma as any).eFaturaInbox.findMany({
+      where: { tenantId, ublXmlRaw: { not: null } },
+      orderBy: { syncedAt: 'desc' },
+      take: tavan,
+      select: { ublXmlRaw: true },
+    });
+
+    // Önce bellekte birleştir (aynı VKN yüzlerce faturada geçiyor) → tek tek DB yazma olmasın.
+    const defter = new Map<string, CariBilgi>();
+    for (const k of kayitlar) {
+      for (const c of faturadanCariler(String(k.ublXmlRaw || ''))) {
+        defter.set(c.kimlikNo, cariBirlestir(defter.get(c.kimlikNo) || null, c));
+      }
+    }
+
+    let yeni = 0;
+    let guncel = 0;
+    for (const c of defter.values()) {
+      const mevcut: any = await (this.prisma as any).vendorMemory.findUnique({
+        where: { tenantId_firmaKimlikNo: { tenantId, firmaKimlikNo: c.kimlikNo } },
+        select: { id: true, firmaUnvan: true, vergiDairesi: true, adres: true },
+      }).catch(() => null);
+      const veri = {
+        firmaUnvan: c.unvan || mevcut?.firmaUnvan || null,
+        vergiDairesi: c.vergiDairesi || mevcut?.vergiDairesi || null,
+        adres: c.adres || mevcut?.adres || null,
+        cariKaynak: 'ubl',
+      };
+      if (mevcut) {
+        // Hiçbir şey değişmiyorsa boşuna yazma.
+        if (mevcut.firmaUnvan === veri.firmaUnvan && mevcut.vergiDairesi === veri.vergiDairesi && mevcut.adres === veri.adres) continue;
+        await (this.prisma as any).vendorMemory.update({ where: { id: mevcut.id }, data: veri }).catch(() => null);
+        guncel++;
+      } else {
+        await (this.prisma as any).vendorMemory
+          .create({ data: { tenantId, firmaKimlikNo: c.kimlikNo, ...veri } })
+          .then(() => { yeni++; })
+          .catch(() => null);
+      }
+    }
+    return { taranan: kayitlar.length, bulunanCari: defter.size, yeni, guncel };
   }
 }
 

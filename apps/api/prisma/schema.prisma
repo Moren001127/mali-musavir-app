@@ -2454,6 +2454,13 @@ model VendorMemory {
   tenantId      String
   firmaKimlikNo String // VKN (10 hane) veya TCKN (11 hane)
   firmaUnvan    String? // Son gorulen unvan (degisebilir)
+  // CARİ DEFTERİ (2026-09-23): VKN yazılınca ünvan/vergi dairesi/adres anında dolsun diye.
+  //   Kaynak: elimizdeki e-Fatura/e-Arşiv UBL XML'leri (cac:PartyTaxScheme > cac:TaxScheme > cbc:Name
+  //   ve cac:PostalAddress). TÜRMOB KPS anahtarı günde 10 istekle sınırlı olduğu için ASIL kaynak
+  //   kendi arşivimizdir; TÜRMOB yalnız bilinmeyen VKN'de son çare.
+  vergiDairesi  String?
+  adres         String?
+  cariKaynak    String? // 'ubl' | 'luca' | 'turmob-kps' | 'elle'
   // Faz 2 (PLAN/15): cari kartı kurum türü — SATIŞ faturasında alıcı = bu cari; belirlenmiş alıcıysa
   //   (kamu/banka/belediye/universite/kit) tevkifat-eksik kuralı çalışır. diger = normal KDV mükellefi.
   kurumTuru     String?
