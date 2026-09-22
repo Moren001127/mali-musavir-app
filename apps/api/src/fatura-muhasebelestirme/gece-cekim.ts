@@ -123,6 +123,10 @@ export function gecePlaniOlustur(baglantilar: GeceBaglanti[], now: Date | number
     for (const [taxpayerKey, taxpayerCfg] of Object.entries(taxpayers)) {
       if (!taxpayerCfg || taxpayerKey === 'global') continue;
       if ((taxpayerCfg as any).talimat !== true) continue;
+      // HIZ SINIRI SOĞUMASI (2026-09-22): 429 yiyen mükellef+sağlayıcı soğuma bitene kadar gece de çekilmez.
+      const cooldownUntil = Date.parse(String((taxpayerCfg as any).cooldownUntil || ''));
+      const simdiMs = typeof now === 'number' ? Date.now() : now.getTime();
+      if (Number.isFinite(cooldownUntil) && cooldownUntil > simdiMs) continue;
       const saat = geceSaatiNormalize((taxpayerCfg as any).saat) ?? GECE_VARSAYILAN_SAAT;
       if (!geceSaatiUyuyorMu(saat, now)) continue;
       plan.push({ taxpayerId: taxpayerKey, provider: String(conn.provider || '').toUpperCase(), saat });

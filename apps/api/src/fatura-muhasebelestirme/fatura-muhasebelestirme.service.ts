@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, forwardRef, Inject, Injectable, Logger, NotFoundException, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { sogumaAtlaSebebi, sogumaBaslat, sogumaKalanDk, sogumaSuruyorMu, sogumaTemizle } from './hiz-sinir-soguma';
 import { createHash, randomUUID } from 'crypto';
 import { Prisma } from '@prisma/client';
 import * as JSZip from 'jszip';
@@ -5391,8 +5392,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     this.__efaturaSyncStatus.set(key, { state: 'running', startedAt: new Date().toISOString(), added: 0, rounds: 0 });
     (async () => {
       let toplamAdded = 0;
-      let cezaSeri = 0; // ardışık 429 tur sayısı → UYARLANABİLİR dinlenme (erken tekrar cezayı UZATIR)
-      const MAX_ROUNDS = 25;
+      let cezaSeri = 0; // ardışık 429 tur sayısı (artık tek tur sonra durulur; bilgi amaçlı)
+      // 2026-09-22: 25 tur + 10 dk dinlenme cezayı hiç söndürmüyordu. Artık en çok 3 tur; 429 görülen turda DUR —
+      //   hesap soğumaya alınır, kalan faturalar soğuma bitince (elle ya da gece çekimiyle) tamamlanır.
+      const MAX_ROUNDS = 3;
       for (let round = 1; round <= MAX_ROUNDS; round++) {
         const r: any = await this.syncEfaturaInboxFromIntegrations(tenantId, userId, opts);
         const roundAdded = Number(r?.added || 0);
@@ -5400,12 +5403,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         toplamAdded += roundAdded;
         cezaSeri = rateLimited && roundAdded === 0 ? cezaSeri + 1 : 0; // ilerleme olduysa seriyi sıfırla
         this.__efaturaSyncStatus.set(key, { state: 'running', rounds: round, added: toplamAdded, rateLimited, cezaSeri, sonTur: r });
-        // BİTİŞ: yalnız bir tur HİÇ 429 yemeden VE 0 yeni eklediyse (gerçekten tamam).
+        // BİTİŞ: bir tur HİÇ 429 yemeden VE 0 yeni eklediyse (gerçekten tamam).
         if (roundAdded === 0 && !rateLimited) { this.__efaturaSyncStatus.set(key, { state: 'done', finishedAt: new Date().toISOString(), rounds: round, added: toplamAdded, result: r }); return; }
-        // UYARLANABİLİR dinlenme: ilerleme varsa kısa; ceza serisi uzadıkça gittikçe uzun (10 dk'ya kadar),
-        //   böylece erken-tekrar cezayı yeniden-tetiklemez, hesap gerçekten soğur.
-        const rest = roundAdded > 0 ? 5000 : Math.min(600000, 120000 * Math.max(1, cezaSeri));
-        await new Promise((res) => setTimeout(res, rest));
+        // 429 gördüysek DUR: hesap soğumada; yeni tur cezayı uzatır. Kalanlar soğuma bitince tamamlanır.
+        if (rateLimited) {
+          this.__efaturaSyncStatus.set(key, { state: 'done', finishedAt: new Date().toISOString(), rounds: round, added: toplamAdded, rateLimited: true, cooldown: true, note: 'hız sınırı — soğuma sonrası devam', result: r });
+          return;
+        }
+        await new Promise((res) => setTimeout(res, 5000)); // ilerleme var → kısa nefes, sonraki tur
       }
       this.__efaturaSyncStatus.set(key, { state: 'done', finishedAt: new Date().toISOString(), rounds: MAX_ROUNDS, added: toplamAdded, note: 'tavan tur' });
     })().catch((e) => { this.__efaturaSyncStatus.set(key, { state: 'error', finishedAt: new Date().toISOString(), error: String(e?.message || e) }); });
@@ -5486,6 +5491,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const credentialCheck = this.providerCredentialProblem(cfg);
       if (credentialCheck) {
         statuses.push({ provider: item.provider, label: cfg.label, status: 'SKIPPED', reason: credentialCheck });
+        skipped++;
+        continue;
+      }
+      // HIZ SINIRI SOĞUMASI (2026-09-22): 429 yiyen hesaba soğuma bitene kadar istek atma (ceza uzamasın).
+      const sogumaSebep = sogumaAtlaSebebi(this.sogumaOku(row, opts.taxpayerId));
+      if (sogumaSebep) {
+        statuses.push({ provider: item.provider, label: cfg.label, status: 'SKIPPED', reason: sogumaSebep, cooldown: true });
         skipped++;
         continue;
       }
@@ -5850,13 +5862,21 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           progress: tcProgress,
         });
         if (!incremental) { for (const payload of payloads) await persistOne(payload); }
+        // 429 gördüysek hesabı soğumaya al; temiz bittiyse ceza serisini sıfırla (hiz-sinir-soguma.ts).
+        if (tcProgress.rateLimited) {
+          const yeni = sogumaBaslat(this.sogumaOku(row, opts.taxpayerId));
+          await this.sogumaYaz(row.id, opts.taxpayerId, yeni);
+          this.logger.warn(`${cfg.provider} hız sınırı → soğuma ${sogumaKalanDk(yeni)} dk (mükellef ${opts.taxpayerId})`);
+        } else if (sogumaSuruyorMu(this.sogumaOku(row, opts.taxpayerId)) === false && this.sogumaOku(row, opts.taxpayerId).cooldownStreak) {
+          await this.sogumaYaz(row.id, opts.taxpayerId, sogumaTemizle());
+        }
         fetched += providerFetched;
         added += providerAdded;
         updated += providerUpdated;
         skipped += providerSkipped;
         statuses.push({
           provider: item.provider, label: cfg.label, status: 'SUCCESS', fetched: providerFetched, added: providerAdded, updated: providerUpdated, skipped: providerSkipped,
-          ...(tcProgress.rateLimited ? { rateLimited: true, partial: true } : {}),
+          ...(tcProgress.rateLimited ? { rateLimited: true, partial: true, cooldown: true, warning: 'Sağlayıcı hız sınırı verdi — kalan faturalar soğuma bitince (otomatik) tamamlanır.' } : {}),
           // Sayfalama yok: dönen adet limite ULAŞTIYSA dönemde daha fazla fatura olabilir — sessiz
           //   kırpma yerine görünür uyarı (kullanıcı limiti artırır ya da aralığı böler).
           ...(providerFetched >= limit ? { truncated: true, warning: `Sağlayıcı ${limit} kayıt sınırına ulaştı — dönemde daha fazla fatura olabilir; tarih aralığını bölerek tekrar sorgulayın.` } : {}),
@@ -9000,6 +9020,26 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     return true;
   }
 
+  /** Mükellef+sağlayıcı için kayıtlı soğuma durumu (integration_connections.config.taxpayers[tp]). */
+  private sogumaOku(row: any, taxpayerId: string): { cooldownUntil?: string | null; cooldownStreak?: number | null } {
+    const scoped = ((row?.config || {}) as any)?.taxpayers?.[taxpayerId] || {};
+    return { cooldownUntil: scoped.cooldownUntil ?? null, cooldownStreak: scoped.cooldownStreak ?? null };
+  }
+
+  /** Soğumayı kaydet (429 sonrası) ya da temizle (temiz çekim). Bağlantı satırı yoksa sessiz geçer. */
+  private async sogumaYaz(connectionId: string, taxpayerId: string, durum: { cooldownUntil?: string | null; cooldownStreak?: number | null }) {
+    try {
+      const row = await (this.prisma as any).integrationConnection.findUnique({ where: { id: connectionId }, select: { config: true } });
+      if (!row) return;
+      const cfg: any = { ...((row.config || {}) as any) };
+      cfg.taxpayers = { ...(cfg.taxpayers || {}) };
+      cfg.taxpayers[taxpayerId] = { ...(cfg.taxpayers[taxpayerId] || {}), ...durum };
+      await (this.prisma as any).integrationConnection.update({ where: { id: connectionId }, data: { config: cfg } });
+    } catch (e: any) {
+      this.logger.warn(`Soğuma kaydı yazılamadı (${connectionId}): ${e?.message || e}`);
+    }
+  }
+
   private resolveRuntimeConfig(
     row: any,
     catalog: (typeof INTEGRATOR_CATALOG)[number],
@@ -11298,9 +11338,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const is429 = (status: number, body: string) =>
       status === 429 || /"code"\s*:\s*429/.test(body) || /yüksek frekans|too many request|rate limit/i.test(body);
     const turkcellFetch = async (url: string, accept: string): Promise<{ ok: boolean; status: number; buf: Buffer; text: () => string }> => {
-      // Sabırlı backoff: geçici 429 spike'ı TÜM çekimi öldürmesin (özellikle liste çağrısı — bir sayfa
-      //   kaybı sonraki tüm sayfaları da kaçırır). 6 deneme, 60sn'ye kadar.
-      const backoff = [5000, 10000, 20000, 35000, 50000, 60000];
+      // 2026-09-22 (canlı teşhis): İNATLA TEKRAR DENEMEK CEZAYI UZATIYOR — uç sıcak kalıyor, sayfa 1 bile 429 dönüyordu.
+      //   Artık tek kısa tekrar; sürerse çekim nazikçe biter ve hesaba SOĞUMA konur (hiz-sinir-soguma.ts).
+      const backoff = [8000];
       let last = { status: 0, body: '' };
       for (let attempt = 0; attempt <= backoff.length; attempt++) {
         const res = await fetch(url, { method: 'GET', headers: { ...authHeaders, Accept: accept } });
@@ -11337,21 +11377,33 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     let kept = 0;
     let stop = false;
     const MAX_PAGES = 600; // dönem başından eskiye düşünce zaten durur; tavan güvenlik amaçlı
+    // SAYFA BOYUTU (2026-09-22 canlı): PageSize=500 kabul ediliyor (48.616 faturalı hesapta doğrulandı) → aynı dönem için
+    //   5 kat AZ istek = 429 riski düşer. Sunucu reddederse (4xx) otomatik 100'e düşeriz.
+    let pageSize = 500;
     for (let page = 1; page <= MAX_PAGES && kept < opts.limit && !stop; page++) {
       const listUrl = new URL(`${baseUrl}/v1/${box}/list`);
       listUrl.searchParams.set('PageIndex', String(page));
-      listUrl.searchParams.set('PageSize', '100');
+      listUrl.searchParams.set('PageSize', String(pageSize));
       listUrl.searchParams.set('SortedColumn', 'ExecutionDate');
       listUrl.searchParams.set('IsDesc', 'true'); // YENİ→ESKİ (fatura tarihine göre)
-      if (page > 1) await tsleep(1000); // sayfalar arası nefes payı (429 önleme)
-      const listRes = await turkcellFetch(listUrl.toString(), 'application/json');
+      if (page > 1) await tsleep(3000); // sayfalar arası nefes payı (429 önleme) — 1 sn'den 3 sn'ye (2026-09-22)
+      let listRes = await turkcellFetch(listUrl.toString(), 'application/json');
+      if (!listRes.ok && listRes.status >= 400 && listRes.status < 500 && !is429(listRes.status, listRes.text()) && pageSize !== 100) {
+        // Sayfa boyutunu kabul etmedi → klasik 100 ile tekrar dene (bir kez).
+        this.logger.warn(`Turkcell ${box} PageSize=${pageSize} reddedildi (${listRes.status}) → 100'e düşülüyor`);
+        pageSize = 100;
+        listUrl.searchParams.set('PageSize', '100');
+        await tsleep(3000);
+        listRes = await turkcellFetch(listUrl.toString(), 'application/json');
+      }
       const listText = listRes.text();
       if (!listRes.ok) {
         // Backoff'a rağmen liste çağrısı düştü (hard rate-limit). İlerleme VARSA (skip-existing sayesinde
         //   bu tetikleme eksikleri indiriyordu) THROW ETME → nazikçe bitir; kalan eksikler bir sonraki
         //   tetiklemede tamamlanır (zaten indirilenler atlanır). Hiç ilerleme yoksa hatayı yükselt.
         if (is429(listRes.status, listText) && opts.progress) opts.progress.rateLimited = true;
-        if (kept > 0 || opts.skipExistingExternalIds) { this.logger.warn(`Turkcell ${box} liste ${listRes.status} — kismi bitis (tekrar tetikle eksikler tamamlanir)`); break; }
+        // 429 ise HER ZAMAN nazik bitiş (hata fırlatmak tur döngüsünü tetikleyip cezayı uzatıyordu, 2026-09-22).
+        if (is429(listRes.status, listText) || kept > 0 || opts.skipExistingExternalIds) { this.logger.warn(`Turkcell ${box} liste ${listRes.status} — kismi bitis (soğuma sonrası devam eder)`); break; }
         throw new Error(`Turkcell ${box} liste hatası: ${listRes.status} ${listText.slice(0, 250)}`);
       }
       let listJson: any;
@@ -11372,12 +11424,23 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         if (opts.skipExistingExternalIds && opts.skipExistingExternalIds.has(externalId)) { kept++; continue; }
         const invoiceNo = String(item?.InvoiceNumber || item?.invoiceNumber || item?.DocumentNumber || id).trim();
         // UBL indir: GET /v2/{box}/{id}/ubl. Yanıt ZIP (PK) → JSZip; değilse düz XML.
-        await tsleep(600); // UBL indirmeleri arası nefes payı — Turkcell hız-sınırı agresif; sürekli 429'a girmemek için nazik (~1.6/s)
+        await tsleep(1200); // UBL indirmeleri arası nefes payı — 2026-09-22: 600 ms agresifti, ~0.8/s'e indirildi
         const ublRes = await turkcellFetch(
           `${baseUrl}/v2/${box}/${encodeURIComponent(String(id))}/ubl`,
           'application/zip, application/octet-stream, application/xml, */*',
         );
-        if (!ublRes.ok) { this.logger.warn(`Turkcell ubl ${id} hata ${ublRes.status}`); continue; }
+        if (!ublRes.ok) {
+          const ublText = ublRes.text();
+          if (is429(ublRes.status, ublText)) {
+            // 429: tek tek denemeye devam etmek cezayı uzatıyor → çekimi burada bitir, soğuma konsun.
+            if (opts.progress) opts.progress.rateLimited = true;
+            this.logger.warn(`Turkcell ${box} UBL 429 — çekim durduruldu (soğuma); indirilen ${kept}`);
+            stop = true;
+            break;
+          }
+          this.logger.warn(`Turkcell ubl ${id} hata ${ublRes.status}`);
+          continue;
+        }
         const buf = ublRes.buf;
         let xml: string | null = null;
         if (buf.length >= 2 && buf[0] === 0x50 && buf[1] === 0x4b) xml = await this.elogoUnzipXml(buf);
@@ -11388,7 +11451,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         if (opts.onPayload) { await opts.onPayload(payload); } // ARTIMLI: anında yaz, bellekte tutma
         else payloads.push(payload);
       }
-      if (pageItems.length < 100) break; // son sayfa
+      if (pageItems.length < pageSize) break; // son sayfa
     }
     return payloads;
   }
@@ -18648,7 +18711,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
    *  yıllar ve "770"/"010" gibi kod parçaları oran SANILMAZ (R7 — kırılgan "adındaki herhangi bir
    *  sayı = oran" varsayımının sertleştirilmesi). */
   private rateTokensOf(accountName: string): string[] {
-    return (this.norm(String(accountName || '')).match(/\d+/g) || []).filter((t) => t.length <= 2);
+    const eslesme: RegExpMatchArray | null = this.norm(String(accountName || '')).match(/\d+/g);
+    return (eslesme ?? []).filter((t: string) => t.length <= 2);
   }
 
   /** Hesap adında verilen KDV oranı token'ı geçiyor mu (≤2 haneli birebir eşleşme)? */
