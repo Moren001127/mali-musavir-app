@@ -2,6 +2,7 @@
  * Hız sınırı soğuması (2026-09-22) — Turkcell/isim360 429 kökü: inatla tekrar deneme cezayı uzatıyordu.
  * Ayrıca gece planı soğumadaki mükellefi atlamalı (gece-cekim.gecePlaniOlustur).
  */
+import { FaturaMuhasebelestirmeService } from './fatura-muhasebelestirme.service';
 import { gecePlaniOlustur } from './gece-cekim';
 import {
   SOGUMA_ILK_MS,
@@ -73,5 +74,56 @@ describe('gece planı soğumaya uyar', () => {
 
     const gecmis = new Date(saat02.getTime() - 60000).toISOString(); // 1 dk önce bitmiş
     expect(gecePlaniOlustur(baglanti(gecmis) as any, saat02).map((p) => p.taxpayerId)).toEqual(['tp1']);
+  });
+});
+
+describe('soğuma kaydı (servis ↔ bağlantı satırı)', () => {
+  const servis = (): any => {
+    const s: any = Object.create(FaturaMuhasebelestirmeService.prototype);
+    s.logger = { log() {}, warn() {}, error() {}, debug() {} };
+    return s;
+  };
+
+  it('okuma: mükellefe özel soğuma alanları okunur, yoksa boş döner', () => {
+    const s = servis();
+    const row = { config: { taxpayers: { tp1: { cooldownUntil: '2026-09-22T13:00:00.000Z', cooldownStreak: 2 } } } };
+    expect(s.sogumaOku(row, 'tp1')).toEqual({ cooldownUntil: '2026-09-22T13:00:00.000Z', cooldownStreak: 2 });
+    expect(s.sogumaOku(row, 'baskaTp')).toEqual({ cooldownUntil: null, cooldownStreak: null });
+    expect(s.sogumaOku(null, 'tp1')).toEqual({ cooldownUntil: null, cooldownStreak: null });
+  });
+
+  it('yazma: diğer mükellefin ve diğer alanların kaydı BOZULMAZ', async () => {
+    const s = servis();
+    const kayit: any = {
+      config: {
+        label: 'Turkcell e-Şirket',
+        taxpayers: {
+          tp1: { talimat: true, saat: '02:00', encryptedApiKey: 'X' },
+          tp2: { talimat: false },
+        },
+      },
+    };
+    s.prisma = {
+      integrationConnection: {
+        findUnique: async () => ({ config: kayit.config }),
+        update: async ({ data }: any) => { kayit.config = data.config; return kayit; },
+      },
+    };
+    await s.sogumaYaz('conn1', 'tp1', { cooldownUntil: '2026-09-22T13:00:00.000Z', cooldownStreak: 1 });
+    expect(kayit.config.label).toBe('Turkcell e-Şirket');
+    expect(kayit.config.taxpayers.tp2).toEqual({ talimat: false });
+    expect(kayit.config.taxpayers.tp1).toEqual({
+      talimat: true, saat: '02:00', encryptedApiKey: 'X',
+      cooldownUntil: '2026-09-22T13:00:00.000Z', cooldownStreak: 1,
+    });
+
+    await s.sogumaYaz('conn1', 'tp1', sogumaTemizle()); // temiz çekim → seri sıfırlanır, kimlik korunur
+    expect(kayit.config.taxpayers.tp1).toMatchObject({ encryptedApiKey: 'X', cooldownUntil: null, cooldownStreak: 0 });
+  });
+
+  it('yazma: bağlantı satırı yoksa sessiz geçer (çekimi patlatmaz)', async () => {
+    const s = servis();
+    s.prisma = { integrationConnection: { findUnique: async () => null, update: async () => { throw new Error('çağrılmamalı'); } } };
+    await expect(s.sogumaYaz('yok', 'tp1', sogumaTemizle())).resolves.toBeUndefined();
   });
 });

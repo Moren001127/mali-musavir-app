@@ -2884,12 +2884,23 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       });
 
       try {
+        // ELLE ÇEKİM de hız sınırını ÖĞRENSİN (2026-09-22): tıklama engellenmez, ama 429 görülürse hesaba soğuma
+        //   yazılır — yoksa gece çekimi 02:00'de aynı duvara toslamaya devam ediyordu.
+        const elleProgress: { rateLimited?: boolean } = {};
         const payloads = await this.fetchProviderInvoices(cfg, {
           taxpayer,
           direction,
           period,
           limit,
+          progress: elleProgress,
         });
+        if (elleProgress.rateLimited) {
+          const yeni = sogumaBaslat(this.sogumaOku(row, taxpayerId));
+          await this.sogumaYaz(row.id, taxpayerId, yeni);
+          this.logger.warn(`${cfg.provider} elle çekimde hız sınırı → soğuma ${sogumaKalanDk(yeni)} dk (mükellef ${taxpayerId})`);
+        } else if (this.sogumaOku(row, taxpayerId).cooldownStreak) {
+          await this.sogumaYaz(row.id, taxpayerId, sogumaTemizle());
+        }
         let created = 0;
         let alreadyQueued = 0;
         let failed = 0;
@@ -2940,6 +2951,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           alreadyQueued,
           failed,
           errors,
+          ...(elleProgress.rateLimited
+            ? { rateLimited: true, partial: true, cooldown: true, warning: 'Sağlayıcı hız sınırı verdi — çekim yarıda kaldı, kalanlar soğuma bitince (gece çekimi) tamamlanır.' }
+            : {}),
         });
       } catch (e: any) {
         totals.failed++;
