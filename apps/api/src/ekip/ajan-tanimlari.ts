@@ -85,7 +85,7 @@ const KDV_KONTROL_ZINCIRI = [
   'kdv_kontrol_oturum_bul_olustur', 'kdv_kontrol_luca_cek', 'kdv_kontrol_fatura_bagla', 'kdv_kontrol_ocr_baslat',
   'kdv_kontrol_ocr_bekle', 'kdv_kontrol_eslestir', 'kdv_kontrol_sonuc_satirlari',
   // OCR teyit (R1 7b/9b, 2026-09-22): yeniden okuma (Max-vision) + Teyit Et karşılığı; karar/kilit yine sahipte.
-  'kdv_kontrol_belge_yeniden_oku', 'kdv_kontrol_ocr_teyit',
+  'kdv_kontrol_belge_yeniden_oku', 'kdv_kontrol_ocr_teyit', 'kdv_kontrol_belge_goster',
   // Boş dönem kilidi (2026-09-22): Luca 0 + fatura 0 → ekip kendisi kilitler; genel kilit araçları yine YOK.
   'kdv_kontrol_bos_oturum_kilitle',
 ];

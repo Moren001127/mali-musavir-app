@@ -128,6 +128,12 @@ const PORTAL_KADEMELERI: Record<string, BekleyenPortalAraci> = {
     aciklama: 'OCR değerlerini teyit eder (Teyit Et karşılığı, ≤20); belge metninde görülmeyen değer reddedilir; elle teyitli görsel atlanır',
     parametreler: ['sessionId*', 'teyitler*'],
   },
+  // Belgeyi göster (2026-09-22): görseli modele resim olarak verir; yazmaz (oku). Sonra ocr_teyit {kaynak:'gorsel'} kanıt kapısı.
+  kdv_kontrol_belge_goster: {
+    kademe: 'oku',
+    aciklama: 'Fatura görselini sana resim olarak gösterir + OCR alanları + belge metni + Luca kayıtları; belgeye bakıp OCR’ı karşılaştır (yazmaz)',
+    parametreler: ['sessionId*', 'imageId*'],
+  },
   // Boş dönem kilidi (2026-09-22): yalnız Luca çekimi bitmiş+0 kayıt ve 0 görsel olan oturumu kilitler; genel kilit yine ajanda yok.
   kdv_kontrol_bos_oturum_kilitle: {
     kademe: 'portal_yaz_agir',

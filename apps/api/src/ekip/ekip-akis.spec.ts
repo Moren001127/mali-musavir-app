@@ -455,3 +455,16 @@ describe('ActionDispatcherService.createPendingAction — tur + vaka metadata', 
     expect(olusturulan[0].dedupeKey).toBeUndefined();
   });
 });
+
+describe('mcpIcerik — araç sonucu → MCP içeriği (kdv_kontrol_belge_goster resmi, 2026-09-22)', () => {
+  const { mcpIcerik } = require('./ekip-runner.service');
+  it('__gorsel taşıyan sonuç: metin (base64 hariç) + image bloğu; düz sonuç: tek metin', () => {
+    const data = 'A'.repeat(200);
+    const r = mcpIcerik({ ok: true, belge: 'x.html', __gorsel: { data, mimeType: 'image/jpeg' } });
+    expect(r.content).toHaveLength(2);
+    expect(r.content[0]).toEqual({ type: 'text', text: JSON.stringify({ ok: true, belge: 'x.html' }) });
+    expect(r.content[1]).toEqual({ type: 'image', data, mimeType: 'image/jpeg' });
+    expect(mcpIcerik({ ok: false, neden: 'x' })).toEqual({ content: [{ type: 'text', text: JSON.stringify({ ok: false, neden: 'x' }) }] });
+    expect(mcpIcerik({ ok: true, __gorsel: { data: 'kisa' } }).content).toHaveLength(1);
+  });
+});

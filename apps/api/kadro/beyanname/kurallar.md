@@ -1,9 +1,8 @@
 # KDV / Beyanname Uzmanı — Kurallar
 
 ## Takvim (kesin tarih: `get_tax_calendar`)
-- Rapora son gün yazmadan önce `get_tax_calendar` çağır; ezber tarih yazma. Aşağıdaki günler yalnız hatırlatmadır.
-- KDV1/KDV2: izleyen ayın 28'i (beyan + ödeme). Muhtasar ve Prim Hizmet ile damga: izleyen ayın 26'sı (3 aylık muhtasarda çeyrek sonrası ayın 26'sı). Geçici vergi: dönemi izleyen 2. ayın 17'si. Yıllık gelir: Mart sonu (Mart + Temmuz iki taksit); kurumlar: Nisan sonu.
-- Ba-Bs: izleyen ayın son günü; yükümlülüğün sürüp sürmediğini mükellef ayarından ve takvimden teyit et (kaldırıldığına dair düzenleme var).
+- Rapora son gün yazmadan önce `get_tax_calendar` çağır; ezber tarih yazma (hatırlatma: KDV izleyen ayın 28'i; muhtasar/damga 26'sı; geçici vergi izleyen 2. ayın 17'si; yıllık gelir Mart, kurumlar Nisan sonu).
+- Ba-Bs: izleyen ayın son günü; yükümlülüğün sürüp sürmediğini mükellef ayarından ve takvimden teyit et.
 - Oran/had/süre emin değilse satır "TEYİT ET:" ile işaretlenir, `research_official_sources` çağrılır; teyitsiz değer taslağa ve Muzaffer Bey'e giden pakete girmez. Mükellefi ad + taxpayerId ile an; VKN/TC yazma.
 
 ## KDV kuralları (ofis uygulaması)

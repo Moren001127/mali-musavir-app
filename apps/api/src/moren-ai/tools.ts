@@ -1361,6 +1361,19 @@ export const EKIP_IS_ZINCIRI_ARACLARI: ToolDefinition[] = [
     },
   },
   {
+    name: 'kdv_kontrol_belge_goster',
+    description:
+      'Fatura görselini SANA GÖSTERİR (resim olarak) + ekrandaki OCR alanları + belge metni + aynı belge no’lu Luca kayıtları. Muzaffer Bey (2026-09-22): ' +
+      '"teyit bekleyen / incele satırında ekip belgenin üstüne baksın, KDV’yi eliyle de yazabilsin". Belgeye bakıp OCR alanlarıyla karşılaştır: ' +
+      'OCR yanlışsa okuduğun değerleri kdv_kontrol_ocr_teyit {kaynak:"gorsel", kdvBreakdown:[{oran,tutar,matrah}]} ile yaz (matrah × oran = tutar olmalı); ' +
+      'belge OCR ile aynı ama Luca farklıysa DOKUNMA, gerçek fark olarak raporla. "Hesaplanan KDV / Gerçek usülde KDV" satırı KDV’dir; Rüsum/hal komisyonu KDV DEĞİLDİR; tevkifatlı belgede KDV = NET.',
+    input_schema: {
+      type: 'object',
+      properties: { sessionId: { type: 'string' }, imageId: { type: 'string' } },
+      required: ['sessionId', 'imageId'],
+    },
+  },
+  {
     name: 'kdv_kontrol_ocr_teyit',
     description:
       'Fatura görsellerinin OCR değerlerini TEYİT eder (ekrandaki "Teyit Et & Sonraki"; toplu, en çok 20). Değerleri kdv_kontrol_belge_yeniden_oku’nun teyitGirdisi’nden AYNEN al; ' +
@@ -1387,6 +1400,7 @@ export const EKIP_IS_ZINCIRI_ARACLARI: ToolDefinition[] = [
                 items: { type: 'object', properties: { oran: { type: 'number' }, tutar: { type: 'number' }, matrah: { type: 'number' } }, required: ['oran', 'tutar'] },
               },
               gerekce: { type: 'string', description: 'Kısa gerekçe (rapora ve iş dosyasına yazılır).' },
+              kaynak: { type: 'string', enum: ['yeniden_okuma', 'gorsel'], description: '"gorsel": değerleri kdv_kontrol_belge_goster ile belgeye bakarak yazdın (kırılımda matrah şart, matrah × oran = tutar).' },
             },
             required: ['imageId', 'gerekce'],
           },

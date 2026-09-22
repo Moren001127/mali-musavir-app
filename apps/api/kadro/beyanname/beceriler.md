@@ -15,8 +15,8 @@
 5. Muzaffer Bey'e paket + beyan/ödeme son günü (`get_tax_calendar`; hatırlatma: izleyen 2. ayın 17'si). Kime döndü: Koordinatör → Muzaffer Bey (GİB gönderimi Muzaffer Bey'de).
 
 ## 3. Muhtasar zinciri (aylık — Y3)
-1. Bordro/SGK Sorumlusu'ndan ücret stopajı + APHB özeti (`get_payroll_summary`, `list_sgk_declarations`). Bordro özeti yoksa DUR → §5 (Neden: "bordro özeti yok"; Kime döndü: Koordinatör → Bordro/SGK).
-2. Fatura Muhasebecisi'nden serbest meslek / kira / diğer stopajlar (görev metnindeki DEVİR bloğu; fatura listesi aracım yok, Fatura Muhasebecisi'nin işlediği stopajlı belgeleri Koordinatör görev metnine koyar). İki kaynak birleşmeden taslak yok.
+1. Ücret stopajı + APHB özeti (`get_payroll_summary`, `list_sgk_declarations`); bordro özeti yoksa DUR → §5 ("bordro özeti yok"; Koordinatör → Bordro/SGK).
+2. Serbest meslek / kira / diğer stopajlar görev metnindeki DEVİR bloğundan (Fatura Muhasebecisi'nin işlediği belgeler; fatura listesi aracım yok). İki kaynak birleşmeden taslak yok.
 3. Luca muhtasar ekranı (kuru test) → tür kodlarıyla doldur. Tür kodu / oran emin değilse satırı "TEYİT ET:" işaretle, `research_official_sources` çağır; teyitsiz satır pakete girmez.
 4. Çapraz: bordro brüt toplamı ↔ beyandaki ücret matrahı (kuruşu kuruşuna).
 5. Muzaffer Bey'e paket + son gün (`get_tax_calendar`). Kime döndü: Koordinatör → Muzaffer Bey.
@@ -33,8 +33,7 @@ Mükellef / dönem / tür · Durum: HAZIR DEĞİL · Neden (tek satır: fark X T
 
 ## 6. Rapor kalıbı ve "Onayınızı bekleyen"
 - İlk satır: mükellef / dönem / beyanname türü / bugün. Tablo, emoji, süreç cümlesi yok; her sayı kaynağıyla ("(get_kdv1_on_hazirlik, veriGuveni: yüksek)").
-- "Gönderime hazır" paketi "Onayınızı bekleyen" maddesidir: "beyanname taslağı / <mükellef> / <ödenecek veya devreden tutar> / GİB gönderimi Muzaffer Bey'de" → `create_pending_action`. Tahakkuk fişi (kuru test) ayrı madde: "tahakkuk fişi Kaydet / <mükellef> / <tutar> / 360 veya 190 gerekçesi".
-- Devreden kaynağı teyitsizse madde: "devreden teyit / <mükellef> / <tutar> / kaynak beyanname PDF'i değil".
-- Luca ekran işi (tahakkuk fişi, beyanname taslağı) benim `luca_*` araçlarımla yapılır; kuru testte yazma araçları kapalıysa DEVİR bloğuyla Luca Operatörü'ne paketlenir (00_ORTAK §11) ve `create_pending_action` ile kaydedilir.
+- "Onayınızı bekleyen" maddeleri (`create_pending_action`): "beyanname taslağı / <mükellef> / <ödenecek|devreden> / GİB gönderimi Muzaffer Bey'de"; "tahakkuk fişi Kaydet / <mükellef> / <tutar> / 360|190 gerekçesi"; devreden teyitsizse "devreden teyit / <mükellef> / <tutar> / kaynak beyanname PDF'i değil".
+- Luca ekran işi `luca_*` araçlarımla; kuru testte yazma kapalıysa DEVİR bloğuyla Luca Operatörü'ne paketlenir (00_ORTAK §11) + `create_pending_action`.
 - Kime döndü zinciri: hazır → Koordinatör → Muzaffer Bey; hazır değil → §5'teki çalışan. Rapor soruyla bitmez.
 - Öğrendiklerim: mükellefe özgü kalıcı bilgi ("X'in KDV2 tevkifatı her ay var") → `save_ai_memory`; Luca ekran adımı onaylanıp bittiyse `luca_beceri_kaydet`.

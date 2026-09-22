@@ -10,6 +10,8 @@ jest.mock('../luca/luca.service', () => ({ LucaService: class LucaService {} }))
 jest.mock('../mali-yorum/mali-yorum.service', () => ({ MaliYorumService: class MaliYorumService {} }));
 jest.mock('../mizan/gelir-tablosu.service', () => ({ GelirTablosuService: class GelirTablosuService {} }));
 jest.mock('../ekip/ekip-runner.service', () => ({ EkipRunnerService: class EkipRunnerService {} }));
+jest.mock('../drive/drive.service', () => ({ DriveService: class DriveService {} }));
+jest.mock('../storage/storage.service', () => ({ StorageService: class StorageService {} }));
 
 import { BadRequestException } from '@nestjs/common';
 import { ToolExecutorService } from './tool-executor.service';
@@ -65,6 +67,7 @@ describe('araç şemaları', () => {
       'kdv_kontrol_sonuc_satirlari',
       // OCR teyit (R1 7b/9b, 2026-09-22)
       'kdv_kontrol_belge_yeniden_oku',
+      'kdv_kontrol_belge_goster',
       'kdv_kontrol_ocr_teyit',
       // Boş dönem kilidi (2026-09-22)
       'kdv_kontrol_bos_oturum_kilitle',
@@ -572,6 +575,61 @@ describe('kdv_kontrol_belge_yeniden_oku / kdv_kontrol_ocr_teyit (R1 7b/9b, 2026-
     expect(s1).toMatchObject({ sinif: 'fatura_yok', ipucuTuru: 'MATRAH_KDV_SANILMIS', ocrSupheli: true, adayImageId: 'i1', adayKdvRecordIds: ['k1'] });
     expect(s2).toMatchObject({ sinif: 'luca_yok', ipucuTuru: 'MATRAH_KDV_SANILMIS', adayKdvRecordIds: ['k1'] });
     expect(s2.ipucu).toMatch(/100 katı/);
+  });
+});
+
+describe('kdv_kontrol_belge_goster (belgeye bak, 2026-09-22)', () => {
+  const RAW = '[MAX] {}\n[AZURE]\nDMR MEYVE SEBZE\nGerçek usülde katma değer\nvergisi %1.00 (Matrah: 6.820,00)\n68,20 TL';
+  const img = { id: 'i1', originalName: 'DMA2026000003962.html', s3Key: 'mihsap://inv1', ocrStatus: 'NEEDS_REVIEW', ocrEngine: 'azure-read', ocrBelgeNo: 'DMA2026000003962', ocrDate: '08.08.2026', ocrKdvTutari: null, ocrKdvTevkifat: null, ocrKdvBreakdown: null, ocrRawText: RAW, isManuallyConfirmed: false };
+  const lucaPrisma = () => prismaKur({ kdvRecord: { findMany: () => [{ id: 'k2', belgeNo: 'DMA2026000003962', belgeDate: new Date('2026-08-08'), karsiTaraf: 'DMR', kdvTutari: '68.2', kdvOrani: '1' }] } });
+
+  it('Drive görselini küçültülmüş JPEG olarak (__gorsel) + OCR alanları + belge metni + Luca döner; görülen görsel ctx’e işlenir', async () => {
+    const sharpMod: any = await import('sharp');
+    const sharp = sharpMod?.default ?? sharpMod;
+    const buffer = await sharp({ create: { width: 1800, height: 2400, channels: 3, background: '#ffffff' } }).jpeg().toBuffer();
+    const drive = { serveInvoiceFile: jest.fn(async () => ({ buffer, contentType: 'image/jpeg', filename: 'x.jpg' })) };
+    const svc = { getImages: async () => [img] };
+    const { tool } = aracKur({ prisma: lucaPrisma().prisma, servisler: { KdvControlService: svc, DriveService: drive } });
+    const c: any = { ...ctx, gorulenGorseller: new Set<string>() };
+    const r = await tool.execute('kdv_kontrol_belge_goster', { sessionId: 's1', imageId: 'i1' }, c);
+    expect(r.ok).toBe(true);
+    expect(drive.serveInvoiceFile).toHaveBeenCalledWith('t1', 'inv1');
+    expect(r.__gorsel.mimeType).toBe('image/jpeg');
+    const meta = await sharp(Buffer.from(r.__gorsel.data, 'base64')).metadata();
+    expect(Math.max(meta.width!, meta.height!)).toBeLessThanOrEqual(1200);
+    expect(r.ocr).toMatchObject({ ocrStatus: 'NEEDS_REVIEW', kdv: null, belgeNo: 'DMA2026000003962' });
+    expect(r.luca).toEqual([expect.objectContaining({ kdvRecordId: 'k2', kdv: 68.2, oran: 1 })]);
+    expect(r.belgeMetni).toMatch(/^DMR MEYVE SEBZE/);
+    expect(c.gorulenGorseller.has('i1')).toBe(true);
+  });
+
+  it('görsel kaynağı çözülemezse yine ok:true ama resim yok (metinle değerlendir); oturumda olmayan görsel → ok:false', async () => {
+    const svc = { getImages: async () => [img] };
+    const { tool } = aracKur({ prisma: lucaPrisma().prisma, servisler: { KdvControlService: svc } });
+    const c: any = { ...ctx, gorulenGorseller: new Set<string>() };
+    const r = await tool.execute('kdv_kontrol_belge_goster', { sessionId: 's1', imageId: 'i1' }, c);
+    expect(r.ok).toBe(true);
+    expect(r.__gorsel).toBeUndefined();
+    expect(r.gorselNotu).toMatch(/çözülemedi/);
+    expect(c.gorulenGorseller.size).toBe(0);
+    expect((await tool.execute('kdv_kontrol_belge_goster', { sessionId: 's1', imageId: 'yok' }, c)).ok).toBe(false);
+  });
+
+  it('ocr_teyit kaynak "gorsel": belge gösterilmeden ret; gösterildiyse matrah × oran ile kabul (68,20 metinde olmasa da)', async () => {
+    const confirm = jest.fn(async (_i: string, _t: string, _d: any) => ({}));
+    const bosMetin = { ...img, ocrRawText: 'okunamadı' };
+    const svc = { getImages: async () => [bosMetin], confirmImageOcr: confirm };
+    const { tool } = aracKur({ servisler: { KdvControlService: svc } });
+    const teyit = { imageId: 'i1', kaynak: 'gorsel', kdvBreakdown: [{ oran: 1, tutar: 68.2, matrah: 6820 }], kdvTevkifat: null, gerekce: 'belgeye baktım: Hesaplanan KDV %1 68,20' };
+    const gorulmemis: any = { ...ctx, gorulenGorseller: new Set<string>() };
+    const r1 = await tool.execute('kdv_kontrol_ocr_teyit', { sessionId: 's1', teyitler: [teyit] }, gorulmemis);
+    expect(r1.satirlar[0]).toMatchObject({ ok: false, neden: expect.stringMatching(/önce kdv_kontrol_belge_goster/) });
+    expect(confirm).not.toHaveBeenCalled();
+    const gorulmus: any = { ...ctx, gorulenGorseller: new Set<string>(['i1']) };
+    const r2 = await tool.execute('kdv_kontrol_ocr_teyit', { sessionId: 's1', teyitler: [teyit] }, gorulmus);
+    expect(r2.teyitEdilen).toBe(1);
+    expect(confirm.mock.calls[0][2]).toEqual({ kdvBreakdown: [{ oran: 1, tutar: 68.2, matrah: 6820 }], kdvTutari: '68,20', kdvTevkifat: null });
+    expect(r2.satirlar[0].kanit).toEqual(['kırılım %1: görsel (ekip belgeye baktı) + aritmetik']);
   });
 });
 

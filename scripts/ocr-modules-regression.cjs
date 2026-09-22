@@ -892,7 +892,15 @@ assert(hal && Math.abs(hal.kdv - 43.35) < 0.01, `hal e-arsiv acik "(Matrah:" par
 const birlesik = kdvBreakdown.mergeOpenMatrahParens(["Gerçek usülde katma değer vergisi %1 (Matrah:", "4.335,00)", "43,35 TL", "(Matrah: 10,00) x", "acik (Matrah:", "a", "b", "c)"]);
 assert(birlesik[0] === "Gerçek usülde katma değer vergisi %1 (Matrah: 4.335,00)" && birlesik[1] === "43,35 TL" && birlesik[2] === "(Matrah: 10,00) x", `mergeOpenMatrahParens birlestirme (gercek=${JSON.stringify(birlesik)})`);
 assert(birlesik.length === 7 && birlesik[3] === "acik (Matrah:", `2 satir tavani asan acik parantez dokunulmaz (gercek=${JSON.stringify(birlesik)})`);
-ok('azure/kdv-breakdown.ts extractKdvFromInvoiceTotals tek-oran e-arsiv + hal acik parantez (6 assertion)');
+// (5) DMR hal e-Arşiv (DMA2026000003962, gerçek Azure metni): etiket iki satıra bölünmüş — "Gerçek usülde katma değer" /
+// "vergisi %1.00 (Matrah: 6.820,00)" / "68,20 TL"; Rüsum satırı da 68,20. Eskiden KDV "okunamadı" (NEEDS_REVIEW) kalıyordu.
+const dmrText = [
+  "Mal Hizmet Toplam Tutarı","6.820,00 TL","Gerçek usülde katma değer","vergisi %1.00 (Matrah: 6.820,00)","68,20 TL",
+  "Rüsum %1.00 (Matrah: 6.820,00)","68,20 TL","Vergiler Dahil Toplam Tutar","6.956,40 TL","Fatura Tutarı","6.956,40 TL",
+].join('\n');
+const dmr = kdvBreakdown.extractKdvFromInvoiceTotals(dmrText, breakdownDeps);
+assert(dmr && Math.abs(dmr.kdv - 68.2) < 0.01, `iki satira bolunmus "katma deger / vergisi" etiketi: KDV 68,20 okunmali (gercek=${JSON.stringify(dmr)})`);
+ok('azure/kdv-breakdown.ts extractKdvFromInvoiceTotals tek-oran e-arsiv + hal acik parantez + bolunmus etiket (7 assertion)');
 
 // ─── azure/kdv-item-rows.ts (e-fatura alt-toplam cift-sayim regresyonu) ───
 const kdvItemRows = require(path.join(ROOT, 'apps/api/src/kdv-control/ocr/providers/azure/kdv-item-rows.ts'));

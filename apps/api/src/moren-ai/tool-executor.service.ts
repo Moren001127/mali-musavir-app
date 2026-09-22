@@ -169,6 +169,7 @@ export class ToolExecutorService {
         case 'kdv_kontrol_sonuc_satirlari': return this.kdvKontrolSonucSatirlari(input, ctx);
         case 'kdv_kontrol_belge_yeniden_oku': return this.kdvKontrolBelgeYenidenOku(input, ctx);
         case 'kdv_kontrol_ocr_teyit':   return this.kdvKontrolOcrTeyit(input, ctx);
+        case 'kdv_kontrol_belge_goster': return this.kdvKontrolBelgeGoster(input, ctx);
         case 'kdv_kontrol_bos_oturum_kilitle': return this.kdvKontrolBosOturumKilitle(input, ctx);
         // FATURA ÇEKİMİ ZİNCİRİ (R5 — 2026-09-15): Fatura İşleme Merkezi "Sorgula / Aktar" düğmelerinin ekip karşılığı.
         case 'fm_cekim_baslat':        return this.fmCekimBaslat(input, ctx);
@@ -5058,8 +5059,114 @@ export class ToolExecutorService {
     }
   }
 
+  /** Görsel bayt kaynağı (Mihsap/Drive ya da S3) — runOcrForMihsapInvoice / getImageDownloadUrl ile aynı yollar. */
+  private async kdvGorselBaytlari(img: any, tenantId: string): Promise<{ buffer: Buffer; contentType: string } | null> {
+    const s3Key = String(img?.s3Key || '');
+    if (!s3Key) return null;
+    if (s3Key.startsWith('mihsap://')) {
+      let drive: any = null;
+      try {
+        const { DriveService } = await import('../drive/drive.service');
+        drive = this.moduleRef?.get?.(DriveService, { strict: false }) || null;
+      } catch (e: any) {
+        this.logger.warn(`DriveService çözülemedi: ${e?.message || e}`);
+      }
+      if (!drive?.serveInvoiceFile) return null;
+      const f = await drive.serveInvoiceFile(tenantId, s3Key.slice('mihsap://'.length));
+      return f?.buffer ? { buffer: f.buffer, contentType: String(f.contentType || '') } : null;
+    }
+    let storage: any = null;
+    try {
+      const { StorageService } = await import('../storage/storage.service');
+      storage = this.moduleRef?.get?.(StorageService, { strict: false }) || null;
+    } catch (e: any) {
+      this.logger.warn(`StorageService çözülemedi: ${e?.message || e}`);
+    }
+    if (!storage?.getPresignedDownloadUrl) return null;
+    const url = await storage.getPresignedDownloadUrl(s3Key, img.originalName || 'belge');
+    const res = await fetch(url, { signal: AbortSignal.timeout(30000) });
+    if (!res.ok) throw new Error(`görsel indirilemedi (${res.status})`);
+    return { buffer: Buffer.from(await res.arrayBuffer()), contentType: res.headers.get('content-type') || '' };
+  }
+
+  /**
+   * kdv_kontrol_belge_goster (2026-09-22) — Muzaffer Bey: "ekip belgenin üstüne baksın". Görseli modele RESİM olarak verir
+   * (runner `__gorsel` alanını MCP image içeriğine çevirir; ≤1200 px, JPEG q72 → küçük yük), yanında ekrandaki OCR alanları,
+   * belge metni ve aynı belge no'lu Luca kayıtları. Yazma yok; runner görülen görseli işaretler → ocr_teyit {kaynak:'gorsel'}.
+   */
+  private async kdvKontrolBelgeGoster(input: any, ctx: { tenantId: string; gorulenGorseller?: Set<string> }) {
+    const sessionId = String(input?.sessionId || '').trim();
+    const imageId = String(input?.imageId || '').trim();
+    if (!sessionId || !imageId) return { ok: false, error: 'sessionId ve imageId gerekli.' };
+    const svc = await this.kdvKontrolServisi();
+    if (!svc?.getImages) return { ok: false, error: 'KDV Kontrol servisi kullanılamıyor.' };
+    let img: any;
+    try {
+      img = (await this.kdvOturumGorselleri(svc, sessionId, ctx.tenantId)).get(imageId);
+    } catch (e: any) {
+      return { ok: false, neden: this.hataBilgisi(e).mesaj };
+    }
+    if (!img) return { ok: false, neden: 'görsel bu oturumda değil' };
+    const lucaKayitlari: any[] = await this.prisma.kdvRecord
+      .findMany({ where: { sessionId }, select: { id: true, belgeNo: true, belgeDate: true, karsiTaraf: true, kdvTutari: true, kdvOrani: true } })
+      .catch(() => []);
+    const n = (v: any) => String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const belgeNo = img.confirmedBelgeNo || img.ocrBelgeNo || '';
+    const luca = lucaKayitlari
+      .filter((l) => n(l.belgeNo) && n(l.belgeNo) === n(belgeNo))
+      .map((l) => ({ kdvRecordId: l.id, belgeNo: l.belgeNo, tarih: l.belgeDate instanceof Date ? l.belgeDate.toISOString().slice(0, 10) : l.belgeDate, karsiTaraf: l.karsiTaraf, kdv: ocrTutarSayi(l.kdvTutari), oran: ocrTutarSayi(l.kdvOrani) }));
+    const raw = String(img.ocrRawText || '');
+    const azureBas = raw.indexOf('[AZURE]');
+    const metin = (azureBas >= 0 ? raw.slice(azureBas + 7) : raw).trim().slice(0, 2500);
+    const ocr = {
+      ocrStatus: img.ocrStatus,
+      motor: img.ocrEngine,
+      belgeNo: img.ocrBelgeNo,
+      tarih: img.ocrDate,
+      kdv: img.ocrKdvTutari,
+      tevkifat: img.ocrKdvTevkifat,
+      kirilim: img.ocrKdvBreakdown ?? null,
+      satici: img.ocrSatici,
+      teyitli: !!img.isManuallyConfirmed,
+      teyitliKdv: img.confirmedKdvTutari ?? null,
+    };
+    let gorsel: { data: string; mimeType: string } | null = null;
+    let gorselNotu = '';
+    try {
+      const kaynak = await this.kdvGorselBaytlari(img, ctx.tenantId);
+      if (!kaynak) gorselNotu = 'görsel kaynağı çözülemedi (Drive/S3) — yalnız metinle değerlendir';
+      else if (kaynak.buffer.length >= 4 && kaynak.buffer.subarray(0, 4).toString('latin1') === '%PDF') gorselNotu = 'belge PDF — resim gösterilemiyor, yalnız metinle değerlendir';
+      else {
+        const sharpMod: any = await import('sharp');
+        const sharp = sharpMod?.default ?? sharpMod; // CJS/ESM ikilemi (jest ts-jest .default vermeyebiliyor)
+        let out = await sharp(kaynak.buffer).rotate().resize({ width: 1200, height: 1200, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 72 }).toBuffer();
+        if (out.length > 350_000) out = await sharp(kaynak.buffer).rotate().resize({ width: 900, height: 900, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 60 }).toBuffer();
+        gorsel = { data: out.toString('base64'), mimeType: 'image/jpeg' };
+        gorselNotu = `resim ekli (${Math.round(out.length / 1024)} KB)`;
+      }
+    } catch (e: any) {
+      gorselNotu = `görsel hazırlanamadı: ${e?.message || e} — yalnız metinle değerlendir`;
+    }
+    if (gorsel) ctx.gorulenGorseller?.add(imageId);
+    return {
+      ok: true,
+      sessionId,
+      imageId,
+      belge: img.originalName,
+      gorselNotu,
+      ocr,
+      luca,
+      belgeMetni: metin,
+      yonerge:
+        'Resme bak: "Hesaplanan KDV" / "Gerçek usülde katma değer vergisi" satırı KDV’dir (Rüsum / hal komisyonu KDV DEĞİLDİR; tevkifatlı belgede KDV = NET). ' +
+        'OCR alanı yanlış/boşsa: kdv_kontrol_ocr_teyit {imageId, kaynak:"gorsel", kdvBreakdown:[{oran, tutar, matrah}], kdvTevkifat, gerekce} — matrah × oran = tutar olmalı, KDV = kırılım toplamı. ' +
+        'Belge OCR ile aynı, Luca farklıysa DOKUNMA → rapora gerçek fark (Muzaffer Bey). Kendi hesabınla Luca’ya uydurma.',
+      ...(gorsel ? { __gorsel: gorsel } : {}),
+    };
+  }
+
   /** R1 7b/9b — "Teyit Et & Sonraki" karşılığı (toplu, kanıt kapılı). */
-  private async kdvKontrolOcrTeyit(input: any, ctx: { tenantId: string }) {
+  private async kdvKontrolOcrTeyit(input: any, ctx: { tenantId: string; gorulenGorseller?: Set<string> }) {
     const sessionId = String(input?.sessionId || '').trim();
     if (!sessionId) return { ok: false, error: 'sessionId gerekli.' };
     const teyitler: TeyitGirdisi[] = Array.isArray(input?.teyitler) ? input.teyitler.filter((t: any) => t && typeof t === 'object') : [];
@@ -5089,15 +5196,25 @@ export class ToolExecutorService {
         satirlar.push({ imageId, belge: img.originalName, ok: false, neden: 'gerekce zorunlu' });
         continue;
       }
-      const d = teyitDogrula(t, {
-        originalName: img.originalName,
-        ocrBelgeNo: img.ocrBelgeNo,
-        ocrDate: img.ocrDate,
-        ocrKdvTutari: img.ocrKdvTutari,
-        ocrKdvTevkifat: img.ocrKdvTevkifat,
-        ocrKdvBreakdown: img.ocrKdvBreakdown,
-        ocrRawText: img.ocrRawText,
-      });
+      // Görsel kanıtı yalnız bu koşuda kdv_kontrol_belge_goster ile GÖRÜLEN görsel için (runner işaretler).
+      const gorselKaniti = String((t as any)?.kaynak || '') === 'gorsel' && !!ctx.gorulenGorseller?.has(imageId);
+      if (String((t as any)?.kaynak || '') === 'gorsel' && !gorselKaniti) {
+        satirlar.push({ imageId, belge: img.originalName, ok: false, neden: 'kaynak "gorsel" için önce kdv_kontrol_belge_goster ile belgeye bak' });
+        continue;
+      }
+      const d = teyitDogrula(
+        t,
+        {
+          originalName: img.originalName,
+          ocrBelgeNo: img.ocrBelgeNo,
+          ocrDate: img.ocrDate,
+          ocrKdvTutari: img.ocrKdvTutari,
+          ocrKdvTevkifat: img.ocrKdvTevkifat,
+          ocrKdvBreakdown: img.ocrKdvBreakdown,
+          ocrRawText: img.ocrRawText,
+        },
+        { gorselKaniti },
+      );
       if (!d.ok) {
         satirlar.push({ imageId, belge: img.originalName, ok: false, neden: d.neden });
         continue;

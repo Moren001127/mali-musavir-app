@@ -46,6 +46,23 @@ async function loadSdk(): Promise<any> {
 }
 
 const PORTAL_TOOL = 'mcp__portal__portal';
+
+/**
+ * Araç sonucu → MCP içeriği. `__gorsel: {data, mimeType}` taşıyan sonuç (kdv_kontrol_belge_goster, 2026-09-22) modele
+ * metin + RESİM olarak gider; base64 iş dosyasına/olaya yazılmaz.
+ */
+export function mcpIcerik(r: any): { content: Array<{ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }> } {
+  if (r && typeof r === 'object' && r.__gorsel && typeof r.__gorsel.data === 'string' && r.__gorsel.data.length > 100) {
+    const { __gorsel, ...gerisi } = r;
+    return {
+      content: [
+        { type: 'text', text: JSON.stringify(gerisi) },
+        { type: 'image', data: __gorsel.data, mimeType: String(__gorsel.mimeType || 'image/jpeg') },
+      ],
+    };
+  }
+  return { content: [{ type: 'text', text: JSON.stringify(r) }] };
+}
 /** 80 → 100 (2026-09-22): R1'e OCR yeniden okuma + teyit + 2. eşleştirme turu eklendi (iki oturumda ~20 ek araç çağrısı). */
 const MAX_TUR = 100;
 /** Onay kaydı geçerliliği: ajan koşusu arka planda biter, Muzaffer Bey sonra bakar → 24 saat. */
@@ -285,7 +302,7 @@ interface KosuBaglami {
   ajan: AjanTanimi;
   isId: string;
   dryRun: boolean;
-  ctx: { tenantId: string; userId: string | null; taxpayerId: string | null; signal?: AbortSignal };
+  ctx: { tenantId: string; userId: string | null; taxpayerId: string | null; signal?: AbortSignal; gorulenGorseller?: Set<string> };
   emit: (e: EkipAkisOlayi) => void;
   toolUses: Array<{ name: string; args: any }>;
   kuruTestYapilacaktilar: YapilacakIs[];
@@ -1229,7 +1246,7 @@ export class EkipRunnerService implements OnApplicationShutdown {
     return async (a: { name: string; args?: any }) => {
       const name = String(a?.name || '');
       const args = a?.args && typeof a.args === 'object' ? a.args : {};
-      const cevap = (r: any) => ({ content: [{ type: 'text', text: JSON.stringify(r) }] });
+      const cevap = (r: any) => mcpIcerik(r);
 
       // 0) İŞ ↔ MÜKELLEF BAĞI (kademe fark etmez; kuru testte engellenen çağrı da mükellefi söyler)
       await mukellefBagiKur(args);
@@ -1396,7 +1413,8 @@ export class EkipRunnerService implements OnApplicationShutdown {
     if (!childEnv.MCP_TOOL_TIMEOUT) childEnv.MCP_TOOL_TIMEOUT = '180000';
 
     // signal: sunucu tarafı bekleyen araçlar (luca_is_bekle, kdv_kontrol_ocr_bekle) Muzaffer Bey "Durdur" deyince döngüyü keser — 2026-09-13.
-    const ctx: KosuBaglami['ctx'] = { tenantId: p.tenantId, userId: p.userId ?? null, taxpayerId: p.taxpayerId ?? null, signal: ac.signal };
+    // gorulenGorseller: kdv_kontrol_belge_goster ile bu koşuda modele gösterilen görseller → ocr_teyit {kaynak:'gorsel'} kanıt kapısı.
+    const ctx: KosuBaglami['ctx'] = { tenantId: p.tenantId, userId: p.userId ?? null, taxpayerId: p.taxpayerId ?? null, signal: ac.signal, gorulenGorseller: new Set<string>() };
     const started = Date.now();
     let answer = '';
     const toolUses: Array<{ name: string; args: any }> = [];

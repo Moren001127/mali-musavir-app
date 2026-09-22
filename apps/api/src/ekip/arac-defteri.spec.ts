@@ -156,6 +156,10 @@ describe('portal_yaz_agir + KDV Kontrol zinciri araçları (PLAN/17)', () => {
       expect(aracKademesi(ad)).toBe('portal_yaz_agir');
       expect(AJAN_TANIMLARI.filter((a) => a.araclar.includes(ad)).map((a) => a.id)).toEqual(['beyanname']);
     }
+    // Belgeyi göster (2026-09-22): yalnız okur (resim + OCR + Luca); kuru testte de açık; yalnız beyanname.
+    expect(aracKademesi('kdv_kontrol_belge_goster')).toBe('oku');
+    expect(aracAcikMi(b, 'kdv_kontrol_belge_goster', true).acik).toBe(true);
+    expect(AJAN_TANIMLARI.filter((a) => a.araclar.includes('kdv_kontrol_belge_goster')).map((a) => a.id)).toEqual(['beyanname']);
     for (const ad of [...AGIR, 'kdv_kontrol_luca_cek', 'kdv_kontrol_belge_yeniden_oku', 'kdv_kontrol_ocr_teyit', 'kdv_kontrol_bos_oturum_kilitle']) expect(aracAcikMi(b, ad, true).neden).toBe('kuru_test');
     for (const ad of ['kdv_kontrol_ocr_bekle', 'kdv_kontrol_sonuc_satirlari', 'luca_is_bekle', 'get_agent_status']) expect(aracAcikMi(b, ad, true).acik).toBe(true);
   });

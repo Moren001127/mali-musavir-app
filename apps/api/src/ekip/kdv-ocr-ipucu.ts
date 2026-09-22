@@ -179,8 +179,12 @@ export type TeyitSonucu =
  *  - kdvTevkifat (>0): metinde görülmeli.
  *  - Mevcut OCR değeriyle aynı olan alan kanıt istemez (ekrandaki "olduğu gibi teyit" ile aynı).
  */
-export function teyitDogrula(girdi: TeyitGirdisi, gorsel: GorselOzet): TeyitSonucu {
+export function teyitDogrula(girdi: TeyitGirdisi, gorsel: GorselOzet, secenek: { gorselKaniti?: boolean } = {}): TeyitSonucu {
   const raw = String(gorsel.ocrRawText || '');
+  // GÖRSEL KANITI (Muzaffer Bey 2026-09-22: "ekip belgenin üstüne baksın, KDV'yi eliyle de yazabilsin"): ajan belgeyi
+  // kdv_kontrol_belge_goster ile GÖRDÜYSE (runner işaretler) metinde geçmeyen kırılım tutarı da kabul edilir — ama yalnız
+  // matrah verilmiş ve matrah × oran = tutar ise (aritmetik kapı). Belge no / tarih kuralları değişmez.
+  const gorselKaniti = secenek.gorselKaniti === true;
   const tutarlar = belgedekiTutarlar(raw);
   const dto: TeyitDto = {};
   const degisenler: string[] = [];
@@ -231,11 +235,18 @@ export function teyitDogrula(girdi: TeyitGirdisi, gorsel: GorselOzet): TeyitSonu
           return { ok: false, neden: `kırılım satırı geçersiz: ${JSON.stringify(k)}` };
         }
         const dogrudan = belgedeTutarVarMi(raw, tutar, tutarlar);
-        const turetilmis = matrah !== null && matrah > 0 && belgedeTutarVarMi(raw, matrah, tutarlar) && Math.abs((matrah * oran) / 100 - tutar) <= Math.max(0.05, tutar * 0.01);
-        if (!dogrudan && !turetilmis && tutar > 0) {
-          return { ok: false, neden: `kırılım %${oran} tutarı ${tutarMetni(tutar)} belge metninde görülmedi ve matrah × oran ile türetilemedi — yazılmadı` };
+        const aritmetikTutuyor = matrah !== null && matrah > 0 && Math.abs((matrah * oran) / 100 - tutar) <= Math.max(0.05, tutar * 0.01);
+        const turetilmis = aritmetikTutuyor && belgedeTutarVarMi(raw, matrah!, tutarlar);
+        const gorselden = gorselKaniti && aritmetikTutuyor;
+        if (!dogrudan && !turetilmis && !gorselden && tutar > 0) {
+          return {
+            ok: false,
+            neden: gorselKaniti
+              ? `kırılım %${oran} tutarı ${tutarMetni(tutar)} belge metninde yok ve matrah × oran tutmuyor (matrah ${matrah === null ? '—' : tutarMetni(matrah)}) — görsel kanıtı için matrah ver, aritmetik tutsun`
+              : `kırılım %${oran} tutarı ${tutarMetni(tutar)} belge metninde görülmedi ve matrah × oran ile türetilemedi — yazılmadı`,
+          };
         }
-        if (tutar > 0) kanit.push(`kırılım %${oran}: ${dogrudan ? 'belge metni' : 'matrah × oran'}`);
+        if (tutar > 0) kanit.push(`kırılım %${oran}: ${dogrudan ? 'belge metni' : turetilmis ? 'matrah × oran' : 'görsel (ekip belgeye baktı) + aritmetik'}`);
         kirilim.push({ oran, tutar: Math.round(tutar * 100) / 100, matrah: matrah !== null && matrah > 0 ? Math.round(matrah * 100) / 100 : null });
       }
     } else {
@@ -256,7 +267,12 @@ export function teyitDogrula(girdi: TeyitGirdisi, gorsel: GorselOzet): TeyitSonu
       const dogrudan = belgedeTutarVarMi(raw, yeni, tutarlar);
       const toplamdan = kirilimToplam !== null && Array.isArray(kirilim) && kirilim.length > 0 && Math.abs(kirilimToplam - yeni) <= 0.05;
       if (!dogrudan && !toplamdan) {
-        return { ok: false, neden: `KDV ${tutarMetni(yeni)} belge metninde görülmedi ve kırılım toplamına eşit değil — yazılmadı (Luca'ya uydurmak için rakam yazılamaz)` };
+        return {
+          ok: false,
+          neden: gorselKaniti
+            ? `KDV ${tutarMetni(yeni)} belge metninde yok — görsel kanıtı için kırılımı matrahıyla ver (toplamı KDV'ye eşit olmalı)`
+            : `KDV ${tutarMetni(yeni)} belge metninde görülmedi ve kırılım toplamına eşit değil — yazılmadı (Luca'ya uydurmak için rakam yazılamaz)`,
+        };
       }
       degisenler.push(`kdv ${gorsel.ocrKdvTutari || '—'} → ${tutarMetni(yeni)}`);
       kanit.push(`kdv: ${dogrudan ? 'belge metni' : 'kırılım toplamı'}`);
@@ -510,8 +526,10 @@ export function yenidenOkumaOnerisi(once: OkumaOzeti, sonra: OkumaOzeti, lucaAyn
   if (geriAlindi || sonra.ocrStatus === 'FAILED' || (kdv === null && !sonra.ocrDate)) {
     return { oneri: 'muzaffer', neden: 'yeniden okuma boş/başarısız (önceki değerler korundu) — teyit Muzaffer Bey’de', teyitGirdisi: null, ...ortak };
   }
-  if (!/max/i.test(String(sonra.ocrEngine || ''))) {
-    return { oneri: 'muzaffer', neden: `Max okuması alınamadı (motor ${sonra.ocrEngine || '—'}: kota/bağlantı) — Azure sonucu yeniden yazılmadı, teyit Muzaffer Bey’de`, teyitGirdisi: null, ...ortak };
+  // Max alınamadı (Azure'a düştü): Azure sonucu ancak Luca ile uyumluysa YA DA kırılım aritmetiği (matrah × oran) tutuyorsa güvenilir;
+  // değilse ajan belgeye bakar (kdv_kontrol_belge_goster) — 2026-09-22.
+  if (!/max/i.test(String(sonra.ocrEngine || '')) && lucaUyumlu !== true && aritmetik.uyumlu !== true) {
+    return { oneri: 'muzaffer', neden: `Max okuması alınamadı (motor ${sonra.ocrEngine || '—'}); Azure sonucu Luca/aritmetikle doğrulanamadı → belgeye bak (kdv_kontrol_belge_goster)`, teyitGirdisi: null, ...ortak };
   }
   if (aritmetik.uyumlu === false) {
     return { oneri: 'muzaffer', neden: `kırılım aritmetiği tutmuyor: ${aritmetik.sorunlar.join('; ')} — teyit Muzaffer Bey’de`, teyitGirdisi: null, ...ortak };

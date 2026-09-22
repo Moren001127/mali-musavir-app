@@ -14,11 +14,12 @@ Dal: BILANCO → KDV_191+KDV_391; ISLETME → ISLETME_GIDER+ISLETME_GELIR (çeki
 6) Luca işini bekle — luca_is_bekle {jobId,maxSaniye:60} — oku — ≤10 çağrı — done, recordCount>0 — failed → hata satırı, tekrar YOK; retryCount>0 → "teknik kilit, otomatik tekrar"; captcha → "güvenlik kodu bekliyor".
 7) OCR'ı bekle — kdv_kontrol_ocr_bekle {sessionId,maxSaniye:60} — oku — ≤15 çağrı — bitti:true — aşıldı → "OCR sürüyor" DUR.
 7b) needsOcrConfirm>0 → teyit bekleyenleri yeniden oku (imageIds boş → araç seçer; `kalan` doluysa tekrar) — kdv_kontrol_belge_yeniden_oku — portal_yaz_agir — ≤60 sn/çağrı — okunan — ok:false (Max yok) → rapora "teyit Muzaffer Bey'de", adım 8.
-7c) oneri "teyit" olanların teyitGirdisi'ni AYNEN teyit et; degismedi/muzaffer olana DOKUNMA — kdv_kontrol_ocr_teyit {teyitler} — portal_yaz_agir — senkron — teyitEdilen — reddedilen = belgede görülmeyen değer → tekrar YOK, Muzaffer Bey'e.
+7c) oneri "teyit" olanların teyitGirdisi'ni AYNEN teyit et — kdv_kontrol_ocr_teyit {teyitler} — portal_yaz_agir — senkron — teyitEdilen — reddedilen → 7d.
+7d) oneri "muzaffer" (Max alınamadı / KDV okunamadı) ya da reddedilen görsel → BELGEYE BAK — kdv_kontrol_belge_goster {imageId} — oku — senkron — resim+OCR+Luca — OCR yanlış/boşsa okuduğun değeri kdv_kontrol_ocr_teyit {kaynak:"gorsel", kdvBreakdown:[{oran,tutar,matrah}]} ile yaz (matrah × oran = tutar); belge OCR'la aynıysa dokunma → "teyit Muzaffer Bey'de".
 8a) Luca çekimi bitti ve 0 kayıt VE fatura 0 (o ay belge yok) → oturumu kilitle, 8-9'u atla, rapora "boş dönem, kilitlendi" — kdv_kontrol_bos_oturum_kilitle — portal_yaz_agir — senkron — kilitlendi:true — ok:false → nedenini rapora, kilit Muzaffer Bey'de.
 8) Eşleştir (kapı: Luca>0, görsel>0, OCR bitti) — kdv_kontrol_eslestir — portal_yaz_agir — senkron — sayaçlar; otoKilit:true → raporda "sorunsuz; oturum portaldaki gibi kilitlendi, fiş Word raporu oluştu (yazdırma sizde), aylık takip işaretlendi, Luca KDV çekimi başladı" (kilit için ayrıca sorulmaz — Muzaffer Bey'in kararı)
 9) Satırları oku (araç sınıflar: tam · incele · fatura_yok · luca_yok · red); karar VERME — kdv_kontrol_sonuc_satirlari {yalnizSorunlu:true,limit:100} — oku — — — sayaçlar — boş → adım 8 bir kez tekrar.
-9b) yenidenOkunacakImageIds doluysa (ipucu: ×100 matrah · KDV okunamadı · oran/tevkifat/belge no farkı) 7b–7c'yi o görsellerle yap, adım 8+9'u TEKRARLA — en çok 2 tur; ADAY_YOK / TEYITLI_FARK satırına dokunma. Sonra hâlâ hatalı satır varsa rapora "UYARI: OCR düzeltmesine rağmen N satır eşleşmedi".
+9b) yenidenOkunacakImageIds doluysa (ipucu: ×100 matrah · KDV okunamadı · oran/tevkifat/belge no farkı) 7b–7d'yi o görsellerle yap; İNCELE satırında da belgeye bak (7d): OCR yanlışsa düzelt, belge=OCR ve Luca farklıysa gerçek fark; adım 8+9'u TEKRARLA — en çok 2 tur; ADAY_YOK / TEYITLI_FARK satırına dokunma. Sonra hâlâ hatalı satır varsa rapora "UYARI: OCR düzeltmesine rağmen N satır eşleşmedi".
 10) Onay kaydı YALNIZ hatalı satır varsa: "N hatalı satır; düzeltilsin mi" (0 hatalıysa AÇMA) — create_pending_action — portal_yaz — — — id — "KAYDEDİLEMEDİ:".
 Kuru test: adım 1 + 2'nin "bul" kısmı çalışır; gerisi "yapılacaktı"; rapor "HAZIR DEĞİL (kuru test): zincir kurulu, canlı için 'canlı yap' de".
 Rapor:
@@ -41,19 +42,19 @@ Tetik: "KDV beyannamesini hazırla", "ödenecek çıkar mı", "KDV1 rakamları".
 1) İki oturum var mı, COMPLETED mi; yoksa R1'i çalıştır (durma) — get_kdv_summary — oku — — — oturum durumu — hatalı satır varsa paket "ön koşul: X satır çözülmeli" notuyla.
 2) KDV1 paketi (hesaplanan/indirilecek/devreden/ödenecek + veri güveni) — get_kdv1_on_hazirlik — oku — — — sonuc + veriGuveni — ok:false → adım 1.
 3) Devreden KDV kaynağı önceki KDV1 PDF mi — list_beyan_kayitlari — oku — — — kaynak belli — "hesaplanan" ise "Onayınızı bekleyen"'e "devreden teyit" maddesi.
-4) Luca mizan çaprazı gerekiyorsa iş aç (KDV Kontrol oturumuna satır YAZMAZ) — fetch_kdv_from_luca → luca_is_bekle — luca_yaz — asenkron — done — failed → paket Luca çaprazı olmadan; kuru test → "yapılacaktı".
-5) Tahakkuk fişi taslağı: 391 B / 191 A; fark 360 (ödeme çıkarsa) ya da 190 (çıkmazsa); Kaydet BASMA — luca_menu_git → luca_yaz → luca_ekran_oku — luca_yaz — senkron — ekran özeti — Luca kapalı → "fiş elle".
-6) Son gün + onay kaydı — get_tax_calendar → create_pending_action — portal_yaz — — — pending id — "KAYDEDİLEMEDİ:". "Beyanname hazır" kutusu (set_monthly_status): kuru testte ve Muzaffer Bey açıkça istemeden İŞARETLEME; paket temizse raporda "işaretlenmeye hazır" diye öner.
+4) Luca mizan çaprazı gerekiyorsa iş aç (oturuma satır YAZMAZ) — fetch_kdv_from_luca → luca_is_bekle — luca_yaz — asenkron — done — failed → paket çaprazsız; kuru test → "yapılacaktı".
+5) Tahakkuk fişi taslağı: 391 B / 191 A; fark 360 (ödeme) ya da 190 (devreden); Kaydet BASMA — luca_menu_git → luca_yaz → luca_ekran_oku — luca_yaz — senkron — ekran özeti — Luca kapalı → "fiş elle".
+6) Son gün + onay kaydı — get_tax_calendar → create_pending_action — portal_yaz — — — pending id — "KAYDEDİLEMEDİ:". "Beyanname hazır" kutusunu (set_monthly_status) Muzaffer Bey istemeden İŞARETLEME; temizse "işaretlenmeye hazır" öner.
 Muzaffer Bey: fiş Kaydet (luca_tikla confirmed=true), GİB gönderimi, devreden teyidi.
 Rapor: KDV1 PAKETİ — <Mükellef> <YYYY-MM> / hesaplanan · indirilecek · devreden (kaynak) · ödenecek|sonraki aya devreden / veri güveni / Luca çaprazı (var|yok|yapılacaktı) / Tahakkuk fişi taslağı (kuru test) / Gönderime hazır: EVET|HAYIR (neden) / "Onayınızı bekleyen" / Kime döndü: Muzaffer Bey.
 
 ## R7 — Geçici vergi paketi (çeyrek) — öncesi R6 (Denetçi), sonrası R2 (Analist)
 Tetik: "geçici vergi paketi/beyannamesi".
 1) Denetçi raporu var mı — search_ai_memory (ekip, mükellef, dönem) — oku — — — rapor özeti — KRİTİK bulgu → DUR; rapor yoksa Koordinatör'e "önce R6" (create_pending_action).
-2) Bilanço: get_gelir_tablosu (kilitli, geciciVergiHesabi); İşletme: get_isletme_hesap_ozeti (donem SAYI 1-4) — oku — — — dönem kârı + KKEG + geçmiş yıl zararı — tablo yok → "HAZIR DEĞİL: Muzaffer Bey Mizan/Gelir Tablosu sayfasından oluşturmalı" (ajan üretmez).
+2) Bilanço: get_gelir_tablosu (kilitli, geciciVergiHesabi); İşletme: get_isletme_hesap_ozeti (donem 1-4) — oku — — — dönem kârı + KKEG + geçmiş yıl zararı — tablo yok → "HAZIR DEĞİL: Muzaffer Bey Mizan/GT sayfasından oluşturmalı".
 3) Oran ve önceki ödenen — get_accounting_reference → list_tax_payable — oku — — — hesaplanan − önceki ödenen = ödenecek (tek satır) — referans yok → "TEYİT ET:".
 4) Luca geçici vergi ekranı taslağı (kuru) → son gün → onay kaydı — luca_menu_git/luca_yaz → get_tax_calendar → create_pending_action — luca_yaz/portal_yaz — — — paket + pending id — GGECICI/KGECICI "verildi" işaretini ajan KOYMAZ.
 Rapor: GEÇİCİ VERGİ — <Mükellef> <YYYY-Qn> / Denetçi: temiz|bulgu / matrah × oran − mahsup = ödenecek / kaynak GT <id> (kilitli) | İHÖ / son gün / "Onayınızı bekleyen" / Kime döndü: Muzaffer Bey (GİB gönderimi).
 
 ## Muhtasar / MUHSGK / stopaj — reçete YOK, yalnız OKUMA (2026-09-22)
-Rakam/durum sorusu: get_beyan_ozet (yyyy-mm; MUHSGK durumu), list_beyan_kayitlari (verildi mi / tahakkuk), get_payroll_summary (stopaj; boşsa "bordro verisi yok", tahmin YAZMA). Luca ekranı/taslak/fiş/işaret YOK; hazırlama ve gönderme Muzaffer Bey'de.
+Rakam/durum sorusu: get_beyan_ozet (yyyy-mm), list_beyan_kayitlari (verildi mi / tahakkuk), get_payroll_summary (stopaj; boşsa "bordro verisi yok", tahmin YAZMA). Luca ekranı/taslak/fiş/işaret YOK; hazırlama ve gönderme Muzaffer Bey'de.

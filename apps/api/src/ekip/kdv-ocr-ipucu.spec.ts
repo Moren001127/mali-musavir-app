@@ -100,6 +100,23 @@ describe('teyitDogrula — kanıt kapısı', () => {
     if (tarihOk.ok) expect(tarihOk.dto.date).toBe('15.08.2026');
   });
 
+  it('görsel kanıtı: metinde geçmeyen tutar, matrah verilmiş ve matrah × oran tutuyorsa kabul; aritmetik tutmuyorsa ret; görsel kanıtı yoksa yine ret', () => {
+    const bos = { ...gorsel, ocrRawText: 'DMR MEYVE SEBZE — metin okunamadı', ocrKdvTutari: null, ocrKdvBreakdown: null };
+    const ok = teyitDogrula({ kdvBreakdown: [{ oran: 1, tutar: 68.2, matrah: 6820 }], kdvTevkifat: null }, bos, { gorselKaniti: true });
+    expect(ok.ok).toBe(true);
+    if (ok.ok) {
+      expect(ok.dto).toEqual({ kdvBreakdown: [{ oran: 1, tutar: 68.2, matrah: 6820 }], kdvTutari: '68,20', kdvTevkifat: null });
+      expect(ok.kanit).toEqual(['kırılım %1: görsel (ekip belgeye baktı) + aritmetik']);
+    }
+    const kotu = teyitDogrula({ kdvBreakdown: [{ oran: 1, tutar: 136.4, matrah: 6820 }] }, bos, { gorselKaniti: true });
+    expect(kotu.ok).toBe(false);
+    if (!kotu.ok) expect(kotu.neden).toMatch(/matrah × oran tutmuyor/);
+    const matrahsiz = teyitDogrula({ kdvBreakdown: [{ oran: 1, tutar: 68.2 }] }, bos, { gorselKaniti: true });
+    expect(matrahsiz.ok).toBe(false);
+    const gorselsiz = teyitDogrula({ kdvBreakdown: [{ oran: 1, tutar: 68.2, matrah: 6820 }] }, bos);
+    expect(gorselsiz.ok).toBe(false);
+  });
+
   it('mevcut OCR değeriyle aynı alan kanıt istemez (olduğu gibi teyit); tevkifat metinde yoksa ret', () => {
     const ayni = teyitDogrula({ kdvTutari: '4335,00' }, { ...gorsel, ocrRawText: '' });
     expect(ayni.ok).toBe(true);
@@ -176,8 +193,12 @@ describe('yenidenOkumaOnerisi', () => {
     expect(o.lucaUyum).toMatchObject({ var: true, uyumlu: true, lucaToplam: 43.35 });
   });
 
-  it('Max alınamadı (Azure’a düştü) → muzaffer; kırılım aritmetiği tutmuyor → muzaffer; geri alındı → muzaffer', () => {
-    expect(yenidenOkumaOnerisi(once, { ...once, ocrEngine: 'azure-read' }, luca).oneri).toBe('muzaffer');
+  it('Max alınamadı (Azure’a düştü) → doğrulanamıyorsa muzaffer (belgeye bak); Luca ile uyumluysa teyit; kırılım aritmetiği tutmuyor → muzaffer; geri alındı → muzaffer', () => {
+    const azureKotu = yenidenOkumaOnerisi(once, { ...once, ocrEngine: 'azure-read' }, luca);
+    expect(azureKotu.oneri).toBe('muzaffer');
+    expect(azureKotu.neden).toMatch(/belgeye bak/);
+    const azureUyumlu = yenidenOkumaOnerisi({ ...once, ocrStatus: 'NEEDS_REVIEW', ocrKdvTutari: null, ocrKdvBreakdown: null }, { ...once, ocrEngine: 'azure-read', ocrKdvTutari: '43,35', ocrKdvBreakdown: [{ oran: 1, tutar: 43.35, matrah: null }] }, luca);
+    expect(azureUyumlu.oneri).toBe('teyit');
     const kotu = { ...once, ocrEngine: 'max-vision', ocrKdvTutari: '4335,00', ocrKdvBreakdown: [{ oran: 20, tutar: 4335, matrah: 4335 }] };
     const o = yenidenOkumaOnerisi(once, kotu, luca);
     expect(o.oneri).toBe('muzaffer');

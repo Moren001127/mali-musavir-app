@@ -158,7 +158,14 @@ export function extractMultiRateKdv(text: string, deps: KdvBreakdownDeps): KdvBr
 export function mergeOpenMatrahParens(lines: string[]): string[] {
   const out: string[] = [];
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
+    let line = lines[i];
+    // 2. kural (DMA2026000003962, 2026-09-22): etiket iki satıra bölünmüş — "Gerçek usülde katma değer" / "vergisi %1.00 (Matrah: …)"
+    // → KATMA DEĞER VERGİSİ etiketi hiç yakalanmıyor, KDV "okunamadı" kalıyordu. Satır "katma değer" ile bitip sonraki "vergisi" ile
+    // başlıyorsa birleştir (sonra 1. kural aynı satırda açık parantezi de kapatır).
+    if (/KATMA\s*DE[ĞG]ER\s*$/i.test(line) && i + 1 < lines.length && /^VERG[İI]S[İI]/i.test(lines[i + 1])) {
+      line = `${line} ${lines[i + 1]}`;
+      i++;
+    }
     const acik = line.search(/\(\s*(?:KDV\s*)?MATRAH/i);
     if (acik < 0 || /\)/.test(line.slice(acik))) {
       out.push(line);
