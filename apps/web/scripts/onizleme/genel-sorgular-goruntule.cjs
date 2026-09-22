@@ -1,8 +1,9 @@
-// Genel Sorgulamalar (sade sürüm) görüntüleri — sahte çift KENDİ portlarında:
+// Genel Sorgulamalar (profesyonel görünüm sürümü) görüntüleri — sahte çift KENDİ portlarında:
 //   SAHTE_API_PORT=3022 SAHTE_WEB_PORT=3023 node apps/web/scripts/dev-sahte-kart.cjs
 //   node apps/web/scripts/onizleme/genel-sorgular-goruntule.cjs [cikisKlasoru]
 // Sahte veri: scripts/mock/oncelik/genel-sorgular.cjs. Çıktılar _previews/genel-sorgular/:
-//   01-tam · 02-arac-cubugu · 03-tablo-detay · 04-mukellef-suzgec · 05-sorgu-suruyor · renk-1..4
+//   01-tam (Tümü) · 02-ust (başlık + araç çubuğu + sekmeler) · 03-tablo-detay · 04-mukellef-suzgec · 05-sorgu-suruyor
+//   06-tek-tur-haciz · 07-earsiv-eksik · renk-1..4 (vurgu varyantları, üst kesit)
 const path = require('path');
 const fs = require('fs');
 const { chromium } = require(path.join(__dirname, '..', '..', '..', '..', 'node_modules', '.pnpm', 'playwright@1.60.0', 'node_modules', 'playwright'));
@@ -68,7 +69,7 @@ async function sayfayaGit(pg, adres) {
   await sayfayaGit(pg, `${KOK}/panel/genel-sorgular`);
   await pg.locator('.gs-grup').first().waitFor({ state: 'visible', timeout: 30000 });
   await tamSayfa(pg, path.join(CIKIS, '01-tam.png'));
-  await pg.locator('.gs-arac').screenshot({ path: path.join(CIKIS, '02-arac-cubugu.png') });
+  await ustKesit(pg, path.join(CIKIS, '02-ust.png'), 420);
 
   // İlk tablo satırını aç
   await pg.locator('.gs-satir').first().click();
@@ -82,6 +83,16 @@ async function sayfayaGit(pg, adres) {
   await pg.locator('[data-gs-sorgula]').click();
   await pg.waitForTimeout(6000);
   await pg.locator('.gs-arac').screenshot({ path: path.join(CIKIS, '05-sorgu-suruyor.png') });
+
+  // Tek tür sekmesi (E-Haciz) ve Gelen e-Arşiv "Görseli eksik faturalar"
+  await sayfayaGit(pg, `${KOK}/panel/genel-sorgular?tur=E_HACIZ`);
+  await pg.locator('.gs-grup').first().waitFor({ state: 'visible', timeout: 30000 });
+  await ustKesit(pg, path.join(CIKIS, '06-tek-tur-haciz.png'), 1000);
+  await sayfayaGit(pg, `${KOK}/panel/genel-sorgular?tur=GELEN_EARSIV`);
+  await pg.locator('.gs-grup').first().waitFor({ state: 'visible', timeout: 30000 });
+  await pg.locator('.gs-sekme', { hasText: 'Görseli eksik' }).click();
+  await pg.waitForTimeout(1500);
+  await ustKesit(pg, path.join(CIKIS, '07-earsiv-eksik.png'), 1000);
 
   for (const renk of ['1', '2', '3', '4']) {
     await sayfayaGit(pg, `${KOK}/panel/genel-sorgular?renk=${renk}&mukellef=gs1`);

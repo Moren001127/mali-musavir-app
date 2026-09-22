@@ -52,38 +52,40 @@ export function EksikGorseller({ suzgec }: { suzgec: { taxpayerId?: string; done
       ) : !q.isLoading && rows.length === 0 ? (
         <div className="gs-bos">
           <b>{ozet && ozet.dvd > 0 ? 'Eksik yok' : 'Karşılaştırılacak liste yok'}</b>
-          {ozet && ozet.dvd > 0
-            ? 'Dijital Vergi Dairesi listesindeki her faturanın Luca çekiminde görseli var.'
-            : 'Önce Gelen e-Arşiv sorgusu çalışmalı (gece ya da Sorgula).'}
+          <span>
+            {ozet && ozet.dvd > 0
+              ? 'Dijital Vergi Dairesi listesindeki her faturanın Luca çekiminde görseli var.'
+              : 'Önce Gelen e-Arşiv sorgusu çalışmalı (gece ya da Sorgula).'}
+          </span>
         </div>
       ) : (
         <div className="gs-tablo-sar">
-          <table className="gs-tablo" style={{ minWidth: 900 }}>
+          <table className="gs-tablo" style={{ minWidth: 1150 }}>
             <colgroup>
-              <col /><col style={{ width: 110 }} /><col style={{ width: 170 }} /><col style={{ width: 100 }} /><col /><col style={{ width: 120 }} /><col style={{ width: 130 }} /><col style={{ width: 120 }} />
+              <col style={{ width: 200 }} /><col style={{ width: 116 }} /><col style={{ width: 118 }} /><col style={{ width: 168 }} /><col style={{ width: 104 }} /><col /><col style={{ width: 112 }} /><col style={{ width: 124 }} /><col style={{ width: 112 }} />
             </colgroup>
             <thead>
               <tr>
-                <th>Mükellef</th><th>Dönem</th><th>Fatura no</th><th>Tarih</th><th>Satıcı</th><th>Satıcı VKN</th><th className="sag">Ödenecek (₺)</th><th>Durum</th>
+                <th>Mükellef</th><th>VKN / TCKN</th><th>Dönem</th><th>Fatura no</th><th>Tarih</th><th>Satıcı</th><th>Satıcı VKN</th><th className="sag">Ödenecek (₺)</th><th>Durum</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((r: EksikGorselSatiri) => (
                 <tr key={`${r.taxpayerId}-${r.faturaNo}-${r.saticiVkn}`}>
-                  <td>
-                    <Link href={`/panel/mukellefler/${r.taxpayerId}`} className="gs-mukellef">{sorguMukellefAdi(r.taxpayer) || r.taxpayerId}</Link>
-                    {r.taxpayer?.taxNumber && <span className="gs-vkn-kucuk">{r.taxpayer.taxNumber}</span>}
+                  <td className="gs-tek-satir">
+                    <Link href={`/panel/mukellefler/${r.taxpayerId}`} className="gs-mukellef" title={sorguMukellefAdi(r.taxpayer) || r.taxpayerId}>{sorguMukellefAdi(r.taxpayer) || r.taxpayerId}</Link>
                   </td>
-                  <td>{donemEtiketi(r.donem) || '—'}</td>
-                  <td className="gs-sayi">{r.faturaNo}</td>
+                  <td>{r.taxpayer?.taxNumber ? <span className="gs-vkn">{r.taxpayer.taxNumber}</span> : <span className="gs-sifir">—</span>}</td>
+                  <td className="gs-tek-satir"><span>{donemEtiketi(r.donem) || '—'}</span></td>
+                  <td className="gs-sayi gs-tek-satir"><span title={r.faturaNo}>{r.faturaNo}</span></td>
                   <td className="gs-sayi">{tarihKisa(r.duzenlenmeTarihi) || '—'}</td>
-                  <td>{r.saticiUnvan || '—'}</td>
+                  <td className="gs-tek-satir"><span title={r.saticiUnvan}>{r.saticiUnvan || '—'}</span></td>
                   <td className="gs-sayi gs-soluk">{r.saticiVkn || '—'}</td>
                   <td className="sag gs-sayi">{tutar(r.odenecekTutar)}</td>
                   <td className={r.durum === 'LUCA_YOK' ? 'gs-kirmizi' : 'gs-soluk'}>{EKSIK_DURUM_ADI[r.durum]}</td>
                 </tr>
               ))}
-              {q.isLoading && <tr className="gs-yukleniyor-satir"><td colSpan={8}>Karşılaştırılıyor…</td></tr>}
+              {q.isLoading && <tr className="gs-yukleniyor-satir"><td colSpan={9}>Karşılaştırılıyor…</td></tr>}
             </tbody>
           </table>
         </div>

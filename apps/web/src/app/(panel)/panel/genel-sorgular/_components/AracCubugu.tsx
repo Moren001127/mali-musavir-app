@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { GENEL_SORGU_DVD_ANAHTARI, type DvdSorguTuru } from '@mali-musavir/shared';
 import TaxpayerSelect, { type TaxpayerLite } from '@/components/ui/TaxpayerSelect';
-import { DVD_SORGULARI, SORGU_TURLERI, SORGU_TURU_ADI, genelSorgularApi, sorguMukellefAdi, sorguTuruMu, type SorguKosusu, type SorguTuru } from '@/lib/genel-sorgular';
+import { DVD_SORGULARI, SORGU_TURU_ADI, genelSorgularApi, sorguMukellefAdi, type SorguKosusu, type SorguTuru } from '@/lib/genel-sorgular';
 import { sure } from '../_lib/bicim';
 
 export interface Suzgec {
@@ -19,10 +19,12 @@ export interface Suzgec {
 const TUMU = '__TUMU__';
 
 /**
- * Tek araç çubuğu: mükellef · tür · dönem süzgeci + Sorgula.
- * Süzgeç tabloları daraltır; Sorgula seçili mükellef için (tür seçiliyse yalnız o tür, değilse 6 sorgu) Dijital
- * Vergi Dairesi sorgusunu kuyruğa alır ve iş bitene kadar yanında tek satır durum yazar. Gece sorgusu mükellef
- * kartındaki Otomatik Sorgulama Ayarı'na göre kendiliğinden çalışır — burada ayrıca kurulum yok.
+ * Araç çubuğu: mükellef · dönem süzgeci + Sorgula (tür, altındaki sekmelerden gelir).
+ * Süzgeç tabloları daraltır; Sorgula seçili mükellef için (tür sekmesi seçiliyse yalnız o tür, Tümü'de 6 sorgu) Dijital
+ * Vergi Dairesi sorgusunu kuyruğa alır ve iş bitene kadar altındaki durum satırına yazar. Durum yokken aynı satır
+ * düğmenin ne yapacağını söyler. Gece sorgusu mükellef kartındaki Otomatik Sorgulama Ayarı'na göre kendiliğinden
+ * çalışır — burada ayrıca kurulum yok. Dönem süzgeci yalnız POS ve Gelen e-Arşiv'de anlamlıdır; başka tür
+ * seçiliyken kapalı görünür.
  */
 export function AracCubugu({ suzgec, onSuzgec, mukellefler }: { suzgec: Suzgec; onSuzgec: (s: Suzgec) => void; mukellefler: TaxpayerLite[] }) {
   const qc = useQueryClient();
@@ -94,49 +96,43 @@ export function AracCubugu({ suzgec, onSuzgec, mukellefler }: { suzgec: Suzgec; 
 
   const sorgulanabilir = !!suzgec.mukellefId && izlenen.length === 0 && !isPending;
   const dugmeIpucu = !suzgec.mukellefId
-    ? 'Sorgulamak için bir mükellef seçin'
+    ? 'Sorgulamak için bir mükellef seçin; mükellef ve dönem süzgeci tabloları daraltır.'
     : suzgec.tur
-    ? `${sorguMukellefAdi(secili) || 'Mükellef'} için yalnız ${SORGU_TURU_ADI[suzgec.tur]} sorgulanır`
-    : `${sorguMukellefAdi(secili) || 'Mükellef'} için 6 sorgu tek oturumda çalışır`;
+    ? `Sorgula: ${sorguMukellefAdi(secili) || 'Mükellef'} için Dijital Vergi Dairesi'nde yalnız ${SORGU_TURU_ADI[suzgec.tur]} sorgulanır.`
+    : `Sorgula: ${sorguMukellefAdi(secili) || 'Mükellef'} için Dijital Vergi Dairesi'nde 6 sorgu tek oturumda çalışır (e-Defter dahil).`;
+  const donemKapali = !!suzgec.tur && suzgec.tur !== 'POS' && suzgec.tur !== 'GELEN_EARSIV';
 
   return (
     <div className="gs-arac" data-gs-arac>
       <div className="gs-arac-satir">
-      <label className="gs-alan gs-alan-mukellef">
-        <span>Mükellef</span>
-        <TaxpayerSelect
-          taxpayers={mukellefler}
-          value={suzgec.mukellefId || TUMU}
-          onChange={(id) => onSuzgec({ ...suzgec, mukellefId: id === TUMU ? '' : id })}
-          allLabel="Tüm mükellefler"
-          allValue={TUMU}
-          className="gs-mukellef-secici"
-        />
-      </label>
-      <label className="gs-alan">
-        <span>Tür</span>
-        <select className="gs-secim" value={suzgec.tur || ''} onChange={(e) => onSuzgec({ ...suzgec, tur: sorguTuruMu(e.target.value) ? e.target.value : null })} aria-label="Sorgu türü">
-          <option value="">Tüm türler</option>
-          {SORGU_TURLERI.map((t) => (
-            <option key={t} value={t}>{SORGU_TURU_ADI[t]}</option>
-          ))}
-        </select>
-      </label>
-      <label className="gs-alan">
-        <span>Dönem</span>
-        <select className="gs-secim" value={tumDonemler ? '' : suzgec.donem} onChange={(e) => onSuzgec({ ...suzgec, donem: e.target.value })} aria-label="Dönem">
-          <option value="">Tüm dönemler</option>
-          {sonAylar(12).map((a) => (
-            <option key={a.deger} value={a.deger}>{a.etiket}</option>
-          ))}
-        </select>
-      </label>
+        <label className="gs-alan gs-alan-mukellef">
+          <span className="gs-alan-etiket">Mükellef</span>
+          <TaxpayerSelect
+            taxpayers={mukellefler}
+            value={suzgec.mukellefId || TUMU}
+            onChange={(id) => onSuzgec({ ...suzgec, mukellefId: id === TUMU ? '' : id })}
+            allLabel="Tüm mükellefler"
+            allValue={TUMU}
+            className="gs-mukellef-secici"
+          />
+        </label>
+        <label className="gs-alan gs-alan-donem" title={donemKapali ? 'Dönem süzgeci yalnız POS ve Gelen e-Arşiv tablolarında uygulanır' : undefined}>
+          <span className="gs-alan-etiket">Dönem</span>
+          <select className="gs-secim" value={tumDonemler ? '' : suzgec.donem} disabled={donemKapali} onChange={(e) => onSuzgec({ ...suzgec, donem: e.target.value })} aria-label="Dönem">
+            <option value="">Tüm dönemler</option>
+            {sonAylar(12).map((a) => (
+              <option key={a.deger} value={a.deger}>{a.etiket}</option>
+            ))}
+          </select>
+        </label>
 
-      <button type="button" className="gs-dugme gs-arac-dugme" disabled={!sorgulanabilir} title={dugmeIpucu} onClick={() => { setNot(null); mutate(); }} data-gs-sorgula>
-        {izlenen.length ? 'Sorgu sürüyor…' : isPending ? 'Kuyruğa alınıyor…' : 'Sorgula'}
-      </button>
+        <button type="button" className="gs-dugme gs-arac-dugme" disabled={!sorgulanabilir} title={dugmeIpucu} onClick={() => { setNot(null); mutate(); }} data-gs-sorgula>
+          {izlenen.length ? 'Sorgu sürüyor…' : isPending ? 'Kuyruğa alınıyor…' : 'Sorgula'}
+        </button>
       </div>
-      {not && <div className="gs-durum" data-ton={not.ton} role="status">{not.metin}</div>}
+      <div className="gs-durum" data-ton={not?.ton || 'ipucu'} role="status">
+        {not ? <><span className="gs-nokta" data-ton={not.ton} aria-hidden />{not.metin}</> : dugmeIpucu}
+      </div>
     </div>
   );
 }

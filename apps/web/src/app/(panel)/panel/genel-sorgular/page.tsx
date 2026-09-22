@@ -11,12 +11,15 @@ import { boyutParamOku, sayfaParamOku, type SayfaBoyutu } from '@/components/ui/
 import { SORGU_TURLERI, genelSorgularApi, sorguTuruMu, type SorguKosusu, type SorguTuru } from '@/lib/genel-sorgular';
 import { AracCubugu, type Suzgec } from './_components/AracCubugu';
 import { GuncelTablo } from './_components/GuncelTablo';
+import { TurSekmeleri } from './_components/TurSekmeleri';
 import { tarihKisa } from './_lib/bicim';
 
 /*
- * Genel Sorgulamalar (2026-09-22, sade sürüm — Muzaffer Bey: "manuel sorgu için ufak bir ekran yeter").
- *   Başlık + gece sorgusu tek satır not · tek araç çubuğu (mükellef · tür · dönem · Sorgula) · tür başına GÜNCEL DURUM tablosu
- *   (koşu geçmişi değil: borç mükellef başına, haciz bildiri başına, yoklama tutanak başına, POS ay+banka, e-Arşiv fatura başına).
+ * Genel Sorgulamalar (2026-09-22, sade sürüm — Muzaffer Bey: "manuel sorgu için ufak bir ekran yeter";
+ * akşam: "görsel olarak yeniden tasarla, profesyonel görüntü olsun").
+ *   Başlık + gece sorgusu durum çipi · araç çubuğu (mükellef · dönem · Sorgula · durum satırı) · tür sekmeleri
+ *   (Tümü + 5 tür, kayıt sayılı) · tür başına GÜNCEL DURUM tablosu (koşu geçmişi değil: borç mükellef başına,
+ *   haciz bildiri başına, yoklama tutanak başına, POS ay+banka, e-Arşiv fatura başına).
  *   Gece sorgusu mükellef kartındaki Otomatik Sorgulama Ayarı'na göre çalışır; burada kurulum/koşu listesi YOK.
  * Adres çubuğu: ?mukellef=<id>&tur=VERGI_BORCU&donem=2026-09&boyut=50&s_VERGI_BORCU=2&renk=1..4
  * (renk = Muzaffer Bey'in seçeceği vurgu varyantı; karar sonrası sabitlenir.)
@@ -104,14 +107,17 @@ function GenelSorgularIcerik() {
         <span className="gs-baslik-simge"><ScanSearch size={18} /></span>
         <div className="min-w-0">
           <h1 className="gs-h1">Genel Sorgulamalar</h1>
-          <p className="gs-alt">Dijital Vergi Dairesi sorgu sonuçları — vergi borcu, e-haciz, yoklama / denetim, POS, gelen e-arşiv. Gece sorgusu mükellef kartındaki Otomatik Sorgulama Ayarı'na göre çalışır.</p>
+          <p className="gs-alt">Dijital Vergi Dairesi güncel durumu: vergi borcu, e-haciz, yoklama / denetim, POS ve gelen e-arşiv. Gece sorgusu mükellef kartındaki Otomatik Sorgulama Ayarı'na göre çalışır.</p>
         </div>
         <span className="gs-gece" title="Son gece koşusu">
+          <span className="gs-nokta" data-ton={gece ? (gece.hata ? 'uyari' : 'tamam') : undefined} aria-hidden />
           {gece ? <>Gece sorgusu <b>{gece.tarih}</b> · <b>{gece.mukellef}</b> mükellef · <b>{gece.hata}</b> hata</> : 'Gece sorgusu henüz koşmadı'}
         </span>
       </div>
 
       <AracCubugu suzgec={suzgec} onSuzgec={suzgecYaz} mukellefler={mukellefler} />
+
+      <TurSekmeleri secili={suzgec.tur} onSec={(t) => suzgecYaz({ ...suzgec, tur: t })} suzgec={{ taxpayerId: suzgec.mukellefId || undefined, donem: suzgec.donem || undefined }} />
 
       <div className="gs-gruplar">
         {gosterilenTurler.map((t) => (
