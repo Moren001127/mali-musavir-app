@@ -11380,12 +11380,17 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const ayAdaylari = ay === 12 ? [12] : [ay, 12];
     // Parametre kalıpları: portal ekranının gönderdiği tam kalıp (isArchive dahil) → sadeleştirilmiş → en yalın.
     //   Spring @RequestParam zorunlu olduğunda eksik parametre 400 veriyor; ilk tutan kalıp log'a yazılır.
+    //   Ekranın ilk hâli (chunk 34 state): headerSearch=[] · notInList=false · documentIds=[] · isArchive=0 ·
+    //   chemistWarehouseFilter = "Tümü" seçeneğinin değeri (null ya da 'ALL' — ikisi de denenir).
+    const tamKalip = (sayfa: number, m: number, depo: string) =>
+      `?year=${yil}&month=${m}&headerSearch=&notInList=false&documentIds=&multipleVkn=`
+      + `&chemistWarehouseFilter=${depo}&page=${sayfa}&size=${sayfaBoyu}&sort=receivedDate,desc&isArchive=0`;
     const kaliplar = [
-      (sayfa: number, m: number) => `?year=${yil}&month=${m}&headerSearch=&notInList=false&documentIds=&multipleVkn=`
-        + `&chemistWarehouseFilter=false&page=${sayfa}&size=${sayfaBoyu}&sort=receivedDate,desc&isArchive=0`,
-      (sayfa: number, m: number) => `?year=${yil}&month=${m}&headerSearch=&notInList=false&documentIds=&multipleVkn=`
-        + `&chemistWarehouseFilter=&page=${sayfa}&size=${sayfaBoyu}&sort=receivedDate,desc&isArchive=0`,
-      (sayfa: number, m: number) => `?year=${yil}&month=${m}&page=${sayfa}&size=${sayfaBoyu}&sort=receivedDate,desc`,
+      (sayfa: number, m: number) => tamKalip(sayfa, m, 'null'),
+      (sayfa: number, m: number) => tamKalip(sayfa, m, 'ALL'),
+      (sayfa: number, m: number) => tamKalip(sayfa, m, ''),
+      (sayfa: number, m: number) => `?year=${yil}&month=${m}&page=${sayfa}&size=${sayfaBoyu}&sort=receivedDate,desc&isArchive=0`,
+      (sayfa: number, m: number) => `?year=${yil}&month=${m}&page=${sayfa}&size=${sayfaBoyu}`,
     ];
     let kalipNo = 0;
     const sayfaYolu = (sayfa: number, listeAyi: number) => `${listeUcu}${kaliplar[kalipNo](sayfa, listeAyi)}`;
