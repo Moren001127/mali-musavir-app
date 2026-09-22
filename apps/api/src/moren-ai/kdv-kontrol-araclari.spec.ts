@@ -441,7 +441,7 @@ describe('kdv_kontrol_belge_yeniden_oku / kdv_kontrol_ocr_teyit (R1 7b/9b, 2026-
     const images = [
       gorsel('i1', { ocrStatus: 'NEEDS_REVIEW', ocrKdvTutari: null, ocrKdvBreakdown: null }),
       gorsel('i2', { ocrStatus: 'SUCCESS' }),
-      gorsel('i3', { ocrStatus: 'LOW_CONFIDENCE', isManuallyConfirmed: true }),
+      gorsel('i3', { ocrStatus: 'LOW_CONFIDENCE', isManuallyConfirmed: true, confirmedKdvTutari: '43,35' }),
     ];
     const reocr = jest.fn(async (imageId: string) => {
       const once = images.find((i) => i.id === imageId)!;
@@ -464,7 +464,7 @@ describe('kdv_kontrol_belge_yeniden_oku / kdv_kontrol_ocr_teyit (R1 7b/9b, 2026-
     const cok = Array.from({ length: 8 }, (_, i) => `i${i}`);
     const imgs8 = cok.map((id) => gorsel(id, { ocrStatus: 'SUCCESS' }));
     const reocr8 = jest.fn(async (imageId: string) => ({ imageId, once: imgs8[0], geriAlindi: false, sonra: { ...imgs8[0], ocrEngine: 'max-vision', ocrValidationScore: 1 } }));
-    const { tool: t8 } = aracKur({ prisma: lucaPrisma.prisma, servisler: { KdvControlService: { ...svc, getImages: async () => [...imgs8, gorsel('m', { isManuallyConfirmed: true })], reocrSingleImageSync: reocr8 } } });
+    const { tool: t8 } = aracKur({ prisma: lucaPrisma.prisma, servisler: { KdvControlService: { ...svc, getImages: async () => [...imgs8, gorsel('m', { isManuallyConfirmed: true, confirmedKdvTutari: '43,35' })], reocrSingleImageSync: reocr8 } } });
     const r8 = await t8.execute('kdv_kontrol_belge_yeniden_oku', { sessionId: 's1', imageIds: [...cok, 'm'] }, ctx);
     expect(reocr8).toHaveBeenCalledTimes(6);
     expect(r8.kalan).toEqual(['i6', 'i7', 'm']);
@@ -520,7 +520,7 @@ describe('kdv_kontrol_belge_yeniden_oku / kdv_kontrol_ocr_teyit (R1 7b/9b, 2026-
 
   it('ocr teyit: belgede görülen değer confirmImageOcr’a ekrandaki biçimde gider; uydurma rakam reddedilir; elle teyitli atlanır; gerekce zorunlu', async () => {
     const confirm = jest.fn(async (_imageId: string, _tenantId: string, _dto: any) => ({}));
-    const images = [gorsel('i1', { ocrRawText: RAW }), gorsel('i2', { isManuallyConfirmed: true }), gorsel('i3', { ocrRawText: RAW })];
+    const images = [gorsel('i1', { ocrRawText: RAW }), gorsel('i2', { isManuallyConfirmed: true, confirmedKdvTutari: '43,35' }), gorsel('i3', { ocrRawText: RAW })];
     const svc = { getImages: async () => images, confirmImageOcr: confirm };
     const { tool } = aracKur({ servisler: { KdvControlService: svc } });
     const r = await tool.execute(
@@ -547,6 +547,23 @@ describe('kdv_kontrol_belge_yeniden_oku / kdv_kontrol_ocr_teyit (R1 7b/9b, 2026-
     expect(satir('i3', 0).neden).toMatch(/86,70 belge metninde görülmedi/);
     expect(satir('i3', 1).neden).toMatch(/gerekce zorunlu/);
     expect(satir('yok').neden).toMatch(/bu oturumda değil/);
+  });
+
+  it('KDV boş bırakılmış elle teyit gerçek düzeltme değil: yeniden oku seçer, ocr teyit yazar; KDV yazılmış elle teyit atlanır', async () => {
+    process.env.CLAUDE_CODE_OAUTH_TOKEN = 'x';
+    const bosTeyit = gorsel('i1', { ocrStatus: 'SUCCESS', ocrKdvTutari: null, ocrKdvBreakdown: null, isManuallyConfirmed: true, confirmedKdvTutari: null, confirmedKdvBreakdown: null, ocrRawText: RAW });
+    const doluTeyit = gorsel('i2', { isManuallyConfirmed: true, confirmedKdvTutari: '43,35' });
+    const confirm = jest.fn(async (_i: string, _t: string, _d: any) => ({}));
+    const reocr = jest.fn(async (imageId: string) => ({ imageId, once: bosTeyit, geriAlindi: false, sonra: { ...bosTeyit, ocrEngine: 'azure-read', ocrKdvTutari: '43,35', ocrKdvBreakdown: [{ oran: 1, tutar: 43.35, matrah: 4335 }], ocrValidationScore: 1 } }));
+    const svc = { findSession: async () => ({ status: 'REVIEWING' }), getImages: async () => [bosTeyit, doluTeyit], reocrSingleImageSync: reocr, confirmImageOcr: confirm };
+    const { tool } = aracKur({ prisma: lucaPrisma.prisma, servisler: { KdvControlService: svc } });
+    const r = await tool.execute('kdv_kontrol_belge_yeniden_oku', { sessionId: 's1', imageIds: ['i1', 'i2'] }, ctx);
+    expect(reocr).toHaveBeenCalledTimes(1);
+    expect(r.okunan.find((o: any) => o.imageId === 'i1').oneri).toBe('teyit');
+    expect(r.okunan.find((o: any) => o.imageId === 'i2').atlandi).toMatch(/KDV yazarak/);
+    const t = await tool.execute('kdv_kontrol_ocr_teyit', { sessionId: 's1', teyitler: [{ imageId: 'i1', kdvTutari: '43,35', kdvBreakdown: [{ oran: 1, tutar: 43.35, matrah: 4335 }], gerekce: 'x' }, { imageId: 'i2', kdvTutari: '43,35', gerekce: 'x' }] }, ctx);
+    expect(t).toMatchObject({ teyitEdilen: 1, atlanan: 1 });
+    expect(confirm).toHaveBeenCalledTimes(1);
   });
 
   it('ocr teyit: kilitli oturum 400 → satır hatası "Oturum kilitli"; 20 üstü → hata', async () => {

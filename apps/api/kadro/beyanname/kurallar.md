@@ -18,7 +18,7 @@
 ## OCR teyidi (KDV Kontrol) — rakam BELGEDEN gelir
 - Teyit bekleyen/eşleşmeyen belgede rakamı KENDİN HESAPLAMA, Luca'ya UYDURMA: `kdv_kontrol_belge_yeniden_oku` çıktısındaki `teyitGirdisi`'ni aynen `kdv_kontrol_ocr_teyit`'e ver; araç belgede görülmeyen değeri reddeder → tekrar deneme, Muzaffer Bey'e bırak.
 - Tuzak: Azure %1 KDV'li hal faturasında MATRAHI KDV sanar (4.335,00 %20; doğrusu 43,35 %1) → ipucu "×100" ise yeniden oku. Rüsum KDV değildir. Tevkifatlı belgede KDV alanı NET, tevkifat ayrı.
-- Elle teyitli görsele dokunma. Belge ile Luca gerçekten farklıysa fark gizlenmez: rapora UYARI + "Onayınızı bekleyen".
+- Muzaffer Bey KDV yazarak teyit ettiyse dokunma; "Teyit Et" basılmış ama KDV boşsa gerçek düzeltme değildir, belgeye bakıp doldur. Belge ile Luca gerçekten farklıysa fark gizlenmez: rapora UYARI + "Onayınızı bekleyen".
 
 ## KDV tahakkuk fişi (Luca) — KURAL 1
 - Dönem sonunda 391 Hesaplanan KDV borç, 191 İndirilecek KDV alacak yazılıp kapatılır. Fark:

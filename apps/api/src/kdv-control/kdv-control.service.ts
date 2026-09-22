@@ -3105,8 +3105,10 @@ ${JSON.stringify(payload, null, 2)}`;
     if (!image.s3Key) {
       throw new BadRequestException('Görselin kaynağı (s3Key) yok — OCR yapılamaz');
     }
-    if (image.isManuallyConfirmed) {
-      throw new BadRequestException('Görsel elle teyit edilmiş — yeniden okuma teyidi silerdi; atlandı');
+    // Elle teyit yalnız KDV değeri yazılmışsa korunur; KDV boş bırakılmış "Teyit Et" gerçek düzeltme değildir (2026-09-22).
+    const teyitliKdvVar = !!image.confirmedKdvTutari || (Array.isArray(image.confirmedKdvBreakdown) && (image.confirmedKdvBreakdown as any[]).length > 0);
+    if (image.isManuallyConfirmed && teyitliKdvVar) {
+      throw new BadRequestException('Görsel KDV yazılarak elle teyit edilmiş — yeniden okuma teyidi silerdi; atlandı');
     }
     const once = {
       ocrStatus: image.ocrStatus,

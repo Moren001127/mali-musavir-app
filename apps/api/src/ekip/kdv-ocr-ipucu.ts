@@ -375,7 +375,7 @@ export function faturaLucaKarsilastir(g: GorselSatir, luca: LucaSatir[]): Ipucu 
   const tev = g.tevkifat ?? 0;
   const ek = { adayImageId: g.id, adayKdvRecordIds: ids };
   if (g.isManuallyConfirmed) {
-    return { tur: 'TEYITLI_FARK', metin: `Muzaffer Bey teyit etmiş; Luca ${tutarMetni(lucaToplam)} / fatura ${fatura === null ? '—' : tutarMetni(fatura)} — dokunma, rapora yaz`, ocrSupheli: false, ...ek };
+    return { tur: 'TEYITLI_FARK', metin: `Muzaffer Bey KDV yazarak teyit etmiş; Luca ${tutarMetni(lucaToplam)} / fatura ${fatura === null ? '—' : tutarMetni(fatura)} — dokunma, rapora yaz`, ocrSupheli: false, ...ek };
   }
   if (fatura === null || fatura === 0) {
     return { tur: 'KDV_OKUNAMADI', metin: `fatura KDV'si okunamamış; Luca ${tutarMetni(lucaToplam)} → belgeyi yeniden oku`, ocrSupheli: true, ...ek };

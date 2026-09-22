@@ -4846,7 +4846,8 @@ export class ToolExecutorService {
           tevkifat: ocrTutarSayi(img.confirmedKdvTevkifat ?? img.ocrKdvTevkifat) ?? 0,
           kirilim: Array.isArray(kir) ? kir.map((k: any) => ({ oran: Number(k?.oran), tutar: ocrTutarSayi(k?.tutar) ?? 0, matrah: ocrTutarSayi(k?.matrah) })) : null,
           ocrStatus: img.ocrStatus || null,
-          isManuallyConfirmed: !!img.isManuallyConfirmed,
+          // ipucu için "elle teyitli" = KDV yazılarak teyit; boş teyit dokunulmaz sayılmaz (2026-09-22)
+          isManuallyConfirmed: this.elleTeyitliMi(img),
         });
       }
       const rec = r?.kdvRecord;
@@ -4902,6 +4903,17 @@ export class ToolExecutorService {
     return ['NEEDS_REVIEW', 'LOW_CONFIDENCE', 'FAILED'].includes(String(img?.ocrStatus || '').toUpperCase());
   }
 
+  /**
+   * "Elle teyitli — dokunma" yalnız Muzaffer Bey'in KDV DEĞERİ YAZARAK teyit ettiği görsel için (2026-09-22): ekranda KDV boş
+   * bırakılıp Teyit Et basılmışsa bu gerçek düzeltme değildir, ekip belgeye bakıp doldurabilir (Muzaffer Bey'in kararı).
+   */
+  private elleTeyitliMi(img: any): boolean {
+    if (!img?.isManuallyConfirmed) return false;
+    const kdv = ocrTutarSayi(img.confirmedKdvTutari);
+    const kir = Array.isArray(img.confirmedKdvBreakdown) && img.confirmedKdvBreakdown.length > 0;
+    return (kdv !== null && kdv > 0) || kir;
+  }
+
   /** R1 7b/9b — seçilen görselleri Max-vision ile yeniden oku (bekleyen; ≤6 belge, ~60 sn bütçe). */
   private async kdvKontrolBelgeYenidenOku(input: any, ctx: { tenantId: string; signal?: AbortSignal }) {
     const sessionId = String(input?.sessionId || '').trim();
@@ -4919,7 +4931,7 @@ export class ToolExecutorService {
 
     const gorseller = await this.kdvOturumGorselleri(svc, sessionId, ctx.tenantId);
     const istenen: string[] = Array.isArray(input?.imageIds) ? Array.from(new Set<string>(input.imageIds.map((x: any) => String(x || '').trim()).filter(Boolean))) : [];
-    const secilen: string[] = istenen.length ? istenen : Array.from(gorseller.values()).filter((i) => this.teyitBekliyorMu(i) && !i.isManuallyConfirmed).map((i) => String(i.id));
+    const secilen: string[] = istenen.length ? istenen : Array.from(gorseller.values()).filter((i) => this.teyitBekliyorMu(i) && !this.elleTeyitliMi(i)).map((i) => String(i.id));
     if (!secilen.length) return { ok: true, sessionId, okunan: [], kalan: [], not: 'Teyit bekleyen görsel yok.' };
 
     // Süre: Max-vision OCR canlıda p50 10 sn · p90 40 sn · en çok 63 sn (AiUsageLog, 14 gün). Yeni okuma başlatma bütçesi 40 sn,
@@ -4958,7 +4970,7 @@ export class ToolExecutorService {
     const birini = async (imageId: string) => {
       const img = gorseller.get(imageId);
       if (!img) return { imageId, ok: false, neden: 'görsel bu oturumda değil' };
-      if (img.isManuallyConfirmed) return { imageId, belge: img.originalName, ok: true, atlandi: 'Muzaffer Bey elle teyit etmiş — dokunulmadı', oneri: 'muzaffer' };
+      if (this.elleTeyitliMi(img)) return { imageId, belge: img.originalName, ok: true, atlandi: 'Muzaffer Bey KDV yazarak elle teyit etmiş — dokunulmadı', oneri: 'muzaffer' };
       try {
         // Önceki çağrıda süre tavanını aşıp arkada süren okuma: yeniden BAŞLATMA, bitmesini bekle ve değerlendir (önceki değer bilinmez).
         if (String(img.ocrStatus || '').toUpperCase() === 'PROCESSING') {
@@ -5129,6 +5141,8 @@ export class ToolExecutorService {
       satici: img.ocrSatici,
       teyitli: !!img.isManuallyConfirmed,
       teyitliKdv: img.confirmedKdvTutari ?? null,
+      elleTeyitliDokunma: this.elleTeyitliMi(img),
+      ...(img.isManuallyConfirmed && !this.elleTeyitliMi(img) ? { not: 'Teyit Et basılmış ama KDV boş bırakılmış — gerçek düzeltme değil; belgeye bakıp doldurabilirsin (kaynak:"gorsel").' } : {}),
     };
     let gorsel: { data: string; mimeType: string } | null = null;
     let gorselNotu = '';
@@ -5188,8 +5202,8 @@ export class ToolExecutorService {
         satirlar.push({ imageId, ok: false, neden: 'görsel bu oturumda değil' });
         continue;
       }
-      if (img.isManuallyConfirmed) {
-        satirlar.push({ imageId, belge: img.originalName, ok: false, atlandi: true, neden: 'zaten elle teyitli (Muzaffer Bey) — dokunulmadı' });
+      if (this.elleTeyitliMi(img)) {
+        satirlar.push({ imageId, belge: img.originalName, ok: false, atlandi: true, neden: 'zaten KDV yazılarak elle teyitli (Muzaffer Bey) — dokunulmadı' });
         continue;
       }
       if (!String(t?.gerekce || '').trim()) {
