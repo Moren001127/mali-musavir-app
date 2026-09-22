@@ -2527,6 +2527,9 @@ function ScreenSorgu({ taxpayerId, period, source, onOpenEntegrator }: { taxpaye
     });
   };
   const [efaturaChannel, setEfaturaChannel] = useState<'IN_EFATURA' | 'OUT_EFATURA' | 'OUT_EARSIV'>('IN_EFATURA');
+  // ENTEGRATÖR BAZINDA SORGU (Muzaffer Bey, 2026-09-22): birden çok entegratörü olan mükellefte hangisinin
+  //   sorgulanacağı seçilir; "Sorgula" yalnız SEÇİLİ entegratörü çeker (diğeri boşuna sorgulanmaz).
+  const [secilenEfaturaProv, setSecilenEfaturaProv] = useState<string | null>(null);
   const [lastEfaturaSync, setLastEfaturaSync] = useState<any>(null);
   const [efaturaPollUntil, setEfaturaPollUntil] = useState(0);
   const [efaturaSyncPollUntil, setEfaturaSyncPollUntil] = useState(0);
@@ -2700,7 +2703,8 @@ function ScreenSorgu({ taxpayerId, period, source, onOpenEntegrator }: { taxpaye
   // Mükellefe BAĞLI (ya da en azından bu mükellef için tanımlanmış/yapılandırılmış) sağlayıcı yoksa NULL:
   //   katalogdaki ilk sağlayıcıya (TÜRMOB) DÜŞME — kullanıcı bulgusu (2026-09-12): entegratörü hiç olmayan
   //   mükellefte "TURMOB Alış e-Fatura · kimlik eksik" kırmızı görünüyordu; doğrusu "Entegratör tanımlı değil".
-  const activeEfaturaProvider = connectedEfaturaProviders[0]
+  const activeEfaturaProvider = (secilenEfaturaProv && connectedEfaturaProviders.find((p) => String(p.provider) === secilenEfaturaProv))
+    || connectedEfaturaProviders[0]
     || efaturaProviders.find((p) => p?.taxpayerScoped || p?.configured)
     || null;
   const efaturaInboxQ = useQuery({
@@ -2773,6 +2777,7 @@ function ScreenSorgu({ taxpayerId, period, source, onOpenEntegrator }: { taxpaye
     setLastEfaturaSync(null);
     setSel(new Set());
   }, [source, taxpayerId, donem, efaturaChannel]);
+  useEffect(() => { setSecilenEfaturaProv(null); }, [taxpayerId]); // mükellef değişince entegratör seçimi sıfırlanır
   const efaturaFetchMut = useMutation({
     mutationFn: (v: { provider: string }) => api.post('/fatura-muhasebelestirme/efatura-sync', {
       taxpayerId,
@@ -3344,7 +3349,26 @@ function ScreenSorgu({ taxpayerId, period, source, onOpenEntegrator }: { taxpaye
             </div>
             {/* Entegratör adı + kimlik rozeti (integrations: connected = configured && isActive; hasApiKey/hasPassword/username ayrıntı) */}
             <div className="sq-prov">
-              {activeEfaturaProvider ? (
+              {connectedEfaturaProviders.length > 1 ? (
+                // Birden çok bağlı entegratör: her biri TIKLANABİLİR çip; "Sorgula" yalnız seçili olanı çeker.
+                connectedEfaturaProviders.map((p) => {
+                  const kod = String(p.provider || '');
+                  const secili = kod === String(activeEfaturaProvider?.provider || '');
+                  return (
+                    <button
+                      key={kod}
+                      type="button"
+                      className={`sq-src pick${secili ? ' sel' : ''}`}
+                      style={{ ['--sc' as any]: sorguProvRenk(kod) }}
+                      onClick={() => setSecilenEfaturaProv(kod)}
+                      title={`${secili ? 'Sorgu bu entegratöre yapılır' : 'Sorguyu bu entegratöre çevir'}${providerKimlikDetay(p) ? ` · ${providerKimlikDetay(p)}` : ''}`}
+                    >
+                      <i>{provKisalt(String(p.label || ''), kod)}</i>
+                      {efaturaProviderLabel(p)}
+                    </button>
+                  );
+                })
+              ) : activeEfaturaProvider ? (
                 <span className="sq-src" style={{ ['--sc' as any]: sorguProvRenk(activeEfaturaProvider?.provider) }} title={providerKimlikDetay(activeEfaturaProvider) || undefined}>
                   <i>{provKisalt(String(activeEfaturaProvider.label || ''), String(activeEfaturaProvider.provider || ''))}</i>
                   {efaturaProviderLabel(activeEfaturaProvider)}
@@ -3362,9 +3386,7 @@ function ScreenSorgu({ taxpayerId, period, source, onOpenEntegrator }: { taxpaye
               ) : (
                 <span className="sq-pill err" title="Entegratörler ekranından kullanıcı/şifre ya da API anahtarı tanımla">● kimlik eksik</span>
               )}
-              {connectedEfaturaProviders.length > 1 && (
-                <span className="sq-pill gray" title={connectedEfaturaProviders.map((p) => p.label || p.provider).join(' · ')}>+{connectedEfaturaProviders.length - 1} bağlı entegratör daha</span>
-              )}
+
             </div>
             <div className="sp" />
             <label className="sq-search">
@@ -8623,6 +8645,11 @@ const CSS = `
 #fm-root .sq-table .sq-pill{height:22px;font-size:10.5px}
 /* Entegratör / kaynak rozeti: --sc sağlayıcı rengi */
 #fm-root .sq-src{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px 0 3px;border-radius:999px;font-size:11px;font-weight:800;background:color-mix(in srgb,var(--sc,var(--accent)) 10%,#fff);color:var(--sc,var(--accent));border:1px solid color-mix(in srgb,var(--sc,var(--accent)) 32%,#fff);white-space:nowrap;letter-spacing:.1px}
+#fm-root .sq-src.pick{cursor:pointer;font-family:inherit;transition:background .12s,border-color .12s,color .12s,box-shadow .12s}
+#fm-root .sq-src.pick:not(.sel){background:#f4f6fa;color:#64748b;border-color:#dfe5ee}
+#fm-root .sq-src.pick:not(.sel) i{background:#c3ccda}
+#fm-root .sq-src.pick:not(.sel):hover{background:#eef2f7;color:#475569;border-color:#cfd8e5}
+#fm-root .sq-src.pick.sel{box-shadow:0 0 0 2px color-mix(in srgb,var(--sc,var(--accent)) 18%,#fff)}
 #fm-root .sq-src i{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;background:var(--sc,var(--accent));color:#fff;font-size:8.5px;font-style:normal;font-weight:900;letter-spacing:.2px;flex-shrink:0}
 /* ONAY hapı */
 #fm-root .sq-onay{display:inline-flex;align-items:center;gap:5px;height:23px;padding:0 9px;border-radius:999px;font-size:11px;font-weight:750;white-space:nowrap;border:1px solid transparent;line-height:1}
