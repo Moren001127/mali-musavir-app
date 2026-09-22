@@ -377,12 +377,16 @@ describe('ekip rutin — CRUD doğrulama + tohum', () => {
         ajanId: 'beyanname',
         sablon: '{mukellef} için {donem} dönemi KDV kontrolünü yap (R1).',
         kapsam: 'pano:kontrol_bekleyen',
-        zaman: { tur: 'haftalik', gunler: [1, 2, 3, 4, 5], baslangic: '09:30', bitis: '17:00' },
+        // SAAT SINIRI YOK (Muzaffer Bey, 2026-09-22): evrak "işlendi" işaretlenince kontrol hemen başlasın.
+        zaman: { tur: 'haftalik', gunler: [1, 2, 3, 4, 5, 6, 7], baslangic: '00:00', bitis: '23:59' },
         gunlukTavan: 8,
         dryRun: false,
         aktif: true,
       });
       expect(VARSAYILAN_RUTIN.dryRun).toBe(false);
+      // Gece yarısı, hafta sonu ve mesai dışı saatlerde de tur açılabilmeli.
+      expect(zamanUygunMu(VARSAYILAN_RUTIN.zaman, IST(2026, 9, 26, 3, 15), null)).toBe(true);  // Cumartesi 03:15
+      expect(zamanUygunMu(VARSAYILAN_RUTIN.zaman, IST(2026, 9, 27, 22, 40), null)).toBe(true); // Pazar 22:40
       // ikinci çağrı: rutin var → tohumlama yok
       expect(await t1.s.tohumla()).toBeNull();
       expect(t1.rutinler).toHaveLength(1);

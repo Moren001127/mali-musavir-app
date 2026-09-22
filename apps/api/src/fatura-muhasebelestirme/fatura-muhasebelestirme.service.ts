@@ -11438,9 +11438,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
 
     const payloads: ProviderInvoicePayload[] = [];
     let kept = 0;
-    let dur = false;
     const MAX_SAYFA = 40;
-    for (let sayfa = 0; sayfa < MAX_SAYFA && kept < opts.limit && !dur; sayfa++) {
+    for (let sayfa = 0; sayfa < MAX_SAYFA && kept < opts.limit; sayfa++) {
       let satirlar: any[];
       if (sayfa === 0) satirlar = ilkSayfa;
       else {
@@ -11455,9 +11454,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       for (const it of satirlar) {
         if (kept >= opts.limit) break;
         const ms = tarihAl(it);
-        // Liste yeniden eskiye sıralı: dönem başından eskiye düştüysek dur.
-        if (Number.isFinite(ms) && ms < bas) { dur = true; break; }
-        if (Number.isFinite(ms) && ms > bit) continue; // dönemden yeni → atla
+        // Sunucu zaten year+month süzüyor; tarih okunamazsa satırı ATMA (alan adı değişmiş olabilir).
+        //   Yalnız tarihi AÇIKÇA dönem dışında olanı atla. "Eskiye düşünce dur" kuralı yok: liste geliş
+        //   tarihine göre sıralı, düzenleme tarihi sırası bozuk olabiliyor.
+        if (Number.isFinite(ms) && (ms < bas || ms > bit)) continue;
         const uuid = it?.documentUuid || it?.uuid || it?.ettn || it?.invoiceUuid;
         if (!uuid) continue;
         const externalId = `eczacikart:${modul}:${uuid}`;
@@ -11493,6 +11493,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         else payloads.push(payload);
         await nefes(400); // belge indirmeleri arası nazik hız
       }
+    }
+    if (!kept && ilkSayfa.length) {
+      const ornek = ilkSayfa[0] || {};
+      this.logger.warn(
+        `Eczacıkart: ${ilkSayfa.length} satır geldi ama hiçbiri alınmadı — ilk satır alanları: ${Object.keys(ornek).join(', ')}`
+        + ` | tarih=${JSON.stringify(ornek?.documentIssueDate ?? ornek?.receivedDate ?? null)} uuid=${JSON.stringify(ornek?.documentUuid ?? null)}`,
+      );
     }
     this.logger.log(`Eczacıkart ${modul} çekim bitti: ${kept} belge (dönem ${opts.period.donem})`);
     return payloads;

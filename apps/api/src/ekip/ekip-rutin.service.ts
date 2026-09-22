@@ -29,7 +29,7 @@ import { EkipRunnerService } from './ekip-runner.service';
  *
  * Kural (00_ORTAK §14): rutinler Muzaffer Bey'in Ekip ekranından açtığı düzendir; rutin dışı hiçbir iş kendiliğinden başlamaz.
  * Tohum: Muzaffer Bey'in 2026-09-22 kararı — sahip kiracısında (MOREN_OWNER_TENANT_ID) hiç rutin yoksa "KDV kontrolü — kontrol
- * bekleyenler" (beyanname R1, hafta içi 09:30–17:00, günde 8, CANLI, AÇIK) bir kez oluşturulur.
+ * bekleyenler" (beyanname R1, SAAT SINIRI YOK — her gün 00:00–23:59, günde 8, CANLI, AÇIK) bir kez oluşturulur.
  */
 
 export interface RutinGovdesi {
@@ -63,13 +63,14 @@ export interface RutinOzeti {
   bugun: { planlanan: number; biten: number; hatali: number };
 }
 
-/** Tohum: Muzaffer Bey'in kararı (2026-09-22): canlı, günde 8, hafta içi 09:30–17:00. */
+/** Tohum: Muzaffer Bey'in kararı (2026-09-22): canlı, günde 8. SAAT SINIRI YOK — evrak "işlendi" işaretlenip
+ *  mükellef kontrol aşamasına düşer düşmez kontrol başlasın (eski hâli hafta içi 09:30–17:00 idi, kaldırıldı). */
 export const VARSAYILAN_RUTIN = {
   ad: 'KDV kontrolü — kontrol bekleyenler',
   ajanId: 'beyanname',
   sablon: '{mukellef} için {donem} dönemi KDV kontrolünü yap (R1).',
   kapsam: 'pano:kontrol_bekleyen',
-  zaman: { tur: 'haftalik', gunler: [1, 2, 3, 4, 5], baslangic: '09:30', bitis: '17:00' } as RutinZamani,
+  zaman: { tur: 'haftalik', gunler: [1, 2, 3, 4, 5, 6, 7], baslangic: '00:00', bitis: '23:59' } as RutinZamani,
   gunlukTavan: 8,
   dryRun: false,
   aktif: true,
