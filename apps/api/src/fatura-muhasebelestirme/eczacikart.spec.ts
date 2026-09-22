@@ -3,7 +3,8 @@
  *
  * Uçlar canlı portalden keşfedildi (kimliksiz: giriş formuna SAHTE kullanıcı yazılıp ağ izi okundu + paket çözüldü):
  *   giriş  POST /accounting/api/auth/signin {username,password} → data.token.accessToken (hasOtp=true ise SMS ister)
- *   liste  GET  /accounting/api/{inbox|outbox}/fetch?page=&size=&sort=recordId,desc[&year=&month=]  (Spring Page)
+ *   liste  GET  /accounting/api/inbox/getInboxes?year=&month=&…&page=&size=&sort=receivedDate,desc  (Spring Page)
+ *          (giden kutusu: /outbox/getOutboxes) — ilk sürümde denenen /{modul}/fetch uçları CANLIDA 404 verdi.
  *   belge  POST /accounting/api/{inbox|outbox}/downloadMedia/xml {documentUuid, year, month}
  * Gerçek hesap kimliğini Muzaffer Bey portalden girer; burada `fetch` sahtesiyle davranış kilitlenir.
  */
@@ -31,6 +32,7 @@ const opts = {
 };
 
 const API = 'https://portal.eczacikartfatura.com/accounting/api';
+const LISTE_AY8 = '/inbox/getInboxes?year=2026&month=8&headerSearch=&notInList=false&documentIds=&multipleVkn=&chemistWarehouseFilter=&page=0&size=20&sort=receivedDate,desc';
 const yanit = (body: any, init: { status?: number; xml?: string } = {}) => ({
   ok: (init.status ?? 200) < 400,
   status: init.status ?? 200,
@@ -38,7 +40,8 @@ const yanit = (body: any, init: { status?: number; xml?: string } = {}) => ({
   text: async () => (typeof body === 'string' ? body : JSON.stringify(body)),
   arrayBuffer: async () => Buffer.from(init.xml ?? (typeof body === 'string' ? body : JSON.stringify(body)), 'utf8'),
 });
-const satir = (uuid: string, no: string, tarih: string) => ({ documentUuid: uuid, documentNumber: no, issueDate: tarih });
+/** Portalın gerçek satır alanları: documentUuid (ETTN) · documentId (fatura no) · documentIssueDate. */
+const satir = (uuid: string, no: string, tarih: string) => ({ documentUuid: uuid, documentId: no, documentIssueDate: tarih, sourceTitle: 'ECZA DEPOSU' });
 
 describe('Eczacıkart adaptörü', () => {
   const eskiFetch = global.fetch;
@@ -60,7 +63,7 @@ describe('Eczacıkart adaptörü', () => {
     await expect(servis().fetchEczacikartInvoices(cfg, opts)).rejects.toThrow(/İKİ ADIMLI DOĞRULAMA/);
   });
 
-  it('giriş → liste → belge: Bearer taşınır, payload externalId/xml dolu', async () => {
+  it('giriş → getInboxes → downloadMedia/xml: Bearer taşınır, payload dolu', async () => {
     const cagrilar: string[] = [];
     let yetki = '';
     global.fetch = jest.fn(async (url: any, init: any) => {
@@ -68,7 +71,7 @@ describe('Eczacıkart adaptörü', () => {
       cagrilar.push(`${init?.method || 'GET'} ${u}`);
       if (u === '/auth/signin') return yanit({ token: { accessToken: 'JWT123' } }) as any;
       yetki = init?.headers?.Authorization || '';
-      if (u.startsWith('/inbox/fetch')) {
+      if (u.startsWith('/inbox/getInboxes')) {
         if (!u.includes('page=0')) return yanit({ content: [] }) as any; // sonraki sayfalar boş
         return yanit({ content: [satir('u-1', 'ECZ2026000000001', '2026-08-15')], totalElements: 1 }) as any;
       }
@@ -85,25 +88,27 @@ describe('Eczacıkart adaptörü', () => {
     expect(payloads[0].xml).toContain('<Invoice>');
     expect(yetki).toBe('Bearer JWT123');
     expect(cagrilar[0]).toBe('POST /auth/signin');
-    expect(cagrilar[1]).toBe('GET /inbox/fetch?page=0&size=20&sort=recordId,desc&year=2026&month=8');
+    expect(cagrilar[1]).toBe(`GET ${LISTE_AY8}`);
     expect(cagrilar).toContain('POST /inbox/downloadMedia/xml');
   });
 
-  it('yıl+ay süzgeci kabul edilmezse süzgeçsiz uç denenir', async () => {
+  it('ay süzgeci boş dönerse ay=12 (yılın tamamı) denenir', async () => {
     const cagrilar: string[] = [];
     global.fetch = jest.fn(async (url: any) => {
       const u = String(url).replace(API, '');
       cagrilar.push(u);
       if (u === '/auth/signin') return yanit({ token: { accessToken: 'JWT' } }) as any;
-      if (u.includes('year=')) return yanit('desteklenmiyor', { status: 400 }) as any;
-      if (u.startsWith('/inbox/fetch')) return yanit({ content: u.includes('page=0') ? [satir('u-9', 'A9', '2026-08-02')] : [] }) as any;
+      if (u.startsWith('/inbox/getInboxes')) {
+        if (u.includes('month=8')) return yanit({ content: [], totalElements: 0 }) as any;
+        return yanit({ content: u.includes('page=0') ? [satir('u-9', 'A9', '2026-08-02')] : [] }) as any;
+      }
       if (u === '/inbox/downloadMedia/xml') return yanit('', { xml: '<Invoice/>' }) as any;
       return yanit('yok', { status: 404 }) as any;
     }) as any;
     const payloads = await servis().fetchEczacikartInvoices(cfg, opts);
     expect(payloads).toHaveLength(1);
-    expect(cagrilar[1]).toContain('year=2026');
-    expect(cagrilar[2]).toBe('/inbox/fetch?page=0&size=20&sort=recordId,desc');
+    expect(cagrilar[1]).toContain('month=8');
+    expect(cagrilar[2]).toContain('month=12');
   });
 
   it('dönem dışı satırlar: yeniler atlanır, eskiye düşünce çekim durur', async () => {
@@ -111,7 +116,7 @@ describe('Eczacıkart adaptörü', () => {
     global.fetch = jest.fn(async (url: any) => {
       const u = String(url).replace(API, '');
       if (u === '/auth/signin') return yanit({ token: { accessToken: 'JWT' } }) as any;
-      if (u.startsWith('/inbox/fetch')) {
+      if (u.startsWith('/inbox/getInboxes')) {
         return yanit({ content: [
           satir('yeni', 'Y1', '2026-09-03'),   // dönemden YENİ → atlanır
           satir('icinde', 'I1', '15.08.2026'), // nokta biçimli tarih de okunur
@@ -127,13 +132,13 @@ describe('Eczacıkart adaptörü', () => {
     expect(belgeIstegi).toBe(1);
   });
 
-  it('hiçbir liste ucu çalışmazsa denenen uçlar hata metninde görünür', async () => {
+  it('liste ucu çalışmazsa denenen uçlar hata metninde görünür', async () => {
     global.fetch = jest.fn(async (url: any) => {
       const u = String(url).replace(API, '');
       if (u === '/auth/signin') return yanit({ token: { accessToken: 'JWT' } }) as any;
       return yanit('yok', { status: 404 }) as any;
     }) as any;
-    await expect(servis().fetchEczacikartInvoices(cfg, opts)).rejects.toThrow(/denenen uçlar:.*inbox\/fetch.*eInvoiceInbox/s);
+    await expect(servis().fetchEczacikartInvoices(cfg, opts)).rejects.toThrow(/denenen uçlar:.*getInboxes\(ay=8\)=404.*getInboxes\(ay=12\)=404/s);
   });
 
   it('zaten çekilmiş fatura tekrar indirilmez (skip-existing)', async () => {
@@ -141,7 +146,7 @@ describe('Eczacıkart adaptörü', () => {
     global.fetch = jest.fn(async (url: any) => {
       const u = String(url).replace(API, '');
       if (u === '/auth/signin') return yanit({ token: { accessToken: 'JWT' } }) as any;
-      if (u.startsWith('/inbox/fetch')) return yanit({ content: u.includes('page=0') ? [satir('u-1', 'A1', '2026-08-10')] : [] }) as any;
+      if (u.startsWith('/inbox/getInboxes')) return yanit({ content: u.includes('page=0') ? [satir('u-1', 'A1', '2026-08-10')] : [] }) as any;
       belgeIstegi++;
       return yanit('', { xml: '<Invoice/>' }) as any;
     }) as any;
@@ -157,5 +162,29 @@ describe('Eczacıkart adaptörü', () => {
     expect(s.providerCredentialProblem({ ...tam, username: '' })).toMatch(/GLN/);
     expect(s.providerCredentialProblem(tam)).toBeNull();
     expect(s.providerCredentialProblem({ ...tam, note: '__inactive__' })).toMatch(/pasif/i);
+  });
+});
+
+/** ONAY sütununda çıplak sayı görünmesin: sağlayıcı sayı kodu döndürürse kendi açıklama metni kullanılır. */
+describe('sağlayıcı durumu (sayı kodu → metin)', () => {
+  const durum = (item: any) => servis().providerStatusFromListItem(item);
+
+  it('Turkcell: status=60 + message → mesaj metni kullanılır (ekranda "60" yazmaz)', () => {
+    expect(durum({ status: 60, message: 'ZARF BASARIYLA ISLENDI' })).toEqual({ approval: 'ZARF BASARIYLA ISLENDI', iptal: null });
+  });
+
+  it('sayı kodu var ama mesaj yoksa "Durum <kod>" yazılır', () => {
+    expect(durum({ status: 60 })).toEqual({ approval: 'Durum 60', iptal: null });
+  });
+
+  it('metinsel durum alanı varsa o kazanır; iptal bayrağı korunur', () => {
+    expect(durum({ statusText: 'Onaylandı', status: 60, message: 'ZARF BASARIYLA ISLENDI' })).toEqual({ approval: 'Onaylandı', iptal: null });
+    expect(durum({ status: 'Reddedildi' })).toEqual({ approval: 'Reddedildi', iptal: null });
+    expect(durum({ status: 60, message: 'ZARF BASARIYLA ISLENDI', isCancelled: true })).toEqual({ approval: 'ZARF BASARIYLA ISLENDI', iptal: 'Iptal' });
+  });
+
+  it('durum yoksa null (boş rozet) döner', () => {
+    expect(durum({ invoiceNumber: 'A1' })).toBeNull();
+    expect(durum(null)).toBeNull();
   });
 });

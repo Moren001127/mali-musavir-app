@@ -2421,6 +2421,8 @@ function sorguSaat(v: any): string {
   if (d.toDateString() === new Date().toDateString()) return saat;
   return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')} ${saat}`;
 }
+/** Belgenin kendi UBL durumu → ekran etiketi (entegratör sayı kodu döndürdüğünde yedek). */
+const UBL_DURUM_ETIKET: Record<string, string> = { onayli: 'Onaylandı', iptal: 'İptal', taslak: 'Onay bekliyor' };
 /** ONAY hapı: GİB/entegratör durum metnini sınıfa indirger (Onaylandı / Otomatik / Onay bekliyor /
  *  İptal / Red / İtiraz / Silinmiş). İptal-itiraz metni öncelikli; tanınmayan metin olduğu gibi kalır. */
 function sorguOnayHap(onay: any, iptal?: any): { k: 'onay' | 'oto' | 'bekliyor' | 'iptal' | 'red' | 'itiraz' | 'silinmis' | 'diger'; l: string } {
@@ -2438,7 +2440,8 @@ function sorguOnayHap(onay: any, iptal?: any): { k: 'onay' | 'oto' | 'bekliyor' 
   if (/silin|delete/.test(oN)) return { k: 'silinmis', l: 'Silinmiş' };
   if (/onaylanmad|bekl|wait|pending|taslak|draft|imzasız|imzasiz/.test(oN)) return { k: 'bekliyor', l: 'Onay bekliyor' };
   if (/otomatik|auto/.test(oN)) return { k: 'oto', l: 'Otomatik' };
-  if (/onayland|approved|success|imzal|signed|kabul|accept|\bok\b/.test(oN)) return { k: 'onay', l: 'Onaylandı' };
+  // "ZARF BASARIYLA ISLENDI" (Turkcell mesajı) da onay sayılır — GİB zarfı kabul etmiş demektir.
+  if (/onayland|approved|success|ba[sş]ar[ıi]|imzal|signed|kabul|accept|\bok\b/.test(oN)) return { k: 'onay', l: 'Onaylandı' };
   return { k: 'diger', l: o || '—' };
 }
 /** e-Arşiv iş ilerlemesi: payload.progress.current/total varsa belirli (login denemesi sayacı hariç);
@@ -3036,7 +3039,12 @@ function ScreenSorgu({ taxpayerId, period, source, onOpenEntegrator }: { taxpaye
       ? (r.receiverTitle || raw.receiverTitle || raw.alici || r.receiverVkn)
       : (r.senderTitle || raw.senderTitle || raw.satici);
     const taxNo = efaturaDirection === 'OUT' ? (r.receiverVkn || raw.receiverVkn || raw.aliciVergiNo) : (r.senderVkn || raw.senderVkn || raw.saticiVergiNo);
-    const approvalRaw = raw.onayDurumu || raw.approvalStatus || raw.status || raw.invoiceStatus || '';
+    // Bazı entegratörler durum yerine SAYI kodu döndürüyor (Turkcell: 60 = "ZARF BASARIYLA ISLENDI") ve ekranda
+    //   çıplak "60" görünüyordu. Sayı geldiyse belgenin kendi UBL durumuna (belgeDurumu) ya da sağlayıcı mesajına düş.
+    const approvalHam = String(raw.onayDurumu || raw.approvalStatus || raw.status || raw.invoiceStatus || '').trim();
+    const approvalRaw = /^[0-9]+$/.test(approvalHam)
+      ? (UBL_DURUM_ETIKET[String(raw.belgeDurumu || '').toLowerCase()] || raw.message || approvalHam)
+      : approvalHam;
     const onay = sorguOnayHap(approvalRaw, raw.iptalItiraz);
     const transferred = efaturaIsTransferred(r);
     const docStatus = efaturaDocumentStatus(r);

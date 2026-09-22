@@ -11314,9 +11314,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
    *      Başarılıda `data.token.accessToken`; sonraki isteklerde `Authorization: Bearer <token>`.
    *      İKİ ADIMLI DOĞRULAMA: yanıtta `hasOtp` true ise portal SMS/kod ister (`/auth/verifyTwoStepCode`) →
    *      otomatik çekim yapılamaz, kullanıcının portalde iki adımlı doğrulamayı kapatması gerekir.
-   *  • LİSTE: portal ızgaraları `GET /{modul}/fetch?page=&size=&sort=recordId,desc[&year=&month=]` düzenini kullanıyor
-   *      (Spring Page yanıtı: {content, totalElements}). Gelen kutusu modül adı kimliksiz kesinleşmediği için ADAY
-   *      listesi sırayla denenir; ilk çalışan log'a yazılır (sonra buraya sabitlenecek).
+   *  • LİSTE (2026-09-22 ikinci tur — portal paketinden KESİN): gelen kutusu ekranı ayrı bir parçadan (chunk 34)
+   *      yükleniyor; gerçek uç `GET /inbox/getInboxes?year=&month=&headerSearch=&notInList=&documentIds=&multipleVkn=
+   *      &chemistWarehouseFilter=&page=&size=&sort=receivedDate,desc` (Spring Page: {content, totalElements}).
+   *      Giden kutusu: `GET /outbox/getOutboxes?...` (chunk 35). İlk sürümdeki `/{modul}/fetch` uçları 404 verdi.
+   *      Satır alanları: documentUuid (ETTN) · documentId (fatura no) · documentIssueDate · receivedDate ·
+   *      sourceId/sourceTitle (gönderen VKN/ünvan) · invoiceTotal.
    *  • BELGE: `POST /{inbox|outbox}/downloadMedia/xml` {documentUuid, year, month} → arraybuffer (XML veya ZIP).
    *  • `/store/...` uçları bu portalda YOK (404) — onlar `/defter-control/api` ürününe ait, bu kurulumda mevcut değil.
    *
@@ -11371,11 +11374,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const modul = gelen ? 'inbox' : 'outbox';
     const [yil, ay] = opts.period.donem.split('-').map((x) => parseInt(x, 10));
     const sayfaBoyu = Math.min(Math.max(opts.limit, 20), 200);
-    const adayModuller = gelen
-      ? ['inbox', 'eInvoiceInboxList', 'eInvoiceInbox']
-      : ['outbox', 'eInvoiceOutboxList', 'eInvoiceOutbox'];
-    const sayfaYolu = (m: string, sayfa: number, yilAy: boolean) =>
-      `/${m}/fetch?page=${sayfa}&size=${sayfaBoyu}&sort=recordId,desc` + (yilAy ? `&year=${yil}&month=${ay}` : '');
+    const listeUcu = gelen ? '/inbox/getInboxes' : '/outbox/getOutboxes';
+    // Portal ekranı ayı 1-12 gönderiyor; bazı kurulumlarda 12 = "yılın tamamı" anlamına geliyor. Önce gerçek ay,
+    //   satır gelmezse 12 denenir; dönem süzmesini zaten istemci tarafında tarihe bakarak yapıyoruz.
+    const ayAdaylari = ay === 12 ? [12] : [ay, 12];
+    const sayfaYolu = (sayfa: number, listeAyi: number) =>
+      `${listeUcu}?year=${yil}&month=${listeAyi}&headerSearch=&notInList=false&documentIds=&multipleVkn=`
+      + `&chemistWarehouseFilter=&page=${sayfa}&size=${sayfaBoyu}&sort=receivedDate,desc`;
     const satirlariAl = (j: any): any[] | null =>
       Array.isArray(j?.content) ? j.content
         : Array.isArray(j?.data?.content) ? j.data.content
@@ -11383,26 +11388,22 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         : Array.isArray(j?.items) ? j.items
         : Array.isArray(j) ? j : null;
 
-    let calisanModul: string | null = null;
-    let yilAyDestekli = true;
+    let listeAyi: number | null = null;
     let ilkSayfa: any[] | null = null;
     const denenen: string[] = [];
-    for (const m of adayModuller) {
-      for (const yilAy of [true, false]) {
-        const r = await fetch(`${api}${sayfaYolu(m, 0, yilAy)}`, { headers: authHeaders });
-        const t = await r.text();
-        denenen.push(`${m}/fetch${yilAy ? '(yıl-ay)' : ''}=${r.status}`);
-        if (!r.ok) continue;
-        let j: any; try { j = JSON.parse(t); } catch { continue; }
-        const satirlar = satirlariAl(j);
-        if (!satirlar) continue;
-        calisanModul = m; yilAyDestekli = yilAy; ilkSayfa = satirlar;
-        this.logger.log(`Eczacıkart liste ucu bulundu: /${m}/fetch${yilAy ? ' (yıl+ay süzgeçli)' : ''} — ${satirlar.length} satır`);
-        break;
-      }
-      if (calisanModul) break;
+    for (const aday of ayAdaylari) {
+      const r = await fetch(`${api}${sayfaYolu(0, aday)}`, { headers: authHeaders });
+      const t = await r.text();
+      denenen.push(`${listeUcu}(ay=${aday})=${r.status}`);
+      if (!r.ok) continue;
+      let j: any; try { j = JSON.parse(t); } catch { continue; }
+      const satirlar = satirlariAl(j);
+      if (!satirlar) continue;
+      listeAyi = aday; ilkSayfa = satirlar;
+      this.logger.log(`Eczacıkart liste: ${listeUcu} ay=${aday} — ${satirlar.length} satır (toplam ${j?.totalElements ?? '?'})`);
+      if (satirlar.length) break; // boş döndüyse diğer ay adayını da dene
     }
-    if (!calisanModul || !ilkSayfa) {
+    if (listeAyi === null || !ilkSayfa) {
       throw new Error(`Eczacıkart fatura listesi alınamadı — denenen uçlar: ${denenen.join(', ')}. (Portal ızgara ucu değişmiş olabilir.)`);
     }
 
@@ -11410,7 +11411,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const bas = Date.parse(`${opts.period.startDate}T00:00:00`);
     const bit = Date.parse(`${opts.period.endDate}T23:59:59`);
     const tarihAl = (it: any): number => {
-      const ham = it?.issueDate || it?.invoiceDate || it?.documentDate || it?.faturaTarihi || it?.createDate || it?.recordDate;
+      // Portal alanı: documentIssueDate (fatura düzenleme tarihi). Yoksa eski/öteki adlar, en son geliş tarihi.
+      const ham = it?.documentIssueDate || it?.issueDate || it?.invoiceDate || it?.documentDate || it?.faturaTarihi || it?.receivedDate || it?.createDate;
       if (!ham) return NaN;
       const metin = String(ham).trim();
       const nokta = metin.match(/^(\d{2})[./-](\d{2})[./-](\d{4})/); // 31.08.2026 / 31-08-2026
@@ -11428,7 +11430,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       if (sayfa === 0) satirlar = ilkSayfa;
       else {
         await nefes(800); // sayfalar arası nazik bekleme
-        const r = await fetch(`${api}${sayfaYolu(calisanModul, sayfa, yilAyDestekli)}`, { headers: authHeaders });
+        const r = await fetch(`${api}${sayfaYolu(sayfa, listeAyi)}`, { headers: authHeaders });
         if (!r.ok) { this.logger.warn(`Eczacıkart liste sayfa ${sayfa} hata ${r.status} — kısmi bitiş`); break; }
         let j: any; try { j = JSON.parse(await r.text()); } catch { break; }
         satirlar = satirlariAl(j) || [];
@@ -11445,11 +11447,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         if (!uuid) continue;
         const externalId = `eczacikart:${modul}:${uuid}`;
         if (opts.skipExistingExternalIds?.has(externalId)) { kept++; continue; }
-        const faturaNo = String(it?.documentNumber || it?.invoiceNumber || it?.faturaNo || uuid).trim();
+        const faturaNo = String(it?.documentId || it?.documentNumber || it?.invoiceNumber || it?.faturaNo || uuid).trim();
         const belgeYili = Number.isFinite(ms) ? new Date(ms).getFullYear() : yil;
         const belgeAyi = Number.isFinite(ms) ? new Date(ms).getMonth() + 1 : ay;
 
-        const dRes = await fetch(`${api}/${calisanModul === 'inbox' || calisanModul === 'outbox' ? calisanModul : modul}/downloadMedia/xml`, {
+        const dRes = await fetch(`${api}/${modul}/downloadMedia/xml`, {
           method: 'POST',
           headers: { ...authHeaders, Accept: 'application/xml, application/octet-stream, */*' },
           body: JSON.stringify({ documentUuid: uuid, year: belgeYili, month: belgeAyi }),
@@ -13365,7 +13367,16 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       for (const k of keys) { const v = (item as any)[k]; if (v != null && String(v).trim()) return String(v).trim(); }
       return '';
     };
-    const approval = pick('StatusText', 'statusText', 'Status', 'status', 'InvoiceStatus', 'invoiceStatus', 'GibStatus', 'gibStatus', 'EnvelopeStatus', 'envelopeStatus', 'DocumentStatus', 'documentStatus');
+    // ÖNCE METİN alanları. Turkcell gibi bazı entegratörler durum yerine SAYI kodu döndürüyor
+    //   (canlı: outboxinvoice/list → status=60, message="ZARF BASARIYLA ISLENDI") — ekranda çıplak "60" görünüyordu.
+    //   Sayı geldiyse sağlayıcının kendi açıklama metnine düşülür; o da yoksa "Durum <kod>" yazılır.
+    const durumMetni = pick('StatusText', 'statusText', 'StatusDescription', 'statusDescription', 'InvoiceStatus', 'invoiceStatus', 'GibStatus', 'gibStatus', 'EnvelopeStatus', 'envelopeStatus', 'DocumentStatus', 'documentStatus');
+    const durumKodu = pick('Status', 'status');
+    const durumAciklama = pick('Message', 'message', 'StateExplanation', 'stateExplanation', 'ResultMessage', 'resultMessage');
+    const approval = durumMetni
+      || (/^\d+$/.test(durumKodu)
+        ? (durumAciklama || (durumKodu ? `Durum ${durumKodu}` : ''))
+        : (durumKodu || durumAciklama));
     const cancelled = (item as any).IsCancelled === true || (item as any).isCancelled === true || (item as any).Cancelled === true || (item as any).cancelled === true
       || (item as any).IsDeleted === true || (item as any).isDeleted === true;
     if (!approval && !cancelled) return null;
