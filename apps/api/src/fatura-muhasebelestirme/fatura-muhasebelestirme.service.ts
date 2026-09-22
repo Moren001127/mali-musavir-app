@@ -3396,6 +3396,16 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       include: { lines: { orderBy: { orderNo: 'asc' } } },
     });
     if (!doc) throw new NotFoundException('Belge bulunamadı');
+    // TEVKİFAT/STOPAJ VARSAYILANLARI EKRANA DA GELSİN (2026-09-23, Muzaffer Bey):
+    //   Bu varsayılanlar (oran, tevkifat kodu tahmini, stopaj) eskiden YALNIZ Luca dosyası üretilirken
+    //   uygulanıyordu; editör belgeyi ham hâliyle alıyor ve tevkifat alanları "Yok" görünüyordu —
+    //   kullanıcıdan zaten sistemin bildiği kodu seçmesi isteniyordu. Artık ekran ile dosya AYNI
+    //   kaynaktan besleniyor. Elle girilmiş değer varsa fonksiyon zaten dokunmuyor.
+    try {
+      const ocr: any = doc.ocrData && typeof doc.ocrData === 'object' ? doc.ocrData : {};
+      const zengin = isletmeWithBelgeDefaults(doc);
+      if (zengin && Object.keys(zengin).length) doc.ocrData = { ...ocr, isletme: zengin };
+    } catch { /* varsayılan uygulanamadıysa ham belge döner */ }
     return doc;
   }
 

@@ -4610,13 +4610,17 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
     //   tevkifat kodu okunduysa o da gelir. Kullanıcı listeden kodu seçince oran/tutar yeniden hesaplanır.
     //   ELLE GİRİLMİŞ değer varsa DOKUNULMAZ (saved.satirlar yolu zaten üstte döndü).
     {
+      // Sunucu belgeyi verirken İşletme varsayılanlarını uyguluyor (kural motoru kalem adından kodu
+      //   buluyor: "PERSONEL TAŞIMA BEDELİ" → 214 Servis taşımacılığı → satıcı kodu 614). ÖNCE onu kullan,
+      //   yoksa ham belge okumasına düş. Kullanıcıdan zaten bilinen kodu seçmesini İSTEMİYORUZ.
       const oranSayi = Number(selDoc.ocrData?.tevkifatOrani) || 0;
-      if (oranSayi > 0 && satirlar.length) {
+      const sunucuOran = String(saved.tevkifatOrani || '').trim();
+      if ((oranSayi > 0 || sunucuOran) && satirlar.length) {
         const payda = 10;
-        const pay = Math.round(oranSayi * payda);
-        const oranTxt = pay > 0 && pay <= 10 ? `${pay}/${payda}` : '';
-        const tevkTutar = Number(selDoc.ocrData?.tevkifatKdv) || Number(selDoc.ocrData?.kdvTevkifat) || 0;
-        const kodHam = String(selDoc.ocrData?.tevkifatKodu || '').replace(/\D/g, '');
+        const pay = sunucuOran ? Number(sunucuOran.split('/')[0]) || 0 : Math.round(oranSayi * payda);
+        const oranTxt = sunucuOran || (pay > 0 && pay <= 10 ? `${pay}/${payda}` : '');
+        const tevkTutar = Number(saved.tevkifatTutar) || Number(selDoc.ocrData?.tevkifatKdv) || Number(selDoc.ocrData?.kdvTevkifat) || 0;
+        const kodHam = String(saved.tevkifatKodu || selDoc.ocrData?.tevkifatKodu || '').replace(/\D/g, '');
         // Belgeden gelen kod ALICI tarafı (2xx) olabilir; satıcı tarafı = +400 (214 → 614).
         const kod = kodHam ? (/^2\d\d$/.test(kodHam) ? String(Number(kodHam) + 400) : kodHam) : '';
         satirlar = satirlar.map((st: any, i: number) => (
