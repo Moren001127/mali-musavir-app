@@ -86,7 +86,7 @@
   //   Luca'nın beklediği adlarla TEK SEFERDE hizalanır (her denemede tek sütun hatası okumak yerine).
   // v1.47.48 (2026-09-15): firma onay düğmesi regex'indeki `\b` sınırları kaynakta gerçek backspace (0x08) baytına
   //   dönüşmüştü (sec/aç/ac seçenekleri ölüydü) → düzeltildi.
-  const AGENT_VERSION = '1.47.53';
+  const AGENT_VERSION = '1.47.54';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -477,11 +477,20 @@
     }
   } catch {}
 
-  /** v1.47.53: HIZLI FİŞ grid'ini taşıyan belge (detaylar[...] alanları olan). Ölçüm ve kutu doldurma
-   *  YALNIZ bunun üzerinde yapılır — arka planda açık kalan başka Luca pencereleri sayıma karışmasın. */
+  /** v1.47.54: HIZLI FİŞ grid'ini taşıyan belge. İLK eşleşen değil, EN ÇOK satır alanı taşıyan belge
+   *  seçilir — yükleme öncesi boş şablon belgesi de "detaylar[" içeriyor ve v1.47.53'te yanlışlıkla o
+   *  seçiliyordu (kutu doldurma 0 satırda çalıştı). Ölçüm ve doldurma yalnız bunun üzerinde yapılır. */
   function hizliFisDoc() {
-    try { for (const d of lucaDocuments()) { try { if (d.querySelector('[name^="detaylar["]')) return d; } catch {} } } catch {}
-    return null;
+    let enIyi = null, enCok = 0;
+    try {
+      for (const d of lucaDocuments()) {
+        try {
+          const n = d.querySelectorAll('[name^="detaylar["]').length + d.querySelectorAll('select[data-value]').length;
+          if (n > enCok) { enCok = n; enIyi = d; }
+        } catch {}
+      }
+    } catch {}
+    return enCok > 0 ? enIyi : null;
   }
 
   function lucaDocuments() {
@@ -3207,11 +3216,30 @@
                     const hf = hizliFisDoc();
                     if (hf) {
                       const hw = hf.defaultView || window;
+                      // v1.47.54 — ARTIK KALINTI KORUMASI: ekranda önceki denemeden kalmış satırlar varsa
+                      //   yüklenen satır sayısı gönderdiğimiz belge sayısını KATLAR. O hâlde fiş kesilirse
+                      //   MÜKERRER kayıt olur → basmıyoruz, net hata veriyoruz.
+                      let satirNo = new Set();
+                      try { for (const el of hf.querySelectorAll('[name^="detaylar["]')) { const m = String(el.name || '').match(/^detaylar\[(\d+)\]/); if (m) satirNo.add(Number(m[1])); } } catch {}
+                      const beklenen = Number(p.totalCount || 0);
+                      if (beklenen > 0 && satirNo.size > beklenen + 1) {
+                        throw new Error(`HIZLI FİŞ ekranında ${satirNo.size} satır var ama bu aktarımda ${beklenen} belge gönderildi — ekranda önceki denemeden KALINTI satırlar var. Mükerrer fiş kesilmesin diye "Fiş Kes" basılmadı; Luca'da HIZLI FİŞ ekranını temizleyip tekrar deneyin.`);
+                      }
                       // 1) Sayfanın kendi satır doldurma fonksiyonu (populate(i)) varsa satır satır çağır.
-                      const satirNolar = new Set();
-                      try { for (const el of hf.querySelectorAll('[name^="detaylar["]')) { const m = String(el.name || '').match(/^detaylar\[(\d+)\]/); if (m) satirNolar.add(Number(m[1])); } } catch {}
+                      const satirNolar = satirNo;
                       for (const i of satirNolar) { try { if (typeof hw.populate === 'function') hw.populate(i); } catch {} }
-                      if (satirNolar.size) await sleep(1200);
+                      // 2) Kutular Luca'nın AJAX db listeleriyle doluyor — DOLANA KADAR BEKLE (en çok ~15 sn).
+                      for (let bek = 0; bek < 15; bek++) {
+                        let bosVar = false;
+                        try {
+                          for (const sel of hf.querySelectorAll('select[data-value]')) {
+                            const dv = String(sel.getAttribute('data-value') || '').trim();
+                            if (dv && !(sel.options && sel.options.length)) { bosVar = true; break; }
+                          }
+                        } catch {}
+                        if (!bosVar) break;
+                        await sleep(1000);
+                      }
                       // 2) Hâlâ boş olan her kutuya data-value'yu seçenek olarak yaz ve seç.
                       try {
                         for (const sel of hf.querySelectorAll('select[data-value]')) {
