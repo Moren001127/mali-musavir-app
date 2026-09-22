@@ -86,7 +86,7 @@
   //   Luca'nın beklediği adlarla TEK SEFERDE hizalanır (her denemede tek sütun hatası okumak yerine).
   // v1.47.48 (2026-09-15): firma onay düğmesi regex'indeki `\b` sınırları kaynakta gerçek backspace (0x08) baytına
   //   dönüşmüştü (sec/aç/ac seçenekleri ölüydü) → düzeltildi.
-  const AGENT_VERSION = '1.47.52';
+  const AGENT_VERSION = '1.47.53';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -476,6 +476,13 @@
       };
     }
   } catch {}
+
+  /** v1.47.53: HIZLI FİŞ grid'ini taşıyan belge (detaylar[...] alanları olan). Ölçüm ve kutu doldurma
+   *  YALNIZ bunun üzerinde yapılır — arka planda açık kalan başka Luca pencereleri sayıma karışmasın. */
+  function hizliFisDoc() {
+    try { for (const d of lucaDocuments()) { try { if (d.querySelector('[name^="detaylar["]')) return d; } catch {} } } catch {}
+    return null;
+  }
 
   function lucaDocuments() {
     const docs = [];
@@ -3189,6 +3196,48 @@
                   // v1.47.44: yanıtta GERÇEK grid satırı yoksa (yalnız boş şablon satırı detaylar[0]) Fiş Kes BASILMAZ —
                   //   boş/tek satırlık fiş kesme riski. Satırlar gelmediyse hata ver, tanı snapshot'ı incelenir.
                   if (gridSatir >= 0 && gridSatir <= 1) throw new Error(`CSV satırları HIZLI FİŞ grid'ine girmedi (yanıtta detaylar satırı=${gridSatir}); "Fiş Kes" basılmadı. Luca'nın hata metni logda (⚠[Luca]).`);
+                  // v1.47.53 — SATIR AÇILIR KUTULARINI DOLDUR (Fiş Kes'in sessiz başarısızlığının kökü).
+                  //   Luca satır kutularını (Kayıt Alt Türü, Belge Türü…) HTML'de BOŞ gönderip içini kendi
+                  //   JS'iyle data-value'dan doldurur. Yanıtı doc.write ile bastığımız için o doldurma
+                  //   çalışmıyor → kutu boş kalıyor → fisKes() hiçbir şey yapmadan çıkıyor.
+                  //   Önce sayfanın KENDİ doldurma fonksiyonu denenir; olmazsa data-value doğrudan seçenek
+                  //   olarak yazılır (değer Luca'nın kendi CSV içe aktarımından gelir, uydurma DEĞİL).
+                  let kutuDolduruldu = 0; const bosKutular = [];
+                  try {
+                    const hf = hizliFisDoc();
+                    if (hf) {
+                      const hw = hf.defaultView || window;
+                      // 1) Sayfanın kendi satır doldurma fonksiyonu (populate(i)) varsa satır satır çağır.
+                      const satirNolar = new Set();
+                      try { for (const el of hf.querySelectorAll('[name^="detaylar["]')) { const m = String(el.name || '').match(/^detaylar\[(\d+)\]/); if (m) satirNolar.add(Number(m[1])); } } catch {}
+                      for (const i of satirNolar) { try { if (typeof hw.populate === 'function') hw.populate(i); } catch {} }
+                      if (satirNolar.size) await sleep(1200);
+                      // 2) Hâlâ boş olan her kutuya data-value'yu seçenek olarak yaz ve seç.
+                      try {
+                        for (const sel of hf.querySelectorAll('select[data-value]')) {
+                          const hedef = String(sel.getAttribute('data-value') || '').trim();
+                          if (!hedef || String(sel.value || '') === hedef) continue;
+                          let opt = null;
+                          try { for (const o of sel.options) { if (String(o.value) === hedef) { opt = o; break; } } } catch {}
+                          if (!opt) { opt = hf.createElement('option'); opt.value = hedef; opt.text = hedef; sel.appendChild(opt); }
+                          sel.value = hedef; opt.selected = true;
+                          try { sel.dispatchEvent(new (hw.Event || Event)('change', { bubbles: true })); } catch {}
+                          kutuDolduruldu++;
+                        }
+                      } catch {}
+                      await sleep(600);
+                      // 3) DENETİM: data-value'su olup hâlâ boş kalan kutu varsa Fiş Kes BASILMAZ (eksik fiş riski).
+                      try {
+                        for (const sel of hf.querySelectorAll('select[name^="detaylar["]')) {
+                          const dv = String(sel.getAttribute('data-value') || '').trim();
+                          if (dv && !String(sel.value || '').trim()) bosKutular.push(sel.name);
+                        }
+                      } catch {}
+                    }
+                  } catch (e) { await log(`satır kutusu doldurma uyarısı: ${(e && e.message) || e}`); }
+                  await log(`🧩 Satır açılır kutusu dolduruldu=${kutuDolduruldu}${bosKutular.length ? ` · BOŞ KALAN=${bosKutular.slice(0, 6).join(', ')}` : ''}`);
+                  if (bosKutular.length) throw new Error(`Satır açılır kutuları dolmadı (${bosKutular.slice(0, 4).join(', ')}). "Fiş Kes" BASILMADI — eksik fiş kesilmesin.`);
+
                   // 3) "Fiş Kes" — sayfa fonksiyonu (fn:gonder) → popup-trusted → ana native → fireEl
                   const fkEl = findBtn(/^Fi[şs]\s*Kes$/i);
                   let fk = false;
@@ -3211,8 +3260,13 @@
                   for (const d of lucaDocuments()) {
                     try { const t = (d.body && d.body.textContent) || ''; if (/fi[şs].{0,20}(olu[şs]turuldu|kesildi|kaydedildi)|ba[şs]ar[ıi]yla\s+(kaydedildi|olu[şs]tur|eklendi|kesildi|tamamland)/i.test(t)) ok = true; } catch {}
                   }
-                  let liveTr = 0; try { for (const d of lucaDocuments()) { try { liveTr += d.querySelectorAll('table tr').length; } catch {} } } catch {}
+                  // v1.47.53: tr sayımı YALNIZ HIZLI FİŞ belgesinden. Eskiden tüm Luca pencereleri toplanıyordu;
+                  //   arka planda açık kalan hesap planı listesi (351 satır) toplama karışıp "tr=507" gibi
+                  //   anlamsız bir sayı üretiyor, "grid boşaldı" ölçümünü imkânsız kılıyordu.
+                  const hfSon = hizliFisDoc();
+                  let liveTr = 0; try { if (hfSon) liveTr = hfSon.querySelectorAll('table tr').length; } catch {}
                   if (postTr > 8 && liveTr > 0 && liveTr < postTr - 4) ok = true; // Fiş Kes sonrası grid boşaldı
+                  if (gridSatir >= 2 && !hfSon) ok = true;                        // HIZLI FİŞ ekranı tamamen kapandı = fiş kesildi
                   // v1.47.46: HIZLI FİŞ grid satırı (detaylar[N] girdileri) — yüklemede ≥2 satır girdiyse ve Fiş Kes sonrası
                   //   hiçbir belgede ≥2 satır kalmadıysa fiş kesilmiş demektir (boş şablon satırı detaylar[0] kalır).
                   let sonDetay = 0;
