@@ -4604,6 +4604,39 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
     if (Array.isArray(saved.satirlar) && saved.satirlar.length) satirlar = saved.satirlar;
     else if (bd.length > 1) satirlar = bd.map((b: any) => mkSatir(kind, Number(b.matrah ?? b.base) || 0, oranToKdvKod(b.oran ?? b.rate), Number(b.tutar ?? b.amount) || 0));
     else satirlar = [mkSatir(kind, Number(p.matrah) || 0, kdvKod, Number(p.kdv) || 0)];
+
+    // TEVKİFAT TOHUMU (2026-09-23): belge okumasında tevkifat var ama satırda yoktu → ekranda "Yok" görünüyordu.
+    //   ocrData.tevkifatOrani (0.5 → 5/10) ve tevkifatKdv (tevkifat edilen KDV) satıra taşınır; belgede
+    //   tevkifat kodu okunduysa o da gelir. Kullanıcı listeden kodu seçince oran/tutar yeniden hesaplanır.
+    //   ELLE GİRİLMİŞ değer varsa DOKUNULMAZ (saved.satirlar yolu zaten üstte döndü).
+    {
+      const oranSayi = Number(selDoc.ocrData?.tevkifatOrani) || 0;
+      if (oranSayi > 0 && satirlar.length) {
+        const payda = 10;
+        const pay = Math.round(oranSayi * payda);
+        const oranTxt = pay > 0 && pay <= 10 ? `${pay}/${payda}` : '';
+        const tevkTutar = Number(selDoc.ocrData?.tevkifatKdv) || Number(selDoc.ocrData?.kdvTevkifat) || 0;
+        const kodHam = String(selDoc.ocrData?.tevkifatKodu || '').replace(/\D/g, '');
+        // Belgeden gelen kod ALICI tarafı (2xx) olabilir; satıcı tarafı = +400 (214 → 614).
+        const kod = kodHam ? (/^2\d\d$/.test(kodHam) ? String(Number(kodHam) + 400) : kodHam) : '';
+        satirlar = satirlar.map((st: any, i: number) => (
+          st.tevkifatOrani || st.tevkifatKodu
+            ? st
+            : {
+                ...st,
+                ...(oranTxt ? { tevkifatOrani: oranTxt } : {}),
+                ...(kod ? { tevkifatKodu: kod } : {}),
+                // Tevkifat tutarı tek satırda birebir; çok satırlıysa satırın KDV'sinden oranla.
+                ...(tevkTutar && satirlar.length === 1
+                  ? { tevkifatTutar: tevkTutar }
+                  : oranTxt
+                    ? { tevkifatTutar: Math.round((Number(st.kdvTutar) || 0) * (pay / payda) * 100) / 100 }
+                    : {}),
+              }
+        ));
+      }
+    }
+
     setIsl({
       // Belge türü: OKUNDUYSA onu göster; okunmadıysa (documentType boş) BOŞ bırak — VARSAYMA, kullanıcı seçer.
       belgeTuruKod: saved.belgeTuruKod || (() => { const dt = normalizeDocumentType(selDoc.documentType || selDoc.ocrData?.belgeTuru || selDoc.ocrData?.documentType); return dt ? defaultBelgeTuruKod(dt, kind) : ''; })(),
