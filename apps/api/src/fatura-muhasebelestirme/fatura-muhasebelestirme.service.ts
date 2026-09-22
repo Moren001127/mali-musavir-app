@@ -12193,8 +12193,34 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           <ExecutionEndDate>${opts.period.endDate}T23:59:59</ExecutionEndDate>
         </query>
       </${method}>`;
-    const text = await this.soapPost(cfg.baseUrl || PROVIDER_DEFAULT_BASE_URL.UYUMSOFT, action, body, { trProxy: true });
-    return this.extractPayloadsFromProviderResponse(text, ['Data']);
+    const url = cfg.baseUrl || PROVIDER_DEFAULT_BASE_URL.UYUMSOFT;
+    // IP TUZAĞI (2026-09-22 canlı): Uyumsoft "Bu sisteme erişmek için gerekli yetkiniz yok, Kullanıcı: X, Ip: Y"
+    //   diyor — bu mesaj hem WEB SERVİS YETKİSİ eksikliğinde hem de IP izinli değilse çıkıyor. Hangisi olduğunu
+    //   anlamak için Türkiye vekili reddedilirse İKİNCİ ÇIKIŞ (doğrudan) denenir; biri geçerse çekim sürer,
+    //   ikisi de geçmezse hata mesajında HER İKİ IP de yazar → Uyumsoft'a "şu IP'lere izin verin" denebilir.
+    const yetkiHatasiMi = (e: any) => /yetkiniz yok|Permission/i.test(String(e?.message || ''));
+    try {
+      const text = await this.soapPost(url, action, body, { trProxy: true });
+      return this.extractPayloadsFromProviderResponse(text, ['Data']);
+    } catch (e: any) {
+      if (!yetkiHatasiMi(e)) throw e;
+      this.logger.warn(`[UYUMSOFT] Türkiye çıkışı reddedildi (${String(e?.message || '').slice(0, 160)}) — doğrudan çıkış deneniyor`);
+      try {
+        const text2 = await this.soapPost(url, action, body, { trProxy: false });
+        this.logger.log('[UYUMSOFT] doğrudan çıkış KABUL edildi — Türkiye vekilinin IP adresi izinli değil');
+        return this.extractPayloadsFromProviderResponse(text2, ['Data']);
+      } catch (e2: any) {
+        if (!yetkiHatasiMi(e2)) throw e2;
+        const ipler = [String(e?.message || ''), String(e2?.message || '')]
+          .map((m) => (m.match(/Ip:\s*([0-9a-fA-F:.]+)/) || [])[1])
+          .filter(Boolean);
+        throw new Error(
+          'Uyumsoft web servisi erişimi reddetti (kullanıcı yetkisi ya da IP izni yok). '
+          + `Denenen çıkış IP'leri: ${ipler.join(' ve ') || 'bilinmiyor'}. `
+          + 'Uyumsoft tarafindan bu kullaniciya WEB SERVIS yetkisi ve bu IP adreslerine izin verilmesi gerekiyor.',
+        );
+      }
+    }
   }
 
   private async fetchI2iInvoices(
