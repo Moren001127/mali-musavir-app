@@ -11378,9 +11378,17 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // Portal ekranı ayı 1-12 gönderiyor; bazı kurulumlarda 12 = "yılın tamamı" anlamına geliyor. Önce gerçek ay,
     //   satır gelmezse 12 denenir; dönem süzmesini zaten istemci tarafında tarihe bakarak yapıyoruz.
     const ayAdaylari = ay === 12 ? [12] : [ay, 12];
-    const sayfaYolu = (sayfa: number, listeAyi: number) =>
-      `${listeUcu}?year=${yil}&month=${listeAyi}&headerSearch=&notInList=false&documentIds=&multipleVkn=`
-      + `&chemistWarehouseFilter=&page=${sayfa}&size=${sayfaBoyu}&sort=receivedDate,desc`;
+    // Parametre kalıpları: portal ekranının gönderdiği tam kalıp (isArchive dahil) → sadeleştirilmiş → en yalın.
+    //   Spring @RequestParam zorunlu olduğunda eksik parametre 400 veriyor; ilk tutan kalıp log'a yazılır.
+    const kaliplar = [
+      (sayfa: number, m: number) => `?year=${yil}&month=${m}&headerSearch=&notInList=false&documentIds=&multipleVkn=`
+        + `&chemistWarehouseFilter=false&page=${sayfa}&size=${sayfaBoyu}&sort=receivedDate,desc&isArchive=0`,
+      (sayfa: number, m: number) => `?year=${yil}&month=${m}&headerSearch=&notInList=false&documentIds=&multipleVkn=`
+        + `&chemistWarehouseFilter=&page=${sayfa}&size=${sayfaBoyu}&sort=receivedDate,desc&isArchive=0`,
+      (sayfa: number, m: number) => `?year=${yil}&month=${m}&page=${sayfa}&size=${sayfaBoyu}&sort=receivedDate,desc`,
+    ];
+    let kalipNo = 0;
+    const sayfaYolu = (sayfa: number, listeAyi: number) => `${listeUcu}${kaliplar[kalipNo](sayfa, listeAyi)}`;
     const satirlariAl = (j: any): any[] | null =>
       Array.isArray(j?.content) ? j.content
         : Array.isArray(j?.data?.content) ? j.data.content
@@ -11391,17 +11399,19 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     let listeAyi: number | null = null;
     let ilkSayfa: any[] | null = null;
     const denenen: string[] = [];
-    for (const aday of ayAdaylari) {
-      const r = await fetch(`${api}${sayfaYolu(0, aday)}`, { headers: authHeaders });
-      const t = await r.text();
-      denenen.push(`${listeUcu}(ay=${aday})=${r.status}`);
-      if (!r.ok) continue;
-      let j: any; try { j = JSON.parse(t); } catch { continue; }
-      const satirlar = satirlariAl(j);
-      if (!satirlar) continue;
-      listeAyi = aday; ilkSayfa = satirlar;
-      this.logger.log(`Eczacıkart liste: ${listeUcu} ay=${aday} — ${satirlar.length} satır (toplam ${j?.totalElements ?? '?'})`);
-      if (satirlar.length) break; // boş döndüyse diğer ay adayını da dene
+    for (let k = 0; k < kaliplar.length && listeAyi === null; k++) {
+      kalipNo = k;
+      for (const aday of ayAdaylari) {
+        const r = await fetch(`${api}${sayfaYolu(0, aday)}`, { headers: authHeaders });
+        const t = await r.text();
+        if (!r.ok) { denenen.push(`kalıp${k + 1}(ay=${aday})=${r.status}: ${t.replace(/\s+/g, ' ').slice(0, 120)}`); continue; }
+        let j: any; try { j = JSON.parse(t); } catch { denenen.push(`kalıp${k + 1}(ay=${aday})=JSON değil`); continue; }
+        const satirlar = satirlariAl(j);
+        if (!satirlar) { denenen.push(`kalıp${k + 1}(ay=${aday})=liste alanı yok (${Object.keys(j || {}).slice(0, 6).join('/')})`); continue; }
+        listeAyi = aday; ilkSayfa = satirlar;
+        this.logger.log(`Eczacıkart liste ucu: ${listeUcu} kalıp${k + 1} ay=${aday} — ${satirlar.length} satır (toplam ${j?.totalElements ?? '?'})`);
+        if (satirlar.length) break; // boş döndüyse diğer ay adayını da dene
+      }
     }
     if (listeAyi === null || !ilkSayfa) {
       throw new Error(`Eczacıkart fatura listesi alınamadı — denenen uçlar: ${denenen.join(', ')}. (Portal ızgara ucu değişmiş olabilir.)`);

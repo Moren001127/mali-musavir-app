@@ -32,7 +32,7 @@ const opts = {
 };
 
 const API = 'https://portal.eczacikartfatura.com/accounting/api';
-const LISTE_AY8 = '/inbox/getInboxes?year=2026&month=8&headerSearch=&notInList=false&documentIds=&multipleVkn=&chemistWarehouseFilter=&page=0&size=20&sort=receivedDate,desc';
+const LISTE_AY8 = '/inbox/getInboxes?year=2026&month=8&headerSearch=&notInList=false&documentIds=&multipleVkn=&chemistWarehouseFilter=false&page=0&size=20&sort=receivedDate,desc&isArchive=0';
 const yanit = (body: any, init: { status?: number; xml?: string } = {}) => ({
   ok: (init.status ?? 200) < 400,
   status: init.status ?? 200,
@@ -138,7 +138,24 @@ describe('Eczacıkart adaptörü', () => {
       if (u === '/auth/signin') return yanit({ token: { accessToken: 'JWT' } }) as any;
       return yanit('yok', { status: 404 }) as any;
     }) as any;
-    await expect(servis().fetchEczacikartInvoices(cfg, opts)).rejects.toThrow(/denenen uçlar:.*getInboxes\(ay=8\)=404.*getInboxes\(ay=12\)=404/s);
+    await expect(servis().fetchEczacikartInvoices(cfg, opts)).rejects.toThrow(/denenen uçlar:.*kalıp1\(ay=8\)=404.*kalıp3\(ay=12\)=404/s);
+  });
+
+  it('portal 400 verirse sonraki parametre kalıbı denenir; sunucunun metni hataya taşınır', async () => {
+    const cagrilar: string[] = [];
+    global.fetch = jest.fn(async (url: any) => {
+      const u = String(url).replace(API, '');
+      if (u === '/auth/signin') return yanit({ token: { accessToken: 'JWT' } }) as any;
+      cagrilar.push(u);
+      // 1. ve 2. kalıp reddedilsin, 3. (yalın) kalıp çalışsın
+      if (u.includes('isArchive')) return yanit('Required parameter is not present', { status: 400 }) as any;
+      if (u.startsWith('/inbox/getInboxes')) return yanit({ content: u.includes('page=0') ? [satir('u-3', 'A3', '2026-08-07')] : [] }) as any;
+      return yanit('', { xml: '<Invoice/>' }) as any;
+    }) as any;
+    const payloads = await servis().fetchEczacikartInvoices(cfg, opts);
+    expect(payloads).toHaveLength(1);
+    expect(cagrilar.some((u) => u.includes('chemistWarehouseFilter=false'))).toBe(true);
+    expect(cagrilar.some((u) => !u.includes('isArchive') && u.includes('/inbox/getInboxes'))).toBe(true);
   });
 
   it('zaten çekilmiş fatura tekrar indirilmez (skip-existing)', async () => {
