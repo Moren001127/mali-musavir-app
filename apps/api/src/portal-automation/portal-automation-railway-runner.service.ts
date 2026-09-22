@@ -2373,7 +2373,10 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     //   Kullanıcı ayı seçtiğinde burada aralık 7'şer günlük pencerelere bölünür, her pencere ayrı
     //   sorgulanır ve satırlar ETTN/belge no ile TEKİLLEŞTİRİLEREK birleştirilir. 7 gün ve altı
     //   aralıkta tek sorgu kalır (eski davranış). Sınır değişirse tek yer: EARSIV_PENCERE_GUN.
-    const pencereler = tarihPencereleri(job.periodStart, job.periodEnd, EARSIV_PENCERE_GUN);
+    //   TUZAK (2026-09-22 canlı): periodStart İstanbul yerel ay başıdır ve UTC'de bir gün GERİ görünür
+    //   (01.09.2026 00:00 +03 = 2026-08-31T21:00Z). Pencereleri UTC gününden hesaplayınca sorgu 31.08'den
+    //   başlıyor ve Eylül listesine Ağustos faturaları karışıyordu → pencerelere İSTANBUL günü verilir.
+    const pencereler = tarihPencereleri(this.istanbulYmd(job.periodStart), this.istanbulYmd(job.periodEnd), EARSIV_PENCERE_GUN);
     const sorguPencereleri = pencereler.length
       ? pencereler.map((x) => ({ bas: this.earsivDateInput(x.bas), bit: this.earsivDateInput(x.bit) }))
       : [{ bas: startDate, bit: endDate }];
@@ -8712,6 +8715,13 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     if (lower.endsWith('.xls')) return 'application/vnd.ms-excel';
     if (lower.endsWith('.xlsx')) return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
     return 'application/pdf';
+  }
+
+  /** Tarihi İSTANBUL gününe göre "YYYY-MM-DD" verir (pencere hesabı UTC kaymasın). */
+  private istanbulYmd(value?: string | Date | null): string | null {
+    const t = this.formatDateInput(value); // dd.MM.yyyy (Europe/Istanbul)
+    const m = String(t || '').match(/^(\d{2})[./](\d{2})[./](\d{4})$/);
+    return m ? `${m[3]}-${m[2]}-${m[1]}` : null;
   }
 
   private formatDateInput(value?: string | Date | null) {
