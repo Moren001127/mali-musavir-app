@@ -1,26 +1,24 @@
 'use client';
 import './genel-sorgular.css';
 
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useCallback, useMemo, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueries, useQuery } from '@tanstack/react-query';
 import { ScanSearch } from 'lucide-react';
 import { toast } from 'sonner';
 import { PdfOnizlemeModali, type PdfModalDurumu } from '@/components/portal-automation/belge-ortak';
 import { boyutParamOku, sayfaParamOku, type SayfaBoyutu } from '@/components/ui/Sayfalama';
 import { SORGU_TURLERI, genelSorgularApi, sorguTuruMu, type SorguKosusu, type SorguTuru } from '@/lib/genel-sorgular';
-import { KosuSeridi } from './_components/KosuSeridi';
-import { SonucSuzgeci, OzetSatiri, type Suzgec } from './_components/SonucSuzgeci';
+import { AracCubugu, type Suzgec } from './_components/AracCubugu';
 import { SonucGrubu } from './_components/SonucTablosu';
-import { SorguKurulumu } from './_components/SorguKurulumu';
+import { tarihKisa } from './_lib/bicim';
 
 /*
- * Genel Sorgulamalar (2026-09-22 baştan tasarım) — Hattat "Vergi Dairesi Sorgulamaları" düzeni:
- *   1) Sorgu Kurulumu: mükellef çoklu seçici + sorgu türü onay kutuları + Sorgula (POST /portal-automation/dvd-sorgu)
- *      altında koşu şeridi (GET /portal-automation/jobs, 5 sn) ve son gece koşusu özeti
- *   2) Sorgu Sonuçları: süzgeç (mükellef · tür · dönem) + tek satır özet + tür başına kenarlıklı tablo (+ Excel)
+ * Genel Sorgulamalar (2026-09-22, sade sürüm — Muzaffer Bey: "manuel sorgu için ufak bir ekran yeter").
+ *   Başlık + gece sorgusu tek satır not · tek araç çubuğu (mükellef · tür · dönem · Sorgula) · tür başına kenarlıklı tablo.
+ *   Gece sorgusu mükellef kartındaki Otomatik Sorgulama Ayarı'na göre çalışır; burada kurulum/koşu listesi YOK.
  * Adres çubuğu: ?mukellef=<id>&tur=VERGI_BORCU&donem=2026-09&boyut=50&s_VERGI_BORCU=2&renk=1..4
- * (renk = Muzaffer Bey'in seçeceği vurgu varyantı; yalnız okunur, karar sonrası sabitlenir.)
+ * (renk = Muzaffer Bey'in seçeceği vurgu varyantı; karar sonrası sabitlenir.)
  */
 
 const VARSAYILAN_BOYUT: SayfaBoyutu = 50;
@@ -39,7 +37,6 @@ function GenelSorgularIcerik() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const qc = useQueryClient();
 
   // ---- Adres çubuğundan süzgeç ----
   const renk = RENK_VURGU[searchParams.get('renk') || ''] ? (searchParams.get('renk') as string) : '1';
@@ -81,44 +78,9 @@ function GenelSorgularIcerik() {
 
   // ---- Veri ----
   const { data: mukellefler = [] } = useQuery({ queryKey: ['taxpayers', 'genel-sorgular'], queryFn: genelSorgularApi.mukellefler, staleTime: 5 * 60_000 });
-  const { data: sifreliler = null } = useQuery({ queryKey: ['genel-sorgular', 'dvd-sifreler'], queryFn: genelSorgularApi.dvdSifreliMukellefler, staleTime: 5 * 60_000, retry: false });
-  const { data: ozet, isLoading: ozetYukleniyor } = useQuery({ queryKey: ['genel-sorgular', 'ozet'], queryFn: genelSorgularApi.ozet, refetchInterval: 60_000 });
-
-  // Koşular: sürmekte olan iş varsa 5 sn, yoksa 30 sn; iş bitince sonuç tabloları yenilenir.
-  const kosuSorgusu = useQuery({
-    queryKey: ['genel-sorgular', 'kosular'],
-    queryFn: () => genelSorgularApi.kosular(50),
-    refetchInterval: (q) => ((q.state.data || []).some((k) => k.status === 'pending' || k.status === 'running') ? 5_000 : 30_000),
-    retry: false,
-  });
-  const kosular: SorguKosusu[] = kosuSorgusu.data || [];
-  const oncekiDurumlar = useRef<Map<string, string>>(new Map());
-  useEffect(() => {
-    if (!kosuSorgusu.data) return;
-    let biten = 0;
-    const yeni = new Map<string, string>();
-    for (const k of kosuSorgusu.data) {
-      yeni.set(k.id, k.status);
-      const onceki = oncekiDurumlar.current.get(k.id);
-      if (onceki && (onceki === 'pending' || onceki === 'running') && (k.status === 'done' || k.status === 'failed')) biten++;
-    }
-    oncekiDurumlar.current = yeni;
-    if (biten > 0) {
-      qc.invalidateQueries({ queryKey: ['genel-sorgular', 'liste'] });
-      qc.invalidateQueries({ queryKey: ['genel-sorgular', 'ozet'] });
-      toast.success(`${biten} sorgu koşusu bitti; sonuç tabloları yenilendi.`);
-    }
-  }, [kosuSorgusu.data, qc]);
-
-  // Süren işlerin geçen süresi için saniyelik saat (yalnız tarayıcıda).
-  const [simdi, setSimdi] = useState(0);
-  const aktifIsVar = kosular.some((k) => k.status === 'pending' || k.status === 'running');
-  useEffect(() => {
-    setSimdi(Date.now());
-    if (!aktifIsVar) return;
-    const t = setInterval(() => setSimdi(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, [aktifIsVar]);
+  // Gece sorgusu tek satır notu: en son gece koşusu (kaç mükellef, kaç hata).
+  const { data: sonKosular = [] } = useQuery({ queryKey: ['genel-sorgular', 'kosular'], queryFn: () => genelSorgularApi.kosular(50), staleTime: 60_000, retry: false });
+  const gece = useMemo(() => geceOzeti(sonKosular), [sonKosular]);
 
   const gosterilenTurler = suzgec.tur ? [suzgec.tur] : [...SORGU_TURLERI];
   const sorgular = useQueries({
@@ -148,56 +110,54 @@ function GenelSorgularIcerik() {
         <span className="gs-baslik-simge"><ScanSearch size={18} /></span>
         <div className="min-w-0">
           <h1 className="gs-h1">Genel Sorgulamalar</h1>
-          <p className="gs-alt">Vergi Dairesi sorgulamaları — mükellef başına Dijital Vergi Dairesi'nden vergi borcu, e-haciz, yoklama / denetim, POS, gelen e-arşiv ve e-Defter sorguları; elle ya da her gece.</p>
+          <p className="gs-alt">Dijital Vergi Dairesi sorgu sonuçları — vergi borcu, e-haciz, yoklama / denetim, POS, gelen e-arşiv. Gece sorgusu mükellef kartındaki Otomatik Sorgulama Ayarı'na göre çalışır.</p>
         </div>
+        <span className="gs-gece" title="Son gece koşusu">
+          {gece ? <>Gece sorgusu <b>{gece.tarih}</b> · <b>{gece.mukellef}</b> mükellef · <b>{gece.hata}</b> hata</> : 'Gece sorgusu henüz koşmadı'}
+        </span>
       </div>
 
-      <section className="gs-kart" data-gs-kart="kurulum">
-        <div className="gs-kart-bas">
-          <h2 className="gs-kart-adi">Sorgu Kurulumu</h2>
-          <p className="gs-kart-aciklama">Mükellefleri ve sorgu türlerini seçin; her mükellef için Dijital Vergi Dairesi'ne tek oturumla girilir.</p>
-        </div>
-        <SorguKurulumu mukellefler={mukellefler} sifreliler={sifreliler} onKuyruk={() => { void kosuSorgusu.refetch(); }} />
-        <div className="gs-kart-govde" style={{ paddingTop: 0 }}>
-          <KosuSeridi kosular={kosular} yukleniyor={kosuSorgusu.isLoading} hata={kosuSorgusu.isError ? hataMetni(kosuSorgusu.error) : null} simdi={simdi} />
-        </div>
-      </section>
+      <AracCubugu suzgec={suzgec} onSuzgec={suzgecYaz} mukellefler={mukellefler} />
 
-      <section className="gs-kart" data-gs-kart="sonuclar">
-        <div className="gs-kart-bas">
-          <h2 className="gs-kart-adi">Sorgu Sonuçları</h2>
-          <div className="gs-kart-sag">
-            <SonucSuzgeci suzgec={suzgec} onSuzgec={suzgecYaz} mukellefler={mukellefler} />
-          </div>
-        </div>
-        <OzetSatiri ozet={ozet} yukleniyor={ozetYukleniyor} />
-        <div style={{ paddingTop: 16 }}>
-          {gosterilenTurler.map((t, i) => {
-            const q = sorgular[i];
-            return (
-              <SonucGrubu
-                key={t}
-                tur={t}
-                rows={q.data?.rows ?? []}
-                total={q.data?.total ?? 0}
-                sayfa={sayfaOku(t)}
-                sayfaBoyutu={boyut}
-                onSayfa={(n) => sayfaYaz(t, n)}
-                onSayfaBoyutu={boyutYaz}
-                yukleniyor={q.isFetching}
-                hata={q.isError ? hataMetni(q.error) : null}
-                suzgec={{ taxpayerId: suzgec.mukellefId || undefined, donem: suzgec.donem || undefined }}
-                vurgu={RENK_VURGU[renk]}
-                onTutanak={tutanakAc}
-              />
-            );
-          })}
-        </div>
-      </section>
+      <div className="gs-gruplar">
+        {gosterilenTurler.map((t, i) => {
+          const q = sorgular[i];
+          return (
+            <SonucGrubu
+              key={t}
+              tur={t}
+              rows={q.data?.rows ?? []}
+              total={q.data?.total ?? 0}
+              sayfa={sayfaOku(t)}
+              sayfaBoyutu={boyut}
+              onSayfa={(n) => sayfaYaz(t, n)}
+              onSayfaBoyutu={boyutYaz}
+              yukleniyor={q.isFetching}
+              hata={q.isError ? hataMetni(q.error) : null}
+              suzgec={{ taxpayerId: suzgec.mukellefId || undefined, donem: suzgec.donem || undefined }}
+              vurgu={RENK_VURGU[renk]}
+              onTutanak={tutanakAc}
+            />
+          );
+        })}
+      </div>
 
       <PdfOnizlemeModali modal={pdf} onClose={() => setPdf(null)} />
     </div>
   );
+}
+
+/** En son gece (source=nightly) koşusu: tarih, mükellef sayısı, hata sayısı. */
+function geceOzeti(kosular: SorguKosusu[]): { tarih: string; mukellef: number; hata: number } | null {
+  const gece = kosular.filter((k) => k.source === 'nightly');
+  if (gece.length === 0) return null;
+  const sonGun = tarihKisa(gece[0].createdAt);
+  const sonGece = gece.filter((k) => tarihKisa(k.createdAt) === sonGun);
+  return {
+    tarih: sonGun,
+    mukellef: new Set(sonGece.map((k) => k.taxpayerId || k.id)).size,
+    hata: sonGece.filter((k) => k.status === 'failed' || (k.result?.sorguHatalari?.length ?? 0) > 0).length,
+  };
 }
 
 function hataMetni(e: unknown): string {
