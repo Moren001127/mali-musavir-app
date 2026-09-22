@@ -405,6 +405,10 @@ const INTEGRATOR_CATALOG = [
   // Eczacıkart (TEB Eczacı Kart) — altyapı KOLAYSOFT (2026-09-22 doğrulandı: portal.eczacikartfatura.com ile
   //   servis.kolaysoft.com.tr aynı uygulamaya (/accounting) düşüyor, API kökü /accounting/api).
   { provider: 'ECZACIKART', label: 'Eczacıkart', kind: 'efatura', tone: 'green' },
+  // AKINSOFT kendi özel entegratörü DEĞİL: e-Fatura hizmetini Digital Planet / EDM / İzibiz üzerinden veriyor
+  //   (2026-09-22 araştırma). Kullanıcı adı mükellefin VKN'si oluyor. Varsayılan yol İzibiz (i2i SOAP);
+  //   hesap başka altyapıdaysa servis adresi entegratör kartından değiştirilir.
+  { provider: 'AKINSOFT', label: 'Akınsoft', kind: 'efatura', tone: 'blue' },
 ] as const;
 
 const PROVIDER_DEFAULT_BASE_URL: Record<string, string> = {
@@ -423,6 +427,7 @@ const PROVIDER_DEFAULT_BASE_URL: Record<string, string> = {
   TURMOB_EFATURA: 'https://turmobefatura.luca.com.tr',
   TURKCELL: 'https://efaturaservice.turkcellesirket.com',
   ECZACIKART: 'https://portal.eczacikartfatura.com',
+  AKINSOFT: 'https://efaturaws.izibiz.com.tr/EInvoiceWS',
 };
 
 // Saglayicilara ozel kullanici yardim metinleri (UI'da entegrator eklerken gosterilir)
@@ -437,11 +442,12 @@ export const PROVIDER_AUTH_HINTS: Record<string, string> = {
   KOLAYSOFT: "Kolaysoft kullanici ve sifresi. Servis URL hesabiniza ozeldir.",
   TURMOB_EFATURA: "TÜRMOB e-Belge portalına mükellefin TCKN ve parolasıyla otomatik giriş yapılıp gelen/giden faturalar XML olarak çekilir (kod/2FA sormaz).",
   TURKCELL: "Turkcell e-Şirket (isim360): mükellefin panelinden (API Yönetimi > Yeni API Anahtarı) oluşturulan API anahtarını girin — ya da e-Şirket kullanıcı adı+şifresini yazın. Fatura çekerken SMS gitmez.",
+  AKINSOFT: "Akınsoft e-Dönüşüm: kullanıcı adı genelde mükellefin VKN'si, şifre Akınsoft'un verdiği e-Fatura şifresi. Akınsoft hizmeti Digital Planet / EDM / İzibiz altyapısından veriyor — varsayılan İzibiz yolu denenir; hesabınız başka altyapıdaysa servis adresini Akınsoft'tan öğrenip buraya yazın.",
   ECZACIKART: "Eczacıkart (TEB Eczacı Kart — altyapı Kolaysoft): Kullanıcı adı = eczanenin GLN numarası (868… 13 hane), şifre = Eczacıkart fatura portalı şifresi; portalde giriş için kullandığınız bilgilerin aynısı. Servis adresi otomatik dolar. Hesapta İKİ ADIMLI DOĞRULAMA açıksa (girişte SMS kodu isteniyorsa) otomatik çekim yapılamaz — portal ayarlarından kapatılmalı.",
   GIB_PORTAL: "GIB Portal: dogrudan API yok. Luca Local Agent veya mali muhur ile portal otomasyonu gerekir.",
 };
 
-const I2I_SOAP_PROVIDERS = new Set(['IZIBIZ', 'FORIBA']);
+const I2I_SOAP_PROVIDERS = new Set(['IZIBIZ', 'FORIBA', 'AKINSOFT']);
 /** Mikro özel entegratör (e-Mikro) posta kutusu servisi — Mikrogrup e-Portal'ın arka ucu. */
 const MIKRO_FIRMBOX_URL = 'https://firma.myefatura.com.tr/EFatura/Firmbox/Firmbox.asmx';
 /**

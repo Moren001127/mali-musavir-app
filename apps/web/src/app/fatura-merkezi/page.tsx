@@ -2463,7 +2463,7 @@ function sorguIsIlerleme(job: any): { belirli: boolean; cur: number; tot: number
 const SORGU_PROV_RENK: Record<string, string> = {
   GIB_PORTAL: '#b45309', TURMOB_EFATURA: '#b91c1c', TURKCELL: '#ca8a04', PARASUT: '#7c3aed', ELOGO: '#2563eb',
   UYUMSOFT: '#2563eb', MIKRO: '#7c3aed', IZIBIZ: '#4f46e5', KOLAYSOFT: '#15803d', FORIBA: '#b45309', LOGO_ISBASI: '#a16207', NILVERA: '#0891b2',
-  ECZACIKART: '#15803d',
+  ECZACIKART: '#15803d', AKINSOFT: '#0369a1',
 };
 function sorguProvRenk(provider: any): string {
   return SORGU_PROV_RENK[String(provider || '').toUpperCase()] || 'var(--accent)';
@@ -5378,6 +5378,7 @@ const PROVIDER_OPTS = [
   { v: 'PARASUT', l: 'Paraşüt' },
   { v: 'TURKCELL', l: 'Turkcell e-Şirket' },
   { v: 'ECZACIKART', l: 'Eczacıkart' },
+  { v: 'AKINSOFT', l: 'Akınsoft' },
   { v: 'TURMOB_EFATURA', l: 'TÜRMOB e-Fatura' },
   { v: 'UYUMSOFT', l: 'Uyumsoft' },
   { v: 'IZIBIZ', l: 'İzibiz' },
