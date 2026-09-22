@@ -3343,7 +3343,6 @@ function ScreenSorgu({ taxpayerId, period, source, onOpenEntegrator }: { taxpaye
                   <th className={`sortable${sirala.k === 'unvan' ? ' sorted' : ''}`} onClick={() => siralaTikla('unvan')} title="Ünvana göre sırala">Alıcı / VKN <span className="sq-sort">{siralaOk('unvan')}</span></th>
                   <th>Belge No</th>
                   <th className={`sortable${sirala.k === 'tarih' ? ' sorted' : ''}`} onClick={() => siralaTikla('tarih')} title="Tarihe göre sırala">Tarih <span className="sq-sort">{siralaOk('tarih')}</span></th>
-                  <th>Tür</th>
                   <th className={`num sortable${sirala.k === 'tutar' ? ' sorted' : ''}`} onClick={() => siralaTikla('tutar')} title="Tutara göre sırala (tutar yalnız muhasebeleştirilmiş satırlarda bilinir)">Tutar <span className="sq-sort">{siralaOk('tutar')}</span></th>
                   <th>Onay</th>
                   <th className="center">Görsel</th>
@@ -3363,7 +3362,6 @@ function ScreenSorgu({ taxpayerId, period, source, onOpenEntegrator }: { taxpaye
                     <td><div className="sq-party"><b>{r.buyerName || '—'}</b><small>{r.buyerVkn || '—'}</small></div></td>
                     <td><span className="sq-mono">{r.belgeNo || r.referenceNo || '—'}</span></td>
                     <td>{fmtDate(r.issuedAt)}</td>
-                    <td><span className="sq-pill gray">e-Arşiv</span></td>
                     <td className="num">{r.toplam != null ? fmtMoney(r.toplam) : '—'}</td>
                     <td>
                       <span className={`sq-onay ${onay.k}`} title={`${r.onayDurumu || ''}${r.iptalDurumu && r.iptalDurumu !== 'Yok' ? ` · ${r.iptalDurumu}` : ''}`}>{onay.l}</span>
@@ -3377,7 +3375,7 @@ function ScreenSorgu({ taxpayerId, period, source, onOpenEntegrator }: { taxpaye
                   </tr>
                 ))}
                 {!earsivSuz.length && (
-                  <tr><td colSpan={9} className="emptyrow">{
+                  <tr><td colSpan={8} className="emptyrow">{
                     !taxpayerId
                       ? 'Önce mükellef seç.'
                       : rows.length
@@ -3929,65 +3927,164 @@ function ScreenKurallar({ taxpayerId, period }: { taxpayerId: string; period: st
     })
     .slice(0, 12);
 
+  // ÖNERİLER (2026-09-23): hesap kodu eksik belgeleri SATICIYA göre topla; kuralı olanları çıkar.
+  //   Uydurma kod ÖNERİLMEZ — yalnız "bu satıcıdan N fatura var, kuralı yok" denir; kodu kullanıcı seçer.
+  const kuralliVknler = new Set(
+    rules.map((r: any) => String(r.firmaKimlikNo || '').replace(/\D/g, '')).filter(Boolean),
+  );
+  const oneriler = (() => {
+    const harita = new Map<string, { vkn: string; ad: string; adet: number; tutar: number }>();
+    for (const d of docs) {
+      if (deriveDurum(d).k !== 'miss') continue;
+      const sat = (d.invoiceKind || 'ALIS') === 'SATIS';
+      const vkn = String((sat ? d.buyerVkn : d.sellerVkn) || '').replace(/\D/g, '');
+      if (!vkn || kuralliVknler.has(vkn)) continue;
+      const ad = String((sat ? d.customerName : d.vendorName) || '').trim();
+      const k = harita.get(vkn) || { vkn, ad, adet: 0, tutar: 0 };
+      k.adet += 1;
+      k.tutar += Number(d.totalAmount) || 0;
+      if (!k.ad && ad) k.ad = ad;
+      harita.set(vkn, k);
+    }
+    return [...harita.values()].sort((a, b) => b.adet - a.adet).slice(0, 6);
+  })();
+
+  // Sağdaki detay panelinde gösterilen kural.
+  const [secKural, setSecKural] = useState<null | { id: string; unvan: string; vkn: string; kod: string; oran: string; onay: number; son: any }>(null);
+  const kuralSatirlari = rules.flatMap((r: any) => (r.decisions || [])
+    .filter((d: any) => d.kararTipi === 'fatura' && /^\d/.test(String(d.kategori || '')))
+    .map((d: any) => ({
+      id: String(d.id),
+      unvan: String(r.firmaUnvan || '(unvan yok)'),
+      vkn: String(r.firmaKimlikNo || ''),
+      kod: String(d.kategori || ''),
+      oran: String(d.altKategori || '').replace(/[^0-9]/g, ''),
+      onay: Number(d.onayAdedi || 0),
+      son: d.sonKullanim,
+    })))
+    .sort((a: any, b: any) => b.onay - a.onay);
+
   return (
     <section className="screen fm2">
       <div className="h2">Eşleştirme Kuralları</div>
-      <div className="sub">Bir belgeyi onayladığında sistem o satıcı + içerik için hesap kodunu <b>öğrenir</b>; sonraki benzer belgeleri otomatik eşleştirir. Aşağıda öğrenilmiş kurallar ve henüz kurala uymayan istisnalar var.</div>
+      <div className="sub">Bir satıcının faturası hangi hesap koduna gidecek? Kuralı bir kez yazarsınız, sonraki tüm faturalar kendiliğinden eşleşir. Belge onayladıkça sistem ayrıca kendi kendine öğrenir.</div>
 
-      <div className="card">
-        <div className="ch"><h3>Kural ekle</h3><div className="sp" /><span className="mu">satıcı VKN (+ istenirse KDV oranı) → hesap kodu · o satıcının bekleyen + sonraki faturalarına otomatik uygulanır</span></div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.1fr 0.7fr 1fr auto', gap: 11, padding: '15px 16px', alignItems: 'end' }}>
-          <div className="fld"><label>Satıcı VKN / TCKN</label><input value={rVkn} onChange={(e) => setRVkn(e.target.value)} placeholder="10–11 hane" /></div>
-          <div className="fld"><label>Satıcı adı (opsiyonel)</label><input value={rName} onChange={(e) => setRName(e.target.value)} placeholder="firma adı" /></div>
-          <div className="fld"><label>KDV oranı</label>
-            <select value={rRate} onChange={(e) => setRRate(e.target.value)} title="Bu kural sadece bu KDV oranlı faturalara uygulansın. 'Tüm oranlar' = ayrım yapma.">
-              <option value="">Tüm oranlar</option>
-              <option value="1">%1</option>
-              <option value="10">%10</option>
-              <option value="20">%20</option>
-              <option value="0">%0</option>
-            </select>
+      {/* ── GRADYAN ŞERİT: yeni kural tek satırda (ayrı kart değil) ── */}
+      <div className="card sq-strip kr-strip">
+        <div className="sq-row">
+          <span className="sq-lbl">Yeni kural</span>
+          <input className="kr-alan" style={{ width: 150 }} value={rVkn} onChange={(e) => setRVkn(e.target.value)} placeholder="Satıcı VKN / TCKN" />
+          <input className="kr-alan" style={{ flex: 1, minWidth: 200 }} value={rName} onChange={(e) => setRName(e.target.value)} placeholder="Satıcı adı (boş bırakılırsa VKN'den alınır)" />
+          <select className="kr-alan" style={{ width: 140 }} value={rRate} onChange={(e) => setRRate(e.target.value)} title="Bu kural sadece bu KDV oranlı faturalara uygulansın. 'Tüm oranlar' = ayrım yapma.">
+            <option value="">Tüm oranlar</option>
+            <option value="1">%1</option>
+            <option value="10">%10</option>
+            <option value="20">%20</option>
+            <option value="0">%0</option>
+          </select>
+          <input className="kr-alan" style={{ width: 170 }} value={rCode} onChange={(e) => setRCode(e.target.value)} placeholder="Hesap kodu (153.01.001)" />
+          <button className="btn sq-main" disabled={!taxpayerId || ruleMut.isPending || !rVkn.trim() || !rCode.trim()} onClick={() => ruleMut.mutate()} title={!taxpayerId ? 'Önce üstten mükellef seç' : ''}>
+            <Ico html={I.plus} size={13} /> {ruleMut.isPending ? 'Kaydediliyor…' : 'Kuralı kaydet'}
+          </button>
+        </div>
+        <div className="sq-row sq-meta">
+          <span className="sq-last">Bu kural <b>tahmin değildir</b> — yalnız sizin verdiğiniz kodu o satıcının faturalarına uygular; bekleyen belgelere de geriye dönük işler.</span>
+          {!taxpayerId && <span className="sq-pill warn">Kural mükellefe göre tanımlanır — önce üstten bir mükellef seç</span>}
+        </div>
+      </div>
+
+      {/* ── SAYAÇLAR ── */}
+      <div className="filttiles">
+        <div className="ftile on" style={{ ['--tc' as any]: '#0f766e' }}><span className="ftdot" /><span className="fttx"><span className="ftn">{kuralSatirlari.length}</span><span className="ftl">Tanımlı kural</span></span></div>
+        <div className="ftile" style={{ ['--tc' as any]: '#cf7a0e' }}><span className="ftdot" /><span className="fttx"><span className="ftn">{oneriler.length}</span><span className="ftl">Kuralsız satıcı</span></span></div>
+        <div className="ftile" style={{ ['--tc' as any]: '#e0394a' }}><span className="ftdot" /><span className="fttx"><span className="ftn">{istisnalar.length}</span><span className="ftl">Kurala uymayan belge</span></span></div>
+        <div className="ftile" style={{ ['--tc' as any]: '#2f54d6' }}><span className="ftdot" /><span className="fttx"><span className="ftn">{kuralSatirlari.reduce((t: number, k: any) => t + k.onay, 0)}</span><span className="ftl">Toplam eşleşme</span></span></div>
+      </div>
+
+      {/* ── ÖNERİ ŞERİDİ: kuralı olmayan ama üst üste fatura gelen satıcılar ── */}
+      {oneriler.length > 0 && (
+        <div className="card kr-oneri">
+          <div className="ch"><h3>{oneriler.length} öneri</h3><span className="mu">Bu satıcılardan tekrar tekrar fatura geliyor ama kuralları yok</span><div className="sp" /><span className="mu">Kod atayınca bekleyen belgeler de anında eşleşir</span></div>
+          <div className="kr-liste">
+            {oneriler.map((o) => (
+              assignId === `oneri:${o.vkn}` ? (
+                <div key={o.vkn} className="kodatainl">
+                  <div style={{ width: 230 }}><CodeSelect value={''} accounts={accountPlan} onChange={(code) => { if (code && !assignMut.isPending) assignMut.mutate({ vkn: o.vkn, name: o.ad, code }); }} /></div>
+                  <button className="btn sm ghost" onClick={() => setAssignId('')}>İptal</button>
+                </div>
+              ) : (
+                <span key={o.vkn} className="kr-sat">
+                  <b title={`${o.ad || o.vkn} · VKN ${o.vkn}`}>{o.ad || o.vkn}</b>
+                  <small>· {o.adet} fatura · {fmtMoney(o.tutar)} ₺</small>
+                  <button className="btn sm primary" disabled={!taxpayerId} onClick={() => setAssignId(`oneri:${o.vkn}`)} title="Bu satıcıya hesap kodu ata — kural olarak öğrenilir">Kod ata</button>
+                </span>
+              )
+            ))}
           </div>
-          <div className="fld"><label>Hesap kodu</label><input value={rCode} onChange={(e) => setRCode(e.target.value)} placeholder="örn. 153.01.001" /></div>
-          <button className="btn primary sm" style={{ height: 35 }} disabled={!taxpayerId || ruleMut.isPending || !rVkn.trim() || !rCode.trim()} onClick={() => ruleMut.mutate()} title={!taxpayerId ? 'Önce üstten mükellef seç' : ''}><Ico html={I.plus} size={13} /> {ruleMut.isPending ? 'Kaydediliyor…' : 'Kaydet'}</button>
         </div>
-        {!taxpayerId && <div className="empty" style={{ padding: '4px 16px 14px' }}>Kural mükellefe göre tanımlanır — önce üstten bir mükellef seç.</div>}
-        <div className="lrow" style={{ borderTop: '1px solid var(--line)', color: 'var(--muted)' }}><Ico html={I.info} size={15} /><span style={{ fontSize: 12 }}>Bu kural <b>tahmin değildir</b> — yalnız senin verdiğin kodu o satıcının faturalarına uygular. Belge onayladıkça da otomatik öğrenir.</span></div>
+      )}
+
+      {/* ── KURAL LİSTESİ + SAĞDA DETAY ── */}
+      <div className="kr-grid" style={{ marginTop: 12 }}>
+        <div className="card">
+          <div className="ch"><h3>Tanımlı kurallar{taxpayerId ? '' : ' (tüm mükellefler)'}<span className="cnt">{rulesQ.isLoading ? '…' : kuralSatirlari.length}</span></h3><div className="sp" /><span className="mu">satırı tıklayın → sağda detayı açılır</span></div>
+          <div className="twrap">
+            <table>
+              <thead><tr><th>Satıcı / VKN</th><th>Hesap Kodu</th><th>KDV</th><th className="num">Kullanım</th><th>Son kullanım</th><th className="actcol" style={{ width: 40 }} /></tr></thead>
+              <tbody>
+                {kuralSatirlari.map((k: any) => (
+                  <tr key={k.id} className={`kr-satir${secKural?.id === k.id ? ' kr-secili' : ''}`} onClick={() => setSecKural(k)}>
+                    <td><div className="sq-party"><b>{k.unvan}</b><small>{k.vkn || '—'}</small></div></td>
+                    <td><span className="hk">{k.kod}</span></td>
+                    <td>{k.oran ? <span className="pill alis">%{k.oran}</span> : <span className="mu">Tüm oranlar</span>}</td>
+                    <td className="num">{k.onay}</td>
+                    <td>{fmtDate(k.son)}</td>
+                    <td className="actcol"><span className="eye del" title="Bu kuralı sil" onClick={(e) => { e.stopPropagation(); if (window.confirm(`Kural silinsin mi?\n${k.unvan || k.vkn} · ${k.oran ? '%' + k.oran : 'tüm oranlar'} → ${k.kod}`)) { delRuleMut.mutate(k.id); if (secKural?.id === k.id) setSecKural(null); } }}><Ico html={I.trash} size={14} /></span></td>
+                  </tr>
+                ))}
+                {!rulesQ.isLoading && kuralSatirlari.length === 0 && (
+                  <tr><td colSpan={6}><div className="empty">Henüz kural yok. Yukarıdaki şeritten kural ekleyin ya da öneri şeridinden kod atayın — belge onayladıkça da kendiliğinden öğrenilir.</div></td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="ch"><h3>Kural detayı</h3><div className="sp" />{secKural && <span className="pill ok">Etkin</span>}</div>
+          {!secKural ? (
+            <div className="kr-bos">Soldaki listeden bir kural seçin.<br />Kuralın hangi satıcıya ait olduğu, kaç belgede kullanıldığı ve son kullanım tarihi burada görünür.</div>
+          ) : (
+            <div className="kr-det">
+              <div className="kr-et">Satıcı</div>
+              <div className="kr-ad">{secKural.unvan}</div>
+              <div className="sq-mono">VKN {secKural.vkn || '—'}</div>
+
+              <div className="kr-iki">
+                <div><div className="kr-et">Hesap kodu</div><b>{secKural.kod}</b></div>
+                <div><div className="kr-et">KDV oranı</div><b>{secKural.oran ? `%${secKural.oran}` : 'Tüm oranlar'}</b><span className="kr-not">{secKural.oran ? 'yalnız bu oran' : 'orana bakılmaz'}</span></div>
+              </div>
+
+              <div className="kr-ayr" />
+              <div className="kr-iki">
+                <div><div className="kr-et">Kaç belgede</div><b>{secKural.onay}</b></div>
+                <div><div className="kr-et">Son kullanım</div><b>{fmtDate(secKural.son) || '—'}</b></div>
+              </div>
+
+              <div className="kr-ayr" />
+              <div className="sq-row">
+                <button className="btn" style={{ flex: 1, justifyContent: 'center' }} onClick={() => { setRVkn(secKural.vkn); setRName(secKural.unvan === '(unvan yok)' ? '' : secKural.unvan); setRCode(secKural.kod); setRRate(secKural.oran || ''); window.scrollTo({ top: 0, behavior: 'smooth' }); }} title="Bilgileri yukarıdaki şeride taşır — kodu değiştirip kaydedince kural güncellenir">Düzenle</button>
+                <button className="btn kr-sil" style={{ flex: 1, justifyContent: 'center' }} disabled={delRuleMut.isPending} onClick={() => { if (window.confirm(`Kural silinsin mi?\n${secKural.unvan} → ${secKural.kod}`)) { delRuleMut.mutate(secKural.id); setSecKural(null); } }}>Kuralı sil</button>
+              </div>
+              <div className="kr-not" style={{ marginTop: 9 }}>Kuralı silerseniz geçmiş fişler bozulmaz; yalnız bundan sonraki faturalar eşleşmez.</div>
+            </div>
+          )}
+        </div>
       </div>
 
-      <div className="card">
-        <div className="ch"><h3>Öğrenilen kurallar{taxpayerId ? '' : ' (tüm mükellefler)'}</h3><div className="sp" /><span className="mu">{rulesQ.isLoading ? 'yükleniyor…' : `${rules.reduce((s: number, r: any) => s + (r.decisions || []).filter((d: any) => d.kararTipi === 'fatura' && /^\d/.test(String(d.kategori || ''))).length, 0)} kural`}</span></div>
-        <div className="twrap">
-          <table>
-            <thead><tr><th>Satıcı / Alıcı</th><th>VKN</th><th>KDV Oranı</th><th>Hesap Kodu</th><th className="num">Onay</th><th>Son kullanım</th><th className="actcol" style={{ width: 40 }} /></tr></thead>
-            <tbody>
-              {rules.flatMap((r: any) => (r.decisions || [])
-                .filter((d: any) => d.kararTipi === 'fatura' && /^\d/.test(String(d.kategori || '')))
-                .sort((a: any, b: any) => (b.onayAdedi || 0) - (a.onayAdedi || 0))
-                .map((d: any) => {
-                  const rate = String(d.altKategori || '').replace(/[^0-9]/g, '');
-                  return (
-                    <tr key={d.id}>
-                      <td className="firm"><b>{r.firmaUnvan || '(unvan yok)'}</b></td>
-                      <td>{r.firmaKimlikNo || '—'}</td>
-                      <td>{rate ? <span className="pill alis">%{rate}</span> : <span className="mu">Tüm oranlar</span>}</td>
-                      <td><span className="hk">{d.kategori}</span></td>
-                      <td className="num">{d.onayAdedi || 0}</td>
-                      <td>{fmtDate(d.sonKullanim)}</td>
-                      <td className="actcol"><span className="eye del" title="Bu kuralı sil" onClick={() => { if (window.confirm(`Kural silinsin mi?\n${r.firmaUnvan || r.firmaKimlikNo} · ${rate ? '%' + rate : 'tüm oranlar'} → ${d.kategori}`)) delRuleMut.mutate(d.id); }}><Ico html={I.trash} size={14} /></span></td>
-                    </tr>
-                  );
-                }))}
-              {!rulesQ.isLoading && rules.length === 0 && (
-                <tr><td colSpan={7}><div className="empty">Henüz öğrenilmiş kural yok. Belge onayladıkça ya da yukarıdan kural ekledikçe burası dolar.</div></td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div className="card">
-        <div className="ch"><h3>Kurala uymayan istisnalar</h3><span className="mu">{period} · eksik kod ya da içerik çelişkisi</span></div>
+      {/* ── KURALA UYMAYAN BELGELER (dönem içi) ── */}
+      <div className="card" style={{ marginTop: 12 }}>
+        <div className="ch"><h3>Kurala uymayan belgeler</h3><span className="mu">{period} · eksik kod ya da içerik çelişkisi</span></div>
         {!docsQ.isLoading && istisnalar.length === 0 ? (
           <div className="empty">Bu dönemde istisna yok — tüm belgeler eşleşmiş görünüyor.</div>
         ) : (
@@ -5123,6 +5220,43 @@ function ScreenAktarilanlar({ taxpayerId, period, mode = 'bekleyen', isIsletme =
     onError: (e: any) => { setAktarYon(''); toast.error("Luca'ya aktarılamadı: " + (e?.response?.data?.message || e?.message || 'hata')); },
   });
   const [detayId, setDetayId] = useState<string>('');
+  // YENİ DÜZEN (2026-09-23): sorunlu belge listede kaybolmasın — NEDEN beklediği satırda yazsın,
+  //   kenarında renk şeridi olsun ve üstteki süzgeç şeridinden tek tıkla süzülebilsin.
+  const [filtre, setFiltre] = useState<string>('');
+  const satirKodu = (d: any): string => {
+    const ls = Array.isArray(d.lines) ? d.lines : [];
+    return accountCodeOnly((ls.find((l: any) => String(l.group) === 'matrah' && l.accountCode) || ls.find((l: any) => l.accountCode))?.accountCode || '');
+  };
+  /** Aktarım kuyruğunda satırın hâli: k = süzgeç anahtarı, sira = listede önceliği, neden = ekranda yazan sebep. */
+  const satirDurum = (d: any): { k: string; sira: number; neden: string } => {
+    const st = String(d.lucaStatus || '');
+    if (st === 'FAILED' || st === 'ERROR') return { k: 'hata', sira: 0, neden: d.lucaErrorMessage ? `Luca: "${String(d.lucaErrorMessage).slice(0, 90)}"` : "Luca'ya gönderilemedi" };
+    const uy = uyariOzetFE((d.ocrData as any)?.uyarilar);
+    if (uy.kararBekliyor) return { k: 'eksik', sira: 1, neden: 'Demirbaş kararı bekliyor — karar verilmeden gönderilmez' };
+    if (String((d.ocrData as any)?.demirbasKarar?.karar || '') === 'elle_islendi') return { k: 'eksik', sira: 1, neden: "Demirbaş kararı: Luca'da elle işlenecek — portaldan gönderilmez" };
+    if (!satirKodu(d)) return { k: 'eksik', sira: 1, neden: 'Hesap kodu yok — Eşleştirme Kuralları\'ndan bu satıcıya kod atayın' };
+    if (st === 'POSTING' || st === 'QUEUED') return { k: 'gidiyor', sira: 2, neden: '' };
+    if (st === 'POSTED') return { k: 'aktarildi', sira: 3, neden: '' };
+    if (st === 'MANUAL_DONE') return { k: 'elle', sira: 3, neden: '' };
+    return { k: 'hazir', sira: 2, neden: '' };
+  };
+  /** Arşivde süzgeç anahtarı: fişi oluştu mu, fiş no bekliyor mu, elle düzeltilecek mi. */
+  const arsivDurum = (d: any): string => (ghElleDurumu(d).durum === 'bekliyor' ? 'elle' : d.lucaFisNo ? 'fisvar' : 'fisyok');
+  const say = (fn: (d: any) => boolean) => docs.filter(fn).length;
+  const suzgecKartlar = arsiv
+    ? [
+        { v: '', l: 'Tüm arşiv', n: docs.length, c: '#64748b' },
+        { v: 'fisvar', l: 'Fişi oluştu', n: say((d) => arsivDurum(d) === 'fisvar'), c: '#15803d' },
+        { v: 'fisyok', l: 'Fiş no bekliyor', n: say((d) => arsivDurum(d) === 'fisyok'), c: '#b45309' },
+        { v: 'elle', l: "Luca'da elle düzeltilecek", n: say((d) => arsivDurum(d) === 'elle'), c: '#b91c1c' },
+      ]
+    : [
+        { v: '', l: 'Bekleyen', n: docs.length, c: '#64748b' },
+        { v: 'hazir', l: 'Hazır', n: say((d) => satirDurum(d).k === 'hazir'), c: '#15803d' },
+        { v: 'eksik', l: 'Eksik bilgi', n: say((d) => satirDurum(d).k === 'eksik'), c: '#b45309' },
+        { v: 'hata', l: 'Hata aldı', n: say((d) => satirDurum(d).k === 'hata'), c: '#b91c1c' },
+        { v: 'gidiyor', l: 'Gönderiliyor', n: say((d) => satirDurum(d).k === 'gidiyor'), c: '#2563eb' },
+      ];
   // ONAY = "Aktarıma hazır" (tek tek Luca'ya GİTMEZ). Gerçek aktarım yön butonuyla toplu olur.
   const lucaPill = (d: any) => {
     const s = d.lucaStatus;
@@ -5143,9 +5277,11 @@ function ScreenAktarilanlar({ taxpayerId, period, mode = 'bekleyen', isIsletme =
     })();
     const acik = detayId === d.id;
     const lines: any[] = Array.isArray(d.lines) ? d.lines : [];
+    const sd = satirDurum(d);
+    const sinif = [acik ? 'detay-on' : '', !arsiv && sd.k === 'hata' ? 'fm2-hata' : '', !arsiv && sd.k === 'eksik' ? 'fm2-eksik' : '', arsiv && d.lucaFisNo ? 'fm2-gecmis' : ''].filter(Boolean).join(' ');
     return (
       <Fragment key={d.id}>
-        <tr className={acik ? 'detay-on' : ''}>
+        <tr className={sinif}>
           <td>{fmtDate(d.faturaTarihi || d.createdAt)}</td>
           <td>{d.belgeNo || '—'}</td>
           <td className="firm"><b>{firma}</b></td>
@@ -5153,7 +5289,8 @@ function ScreenAktarilanlar({ taxpayerId, period, mode = 'bekleyen', isIsletme =
           <td>{code ? <span className="hk">{code}</span> : <span className="hk no">—</span>}</td>
           <td>
             {lucaPill(d)}
-            {d.lucaFisNo ? <span className="gh-fis" title="Luca yevmiye fiş numarası">fiş {d.lucaFisNo}</span> : null}
+            {sd.neden ? <div className="fm2-neden">{sd.neden}</div> : null}
+            {arsiv ? null : d.lucaFisNo ? <span className="gh-fis" title="Luca yevmiye fiş numarası">fiş {d.lucaFisNo}</span> : null}
             {(() => {
               // PLAN16-G: Luca'dan geri alınmış belge çipi — amber "elle düzeltilecek · fiş N" + Düzelttim; kapanınca yeşil.
               const el = ghElleDurumu(d);
@@ -5172,6 +5309,9 @@ function ScreenAktarilanlar({ taxpayerId, period, mode = 'bekleyen', isIsletme =
               );
             })()}
           </td>
+          {/* ARŞİVDE (2026-09-23): "hangi fişe gitti, ne zaman" ayrı sütun — durum hücresine sıkışmasın. */}
+          {arsiv && <td><span className="sq-mono">{d.lucaFisNo || '—'}</span></td>}
+          {arsiv && <td>{d.lucaPostedAt ? fmtDate(d.lucaPostedAt) : '—'}</td>}
           {/* td'ye display:flex VERME (hücre tablo düzeninden çıkar) — flex'i içteki div'e koy. */}
           <td className="actcol"><div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
             {(d.lucaStatus === 'FAILED' || d.lucaStatus === 'ERROR') && (
@@ -5192,7 +5332,7 @@ function ScreenAktarilanlar({ taxpayerId, period, mode = 'bekleyen', isIsletme =
         </tr>
         {acik && (
           <tr className="detayrow">
-            <td colSpan={7}>
+            <td colSpan={arsiv ? 9 : 7}>
               <div className="detaybox">
                 {isIsletme ? (() => {
                   // İŞLETME DEFTERİ: hesap kodu / borç-alacak YOK; Gelir-Gider listesi bilgileri gösterilir.
@@ -5262,9 +5402,13 @@ function ScreenAktarilanlar({ taxpayerId, period, mode = 'bekleyen', isIsletme =
   };
   const renderSection = (yon: 'ALIS' | 'SATIS') => {
     const isSat = yon === 'SATIS';
-    const dd = docs.filter((d) => ((d.invoiceKind || 'ALIS') === 'SATIS') === isSat);
+    const ddTum = docs.filter((d) => ((d.invoiceKind || 'ALIS') === 'SATIS') === isSat);
+    // Süzgeç şeridinden seçim + SIRALAMA: sorunlular en üstte (aktarım kuyruğunda kaybolmasınlar).
+    const dd = (filtre ? ddTum.filter((d) => (arsiv ? arsivDurum(d) : satirDurum(d).k) === filtre) : ddTum.slice())
+      .sort((a, b) => (arsiv ? 0 : satirDurum(a).sira - satirDurum(b).sira));
     const label = isSat ? 'Satış' : 'Alış';
-    const hazirTum = dd.filter((d) => d.status === 'APPROVED' && !['POSTED', 'POSTING', 'MANUAL_DONE'].includes(d.lucaStatus));
+    // Aktarım sayıları SÜZGEÇTEN ETKİLENMEZ — "Alış'ı aktar (42)" her zaman gerçek hazır sayısını söyler.
+    const hazirTum = ddTum.filter((d) => d.status === 'APPROVED' && !['POSTED', 'POSTING', 'MANUAL_DONE'].includes(d.lucaStatus));
     // A.6 — demirbaş kararı bekleyen / "Luca'da elle işlendi" kararlı belgeler aktarıma GİRMEZ (backend de eler); kartta ayrı sayı.
     const kararBekleyen = hazirTum.filter((d) => uyariOzetFE((d.ocrData as any)?.uyarilar).kararBekliyor);
     const elleIslenen = hazirTum.filter((d) => String((d.ocrData as any)?.demirbasKarar?.karar || '') === 'elle_islendi');
@@ -5277,7 +5421,7 @@ function ScreenAktarilanlar({ taxpayerId, period, mode = 'bekleyen', isIsletme =
           <div className="akbil">
             <span className={`pill ${isSat ? 'satis' : 'alis'}`}>{label} Faturaları</span>{' '}
             {arsiv
-              ? (dd.length ? <><b>{dd.length}</b> belge Luca'ya aktarıldı ✓</> : <>Aktarılmış {label.toLowerCase()} belge yok</>)
+              ? (ddTum.length ? <><b>{ddTum.length}</b> belge Luca'ya aktarıldı ✓</> : <>Aktarılmış {label.toLowerCase()} belge yok</>)
               : (hazir.length > 0
                   ? <><b>{hazir.length}</b> belge aktarıma hazır · toplam <b>{fmtMoney(toplam)} ₺</b></>
                   : <>Aktarıma hazır {label.toLowerCase()} belge yok</>)}
@@ -5304,11 +5448,11 @@ function ScreenAktarilanlar({ taxpayerId, period, mode = 'bekleyen', isIsletme =
         </div>
         <div className="twrap">
           <table>
-            <thead><tr><th>Tarih</th><th>Fatura No</th><th>Firma</th><th className="num">Tutar</th><th>Hesap Kodu</th><th>Durum</th><th className="actcol" style={{ width: 40 }} /></tr></thead>
+            <thead><tr><th>Tarih</th><th>Fatura No</th><th>Firma</th><th className="num">Tutar</th><th>Hesap Kodu</th><th>Durum</th>{arsiv && <th>Fiş No</th>}{arsiv && <th>Aktarım</th>}<th className="actcol" style={{ width: 40 }} /></tr></thead>
             <tbody>
               {dd.map(renderRow)}
               {dd.length === 0 && (
-                <tr><td colSpan={7}><div className="empty">{arsiv ? `Aktarılmış ${label.toLowerCase()} belge yok.` : `Aktarıma hazır ${label.toLowerCase()} belge yok.`}</div></td></tr>
+                <tr><td colSpan={arsiv ? 9 : 7}><div className="empty">{filtre ? 'Bu süzgece uyan belge yok.' : arsiv ? `Aktarılmış ${label.toLowerCase()} belge yok.` : `Aktarıma hazır ${label.toLowerCase()} belge yok.`}</div></td></tr>
               )}
             </tbody>
           </table>
@@ -5323,6 +5467,19 @@ function ScreenAktarilanlar({ taxpayerId, period, mode = 'bekleyen', isIsletme =
       <div className="sub">{arsiv
         ? <>Luca'ya aktarılmış (fişi kesilmiş) faturaların arşivi ({period}). Buradakiler işlenmiş ve Luca'da.</>
         : <>İşlenmiş, Luca'ya aktarım <b>BEKLEYEN</b> faturalar. <b>Alış</b> ve <b>Satış</b> AYRI birer <b>tek toplu fiş</b> olarak aktarılır ({period}). Aktarılınca <b>Arşivim</b>'e geçer.</>}</div>
+      {/* SÜZGEÇ ŞERİDİ (2026-09-23): tıklanınca iki tabloyu birden süzer; tekrar tıklayınca süzgeç kalkar. */}
+      {!docsQ.isLoading && docs.length > 0 && (
+        <div className="filttiles">
+          {suzgecKartlar.map((t) => (
+            <button key={t.v || 'tum'} type="button" className={`ftile${filtre === t.v ? ' on' : ''}`} style={{ ['--tc' as any]: t.c }}
+              title={t.v ? 'Tıkla: listeyi süz · tekrar tıkla: süzgeci kaldır' : 'Tüm satırlar'}
+              onClick={() => setFiltre((f) => (f === t.v ? '' : t.v))}>
+              <span className="ftdot" />
+              <span className="fttx"><span className="ftn">{t.n}</span><span className="ftl">{t.l}</span></span>
+            </button>
+          ))}
+        </div>
+      )}
       {docsQ.isLoading
         ? <div className="card"><div className="ch"><h3>Yükleniyor…</h3></div></div>
         : <>{renderSection('ALIS')}{renderSection('SATIS')}</>}
@@ -9329,62 +9486,82 @@ const CSS = `
 #fm-root .gf-strip-h .gf-oran-cip b{color:var(--accent);font-weight:800;font-variant-numeric:tabular-nums}
 /* === /PLAN15-F3-FE === */
 
-/* ===================== FM YENİ ARAYÜZ DİLİ — 2026-09-23 (Muzaffer Bey onayı) =====================
-   Kapsam: yalnız .fm2 sınıfı taşıyan 5 ekran → e-Fatura Sorgu · GİB e-Arşiv Sorgu · Aktarım ·
-   Arşivim · Eşleştirme Kuralları. Diğer ekranlar (Gelen Faturalar, Muhasebeleştir, KDV…) DOKUNULMADI.
+/* ═══════════ FM YENİ ARAYÜZ — TASLAK 1 "GRADYAN KOMUTA ŞERİDİ" (2026-09-23) ═══════════
+   Muzaffer Bey üç taslaktan 1'i seçti. Kural: RENK ÜSTTE YAŞAR —
+     · gradyan sorgu şeridi (zaten vardı, korunur)
+     · sayaç kartları: beyaz zemin + kendi renk çizgisi + köşede renk halesi + seçilince renk halkası
+     · tablo SAKİN kalır: 400 satıra bakarken gözü yoran şey tablodur
+     · durum dili tek: nokta + yazı
+   Kapsam: yalnız .fm2 taşıyan 5 ekran (Sorgu ×2, Aktarım, Arşivim, Eşleştirme Kuralları).
+   Diğer ekranlara (Gelen Faturalar, Muhasebeleştir, KDV…) dokunulmadı. */
 
-   Karar (Muzaffer Bey: "aynı şeylerin rengini değiştirip gönderme"): renk değil DÜZEN değişti —
-     · sayaç kutuları → birleşik, tıklanabilir SÜZGEÇ ŞERİDİ (seçili olanın altı çizili)
-     · tablo sık ve ölçülü: 44px satır, ince ayraç, belge no mono, tutarlar eşit genişlikte rakam
-     · durum dili TEK: nokta + yazı (hap/etiket yok)
-     · aktarılmış satır soluk → iş bitti, gözü yormasın
-   Renk portalın seçili vurgu ailesinden (var(--accent)) gelir; ayrı bir renk sistemi kurulmadı. */
+#fm-root .fm2 > .h2{font-size:21px;font-weight:850;letter-spacing:-.4px;color:#0e1726;margin-bottom:3px}
+#fm-root .fm2 > .sub{font-size:12.5px;color:#566379;margin-bottom:13px;max-width:860px;line-height:1.55}
 
-/* — başlık şeridi — */
-#fm-root .fm2 > .h2{font-size:21px;font-weight:800;letter-spacing:-.35px;color:#0f172a;margin-bottom:3px}
-#fm-root .fm2 > .sub{font-size:12.5px;color:#5b6777;margin-bottom:13px;max-width:820px;line-height:1.55}
-
-/* — SAYAÇLAR → birleşik süzgeç şeridi (eski: ayrı ayrı duran renkli kutular) — */
-#fm-root .fm2 .filttiles{flex-wrap:nowrap;gap:0;margin:2px 0 13px;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff;box-shadow:0 1px 2px rgba(15,23,42,.05)}
-#fm-root .fm2 .filttiles .ftile{flex:1 1 0;min-width:0;display:grid;grid-template-columns:auto 1fr;grid-template-areas:'num num' 'dot lbl';column-gap:6px;row-gap:3px;align-items:center;padding:11px 16px;border:0;border-radius:0;background:transparent;box-shadow:none;transform:none}
-#fm-root .fm2 .filttiles .ftile + .ftile{border-left:1px solid #eef2f7}
-#fm-root .fm2 .filttiles .ftile::before{display:none}
-#fm-root .fm2 .filttiles .ftile:hover{background:#f8fafc;transform:none;box-shadow:none;border-color:transparent}
-#fm-root .fm2 .filttiles .ftile .fttx{display:contents}
-#fm-root .fm2 .filttiles .ftile .ftn{grid-area:num;font-size:19px;letter-spacing:-.5px;line-height:1}
-#fm-root .fm2 .filttiles .ftile .ftdot{grid-area:dot;width:7px;height:7px}
-#fm-root .fm2 .filttiles .ftile .ftl{grid-area:lbl;font-size:11.5px;font-weight:700;color:#5b6777;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#fm-root .fm2 .filttiles .ftile.on{background:color-mix(in srgb,var(--accent) 8%,#fff);box-shadow:none}
-#fm-root .fm2 .filttiles .ftile.on::after{content:'';position:absolute;left:0;right:0;bottom:0;height:2.5px;background:var(--accent)}
-#fm-root .fm2 .filttiles .ftile.on .ftn{color:var(--accent)}
-#fm-root .fm2 .filttiles .ftile.on .ftl{color:var(--accent)}
-/* Şeridin içindeki "iptal/itiraz aktarılmaz" notu: aynı cümle toplu işlem çubuğunda zaten var — tekrarı kaldırıldı. */
+/* ── SAYAÇ KARTLARI ── */
+#fm-root .fm2 .filttiles{gap:10px;margin:0 0 13px;flex-wrap:nowrap}
+/* NOT: yukarida .ftile once satir-pul haline getirilip ::before/::after kapatilmis (display:none;content:none).
+   Taslak 1 icin kart hali GERI ACILIR — tum ozellikler acik yazilir, kalitim beklenmez. */
+#fm-root .fm2 .ftile{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:12px 14px 11px 16px;border:1px solid var(--line);border-radius:13px;background:#fff;box-shadow:0 1px 2px rgba(16,24,40,.05);overflow:hidden}
+#fm-root .fm2 .ftile::before{content:'';display:block;position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--tc,var(--accent));opacity:1}
+#fm-root .fm2 .ftile::after{content:'';display:block;position:absolute;right:-24px;top:-24px;width:78px;height:78px;border-radius:50%;background:var(--tc,var(--accent));opacity:.07;pointer-events:none}
+#fm-root .fm2 .ftile:hover{transform:translateY(-1px);box-shadow:0 10px 22px -16px var(--tc,var(--accent))}
+#fm-root .fm2 .ftile .ftdot{display:none}
+#fm-root .fm2 .ftile .fttx{gap:4px;min-width:0;max-width:100%}
+#fm-root .fm2 .ftile .ftn{font-size:23px;letter-spacing:-.7px;color:var(--tc,var(--accent))}
+#fm-root .fm2 .ftile .ftl{font-size:11.5px;font-weight:700;color:#566379;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+#fm-root .fm2 .ftile.on{background:#fff;border-color:var(--tc,var(--accent));box-shadow:inset 0 0 0 1px var(--tc,var(--accent)),0 10px 22px -16px var(--tc,var(--accent))}
+#fm-root .fm2 .ftile.on::after{opacity:.13}
+/* aynı cümle toplu işlem çubuğunda zaten var — şeritte tekrarı kaldırıldı */
 #fm-root .fm2 .filttiles .sq-tilenote{display:none}
 
-/* — kart — */
-#fm-root .fm2 .card{border-radius:14px;box-shadow:0 1px 2px rgba(15,23,42,.05),0 10px 30px -22px rgba(15,23,42,.45)}
-
-/* — TABLO: iki tip de aynı dilde (sorgu ekranları .sourcetable · aktarım/arşiv/kural .twrap table) — */
-#fm-root .fm2 .sourcetable th,#fm-root .fm2 .twrap > table > thead > tr > th{height:34px;padding:9px 14px;background:#fbfcfe;color:#93a1b4;font-size:10px;font-weight:850;letter-spacing:.6px;border-bottom:1px solid var(--line)}
-#fm-root .fm2 .sourcetable td,#fm-root .fm2 .twrap > table > tbody > tr > td{height:44px;padding:9px 14px;border-bottom:1px solid #eef2f7;font-size:12.5px}
+/* ── TABLO (sorgu ekranları .sourcetable · diğerleri .twrap > table) ── */
+#fm-root .fm2 .sourcetable th,#fm-root .fm2 .twrap > table > thead > tr > th{height:34px;padding:10px 14px;background:#fbfcfe;color:#94a0b2;font-size:10px;font-weight:850;letter-spacing:.6px;border-bottom:1px solid var(--line)}
+#fm-root .fm2 .sourcetable td,#fm-root .fm2 .twrap > table > tbody > tr > td{height:auto;padding:9px 14px;border-bottom:1px solid #f0f3f8;font-size:12.5px;line-height:1.3}
 #fm-root .fm2 .sourcetable tbody tr:hover td,#fm-root .fm2 .twrap > table > tbody > tr:hover > td{background:#f9fbfd}
-#fm-root .fm2 .sourcetable td.num,#fm-root .fm2 .twrap > table > tbody > tr > td.num{font-variant-numeric:tabular-nums;font-weight:750;color:#0f172a}
-#fm-root .fm2 .sq-party b{font-weight:750;line-height:1.25}
-#fm-root .fm2 .sq-party small{font-variant-numeric:tabular-nums}
-#fm-root .fm2 .sq-mono,#fm-root .fm2 .sourcetable .mono,#fm-root .fm2 .twrap .mono{font-family:ui-monospace,'Cascadia Mono',Consolas,monospace;font-size:11.5px;letter-spacing:-.2px;color:#334155}
-/* Aktarım sütunu kalktı → son sütun artık Onay/Görsel; "son sütun ortalanır" kuralı bozmasın. */
+#fm-root .fm2 .sourcetable td.num,#fm-root .fm2 .twrap > table > tbody > tr > td.num{font-variant-numeric:tabular-nums;font-weight:750;color:#0e1726}
+#fm-root .fm2 .sq-table .sq-party{max-width:420px}
+#fm-root .fm2 .sq-table .sq-party b{font-size:12.5px;font-weight:750;line-height:1.25;color:#0e1726}
+#fm-root .fm2 .sq-table .sq-party small{font-size:11px;font-variant-numeric:tabular-nums}
+#fm-root .fm2 .sourcetable tr.done td{opacity:.7}
+#fm-root .fm2 .sourcetable tr.sel td{background:#effaf8;opacity:1}
+#fm-root .fm2 .sourcetable tr.blocked td{background:#fff;color:#94a3b8}
+/* Aktarım sütunu kalktı → son sütun Onay/Görsel; "son sütun ortalanır" kuralı bozmasın */
 #fm-root .fm2 .sourcetable th:last-child,#fm-root .fm2 .sourcetable td:last-child{text-align:left}
 #fm-root .fm2 .sourcetable th.center,#fm-root .fm2 .sourcetable td.center{text-align:center}
 
-/* — satır hâlleri: aktarılmış = iş bitti (soluk), seçili = vurgu, aktarılamaz = sessiz — */
-#fm-root .fm2 .sourcetable tr.done td{background:#fff;opacity:.66}
-#fm-root .fm2 .sourcetable tr.blocked td{background:#fff;color:#94a3b8}
-#fm-root .fm2 .sourcetable tr.sel td{background:color-mix(in srgb,var(--accent) 8%,#fff);opacity:1}
-#fm-root .fm2 .sourcetable tr.sel:hover td{background:color-mix(in srgb,var(--accent) 11%,#fff)}
-
-/* — DURUM DİLİ: hap değil, nokta + yazı (her ekranda aynı) — */
+/* ── DURUM DİLİ: hap değil, nokta + yazı ── */
 #fm-root .fm2 .sq-onay{height:auto;padding:0;border:0!important;border-radius:0;background:transparent!important;font-size:12px;font-weight:750;gap:6px}
 #fm-root .fm2 .sq-onay::before{width:7px;height:7px}
-#fm-root .fm2 .sq-onaysub{color:#93a1b4}
-/* === /FM YENİ ARAYÜZ DİLİ === */
+#fm-root .fm2 .sq-onaysub{color:#94a0b2}
+
+/* ── AKTARIM / ARŞİVİM: sorunlu satırın kenar şeridi + neden satırı ── */
+#fm-root .fm2 .fm2-neden{margin-top:3px;font-size:11px;font-weight:650;color:#94a0b2;white-space:normal;max-width:340px;line-height:1.35}
+#fm-root .fm2 .twrap > table > tbody > tr.fm2-hata > td:first-child{box-shadow:inset 3px 0 0 var(--red)}
+#fm-root .fm2 .twrap > table > tbody > tr.fm2-eksik > td:first-child{box-shadow:inset 3px 0 0 var(--amber)}
+#fm-root .fm2 .twrap > table > tbody > tr.fm2-gecmis > td{opacity:.72}
+
+/* ── EŞLEŞTİRME KURALLARI ── */
+#fm-root .fm2 .kr-strip .kr-alan{height:34px;padding:0 12px;border-radius:10px;border:1px solid var(--line2);background:#fff;font-family:inherit;font-size:12.5px;color:var(--text);outline:none}
+#fm-root .fm2 .kr-strip .kr-alan:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+#fm-root .fm2 .kr-oneri{border-color:#f3dcb4;background:linear-gradient(135deg,#fffdf8,#fff)}
+#fm-root .fm2 .kr-oneri .kr-liste{display:flex;flex-wrap:wrap;gap:9px;padding:12px 15px}
+#fm-root .fm2 .kr-sat{display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:#fff;font-size:12px;font-weight:750;color:#334155;max-width:100%}
+#fm-root .fm2 .kr-sat b{max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#fm-root .fm2 .kr-sat small{color:var(--faint);font-weight:650;font-variant-numeric:tabular-nums}
+#fm-root .fm2 .kr-grid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:12px;align-items:start}
+@media (max-width:1180px){#fm-root .fm2 .kr-grid{grid-template-columns:minmax(0,1fr)}}
+#fm-root .fm2 .twrap > table > tbody > tr.kr-secili > td{background:#effaf8}
+#fm-root .fm2 .kr-satir{cursor:pointer}
+#fm-root .fm2 .kr-det{padding:15px 17px}
+#fm-root .fm2 .kr-et{font-size:10px;font-weight:850;letter-spacing:.6px;text-transform:uppercase;color:var(--faint)}
+#fm-root .fm2 .kr-ad{font-size:14px;font-weight:850;margin:3px 0 1px;line-height:1.3}
+#fm-root .fm2 .kr-iki{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:15px 0}
+#fm-root .fm2 .kr-iki b{display:block;font-size:14px;font-weight:850;margin-top:3px}
+#fm-root .fm2 .kr-ayr{height:1px;background:var(--line);margin:14px 0}
+#fm-root .fm2 .kr-not{font-size:11.5px;color:var(--faint);font-weight:650;line-height:1.5}
+#fm-root .fm2 .kr-sil{color:var(--red);border-color:#f0d4d4}
+#fm-root .fm2 .kr-sil:hover{background:#fdeaea}
+#fm-root .fm2 .kr-bos{padding:36px 18px;text-align:center;color:var(--faint);font-size:12.5px;line-height:1.6}
+/* === /FM YENİ ARAYÜZ — TASLAK 1 === */
 `;
