@@ -134,7 +134,11 @@ export function kapsamMukellefleri(
   kapsam: string,
   pano: { donemler?: PanoDonemi[] } | null | undefined,
   taxpayerIds: string[] | null | undefined,
-  ek?: { kdvBitmisIdler?: Set<string> | null },
+  ek?: {
+    kdvBitmisIdler?: Set<string> | null;
+    /** "İşlendi" işareti ÇOK YENİ olanlar (yedekleme payı) — bu turda aday sayılmaz, sonraki turda alınır. */
+    bekleyenIdler?: Set<string> | null;
+  },
 ): KapsamSonucu {
   if (kapsam === 'ofis') return { donem: panoSonDonemi(pano)?.beyannameDonem || null, mukellefler: [{ taxpayerId: null, ad: null }] };
   if (kapsam === 'liste') {
@@ -160,10 +164,15 @@ export function kapsamMukellefleri(
   // GÜVENLİK (2026-09-22): o dönem KDV Kontrol oturumları KİLİTLİ olan mükellef aday olmaz — kontrolü zaten yapılmış,
   // Aylık Takip kutusu geç işaretlenmiş olsa bile ekip tekrar kontrol etmeye kalkmasın.
   const bitmis = ek?.kdvBitmisIdler || null;
+  // YEDEKLEME PAYI (2026-09-22, Muzaffer Bey): "işlendi" işaretlenir işaretlenmez kontrol başlamasın —
+  //   faturalar o sırada Drive'a indirilip yedekleniyor. İşareti EKIP_ISLENDI_BEKLEME_DK dakikadan yeni
+  //   olan mükellef bu turda atlanır; 5 dakikada bir koşan tarama onu bir sonraki turda alır.
+  const bekleyen = ek?.bekleyenIdler || null;
   for (const m of d.mukellefler || []) {
     if (!m?.taxpayerId || gorulen.has(m.taxpayerId)) continue;
     if (!suzgec(m)) continue;
     if (bitmis?.has(m.taxpayerId)) continue;
+    if (bekleyen?.has(m.taxpayerId)) continue;
     gorulen.add(m.taxpayerId);
     out.push({ taxpayerId: m.taxpayerId, ad: m.ad || null });
   }

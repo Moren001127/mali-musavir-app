@@ -313,6 +313,30 @@ export class EkipRutinService implements OnApplicationBootstrap {
     return bitmis;
   }
 
+  /**
+   * YEDEKLEME PAYI (2026-09-22): "İşlendi" işareti çok yeni olan mükellefler bu turda atlanır.
+   * Sebep (Muzaffer Bey): işaret konur konmaz faturalar Drive'a indirilip yedekleniyor; kontrol
+   * o iş bitmeden başlamasın. Süre EKIP_ISLENDI_BEKLEME_DK ile ayarlanır (varsayılan 5 dk, 0 = kapalı).
+   * Damgası olmayan ESKİ kayıtlar engellenmez (yeni alan; geçmiş veriyi kilitlemeyelim).
+   */
+  private async tazeIsaretliler(tenantId: string, pano: any, simdi: Date): Promise<{ idler: Set<string>; dk: number }> {
+    const dk = Math.max(0, Number(process.env.EKIP_ISLENDI_BEKLEME_DK ?? 5));
+    const idler = new Set<string>();
+    if (!dk) return { idler, dk };
+    const donem = pano?.donemler?.[0]?.beyannameDonem || null; // "2026-08"
+    const m = String(donem || '').match(/^(\d{4})-(\d{2})$/);
+    if (!m) return { idler, dk };
+    const esik = new Date(simdi.getTime() - dk * 60_000);
+    const satirlar: any[] = await ((this.db as any).taxpayerMonthlyStatus?.findMany
+      ? (this.db as any).taxpayerMonthlyStatus.findMany({
+        where: { tenantId, year: Number(m[1]), month: Number(m[2]), evraklarIslendi: true, evraklarIslendiAt: { gt: esik } },
+        select: { taxpayerId: true },
+      }).catch((e: any) => (this.logger.warn(`[rutin] işlendi damgaları okunamadı: ${e?.message || e}`), []))
+      : Promise.resolve([]));
+    for (const r of satirlar) if (r?.taxpayerId) idler.add(String(r.taxpayerId));
+    return { idler, dk };
+  }
+
   async rutinKos(
     r: any,
     opts: { tavanUygula: boolean; simdi: Date },
@@ -334,13 +358,18 @@ export class EkipRutinService implements OnApplicationBootstrap {
       const panoGerek = kapsam.startsWith('pano:') || sablonDonemGerekli(r.sablon);
       const pano = panoGerek ? await this.runner.pano(tenantId, 2).catch((e: any) => (this.logger.warn(`[rutin] pano okunamadı (${tenantId}): ${e?.message || e}`), null)) : null;
       const kdvBitmisIdler = kapsam === 'pano:kontrol_bekleyen' ? await this.kdvBitmisler(tenantId, pano) : null;
-      const k = kapsamMukellefleri(kapsam, pano, Array.isArray(r.taxpayerIds) ? r.taxpayerIds : [], { kdvBitmisIdler });
+      // Yedekleme payı: "işlendi" damgası taze olanlar bu turda atlanır (elle "Şimdi çalıştır"da da geçerli —
+      //   kullanıcı düğmeye bastığında bile yedekleme sürüyor olabilir).
+      const taze = kapsam === 'pano:kontrol_bekleyen' ? await this.tazeIsaretliler(tenantId, pano, simdi) : { idler: new Set<string>(), dk: 0 };
+      const k = kapsamMukellefleri(kapsam, pano, Array.isArray(r.taxpayerIds) ? r.taxpayerIds : [], { kdvBitmisIdler, bekleyenIdler: taze.idler });
       const secilen = secilecekOgeler(k.mukellefler, acilan, tavan);
       if (!secilen.length) {
         const neden = !k.mukellefler.length
           ? kapsam.startsWith('pano:') && !pano
             ? 'pano okunamadı'
-            : 'kapsamda mükellef yok'
+            : taze.idler.size
+              ? `kapsamda mükellef yok — ${taze.idler.size} mükellef "işlendi" işaretinden sonra ${taze.dk} dk yedekleme payında bekliyor`
+              : 'kapsamda mükellef yok'
           : 'kapsamdakiler bugün zaten açılmış';
         sonuc = { eklenen: 0, aday: k.mukellefler.length, kuyrukId: null, donem: k.donem, neden };
       } else {
@@ -357,7 +386,7 @@ export class EkipRutinService implements OnApplicationBootstrap {
           olusturan: null,
         });
         sonuc = acilis.ok
-          ? { eklenen: acilis.ogeSayisi, aday: k.mukellefler.length, kuyrukId: acilis.id, donem: k.donem, neden: acilis.atlanan ? `${acilis.atlanan} mükellef bulunamadı` : null }
+          ? { eklenen: acilis.ogeSayisi, aday: k.mukellefler.length, kuyrukId: acilis.id, donem: k.donem, neden: acilis.atlanan ? `${acilis.atlanan} mükellef bulunamadı` : (taze.idler.size ? `${taze.idler.size} mükellef yedekleme payında (${taze.dk} dk) bekliyor` : null) }
           : { eklenen: 0, aday: k.mukellefler.length, kuyrukId: null, donem: k.donem, neden: acilis.error };
       }
     }

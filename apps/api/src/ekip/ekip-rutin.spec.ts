@@ -97,6 +97,15 @@ describe('ekip rutin — kapsam hesabı', () => {
     expect(k.mukellefler).toEqual([{ taxpayerId: 'e', ad: 'E' }]);
   });
 
+  // 2026-09-22 (Muzaffer Bey): "işlendi işaretlenince hemen başlamasın, 5 dk beklesin — evrak Drive'a yedekleniyor."
+  it('pano:kontrol_bekleyen: "işlendi" damgası TAZE olan mükellef bu turda atlanır', () => {
+    const k = kapsamMukellefleri('pano:kontrol_bekleyen', PANO, null, { bekleyenIdler: new Set(['a']) });
+    expect(k.mukellefler).toEqual([{ taxpayerId: 'e', ad: 'E' }]);
+    // bekleme bitince aynı mükellef yine aday olur
+    expect(kapsamMukellefleri('pano:kontrol_bekleyen', PANO, null, { bekleyenIdler: new Set() }).mukellefler)
+      .toEqual([{ taxpayerId: 'a', ad: 'A Ltd' }, { taxpayerId: 'e', ad: 'E' }]);
+  });
+
   it('pano:isleme_bekleyen = evrak ∧ ¬işleme; pano:hazirlik_bekleyen = kontrol ∧ ¬beyannameHazir', () => {
     expect(kapsamMukellefleri('pano:isleme_bekleyen', PANO, null).mukellefler).toEqual([{ taxpayerId: 'c', ad: 'C' }]);
     expect(kapsamMukellefleri('pano:hazirlik_bekleyen', PANO, null).mukellefler).toEqual([{ taxpayerId: 'b', ad: 'B AŞ' }]);

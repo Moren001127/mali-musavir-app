@@ -1146,10 +1146,18 @@ export class TaxpayersService {
       where: { taxpayerId_year_month: { taxpayerId, year, month } },
     });
 
+    // "İŞLENDİ" DAMGASI (2026-09-22): işaret KONULDUĞU an yazılır, kaldırılınca silinir. Ekip KDV kontrol
+    //   rutini bu damgadan sonra birkaç dakika bekler (evrak Drive'a indirilip yedeklenirken kontrol
+    //   başlamasın — Muzaffer Bey). updatedAt kullanılamaz: başka alan güncellenince tazelenir.
+    const damga: { evraklarIslendiAt?: Date | null } = {};
+    if (typeof cleanData.evraklarIslendi === 'boolean' && cleanData.evraklarIslendi !== existing?.evraklarIslendi) {
+      damga.evraklarIslendiAt = cleanData.evraklarIslendi ? new Date() : null;
+    }
+
     const result = await this.prisma.taxpayerMonthlyStatus.upsert({
       where: { taxpayerId_year_month: { taxpayerId, year, month } },
-      create: { taxpayerId, tenantId, year, month, ...cleanData },
-      update: cleanData,
+      create: { taxpayerId, tenantId, year, month, ...cleanData, ...damga },
+      update: { ...cleanData, ...damga },
     });
 
     // Otomasyon event'leri — değişen alan başına ayrı event yayınla.
