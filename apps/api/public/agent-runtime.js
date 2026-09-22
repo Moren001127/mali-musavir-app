@@ -86,7 +86,7 @@
   //   Luca'nın beklediği adlarla TEK SEFERDE hizalanır (her denemede tek sütun hatası okumak yerine).
   // v1.47.48 (2026-09-15): firma onay düğmesi regex'indeki `\b` sınırları kaynakta gerçek backspace (0x08) baytına
   //   dönüşmüştü (sec/aç/ac seçenekleri ölüydü) → düzeltildi.
-  const AGENT_VERSION = '1.47.55';
+  const AGENT_VERSION = '1.47.56';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -2935,7 +2935,7 @@
                         try {
                           for (const el of hazirlikDoc.querySelectorAll('button, input[type="button"], input[type="submit"], a')) {
                             const t = String(el.value || el.textContent || '').replace(/\s+/g, ' ').trim();
-                            if (t === etiket) { try { el.click(); } catch {} temizlendi = true; break; }
+                            if (t.indexOf(etiket) !== -1) { try { el.click(); } catch {} temizlendi = true; break; }
                           }
                         } catch {}
                         if (temizlendi) { await log(`🧹 "${etiket}" basıldı (ekranda ${kalinti} kalıntı satır vardı)`); break; }
@@ -3330,7 +3330,7 @@
                     if (cd) {
                       for (const el of cd.querySelectorAll('button, input[type="button"], input[type="submit"], a')) {
                         const t = String(el.value || el.textContent || '').replace(/\s+/g, ' ').trim();
-                        if (/^Cari\s*Sorgulama$/i.test(t)) { try { el.click(); } catch {} basildi = true; break; }
+                        if (/Cari\s*Sorgulama/i.test(t)) { try { el.click(); } catch {} basildi = true; break; }
                       }
                     }
                     if (basildi) {
