@@ -61,10 +61,10 @@ fs.mkdirSync(CIKIS, { recursive: true });
   await giris.fill('');
 
   // Sayaç çipi: Gecikmiş
-  await page.getByRole('button', { name: /^Gecikmiş/ }).click();
+  await page.locator('[data-gorev-sayac="gecikmis"]').click();
   await page.waitForTimeout(400);
   await cek('03-cip-gecikmis', false);
-  await page.getByRole('button', { name: /^Açık/ }).click();
+  await page.locator('[data-gorev-sayac="acik"]').click();
 
   // Toplu seçim şeridi
   const kutular = page.locator('table tbody input[type=checkbox][title="Seç"]');
@@ -117,10 +117,10 @@ fs.mkdirSync(CIKIS, { recursive: true });
 
   // Notlar çipi
   await page.getByRole('tab', { name: /Ajanda/ }).click();
-  await page.getByRole('button', { name: /^Notlar/ }).click();
+  await page.locator('[data-gorev-sayac="not"]').click();
   await page.waitForTimeout(500);
   await cek('12-notlar', false);
-  await page.getByRole('button', { name: /^Açık/ }).click();
+  await page.locator('[data-gorev-sayac="acik"]').click();
 
   // Süzgeç menüsü
   await page.getByTitle('Kategoriye göre süz').click();

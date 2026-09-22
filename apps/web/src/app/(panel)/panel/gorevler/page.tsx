@@ -324,6 +324,8 @@ export default function GorevlerPage() {
 
   return (
     <div data-gorevler className="space-y-3 max-w-none">
+      {/* ÜST BLOK — başlık + sayaç panosu tek kart (2026-09-22 yeniden tasarım) */}
+      <div data-gorev-ust>
       <header data-gorev-baslik
         className="relative overflow-hidden rounded-[18px] border px-5 py-4"
         style={portalStyle({
@@ -373,8 +375,9 @@ export default function GorevlerPage() {
         </div>
       </header>
 
-      {/* Hap sayaç şeridi — tıklanınca süzer */}
+      {/* Sayaç panosu — tıklanınca süzer */}
       <SayacSeridi sayaclar={veri?.sayaclar} aktif={sayac} onSec={(k) => setSayac((s) => (s === k && k !== 'acik' ? 'acik' : k))} />
+      </div>
 
       {/* Akıllı giriş satırı */}
       <AkilliGiris mukellefler={mukellefler} varsayilanMukellefId={suzgec.mukellefId || undefined} onEkle={hizliEkle} />
