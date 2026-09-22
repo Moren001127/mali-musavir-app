@@ -206,7 +206,8 @@ html[data-theme='D'] .ml-root {
 
 /* Erişim simgeleri: tanımlı yeşil, eksik soluk (kenarsız; 4×N kutu sakin kalsın) */
 .ml-root .ml-access[data-on='true'] { background: var(--ml-green-bg); color: var(--ml-green-ink); }
-.ml-root .ml-access[data-on='false'] { background: var(--ml-off-bg); color: var(--ml-zero); }
+/* Tanımsız erişim = kırmızı (2026-09-22): eksik şifre/iletişim bilgisi listede hemen görünsün */
+.ml-root .ml-access[data-on='false'] { background: var(--ml-red-bg); color: var(--ml-red-ink); }
 
 /* Durum düğmesi + menü */
 .ml-root .ml-status { border: 1px solid transparent; white-space: nowrap; }

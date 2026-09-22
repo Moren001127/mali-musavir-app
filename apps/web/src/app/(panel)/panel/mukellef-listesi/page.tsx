@@ -83,12 +83,6 @@ function taxpayerName(t: Taxpayer): string {
   return (t.companyName || [t.firstName, t.lastName].filter(Boolean).join(' ') || 'Mükellef').trim();
 }
 
-function initials(t: Taxpayer): string {
-  const name = taxpayerName(t);
-  const parts = name.split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toLocaleUpperCase('tr-TR');
-  return name.slice(0, 2).toLocaleUpperCase('tr-TR');
-}
 
 function cleanList(values: Array<string | null | undefined>): string[] {
   return values.map((v) => String(v || '').trim()).filter(Boolean);
@@ -320,13 +314,12 @@ export default function MukellefListesiPage() {
         </div>
       ) : (
         <div className="ml-table-wrap overflow-x-auto rounded-[12px]">
-          <table className="ml-table w-full min-w-[960px] border-collapse text-left">
+          <table className="ml-table w-full min-w-[820px] border-collapse text-left">
             <thead>
               <tr>
                 <th className="ml-th">Mükellef</th>
                 <th className="ml-th w-[92px]">Tür</th>
-                <th className="ml-th w-[170px]">Vergi dairesi</th>
-                <th className="ml-th w-[150px]">Erişim</th>
+                <th className="ml-th w-[150px]" title="Sırasıyla: vergi dairesi şifresi · SGK e-Bildirge şifresi · e-posta · cep telefonu (tanımsız olan kırmızı)">Erişim</th>
                 <th className="ml-th w-[118px]">Durum</th>
                 <th className="ml-th w-[96px] text-right">Eylemler</th>
               </tr>
@@ -489,27 +482,15 @@ function TaxpayerRow({
       title="Mükellef kartını aç"
     >
       <td className="ml-td">
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="ml-avatar grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-[9px] text-[11.5px] font-bold">
-            {taxpayer.logoUrl ? (
-              <span className="h-full w-full bg-cover bg-center" style={{ backgroundImage: `url(${taxpayer.logoUrl})` }} />
-            ) : (
-              initials(taxpayer)
-            )}
-          </span>
-          <div className="min-w-0">
-            <Link href={href} onClick={(e) => e.stopPropagation()} className="ml-name block truncate text-[13.5px] font-semibold leading-tight">{name}</Link>
-            <div className="ml-id mt-0.5 truncate text-[11.5px] tabular-nums">{taxpayer.taxNumber || 'VKN/TC yok'}</div>
-          </div>
+        <div className="min-w-0">
+          <Link href={href} onClick={(e) => e.stopPropagation()} className="ml-name block truncate text-[13.5px] font-semibold leading-tight">{name}</Link>
+          <div className="ml-id mt-0.5 truncate text-[11.5px] tabular-nums">{taxpayer.taxNumber || 'VKN/TC yok'}</div>
         </div>
       </td>
       <td className="ml-td">
         <span className="ml-type-chip inline-flex h-[22px] items-center rounded-full px-2 text-[11px] font-semibold" data-tone={TYPE_TONE[type]}>
           {type === 'FİRMA' ? 'Firma' : type === 'ŞAHIS' ? 'Şahıs' : 'Basit'}
         </span>
-      </td>
-      <td className="ml-td ml-cell-secondary">
-        {taxpayer.taxOffice ? <span className="block truncate">{taxpayer.taxOffice}</span> : <span className="ml-num-faint">—</span>}
       </td>
       <td className="ml-td">
         <div className="flex items-center gap-1">
@@ -582,7 +563,7 @@ function TaxpayerRow({
 
 type PresenceKind = 'gib' | 'sgk' | 'mail' | 'phone';
 
-/** Erişim simgeleri (Hattat kalıbı): tanımlı olan yeşil, olmayan soluk. */
+/** Erişim simgeleri: tanımlı olan YEŞİL, tanımsız olan KIRMIZI (Muzaffer Bey 2026-09-22 — eksikler göze çarpsın). */
 function PresenceIcon({ active, kind, title }: { active: boolean; kind: PresenceKind; title: string }) {
   return (
     <span
