@@ -5356,6 +5356,8 @@ function ScreenEntegrator({ taxpayerId, period }: { taxpayerId: string; period: 
   const isTurkcell = provider === 'TURKCELL';
   // Mikro (e-Mikro/e-Portal) yalnız kullanıcı+parola ister; client_id/secret/firma no BOŞ kalır.
   const isMikro = provider === 'MIKRO';
+  // Eczacıkart (Kolaysoft) yalnız GLN + portal şifresi ister; anahtar/secret/firma no BOŞ kalır.
+  const isEczacikart = provider === 'ECZACIKART';
   const resetForm = () => { setUsername(''); setPassword(''); setApiKey(''); setApiSecret(''); setAccountId(''); };
   const openAdd = () => { setEditMode(false); resetForm(); setProvider('PARASUT'); setShowAddForm(true); };
   const openEdit = (c: any) => { setEditMode(true); setProvider(c.provider); setUsername(c.username || ''); setAccountId(c.accountId || ''); setApiKey(''); setApiSecret(''); setPassword(''); setShowAddForm(true); };
@@ -5503,14 +5505,14 @@ function ScreenEntegrator({ taxpayerId, period }: { taxpayerId: string; period: 
                     {PROVIDER_OPTS.map((p) => (<option key={p.v} value={p.v}>{p.l}</option>))}
                   </select>
                 </div>
-                <div className="fld"><label>{isTurkcell ? 'API Key' : `client_id${isParasut ? '' : ' (varsa)'}`}</label><input autoComplete="off" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder={isParasut ? 'Paraşüt destekten alınan' : isTurkcell ? 'Turkcell panelinden alınan API anahtarı' : '—'} /></div>
+                <div className="fld"><label>{isTurkcell ? 'API Key' : `client_id${isParasut ? '' : ' (varsa)'}`}</label><input autoComplete="off" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder={isParasut ? 'Paraşüt destekten alınan' : isTurkcell ? 'Turkcell panelinden alınan API anahtarı' : isEczacikart ? 'gerekmiyor — boş bırakın' : '—'} /></div>
               </div>
               <div className="erw">
                 <div className="fld"><label>client_secret</label><input type="password" autoComplete="new-password" value={apiSecret} onChange={(e) => setApiSecret(e.target.value)} placeholder="••••••••" /></div>
                 <div className="fld"><label>{isParasut ? 'Firma No (opsiyonel)' : 'Hesap / Firma No'}</label><input autoComplete="off" value={accountId} onChange={(e) => setAccountId(e.target.value)} placeholder={isParasut ? 'boş bırak → otomatik bulunur' : '—'} /></div>
               </div>
               <div className="erw">
-                <div className="fld"><label>{isMikro ? 'Kullanıcı adı (e-Portal e-postası)' : 'Kullanıcı adı'}</label><input autoComplete="off" value={username} onChange={(e) => setUsername(e.target.value)} placeholder={isMikro ? 'eportal.mikrogrup.com girişindeki e-posta' : 'mükellefin giriş kullanıcısı'} /></div>
+                <div className="fld"><label>{isMikro ? 'Kullanıcı adı (e-Portal e-postası)' : isEczacikart ? 'Kullanıcı adı (eczanenin GLN numarası)' : 'Kullanıcı adı'}</label><input autoComplete="off" value={username} onChange={(e) => setUsername(e.target.value)} placeholder={isMikro ? 'eportal.mikrogrup.com girişindeki e-posta' : isEczacikart ? '868… ile başlayan 13 haneli GLN' : 'mükellefin giriş kullanıcısı'} /></div>
                 <div className="fld"><label>Şifre</label><input type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={editMode ? 'değiştirmek için yaz — boş bırakırsan eski şifre korunur' : '••••••••'} /></div>
               </div>
               <div className="erw">

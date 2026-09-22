@@ -437,7 +437,7 @@ export const PROVIDER_AUTH_HINTS: Record<string, string> = {
   KOLAYSOFT: "Kolaysoft kullanici ve sifresi. Servis URL hesabiniza ozeldir.",
   TURMOB_EFATURA: "TÜRMOB e-Belge portalına mükellefin TCKN ve parolasıyla otomatik giriş yapılıp gelen/giden faturalar XML olarak çekilir (kod/2FA sormaz).",
   TURKCELL: "Turkcell e-Şirket (isim360): mükellefin panelinden (API Yönetimi > Yeni API Anahtarı) oluşturulan API anahtarını girin — ya da e-Şirket kullanıcı adı+şifresini yazın. Fatura çekerken SMS gitmez.",
-  ECZACIKART: "Eczacıkart (TEB Eczacı Kart — altyapı Kolaysoft): Kullanıcı adı = eczanenin GLN numarası (868… 13 hane), şifre = Eczacıkart fatura portalı şifresi. Servis adresi otomatik dolar. Portal doğrulama kodu (SMS) isterse Kolaysoft'tan web servis hesabı açtırılması gerekir.",
+  ECZACIKART: "Eczacıkart (TEB Eczacı Kart — altyapı Kolaysoft): Kullanıcı adı = eczanenin GLN numarası (868… 13 hane), şifre = Eczacıkart fatura portalı şifresi; portalde giriş için kullandığınız bilgilerin aynısı. Servis adresi otomatik dolar. Hesapta İKİ ADIMLI DOĞRULAMA açıksa (girişte SMS kodu isteniyorsa) otomatik çekim yapılamaz — portal ayarlarından kapatılmalı.",
   GIB_PORTAL: "GIB Portal: dogrudan API yok. Luca Local Agent veya mali muhur ile portal otomasyonu gerekir.",
 };
 
@@ -9110,6 +9110,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       if (!cfg.username || !cfg.password) return 'Mikro e-Portal kullanıcı adı (e-posta) ve parolası gerekli';
       return null;
     }
+    // Eczacıkart (Kolaysoft): kullanıcı adı (eczanenin GLN'i) + portal şifresi yeter; adres varsayılandan gelir.
+    if (cfg.provider === 'ECZACIKART') {
+      if (!cfg.username || !cfg.password) return 'Eczacıkart kullanıcı adı (GLN) ve şifresi gerekli';
+      return null;
+    }
     // eLogo posta kutusu web servisi: web servis kullanıcı kodu + şifresi yeter; servis adresi varsayılandan.
     if (cfg.provider === 'ELOGO') {
       if (!cfg.username || !cfg.password) return 'eLogo web servis kullanıcı adı (kod) ve şifresi gerekli';
@@ -11287,15 +11292,19 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
    *      liste JSON alanları) teyit edilip gerekiyorsa buradan ayarlanacak.
    */
   /**
-   * ECZACIKART (TEB Eczacı Kart) — altyapı KOLAYSOFT portalı.
+   * ECZACIKART (TEB Eczacı Kart) — altyapı KOLAYSOFT "E-Dönüşüm Portal" (React + Spring).
    *
-   * 2026-09-22 keşfi (kimliksiz, yalnız yol doğrulama):
-   *  • portal.eczacikartfatura.com ve servis.kolaysoft.com.tr AYNI uygulamaya düşüyor (/accounting), React arayüz.
-   *  • API kökü: /accounting/api — `GET /accounting/api/elektra/login` 401 döndü (yol var, kimlik gerekiyor).
-   *  • Giriş: `POST /elektra/login` {username, password}; yanıtta `otpRequired` alanı var → portal doğrulama kodu
-   *    isteyebilir. Mihsap aynı kimlikle SMS'siz çekiyor; OTP çıkarsa Kolaysoft'tan web servis hesabı gerekir.
-   *  • Gelen kutusu uçlarının tam adı kimliksiz doğrulanamadı (401/404 ayrımı yapılamıyor) → ilk gerçek girişte
-   *    ADAY uçlar sırayla denenir, ilk çalışan kullanılır ve log'a yazılır (sonra buraya sabitlenecek).
+   * 2026-09-22 canlı keşif (kimliksiz; giriş formuna SAHTE kullanıcı yazılarak ağ izi okundu + portal paketi çözüldü):
+   *  • API kökü: `{base}/accounting/api` (paketteki sabit: pathname '/accounting' ise base = '/accounting' + '/api').
+   *  • GİRİŞ: `POST /auth/signin` {username, password} → 401 gövdesi düz metin ("Kullanıcı Adı veya Şifre hatalı").
+   *      Başarılıda `data.token.accessToken`; sonraki isteklerde `Authorization: Bearer <token>`.
+   *      İKİ ADIMLI DOĞRULAMA: yanıtta `hasOtp` true ise portal SMS/kod ister (`/auth/verifyTwoStepCode`) →
+   *      otomatik çekim yapılamaz, kullanıcının portalde iki adımlı doğrulamayı kapatması gerekir.
+   *  • LİSTE: portal ızgaraları `GET /{modul}/fetch?page=&size=&sort=recordId,desc[&year=&month=]` düzenini kullanıyor
+   *      (Spring Page yanıtı: {content, totalElements}). Gelen kutusu modül adı kimliksiz kesinleşmediği için ADAY
+   *      listesi sırayla denenir; ilk çalışan log'a yazılır (sonra buraya sabitlenecek).
+   *  • BELGE: `POST /{inbox|outbox}/downloadMedia/xml` {documentUuid, year, month} → arraybuffer (XML veya ZIP).
+   *  • `/store/...` uçları bu portalda YOK (404) — onlar `/defter-control/api` ürününe ait, bu kurulumda mevcut değil.
    *
    * Kimlik bilgisi Muzaffer Bey tarafından portalden girilir (şifre koda/loga yazılmaz).
    */
@@ -11315,98 +11324,146 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const base = (cfg.baseUrl || PROVIDER_DEFAULT_BASE_URL.ECZACIKART).replace(/\/+$/, '');
     const api = `${base}/accounting/api`;
     if (!cfg.username || !cfg.password) throw new Error('Eczacıkart için kullanıcı adı (GLN) ve şifre gerekli');
+    const nefes = (ms: number) => new Promise((res) => setTimeout(res, ms));
 
-    // --- GİRİŞ ---
-    const loginRes = await fetch(`${api}/elektra/login`, {
+    // ── 1) GİRİŞ ──
+    const loginRes = await fetch(`${api}/auth/signin`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      headers: { 'Content-Type': 'application/json;charset=UTF-8', Accept: 'application/json' },
       body: JSON.stringify({ username: cfg.username, password: cfg.password }),
     });
     const loginText = await loginRes.text();
     let loginJson: any = {};
-    try { loginJson = JSON.parse(loginText); } catch { /* HTML/boş olabilir */ }
-    if (loginJson?.otpRequired) {
-      throw new Error('Eczacıkart doğrulama kodu (SMS) istedi — otomatik çekim için Kolaysoft\'tan WEB SERVİS hesabı açtırılmalı (portal şifresiyle olmuyor).');
-    }
+    try { loginJson = JSON.parse(loginText); } catch { /* 401'de düz metin döner */ }
     if (!loginRes.ok) {
-      throw new Error(`Eczacıkart girişi başarısız: ${loginRes.status} ${String(loginJson?.message || loginText).slice(0, 200)}`);
+      const mesaj = String(loginJson?.message || loginText || '').trim().slice(0, 200) || `HTTP ${loginRes.status}`;
+      throw new Error(`Eczacıkart girişi başarısız: ${mesaj}`);
     }
-    const token = loginJson?.token || loginJson?.accessToken || loginJson?.jwt || null;
-    const cookie = loginRes.headers.get('set-cookie') || '';
-    const authHeaders: Record<string, string> = { Accept: 'application/json', 'Content-Type': 'application/json' };
-    if (token) authHeaders['Authorization'] = /^Bearer /i.test(String(token)) ? String(token) : `Bearer ${token}`;
-    if (cookie) authHeaders['Cookie'] = cookie.split(';')[0];
-    if (!token && !cookie) throw new Error('Eczacıkart girişi oturum döndürmedi (token/çerez yok) — kimlik bilgilerini kontrol edin.');
-
-    // --- GELEN/GİDEN KUTUSU (aday uçlar; ilk çalışan kullanılır) ---
-    const gelen = opts.direction === 'ALIS';
-    const adaylar = gelen
-      // Aday sırası: portal paketinde (main.js) gecen adlar once. 2026-09-22 kesif: '/eInvoiceInbox' ve
-      //   '/eInvoiceInboxList' adlari pakette geciyor; '/store/...Info' ise Kolaysoft'un klasik ucu.
-      ? ['/store/getInboxEInvoiceInfo', '/eInvoiceInbox/list', '/eInvoiceInboxList', '/eInvoiceInbox']
-      : ['/store/getOutboxEInvoiceInfo', '/eInvoiceOutbox/list', '/eInvoiceOutboxList', '/eInvoiceOutbox'];
-    const govde = {
-      startDate: opts.period.startDate,
-      endDate: opts.period.endDate,
-      pageIndex: 0,
-      pageSize: Math.min(Math.max(opts.limit, 1), 500),
+    if (loginJson?.hasOtp) {
+      throw new Error(
+        'Eczacıkart hesabında İKİ ADIMLI DOĞRULAMA açık (portal SMS/kod istiyor) — otomatik çekim için portaldan iki adımlı doğrulamayı kapatın ya da Kolaysoft\'tan web servis hesabı açtırın.',
+      );
+    }
+    const token = loginJson?.token?.accessToken || loginJson?.accessToken || (typeof loginJson?.token === 'string' ? loginJson.token : null);
+    if (!token) throw new Error('Eczacıkart girişi oturum anahtarı döndürmedi (accessToken yok) — kimlik bilgilerini kontrol edin.');
+    const authHeaders: Record<string, string> = {
+      Accept: 'application/json',
+      'Content-Type': 'application/json;charset=UTF-8',
+      Authorization: `Bearer ${token}`,
     };
-    let liste: any[] | null = null;
-    const denenen: string[] = [];
-    for (const yol of adaylar) {
-      const r = await fetch(`${api}${yol}`, { method: 'POST', headers: authHeaders, body: JSON.stringify(govde) });
-      const t = await r.text();
-      denenen.push(`${yol}=${r.status}`);
-      if (!r.ok) continue;
-      let j: any; try { j = JSON.parse(t); } catch { continue; }
-      const satirlar = Array.isArray(j?.content) ? j.content
+
+    // ── 2) LİSTE (aday modüller; ilk çalışan kullanılır) ──
+    const gelen = opts.direction === 'ALIS';
+    const modul = gelen ? 'inbox' : 'outbox';
+    const [yil, ay] = opts.period.donem.split('-').map((x) => parseInt(x, 10));
+    const sayfaBoyu = Math.min(Math.max(opts.limit, 20), 200);
+    const adayModuller = gelen
+      ? ['inbox', 'eInvoiceInboxList', 'eInvoiceInbox']
+      : ['outbox', 'eInvoiceOutboxList', 'eInvoiceOutbox'];
+    const sayfaYolu = (m: string, sayfa: number, yilAy: boolean) =>
+      `/${m}/fetch?page=${sayfa}&size=${sayfaBoyu}&sort=recordId,desc` + (yilAy ? `&year=${yil}&month=${ay}` : '');
+    const satirlariAl = (j: any): any[] | null =>
+      Array.isArray(j?.content) ? j.content
+        : Array.isArray(j?.data?.content) ? j.data.content
         : Array.isArray(j?.data) ? j.data
         : Array.isArray(j?.items) ? j.items
-        : Array.isArray(j?.list) ? j.list
         : Array.isArray(j) ? j : null;
-      if (satirlar) {
-        liste = satirlar;
-        this.logger.log(`Eczacıkart liste ucu bulundu: ${yol} (${satirlar.length} satır)`);
+
+    let calisanModul: string | null = null;
+    let yilAyDestekli = true;
+    let ilkSayfa: any[] | null = null;
+    const denenen: string[] = [];
+    for (const m of adayModuller) {
+      for (const yilAy of [true, false]) {
+        const r = await fetch(`${api}${sayfaYolu(m, 0, yilAy)}`, { headers: authHeaders });
+        const t = await r.text();
+        denenen.push(`${m}/fetch${yilAy ? '(yıl-ay)' : ''}=${r.status}`);
+        if (!r.ok) continue;
+        let j: any; try { j = JSON.parse(t); } catch { continue; }
+        const satirlar = satirlariAl(j);
+        if (!satirlar) continue;
+        calisanModul = m; yilAyDestekli = yilAy; ilkSayfa = satirlar;
+        this.logger.log(`Eczacıkart liste ucu bulundu: /${m}/fetch${yilAy ? ' (yıl+ay süzgeçli)' : ''} — ${satirlar.length} satır`);
         break;
       }
+      if (calisanModul) break;
     }
-    if (!liste) {
-      throw new Error(`Eczacıkart fatura listesi alınamadı — denenen uçlar: ${denenen.join(', ')}. (Portal ucu değişmiş olabilir; Kolaysoft entegrasyon kılavuzu gerekiyor.)`);
+    if (!calisanModul || !ilkSayfa) {
+      throw new Error(`Eczacıkart fatura listesi alınamadı — denenen uçlar: ${denenen.join(', ')}. (Portal ızgara ucu değişmiş olabilir.)`);
     }
 
-    // --- BELGE (UBL) İNDİR ---
+    // ── 3) SATIRLARI SÜZ + BELGEYİ İNDİR ──
+    const bas = Date.parse(`${opts.period.startDate}T00:00:00`);
+    const bit = Date.parse(`${opts.period.endDate}T23:59:59`);
+    const tarihAl = (it: any): number => {
+      const ham = it?.issueDate || it?.invoiceDate || it?.documentDate || it?.faturaTarihi || it?.createDate || it?.recordDate;
+      if (!ham) return NaN;
+      const metin = String(ham).trim();
+      const nokta = metin.match(/^(\d{2})[./-](\d{2})[./-](\d{4})/); // 31.08.2026 / 31-08-2026
+      if (nokta) return Date.parse(`${nokta[3]}-${nokta[2]}-${nokta[1]}T00:00:00`);
+      const ms = Date.parse(metin);
+      return Number.isFinite(ms) ? ms : NaN;
+    };
+
     const payloads: ProviderInvoicePayload[] = [];
     let kept = 0;
-    for (const item of liste) {
-      if (kept >= opts.limit) break;
-      const id = item?.id ?? item?.uuid ?? item?.ettn ?? item?.documentId;
-      if (!id) continue;
-      const externalId = `eczacikart:${gelen ? 'inbox' : 'outbox'}:${id}`;
-      if (opts.skipExistingExternalIds?.has(externalId)) { kept++; continue; }
-      const faturaNo = String(item?.invoiceNumber || item?.documentNumber || item?.faturaNo || id).trim();
-      const belgeYollari = gelen
-        ? [`/store/getInboxEInvoiceDocument/${encodeURIComponent(String(id))}`, `/inbox/downloadMedia/xml/${encodeURIComponent(String(id))}`]
-        : [`/store/getOutboxEInvoiceDocument/${encodeURIComponent(String(id))}`, `/outbox/downloadMedia/xml/${encodeURIComponent(String(id))}`];
-      let xml: string | null = null;
-      for (const yol of belgeYollari) {
-        const r = await fetch(`${api}${yol}`, { headers: { ...authHeaders, Accept: 'application/xml, application/json, */*' } });
-        if (!r.ok) continue;
-        const buf = Buffer.from(await r.arrayBuffer());
-        if (buf.length >= 2 && buf[0] === 0x50 && buf[1] === 0x4b) { xml = await this.elogoUnzipXml(buf); }
-        else {
-          const t = buf.toString('utf8').trim();
-          xml = t.startsWith('<') ? t : (/^[A-Za-z0-9+/=\s]+$/.test(t) && t.length > 100 ? Buffer.from(t, 'base64').toString('utf8') : null);
-        }
-        if (xml && xml.includes('<')) break;
-        xml = null;
+    let dur = false;
+    const MAX_SAYFA = 40;
+    for (let sayfa = 0; sayfa < MAX_SAYFA && kept < opts.limit && !dur; sayfa++) {
+      let satirlar: any[];
+      if (sayfa === 0) satirlar = ilkSayfa;
+      else {
+        await nefes(800); // sayfalar arası nazik bekleme
+        const r = await fetch(`${api}${sayfaYolu(calisanModul, sayfa, yilAyDestekli)}`, { headers: authHeaders });
+        if (!r.ok) { this.logger.warn(`Eczacıkart liste sayfa ${sayfa} hata ${r.status} — kısmi bitiş`); break; }
+        let j: any; try { j = JSON.parse(await r.text()); } catch { break; }
+        satirlar = satirlariAl(j) || [];
       }
-      if (!xml) { this.logger.warn(`Eczacıkart belge indirilemedi: ${faturaNo}`); continue; }
-      const payload: ProviderInvoicePayload = { externalId, originalName: `${faturaNo}.xml`, xml, providerStatus: this.providerStatusFromListItem(item) };
-      kept++;
-      if (opts.onPayload) await opts.onPayload(payload);
-      else payloads.push(payload);
-      await new Promise((res) => setTimeout(res, 400)); // nazik hız
+      if (!satirlar.length) break;
+
+      for (const it of satirlar) {
+        if (kept >= opts.limit) break;
+        const ms = tarihAl(it);
+        // Liste yeniden eskiye sıralı: dönem başından eskiye düştüysek dur.
+        if (Number.isFinite(ms) && ms < bas) { dur = true; break; }
+        if (Number.isFinite(ms) && ms > bit) continue; // dönemden yeni → atla
+        const uuid = it?.documentUuid || it?.uuid || it?.ettn || it?.invoiceUuid;
+        if (!uuid) continue;
+        const externalId = `eczacikart:${modul}:${uuid}`;
+        if (opts.skipExistingExternalIds?.has(externalId)) { kept++; continue; }
+        const faturaNo = String(it?.documentNumber || it?.invoiceNumber || it?.faturaNo || uuid).trim();
+        const belgeYili = Number.isFinite(ms) ? new Date(ms).getFullYear() : yil;
+        const belgeAyi = Number.isFinite(ms) ? new Date(ms).getMonth() + 1 : ay;
+
+        const dRes = await fetch(`${api}/${calisanModul === 'inbox' || calisanModul === 'outbox' ? calisanModul : modul}/downloadMedia/xml`, {
+          method: 'POST',
+          headers: { ...authHeaders, Accept: 'application/xml, application/octet-stream, */*' },
+          body: JSON.stringify({ documentUuid: uuid, year: belgeYili, month: belgeAyi }),
+        });
+        if (!dRes.ok) { this.logger.warn(`Eczacıkart belge indirilemedi (${faturaNo}): HTTP ${dRes.status}`); continue; }
+        const buf = Buffer.from(await dRes.arrayBuffer());
+        let xml: string | null = null;
+        if (buf.length >= 2 && buf[0] === 0x50 && buf[1] === 0x4b) xml = await this.elogoUnzipXml(buf);
+        else {
+          const metin = buf.toString('utf8').trim();
+          xml = metin.startsWith('<') ? metin
+            : (/^[A-Za-z0-9+/=\s]+$/.test(metin) && metin.length > 100 ? Buffer.from(metin, 'base64').toString('utf8') : null);
+        }
+        if (!xml || !xml.includes('<')) { this.logger.warn(`Eczacıkart belge boş/çözülemedi: ${faturaNo}`); continue; }
+
+        const payload: ProviderInvoicePayload = {
+          externalId,
+          originalName: `${faturaNo}.xml`,
+          xml,
+          providerStatus: this.providerStatusFromListItem(it),
+        };
+        kept++;
+        if (opts.onPayload) await opts.onPayload(payload);
+        else payloads.push(payload);
+        await nefes(400); // belge indirmeleri arası nazik hız
+      }
     }
+    this.logger.log(`Eczacıkart ${modul} çekim bitti: ${kept} belge (dönem ${opts.period.donem})`);
     return payloads;
   }
 
