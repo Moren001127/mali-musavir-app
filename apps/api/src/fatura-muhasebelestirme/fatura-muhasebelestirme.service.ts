@@ -11373,24 +11373,29 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const gelen = opts.direction === 'ALIS';
     const modul = gelen ? 'inbox' : 'outbox';
     const [yil, ay] = opts.period.donem.split('-').map((x) => parseInt(x, 10));
-    const sayfaBoyu = Math.min(Math.max(opts.limit, 20), 200);
+    // Dönem süzmesi istemcide yapılıyor (portalın `month` parametresi DÜZENLEME tarihine göre süzmüyor —
+    //   2026-09-22 canlı: month=8 sorgusunda 21.09.2026 tarihli satır geldi) → sayfa büyük tutulur.
+    const sayfaBoyu = Math.min(Math.max(opts.limit, 100), 200);
     const listeUcu = gelen ? '/inbox/getInboxes' : '/outbox/getOutboxes';
     // Portal ekranı ayı 1-12 gönderiyor; bazı kurulumlarda 12 = "yılın tamamı" anlamına geliyor. Önce gerçek ay,
     //   satır gelmezse 12 denenir; dönem süzmesini zaten istemci tarafında tarihe bakarak yapıyoruz.
-    const ayAdaylari = ay === 12 ? [12] : [ay, 12];
+    // Portal ekranının "yılın tamamı" değeri 12; ay parametresi düzenleme tarihini süzmediği için ONCE 12 denenir.
+    const ayAdaylari = ay === 12 ? [12] : [12, ay];
     // Parametre kalıpları: portal ekranının gönderdiği tam kalıp (isArchive dahil) → sadeleştirilmiş → en yalın.
     //   Spring @RequestParam zorunlu olduğunda eksik parametre 400 veriyor; ilk tutan kalıp log'a yazılır.
     //   Ekranın ilk hâli (chunk 34 state): headerSearch=[] · notInList=false · documentIds=[] · isArchive=0 ·
     //   chemistWarehouseFilter = "Tümü" seçeneğinin değeri (null ya da 'ALL' — ikisi de denenir).
-    const tamKalip = (sayfa: number, m: number, depo: string) =>
+    const tamKalip = (sayfa: number, m: number, depo: string, sirala: string) =>
       `?year=${yil}&month=${m}&headerSearch=&notInList=false&documentIds=&multipleVkn=`
-      + `&chemistWarehouseFilter=${depo}&page=${sayfa}&size=${sayfaBoyu}&sort=receivedDate,desc&isArchive=0`;
+      + `&chemistWarehouseFilter=${depo}&page=${sayfa}&size=${sayfaBoyu}&sort=${sirala}&isArchive=0`;
+    // Sıralama: ÖNCE fatura düzenleme tarihi (dönem süzmesi ve "yeterince eskiye indik" kuralı buna dayanıyor),
+    //   uç kabul etmezse geliş tarihi. Depo süzgeci: ekranın "Tümü" seçeneği (canlı: ALL tuttu).
     const kaliplar = [
-      (sayfa: number, m: number) => tamKalip(sayfa, m, 'null'),
-      (sayfa: number, m: number) => tamKalip(sayfa, m, 'ALL'),
-      (sayfa: number, m: number) => tamKalip(sayfa, m, ''),
-      (sayfa: number, m: number) => `?year=${yil}&month=${m}&page=${sayfa}&size=${sayfaBoyu}&sort=receivedDate,desc&isArchive=0`,
-      (sayfa: number, m: number) => `?year=${yil}&month=${m}&page=${sayfa}&size=${sayfaBoyu}`,
+      (sayfa: number, m: number) => tamKalip(sayfa, m, 'ALL', 'documentIssueDate,desc'),
+      (sayfa: number, m: number) => tamKalip(sayfa, m, 'ALL', 'receivedDate,desc'),
+      (sayfa: number, m: number) => tamKalip(sayfa, m, 'null', 'documentIssueDate,desc'),
+      (sayfa: number, m: number) => tamKalip(sayfa, m, '', 'documentIssueDate,desc'),
+      (sayfa: number, m: number) => `?year=${yil}&month=${m}&page=${sayfa}&size=${sayfaBoyu}&sort=documentIssueDate,desc&isArchive=0`,
     ];
     let kalipNo = 0;
     const sayfaYolu = (sayfa: number, listeAyi: number) => `${listeUcu}${kaliplar[kalipNo](sayfa, listeAyi)}`;
@@ -11403,6 +11408,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
 
     let listeAyi: number | null = null;
     let ilkSayfa: any[] | null = null;
+    let tarihSiraliMi = false; // çalışan kalıp düzenleme tarihine göre mi sıralıyor (dur kuralı buna bağlı)
     const denenen: string[] = [];
     for (let k = 0; k < kaliplar.length && listeAyi === null; k++) {
       kalipNo = k;
@@ -11414,7 +11420,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         const satirlar = satirlariAl(j);
         if (!satirlar) { denenen.push(`kalıp${k + 1}(ay=${aday})=liste alanı yok (${Object.keys(j || {}).slice(0, 6).join('/')})`); continue; }
         listeAyi = aday; ilkSayfa = satirlar;
-        this.logger.log(`Eczacıkart liste ucu: ${listeUcu} kalıp${k + 1} ay=${aday} — ${satirlar.length} satır (toplam ${j?.totalElements ?? '?'})`);
+        tarihSiraliMi = kaliplar[k](0, aday).includes('sort=documentIssueDate');
+        this.logger.log(`Eczacıkart liste ucu: ${listeUcu} kalıp${k + 1} ay=${aday} — ${satirlar.length} satır (toplam ${j?.totalElements ?? '?'}, tarih sıralı=${tarihSiraliMi})`);
         if (satirlar.length) break; // boş döndüyse diğer ay adayını da dene
       }
     }
@@ -11438,8 +11445,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
 
     const payloads: ProviderInvoicePayload[] = [];
     let kept = 0;
+    let dur = false;
     const MAX_SAYFA = 40;
-    for (let sayfa = 0; sayfa < MAX_SAYFA && kept < opts.limit; sayfa++) {
+    for (let sayfa = 0; sayfa < MAX_SAYFA && kept < opts.limit && !dur; sayfa++) {
       let satirlar: any[];
       if (sayfa === 0) satirlar = ilkSayfa;
       else {
@@ -11454,10 +11462,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       for (const it of satirlar) {
         if (kept >= opts.limit) break;
         const ms = tarihAl(it);
-        // Sunucu zaten year+month süzüyor; tarih okunamazsa satırı ATMA (alan adı değişmiş olabilir).
-        //   Yalnız tarihi AÇIKÇA dönem dışında olanı atla. "Eskiye düşünce dur" kuralı yok: liste geliş
-        //   tarihine göre sıralı, düzenleme tarihi sırası bozuk olabiliyor.
-        if (Number.isFinite(ms) && (ms < bas || ms > bit)) continue;
+        // Tarihi okunamayan satır ATILMAZ (alan adı değişmiş olabilir); açıkça dönem dışı olan atlanır.
+        //   Liste düzenleme tarihine göre yeniden eskiye sıralıysa, dönem başından eskiye düşünce durulur.
+        if (Number.isFinite(ms) && ms < bas) { if (tarihSiraliMi) { dur = true; break; } continue; }
+        if (Number.isFinite(ms) && ms > bit) continue;
         const uuid = it?.documentUuid || it?.uuid || it?.ettn || it?.invoiceUuid;
         if (!uuid) continue;
         const externalId = `eczacikart:${modul}:${uuid}`;

@@ -32,7 +32,7 @@ const opts = {
 };
 
 const API = 'https://portal.eczacikartfatura.com/accounting/api';
-const LISTE_AY8 = '/inbox/getInboxes?year=2026&month=8&headerSearch=&notInList=false&documentIds=&multipleVkn=&chemistWarehouseFilter=null&page=0&size=20&sort=receivedDate,desc&isArchive=0';
+const LISTE_YIL = '/inbox/getInboxes?year=2026&month=12&headerSearch=&notInList=false&documentIds=&multipleVkn=&chemistWarehouseFilter=ALL&page=0&size=100&sort=documentIssueDate,desc&isArchive=0';
 const yanit = (body: any, init: { status?: number; xml?: string } = {}) => ({
   ok: (init.status ?? 200) < 400,
   status: init.status ?? 200,
@@ -88,18 +88,18 @@ describe('Eczacıkart adaptörü', () => {
     expect(payloads[0].xml).toContain('<Invoice>');
     expect(yetki).toBe('Bearer JWT123');
     expect(cagrilar[0]).toBe('POST /auth/signin');
-    expect(cagrilar[1]).toBe(`GET ${LISTE_AY8}`);
+    expect(cagrilar[1]).toBe(`GET ${LISTE_YIL}`);
     expect(cagrilar).toContain('POST /inbox/downloadMedia/xml');
   });
 
-  it('ay süzgeci boş dönerse ay=12 (yılın tamamı) denenir', async () => {
+  it('önce yılın tamamı (ay=12) denenir; boş dönerse gerçek ay denenir', async () => {
     const cagrilar: string[] = [];
     global.fetch = jest.fn(async (url: any) => {
       const u = String(url).replace(API, '');
       cagrilar.push(u);
       if (u === '/auth/signin') return yanit({ token: { accessToken: 'JWT' } }) as any;
       if (u.startsWith('/inbox/getInboxes')) {
-        if (u.includes('month=8')) return yanit({ content: [], totalElements: 0 }) as any;
+        if (u.includes('month=12')) return yanit({ content: [], totalElements: 0 }) as any;
         return yanit({ content: u.includes('page=0') ? [satir('u-9', 'A9', '2026-08-02')] : [] }) as any;
       }
       if (u === '/inbox/downloadMedia/xml') return yanit('', { xml: '<Invoice/>' }) as any;
@@ -107,8 +107,8 @@ describe('Eczacıkart adaptörü', () => {
     }) as any;
     const payloads = await servis().fetchEczacikartInvoices(cfg, opts);
     expect(payloads).toHaveLength(1);
-    expect(cagrilar[1]).toContain('month=8');
-    expect(cagrilar[2]).toContain('month=12');
+    expect(cagrilar[1]).toContain('month=12');
+    expect(cagrilar[2]).toContain('month=8');
   });
 
   it('dönem dışı satırlar: yeniler atlanır, eskiye düşünce çekim durur', async () => {
@@ -148,14 +148,14 @@ describe('Eczacıkart adaptörü', () => {
       if (u === '/auth/signin') return yanit({ token: { accessToken: 'JWT' } }) as any;
       cagrilar.push(u);
       // 1. ve 2. kalıp reddedilsin, 3. (yalın) kalıp çalışsın
-      if (u.includes('chemistWarehouseFilter')) return yanit('Required parameter is not present', { status: 400 }) as any;
+      if (u.includes('sort=documentIssueDate')) return yanit('Unknown sort property', { status: 400 }) as any;
       if (u.startsWith('/inbox/getInboxes')) return yanit({ content: u.includes('page=0') ? [satir('u-3', 'A3', '2026-08-07')] : [] }) as any;
       return yanit('', { xml: '<Invoice/>' }) as any;
     }) as any;
     const payloads = await servis().fetchEczacikartInvoices(cfg, opts);
     expect(payloads).toHaveLength(1);
-    expect(cagrilar.some((u) => u.includes('chemistWarehouseFilter=null'))).toBe(true);
-    expect(cagrilar.some((u) => !u.includes('chemistWarehouseFilter') && u.includes('/inbox/getInboxes'))).toBe(true);
+    expect(cagrilar.some((u) => u.includes('sort=documentIssueDate'))).toBe(true);
+    expect(cagrilar.some((u) => u.includes('sort=receivedDate'))).toBe(true);
   });
 
   it('zaten çekilmiş fatura tekrar indirilmez (skip-existing)', async () => {
