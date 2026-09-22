@@ -115,6 +115,19 @@ const PORTAL_KADEMELERI: Record<string, BekleyenPortalAraci> = {
     aciklama: 'Eşleştirme sonuç satırlarını (belge no, tarih, KDV, sebep) ve matchSummary sayaçlarını okur; karar vermez',
     parametreler: ['sessionId*', 'yalnizSorunlu', 'limit'],
   },
+  // OCR TEYİT (R1 7b/9b, 2026-09-22): ekrandaki "AI" (Max-vision yeniden okuma) ve "Teyit Et" düğmelerinin ekip karşılığı.
+  //   yeniden_oku Max kotası harcar ve ocr* alanlarını yeniden yazar; ocr_teyit confirmed* yazar (eşleşme sonucunu değiştirir)
+  //   → ikisi portal_yaz_agir: kuru testte "yapılacaktı". Rakam belgeden gelir (kanıt kapısı kdv-ocr-ipucu.ts); karar/kilit sahipte.
+  kdv_kontrol_belge_yeniden_oku: {
+    kademe: 'portal_yaz_agir',
+    aciklama: 'Teyit bekleyen / OCR şüpheli görselleri Max-vision ile yeniden okur (≤6 belge/çağrı), fark + aritmetik + Luca uyumu + öneri (teyit/degismedi/muzaffer) döner',
+    parametreler: ['sessionId*', 'imageIds'],
+  },
+  kdv_kontrol_ocr_teyit: {
+    kademe: 'portal_yaz_agir',
+    aciklama: 'OCR değerlerini teyit eder (Teyit Et karşılığı, ≤20); belge metninde görülmeyen değer reddedilir; elle teyitli görsel atlanır',
+    parametreler: ['sessionId*', 'teyitler*'],
+  },
   mali_yorum_oku: {
     kademe: 'oku',
     aciklama: "Muzaffer Bey’in kayıtlı Mali Yorum'unu okur (GELIR_TABLOSU/BILANCO/MIZAN/IHO); yoksa null",

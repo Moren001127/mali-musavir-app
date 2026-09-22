@@ -84,6 +84,8 @@ const FM_CEKIM = ['fm_cekim_baslat', 'fm_cekim_durum', 'fm_cekim_bekle', 'fm_cek
 const KDV_KONTROL_ZINCIRI = [
   'kdv_kontrol_oturum_bul_olustur', 'kdv_kontrol_luca_cek', 'kdv_kontrol_fatura_bagla', 'kdv_kontrol_ocr_baslat',
   'kdv_kontrol_ocr_bekle', 'kdv_kontrol_eslestir', 'kdv_kontrol_sonuc_satirlari',
+  // OCR teyit (R1 7b/9b, 2026-09-22): yeniden okuma (Max-vision) + Teyit Et karşılığı; karar/kilit yine sahipte.
+  'kdv_kontrol_belge_yeniden_oku', 'kdv_kontrol_ocr_teyit',
 ];
 /** Koordinatör: başka ajanı arka planda başlatır + iş dosyasını izler (PLAN/17 §3 ekip_ajan_baslat / ekip_is_durum). */
 const EKIP_ATAMA = ['ekip_ajan_baslat', 'ekip_is_durum'];

@@ -12,9 +12,14 @@
 - Fark eşiği **kuruşu kuruşuna (0,01 TL)**. Tolerans yok.
 - Eşleşmiş faturada tutar = Luca kaydı (0 dahil); eşleşmemişte ham OCR. Görseli olmayan Luca kaydı beyan toplamına girmez ("görsel yok" uyarısı).
 - Çok satıra eşleşen tek fatura KDV'si bir kez sayılır; 0-KDV satırına faturanın tamamı yazılmaz.
-- **Önceki dönemden devreden KDV** önceki ayın GERÇEK KDV1 beyannamesindeki "Sonraki Döneme Devreden" tutarıdır; bunu `get_kdv1_on_hazirlik` aracının `devreden` alanı verir (`devreden.tutar` + `devreden.kaynak`: beyanname_pdf/manuel/beyan_durumu/beyan_kaydi/hesaplanan/yok). `list_beyan_kayitlari` yalnız beyannamenin verilip verilmediğini ve tahakkuk tutarını gösterir; devreden için kullanılmaz. Devreden kaynağı "tahmin" (hesaplanan) ya da "yok" ise beyanname hazırlanmaz, 0 varsayılmaz; Muzaffer Bey'e "devreden teyit" onay maddesi yazılır ("Onayınızı bekleyen").
+- **Önceki dönemden devreden KDV** = önceki ayın GERÇEK KDV1 beyannamesindeki "Sonraki Döneme Devreden"; kaynağı `get_kdv1_on_hazirlik`.`devreden` (tutar + kaynak: beyanname_pdf/manuel/beyan_durumu/beyan_kaydi/hesaplanan/yok). `list_beyan_kayitlari` devreden için kullanılmaz. Kaynak hesaplanan/yok → beyanname hazırlanmaz, 0 varsayılmaz; "Onayınızı bekleyen"'e "devreden teyit".
 - **Beyanname taslağı ve tahakkuk fişi rakamları** `get_kdv1_on_hazirlik`'ten alınır (hesaplanan, indirilecek, devreden, ödenecek / sonraki aya devreden). Araç `ok:false, error:"KDV Kontrol oturumu yok"` dönerse beyan rakamı YOKTUR; rapor "hazır değil — KDV Kontrol yok".
 - Oran belgeden okunur; okunamadıysa "oran belirsiz" kovası beyana sokulmaz, Muzaffer Bey'e sorulur.
+
+## OCR teyidi (KDV Kontrol) — rakam BELGEDEN gelir
+- Teyit bekleyen/eşleşmeyen belgede rakamı KENDİN HESAPLAMA, Luca'ya UYDURMA: `kdv_kontrol_belge_yeniden_oku` çıktısındaki `teyitGirdisi`'ni aynen `kdv_kontrol_ocr_teyit`'e ver; araç belgede görülmeyen değeri reddeder → tekrar deneme, Muzaffer Bey'e bırak.
+- Tuzak: Azure %1 KDV'li hal faturasında MATRAHI KDV sanar (4.335,00 %20; doğrusu 43,35 %1) → ipucu "×100" ise yeniden oku. Rüsum KDV değildir. Tevkifatlı belgede KDV alanı NET, tevkifat ayrı.
+- Elle teyitli görsele dokunma. Belge ile Luca gerçekten farklıysa fark gizlenmez: rapora UYARI + "Onayınızı bekleyen".
 
 ## KDV tahakkuk fişi (Luca) — KURAL 1
 - Dönem sonunda 391 Hesaplanan KDV borç, 191 İndirilecek KDV alacak yazılıp kapatılır. Fark:

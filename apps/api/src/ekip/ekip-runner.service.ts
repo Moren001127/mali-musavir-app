@@ -22,7 +22,7 @@ import { EkipKotaService } from './ekip-kota.service';
  * EKİP RUNNER — bir ajanı bir görevle koşturur (PLAN/13-AJAN-KADROSU.md §5).
  *
  * Beyin: Agent SDK + Max (CLAUDE_CODE_OAUTH_TOKEN), luca-operator.service.ts ile AYNI kalıp:
- * tek in-process MCP "portal" aracı, canUseTool yalnız o araca izin verir, maxTurns 80, akışlı.
+ * tek in-process MCP "portal" aracı, canUseTool yalnız o araca izin verir, maxTurns 100, akışlı.
  *
  * OMURGA:
  *  - Araç çağrısında KADEME kontrolü (arac-defteri.aracAcikMi): resmi_gonderim her zaman ret;
@@ -46,7 +46,8 @@ async function loadSdk(): Promise<any> {
 }
 
 const PORTAL_TOOL = 'mcp__portal__portal';
-const MAX_TUR = 80;
+/** 80 → 100 (2026-09-22): R1'e OCR yeniden okuma + teyit + 2. eşleştirme turu eklendi (iki oturumda ~20 ek araç çağrısı). */
+const MAX_TUR = 100;
 /** Onay kaydı geçerliliği: ajan koşusu arka planda biter, Muzaffer Bey sonra bakar → 24 saat. */
 const ONAY_GECERLILIK_MS = 24 * 60 * 60 * 1000;
 // fm_* (Fatura Merkezi ajan araçları) da portal çalıştırıcısından (ToolExecutorService) geçer.
@@ -1390,6 +1391,9 @@ export class EkipRunnerService implements OnApplicationShutdown {
       delete childEnv[drop];
     }
     childEnv.CLAUDE_CODE_OAUTH_TOKEN = token;
+    // Araç çağrısı süre sınırı (2026-09-22): bekleme araçları ≤60 sn, kdv_kontrol_belge_yeniden_oku en kötü ~100 sn (Max-vision p90 40 sn).
+    // SDK varsayılanına güvenmek yerine açıkça 3 dk; ortamda verilmişse o kalır.
+    if (!childEnv.MCP_TOOL_TIMEOUT) childEnv.MCP_TOOL_TIMEOUT = '180000';
 
     // signal: sunucu tarafı bekleyen araçlar (luca_is_bekle, kdv_kontrol_ocr_bekle) Muzaffer Bey "Durdur" deyince döngüyü keser — 2026-09-13.
     const ctx: KosuBaglami['ctx'] = { tenantId: p.tenantId, userId: p.userId ?? null, taxpayerId: p.taxpayerId ?? null, signal: ac.signal };

@@ -63,6 +63,9 @@ describe('araç şemaları', () => {
       'kdv_kontrol_ocr_bekle',
       'kdv_kontrol_eslestir',
       'kdv_kontrol_sonuc_satirlari',
+      // OCR teyit (R1 7b/9b, 2026-09-22)
+      'kdv_kontrol_belge_yeniden_oku',
+      'kdv_kontrol_ocr_teyit',
       // Fatura çekimi zinciri (R5, 2026-09-15)
       'fm_cekim_baslat',
       'fm_cekim_durum',
@@ -398,6 +401,175 @@ describe('kdv_kontrol_sonuc_satirlari — sınıflandırma', () => {
     const { tool } = aracKur({ servisler: { KdvControlService: { getResults: async () => [], getSessionStats: async () => stats } } });
     const r = await tool.execute('kdv_kontrol_sonuc_satirlari', { sessionId: 's1' }, ctx);
     expect(r).toMatchObject({ ok: true, sonucYok: true, satirlar: [] });
+  });
+});
+
+describe('kdv_kontrol_belge_yeniden_oku / kdv_kontrol_ocr_teyit (R1 7b/9b, 2026-09-22)', () => {
+  const RAW = '[MAX] {"belgeNo":"EAR2026000001616","kdvTutari":"43,35","kdvBreakdown":[{"oran":1,"tutar":"43,35","matrah":"4.335,00"}]}\n[AZURE]\nANKA TROPİK 15.08.2026 4.335,00 %1 43,35';
+  const gorsel = (id: string, ek: any = {}) => ({
+    id, originalName: `${id}.html`, ocrStatus: 'SUCCESS', ocrEngine: 'azure-read', ocrBelgeNo: 'EAR2026000001616', ocrDate: '15.08.2026',
+    ocrKdvTutari: '4335,00', ocrKdvTevkifat: null, ocrKdvBreakdown: [{ oran: 20, tutar: 4335, matrah: null }], ocrRawText: 'ANKA 4.335,00', isManuallyConfirmed: false, ...ek,
+  });
+  const lucaPrisma = prismaKur({ kdvRecord: { findMany: () => [{ id: 'k1', belgeNo: 'EAR2026000001616', belgeDate: new Date('2026-08-15'), karsiTaraf: 'ANKA', kdvTutari: '43.35', kdvOrani: '1' }] } });
+  const eskiToken = process.env.CLAUDE_CODE_OAUTH_TOKEN;
+  afterEach(() => { if (eskiToken === undefined) delete process.env.CLAUDE_CODE_OAUTH_TOKEN; else process.env.CLAUDE_CODE_OAUTH_TOKEN = eskiToken; });
+
+  it('yeniden oku: Max bağlı değilse ok:false, servis ÇAĞRILMAZ; kilitli oturumda çağrılmaz', async () => {
+    delete process.env.CLAUDE_CODE_OAUTH_TOKEN;
+    const reocr = jest.fn();
+    const svc = { findSession: async () => ({ status: 'REVIEWING' }), getImages: async () => [gorsel('i1', { ocrStatus: 'NEEDS_REVIEW' })], reocrSingleImageSync: reocr };
+    const { tool } = aracKur({ prisma: lucaPrisma.prisma, servisler: { KdvControlService: svc } });
+    const r = await tool.execute('kdv_kontrol_belge_yeniden_oku', { sessionId: 's1' }, ctx);
+    expect(r.ok).toBe(false);
+    expect(r.neden).toMatch(/Max bağlı değil/);
+    expect(reocr).not.toHaveBeenCalled();
+    process.env.CLAUDE_CODE_OAUTH_TOKEN = 'x';
+    const svcKilit = { ...svc, findSession: async () => ({ status: 'COMPLETED' }) };
+    const { tool: t2 } = aracKur({ prisma: lucaPrisma.prisma, servisler: { KdvControlService: svcKilit } });
+    const k = await t2.execute('kdv_kontrol_belge_yeniden_oku', { sessionId: 's1' }, ctx);
+    expect(k).toMatchObject({ ok: false, neden: expect.stringMatching(/kilitli/) });
+    expect(reocr).not.toHaveBeenCalled();
+  });
+
+  it('yeniden oku: imageIds boşsa teyit bekleyenleri seçer, elle teyitliyi atlar; Max okuması → oneri teyit + teyitGirdisi aynen; 6 tavanı → kalan', async () => {
+    process.env.CLAUDE_CODE_OAUTH_TOKEN = 'x';
+    const images = [
+      gorsel('i1', { ocrStatus: 'NEEDS_REVIEW', ocrKdvTutari: null, ocrKdvBreakdown: null }),
+      gorsel('i2', { ocrStatus: 'SUCCESS' }),
+      gorsel('i3', { ocrStatus: 'LOW_CONFIDENCE', isManuallyConfirmed: true }),
+    ];
+    const reocr = jest.fn(async (imageId: string) => {
+      const once = images.find((i) => i.id === imageId)!;
+      return {
+        imageId, once, geriAlindi: false,
+        sonra: { ...once, ocrStatus: 'SUCCESS', ocrEngine: 'max-vision (max-escalation)', ocrKdvTutari: '43,35', ocrKdvBreakdown: [{ oran: 1, tutar: 43.35, matrah: 4335 }], ocrValidationScore: 1, ocrRawText: RAW },
+      };
+    });
+    const svc = { findSession: async () => ({ status: 'REVIEWING' }), getImages: async () => images, reocrSingleImageSync: reocr };
+    const { tool } = aracKur({ prisma: lucaPrisma.prisma, servisler: { KdvControlService: svc } });
+    const r = await tool.execute('kdv_kontrol_belge_yeniden_oku', { sessionId: 's1' }, ctx);
+    expect(r.ok).toBe(true);
+    expect(reocr).toHaveBeenCalledTimes(1); // yalnız i1 (i3 elle teyitli → atlanır, i2 teyit beklemiyor)
+    expect(r.okunan).toHaveLength(1);
+    expect(r.okunan[0]).toMatchObject({ imageId: 'i1', oneri: 'teyit', lucaUyum: { uyumlu: true, lucaToplam: 43.35 } });
+    expect(r.okunan[0].teyitGirdisi).toMatchObject({ imageId: 'i1', kdvTutari: '43,35', kdvBreakdown: [{ oran: 1, tutar: 43.35, matrah: 4335 }], kdvTevkifat: null });
+    expect(r.ozet).toMatchObject({ okunan: 1, teyitOnerilen: 1, kalan: 0 });
+
+    // elle teyitli açıkça istenirse dokunulmaz; 8 id → 6 okunur, 2 kalan
+    const cok = Array.from({ length: 8 }, (_, i) => `i${i}`);
+    const imgs8 = cok.map((id) => gorsel(id, { ocrStatus: 'SUCCESS' }));
+    const reocr8 = jest.fn(async (imageId: string) => ({ imageId, once: imgs8[0], geriAlindi: false, sonra: { ...imgs8[0], ocrEngine: 'max-vision', ocrValidationScore: 1 } }));
+    const { tool: t8 } = aracKur({ prisma: lucaPrisma.prisma, servisler: { KdvControlService: { ...svc, getImages: async () => [...imgs8, gorsel('m', { isManuallyConfirmed: true })], reocrSingleImageSync: reocr8 } } });
+    const r8 = await t8.execute('kdv_kontrol_belge_yeniden_oku', { sessionId: 's1', imageIds: [...cok, 'm'] }, ctx);
+    expect(reocr8).toHaveBeenCalledTimes(6);
+    expect(r8.kalan).toEqual(['i6', 'i7', 'm']);
+    expect(r8.okunan.every((o: any) => o.oneri === 'degismedi')).toBe(true);
+  });
+
+  it('yeniden oku: Max okuması alınamadı (Azure’a düştü) ya da geri alındı → oneri muzaffer, teyitGirdisi yok', async () => {
+    process.env.CLAUDE_CODE_OAUTH_TOKEN = 'x';
+    const img = gorsel('i1', { ocrStatus: 'NEEDS_REVIEW', ocrKdvTutari: null });
+    const svc = {
+      findSession: async () => ({ status: 'REVIEWING' }), getImages: async () => [img],
+      reocrSingleImageSync: async () => ({ imageId: 'i1', once: img, geriAlindi: true, sonra: img }),
+    };
+    const { tool } = aracKur({ prisma: lucaPrisma.prisma, servisler: { KdvControlService: svc } });
+    const r = await tool.execute('kdv_kontrol_belge_yeniden_oku', { sessionId: 's1', imageIds: ['i1'] }, ctx);
+    expect(r.okunan[0]).toMatchObject({ oneri: 'muzaffer', teyitGirdisi: null, geriAlindi: true });
+  });
+
+  it('yeniden oku: PROCESSING görsel yeniden BAŞLATILMAZ — bitmesi beklenir, önceki değer bilinmeden değerlendirilir', async () => {
+    process.env.CLAUDE_CODE_OAUTH_TOKEN = 'x';
+    const img = gorsel('i1', { ocrStatus: 'PROCESSING' });
+    const bitmis = { ...img, ocrStatus: 'SUCCESS', ocrEngine: 'max-vision (max-escalation)', ocrKdvTutari: '43,35', ocrKdvBreakdown: [{ oran: 1, tutar: 43.35, matrah: 4335 }], ocrValidationScore: 1 };
+    let sayac = 0;
+    const pr = prismaKur({
+      kdvRecord: { findMany: () => [{ id: 'k1', belgeNo: 'EAR2026000001616', kdvTutari: '43.35', kdvOrani: '1' }] },
+      receiptImage: { findUnique: () => (++sayac >= 2 ? bitmis : img) },
+    });
+    const reocr = jest.fn();
+    const svc = { findSession: async () => ({ status: 'REVIEWING' }), getImages: async () => [img], reocrSingleImageSync: reocr };
+    const { tool } = aracKur({ prisma: pr.prisma, servisler: { KdvControlService: svc } });
+    const r = await tool.execute('kdv_kontrol_belge_yeniden_oku', { sessionId: 's1', imageIds: ['i1'] }, ctx);
+    expect(reocr).not.toHaveBeenCalled();
+    expect(r.okunan[0]).toMatchObject({ imageId: 'i1', oneri: 'teyit', not: expect.stringMatching(/önceki değer bilinmiyor/) });
+    expect(r.okunan[0].teyitGirdisi).toMatchObject({ kdvTutari: '43,35' });
+  });
+
+  it('yeniden oku: görsel başına 60 sn tavanı — aşınca suruyor:true, kalan listesine girer, çağrı takılmaz', async () => {
+    process.env.CLAUDE_CODE_OAUTH_TOKEN = 'x';
+    jest.useFakeTimers();
+    try {
+      const img = gorsel('i1', { ocrStatus: 'NEEDS_REVIEW' });
+      const svc = { findSession: async () => ({ status: 'REVIEWING' }), getImages: async () => [img], reocrSingleImageSync: () => new Promise(() => {}) };
+      const { tool } = aracKur({ prisma: lucaPrisma.prisma, servisler: { KdvControlService: svc } });
+      const soz = tool.execute('kdv_kontrol_belge_yeniden_oku', { sessionId: 's1', imageIds: ['i1'] }, ctx);
+      await jest.advanceTimersByTimeAsync(61_000);
+      const r = await soz;
+      expect(r.okunan[0]).toMatchObject({ imageId: 'i1', ok: false, suruyor: true, oneri: 'muzaffer' });
+      expect(r.kalan).toEqual(['i1']);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('ocr teyit: belgede görülen değer confirmImageOcr’a ekrandaki biçimde gider; uydurma rakam reddedilir; elle teyitli atlanır; gerekce zorunlu', async () => {
+    const confirm = jest.fn(async (_imageId: string, _tenantId: string, _dto: any) => ({}));
+    const images = [gorsel('i1', { ocrRawText: RAW }), gorsel('i2', { isManuallyConfirmed: true }), gorsel('i3', { ocrRawText: RAW })];
+    const svc = { getImages: async () => images, confirmImageOcr: confirm };
+    const { tool } = aracKur({ servisler: { KdvControlService: svc } });
+    const r = await tool.execute(
+      'kdv_kontrol_ocr_teyit',
+      {
+        sessionId: 's1',
+        teyitler: [
+          { imageId: 'i1', kdvTutari: '43,35', kdvBreakdown: [{ oran: 1, tutar: 43.35, matrah: 4335 }], kdvTevkifat: null, gerekce: 'yeniden okuma' },
+          { imageId: 'i2', kdvTutari: '43,35', gerekce: 'x' },
+          { imageId: 'i3', kdvTutari: '86,70', gerekce: 'ajan hesabı' },
+          { imageId: 'i3', kdvTutari: '43,35' },
+          { imageId: 'yok', kdvTutari: '1,00', gerekce: 'x' },
+        ],
+      },
+      ctx,
+    );
+    expect(r).toMatchObject({ ok: true, teyitEdilen: 1, reddedilen: 3, atlanan: 1 });
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(confirm.mock.calls[0][0]).toBe('i1');
+    expect(confirm.mock.calls[0][2]).toEqual({ kdvTutari: '43,35', kdvBreakdown: [{ oran: 1, tutar: 43.35, matrah: 4335 }], kdvTevkifat: null });
+    const satir = (id: string, i = 0) => r.satirlar.filter((s: any) => s.imageId === id)[i];
+    expect(satir('i1').degisenler.join(' ')).toMatch(/kdv 4335,00 → 43,35/);
+    expect(satir('i2')).toMatchObject({ atlandi: true });
+    expect(satir('i3', 0).neden).toMatch(/86,70 belge metninde görülmedi/);
+    expect(satir('i3', 1).neden).toMatch(/gerekce zorunlu/);
+    expect(satir('yok').neden).toMatch(/bu oturumda değil/);
+  });
+
+  it('ocr teyit: kilitli oturum 400 → satır hatası "Oturum kilitli"; 20 üstü → hata', async () => {
+    const svc = { getImages: async () => [gorsel('i1', { ocrRawText: RAW })], confirmImageOcr: async () => { throw new BadRequestException('Oturum kilitli'); } };
+    const { tool } = aracKur({ servisler: { KdvControlService: svc } });
+    const r = await tool.execute('kdv_kontrol_ocr_teyit', { sessionId: 's1', teyitler: [{ imageId: 'i1', kdvTutari: '43,35', gerekce: 'x' }] }, ctx);
+    expect(r.satirlar[0].neden).toMatch(/Oturum kilitli/);
+    const cok = await tool.execute('kdv_kontrol_ocr_teyit', { sessionId: 's1', teyitler: Array.from({ length: 21 }, () => ({ imageId: 'i1', gerekce: 'x' })) }, ctx);
+    expect(cok.ok).toBe(false);
+  });
+
+  it('sonuc_satirlari: luca_yok/fatura_yok satırlarına ipucu + yenidenOkunacakImageIds (×100 matrah)', async () => {
+    const rec = { belgeNo: 'EAR2026000001616', belgeDate: new Date('2026-08-15T00:00:00Z'), karsiTaraf: 'ANKA', kdvTutari: '43.35', kdvMatrahi: null, kdvOrani: '1' };
+    const img = { ocrBelgeNo: 'EAR2026000001616', ocrDate: '15.08.2026', ocrKdvTutari: '4335,00', ocrKdvBreakdown: [{ oran: 20, tutar: 4335 }], ocrStatus: 'SUCCESS', ocrSatici: 'ANKA TROPİK' };
+    const results = [
+      { id: 'r1', status: 'UNMATCHED', kdvRecordId: 'k1', imageId: null, kdvRecord: rec, image: null, mismatchReasons: [] },
+      { id: 'r2', status: 'UNMATCHED', kdvRecordId: null, imageId: 'i1', kdvRecord: null, image: img, mismatchReasons: [] },
+    ];
+    const svc = { getResults: async () => results, getSessionStats: async () => null };
+    const { tool } = aracKur({ servisler: { KdvControlService: svc } });
+    const r = await tool.execute('kdv_kontrol_sonuc_satirlari', { sessionId: 's1' }, ctx);
+    expect(r.yenidenOkunacakImageIds).toEqual(['i1']);
+    expect(r.ocrSupheliSayisi).toBe(1);
+    const s1 = r.satirlar.find((s: any) => s.resultId === 'r1');
+    const s2 = r.satirlar.find((s: any) => s.resultId === 'r2');
+    expect(s1).toMatchObject({ sinif: 'fatura_yok', ipucuTuru: 'MATRAH_KDV_SANILMIS', ocrSupheli: true, adayImageId: 'i1', adayKdvRecordIds: ['k1'] });
+    expect(s2).toMatchObject({ sinif: 'luca_yok', ipucuTuru: 'MATRAH_KDV_SANILMIS', adayKdvRecordIds: ['k1'] });
+    expect(s2.ipucu).toMatch(/100 katı/);
   });
 });
 

@@ -9,6 +9,7 @@ import {
   Optional,
   OnApplicationBootstrap,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { ExcelParserService } from './excel-parser.service';
@@ -3085,6 +3086,81 @@ ${JSON.stringify(payload, null, 2)}`;
       imageId,
       message: 'OCR yeniden başlatıldı — birkaç saniye içinde sonuç gelir',
     };
+  }
+
+  /**
+   * reocrSingleImage'ın BEKLEYEN sürümü — Ekip aracı `kdv_kontrol_belge_yeniden_oku` (2026-09-22) için.
+   * Aynı sıfırlama + aynı OCR yolu (Mihsap/Drive ya da S3; forceClaude → Max-vision); HTTP'yi değil aracı bekletir ve
+   * önceki/sonraki OCR alanlarını döner. Yeni okuma FAILED ya da boş kalırsa (Max kotası dolu → Azure'a düşer; o da
+   * vermezse) ÖNCEKİ OCR alanları GERİ YAZILIR ki teyit bekleyen belge büsbütün boş kalmasın. Ekran akışı değişmez.
+   * Muzaffer Bey'in elle teyit ettiği görsel (isManuallyConfirmed) burada sıfırlanmaz — çağıran araç zaten atlar.
+   */
+  async reocrSingleImageSync(imageId: string, tenantId: string, opts: { forceClaude?: boolean } = {}) {
+    const image = await this.prisma.receiptImage.findFirst({
+      where: { id: imageId, session: { tenantId } },
+      include: { session: true },
+    });
+    if (!image) throw new NotFoundException('Görsel bulunamadı');
+    this.assertSessionUnlocked(image.session);
+    if (!image.s3Key) {
+      throw new BadRequestException('Görselin kaynağı (s3Key) yok — OCR yapılamaz');
+    }
+    if (image.isManuallyConfirmed) {
+      throw new BadRequestException('Görsel elle teyit edilmiş — yeniden okuma teyidi silerdi; atlandı');
+    }
+    const once = {
+      ocrStatus: image.ocrStatus,
+      ocrBelgeNo: image.ocrBelgeNo,
+      ocrDate: image.ocrDate,
+      ocrKdvTutari: image.ocrKdvTutari,
+      ocrKdvTevkifat: image.ocrKdvTevkifat,
+      ocrKdvBreakdown: image.ocrKdvBreakdown,
+      ocrSatici: image.ocrSatici,
+      ocrSaticiVkn: image.ocrSaticiVkn,
+      ocrRawText: image.ocrRawText,
+      ocrConfidence: image.ocrConfidence,
+      ocrBelgeNoConfidence: image.ocrBelgeNoConfidence,
+      ocrDateConfidence: image.ocrDateConfidence,
+      ocrKdvConfidence: image.ocrKdvConfidence,
+      ocrEngine: image.ocrEngine,
+      ocrBelgeTipi: image.ocrBelgeTipi,
+      ocrValidationScore: image.ocrValidationScore,
+      ocrKategori: image.ocrKategori,
+    };
+    await this.prisma.receiptImage.update({
+      where: { id: imageId },
+      data: {
+        ocrStatus: 'PROCESSING',
+        isManuallyConfirmed: false,
+        confirmedBelgeNo: null,
+        confirmedDate: null,
+        confirmedKdvTutari: null,
+        confirmedKdvTevkifat: null,
+      },
+    });
+    try {
+      if (image.s3Key.startsWith('mihsap://')) {
+        const invoiceId = image.s3Key.slice('mihsap://'.length);
+        await this.runOcrForMihsapInvoice(image.id, invoiceId, tenantId, { ...opts, forceFresh: true });
+      } else {
+        await this.runOcrForImage(image.id, image.s3Key, { ...opts, forceFresh: true });
+      }
+      await this.snapReceiptDateYearToPeriod(image.id, image.session?.periodLabel).catch(() => {});
+    } catch (err: any) {
+      this.logger.error(`reocrSingleImageSync [${imageId}]: ${err?.message}`);
+    }
+    let sonra = await this.prisma.receiptImage.findUnique({ where: { id: imageId } });
+    const bos = !sonra || sonra.ocrStatus === 'FAILED' || sonra.ocrStatus === 'PROCESSING' || (!sonra.ocrKdvTutari && !sonra.ocrDate);
+    let geriAlindi = false;
+    if (bos && once.ocrStatus !== 'PROCESSING' && once.ocrStatus !== 'PENDING') {
+      const geri: any = { ...once };
+      // Json? alanına düz null verilemez → DbNull.
+      if (geri.ocrKdvBreakdown === null) geri.ocrKdvBreakdown = Prisma.DbNull;
+      sonra = await this.prisma.receiptImage.update({ where: { id: imageId }, data: geri });
+      geriAlindi = true;
+      this.logger.warn(`reocrSingleImageSync [${imageId}]: yeni okuma boş/başarısız — önceki OCR alanları geri yazıldı`);
+    }
+    return { imageId, once, sonra, geriAlindi };
   }
 
   /**

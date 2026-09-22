@@ -1339,6 +1339,62 @@ export const EKIP_IS_ZINCIRI_ARACLARI: ToolDefinition[] = [
       required: ['sessionId'],
     },
   },
+  // ─── OCR TEYİT (R1 7b/9b, 2026-09-22) — Muzaffer Bey: "teyit bekleyen belgede belgeyle OCR tablosunu karşılaştır, yanlışı/eksiği yaz;
+  //   eşleşme hatası OCR'dan kaynaklanıyorsa düzelt, Teyit Et, kontrolü tekrar başlat; hâlâ hata varsa beni uyar."
+  //   Rakam ajandan değil BELGEDEN gelir: yeniden_oku = ekrandaki mor "AI" düğmesi (Max-vision, bekleyen sürüm); ocr_teyit = "Teyit Et"
+  //   (kanıt kapısı: belge metninde görülmeyen değer yazılmaz). Karar (onayla/reddet) ve kilit yine Muzaffer Bey'de. Kademe: ikisi portal_yaz_agir.
+  {
+    name: 'kdv_kontrol_belge_yeniden_oku',
+    description:
+      'Teyit bekleyen ya da OCR şüpheli fatura görsellerini Max-vision ile YENİDEN OKUR (ekrandaki mor "AI" düğmesi; sonucu bekler, çağrı başına en çok 6 belge / ~60 sn; ' +
+      'kalanlar `kalan` listesinde döner → tekrar çağır). imageIds boşsa oturumdaki teyit bekleyenleri (NEEDS_REVIEW/LOW_CONFIDENCE/FAILED) kendisi seçer. ' +
+      'Her belge için: önceki/yeni değerler, farklar, kırılım aritmetiği (matrah × oran), aynı belge no’lu Luca kaydıyla uyum ve ÖNERİ: ' +
+      'teyit (→ teyitGirdisi’ni kdv_kontrol_ocr_teyit’e AYNEN ver) · degismedi · muzaffer (dokunma, rapora "teyit Muzaffer Bey’de"). ' +
+      'Muzaffer Bey’in elle teyit ettiği görsel atlanır. Yeni okuma boş çıkarsa önceki değerler geri yazılır. Max kotası doluysa {ok:false}. Kuru testte çalışmaz.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        sessionId: { type: 'string' },
+        imageIds: { type: 'array', items: { type: 'string' }, description: 'Yeniden okunacak görsel id’leri (kdv_kontrol_sonuc_satirlari.yenidenOkunacakImageIds ya da teyit bekleyenler). Boş → teyit bekleyenler.' },
+      },
+      required: ['sessionId'],
+    },
+  },
+  {
+    name: 'kdv_kontrol_ocr_teyit',
+    description:
+      'Fatura görsellerinin OCR değerlerini TEYİT eder (ekrandaki "Teyit Et & Sonraki"; toplu, en çok 20). Değerleri kdv_kontrol_belge_yeniden_oku’nun teyitGirdisi’nden AYNEN al; ' +
+      'kendi hesabınla rakam YAZMA. KANIT KAPISI: belge metninde görülmeyen tutar/belge no/tarih reddedilir, kırılım toplamı KDV’ye eşit olmalı (KDV = NET; tevkifatlı belgede tam − tevkifat). ' +
+      'Girdide olmayan alan OCR değeriyle kalır. Muzaffer Bey’in elle teyit ettiği görsel atlanır. Sonra kdv_kontrol_eslestir ile eşleştirmeyi yeniden çalıştır. Kuru testte çalışmaz.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        sessionId: { type: 'string' },
+        teyitler: {
+          type: 'array',
+          description: 'Teyit satırları.',
+          items: {
+            type: 'object',
+            properties: {
+              imageId: { type: 'string' },
+              belgeNo: { type: 'string' },
+              tarih: { type: 'string', description: 'GG.AA.YYYY' },
+              kdvTutari: { type: 'string', description: 'NET KDV, "43,35" biçimi.' },
+              kdvTevkifat: { type: 'string', description: 'Tevkifat tutarı; yoksa boş bırak / null.' },
+              kdvBreakdown: {
+                type: 'array',
+                description: 'Oran kırılımı [{oran, tutar, matrah?}]; tek oranlı belgede de tek satır ver.',
+                items: { type: 'object', properties: { oran: { type: 'number' }, tutar: { type: 'number' }, matrah: { type: 'number' } }, required: ['oran', 'tutar'] },
+              },
+              gerekce: { type: 'string', description: 'Kısa gerekçe (rapora ve iş dosyasına yazılır).' },
+            },
+            required: ['imageId', 'gerekce'],
+          },
+        },
+      },
+      required: ['sessionId', 'teyitler'],
+    },
+  },
   // ─── FATURA ÇEKİMİ ZİNCİRİ (R5, 2026-09-15) — Fatura İşleme Merkezi'ndeki "Sorgula / Aktar" düğmelerinin ekip karşılığı.
   //   Muzaffer Bey: "faturaları çek ve işle → Fatura İşleme Merkezi; e-Fatura mükellefi ise e-Fatura sorgulama, değilse GİB e-Arşiv
   //   sorgulama". Yol seçimi araç içinde (Taxpayer.isEFaturaMukellefi / eFaturaEntegrator); ajan yol seçmez, onay kodu (PRV) yok.

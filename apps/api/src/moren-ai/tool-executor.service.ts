@@ -8,6 +8,16 @@ import { ISLEM_OPERATIONS, ISLEM_ACTION_KEYS, islemCapabilityList, isIslemAction
 import { TDHP, tdhpAciklama, vergiOranlari, vergiOraniAciklama } from '../common/accounting-reference';
 import { computeMonthlyStatusList, computeTaxPayableList } from './monthly-status.shared';
 import { randomBytes } from 'crypto';
+import { isMaxAvailable } from '../common/max-inference';
+import {
+  eslesmeIpucu,
+  teyitDogrula,
+  tutarSayi as ocrTutarSayi,
+  yenidenOkumaOnerisi,
+  type GorselSatir,
+  type LucaSatir,
+  type TeyitGirdisi,
+} from '../ekip/kdv-ocr-ipucu';
 
 const OFFICIAL_SOURCE_DOMAINS = [
   'gib.gov.tr',
@@ -157,6 +167,8 @@ export class ToolExecutorService {
         case 'kdv_kontrol_ocr_bekle':  return this.kdvKontrolOcrBekle(input, ctx);
         case 'kdv_kontrol_eslestir':   return this.kdvKontrolEslestir(input, ctx);
         case 'kdv_kontrol_sonuc_satirlari': return this.kdvKontrolSonucSatirlari(input, ctx);
+        case 'kdv_kontrol_belge_yeniden_oku': return this.kdvKontrolBelgeYenidenOku(input, ctx);
+        case 'kdv_kontrol_ocr_teyit':   return this.kdvKontrolOcrTeyit(input, ctx);
         // FATURA ÇEKİMİ ZİNCİRİ (R5 — 2026-09-15): Fatura İşleme Merkezi "Sorgula / Aktar" düğmelerinin ekip karşılığı.
         case 'fm_cekim_baslat':        return this.fmCekimBaslat(input, ctx);
         case 'fm_cekim_durum':         return this.fmCekimDurum(input, ctx);
@@ -4807,8 +4819,42 @@ export class ToolExecutorService {
           kaynak: 'matchSummary',
         }
       : { ...yerelSayac, kaynak: 'yerel' };
-    const sorunlu = sinifli.filter((s) => s.sinif !== 'tam');
-    const satirlar = (yalnizSorunlu ? sorunlu : sinifli).slice(0, limit);
+    // İPUCU (R1 9b, 2026-09-22): sorunlu satır OCR kaynaklı mı? Karşı tarafta aynı belge no (ya da aynı gün + satıcı) aranır;
+    // "matrah KDV sanılmış (×100)", "KDV okunamadı", "oran farkı", "tevkifat farkı" gibi ipucu + yeniden okunacak görsel id'leri.
+    const gorselHaritasi = new Map<string, GorselSatir>();
+    const lucaHaritasi = new Map<string, LucaSatir>();
+    for (const r of results) {
+      const img = r?.image;
+      if (r?.imageId && img && !gorselHaritasi.has(r.imageId)) {
+        const kir = img.confirmedKdvBreakdown ?? img.ocrKdvBreakdown;
+        gorselHaritasi.set(r.imageId, {
+          id: r.imageId,
+          belgeNo: img.confirmedBelgeNo || img.ocrBelgeNo || null,
+          tarih: img.confirmedDate || img.ocrDate || null,
+          satici: img.ocrSatici || null,
+          kdv: ocrTutarSayi(img.confirmedKdvTutari || img.ocrKdvTutari),
+          tevkifat: ocrTutarSayi(img.confirmedKdvTevkifat ?? img.ocrKdvTevkifat) ?? 0,
+          kirilim: Array.isArray(kir) ? kir.map((k: any) => ({ oran: Number(k?.oran), tutar: ocrTutarSayi(k?.tutar) ?? 0, matrah: ocrTutarSayi(k?.matrah) })) : null,
+          ocrStatus: img.ocrStatus || null,
+          isManuallyConfirmed: !!img.isManuallyConfirmed,
+        });
+      }
+      const rec = r?.kdvRecord;
+      if (r?.kdvRecordId && rec && !lucaHaritasi.has(r.kdvRecordId)) {
+        lucaHaritasi.set(r.kdvRecordId, { id: r.kdvRecordId, belgeNo: rec.belgeNo, belgeDate: rec.belgeDate, karsiTaraf: rec.karsiTaraf, kdvTutari: rec.kdvTutari, kdvOrani: rec.kdvOrani });
+      }
+    }
+    const gorseller = Array.from(gorselHaritasi.values());
+    const lucaKayitlari = Array.from(lucaHaritasi.values());
+    const yenidenOkunacak = new Set<string>();
+    const sorunlu = sinifli
+      .filter((s) => s.sinif !== 'tam')
+      .map((s) => {
+        const ip = eslesmeIpucu({ sinif: s.sinif, imageId: s.imageId, kdvRecordId: s.kdvRecordId }, gorseller, lucaKayitlari);
+        if (ip?.ocrSupheli && ip.adayImageId) yenidenOkunacak.add(ip.adayImageId);
+        return { ...s, ipucu: ip?.metin ?? null, ipucuTuru: ip?.tur ?? null, ocrSupheli: !!ip?.ocrSupheli, adayImageId: ip?.adayImageId ?? null, adayKdvRecordIds: ip?.adayKdvRecordIds ?? [] };
+      });
+    const satirlar = (yalnizSorunlu ? sorunlu : sinifli.map((s) => sorunlu.find((x) => x.resultId === s.resultId) || s)).slice(0, limit);
     return {
       ok: true,
       sessionId,
@@ -4817,9 +4863,211 @@ export class ToolExecutorService {
       sorunluToplam: sorunlu.length,
       needsOcrConfirm: Number(stats?.needsOcrConfirm || 0),
       seriUyarilari: Array.isArray(stats?.seriUyarilari) ? stats.seriUyarilari.slice(0, 10) : [],
+      ocrSupheliSayisi: yenidenOkunacak.size,
+      yenidenOkunacakImageIds: Array.from(yenidenOkunacak),
       satirlar,
       kesildi: (yalnizSorunlu ? sorunlu.length : sinifli.length) > limit,
-      not: 'Karar VERME (resolve/kilit sahipte). Sınıf: tam · incele · fatura_yok (Luca\'da var) · luca_yok (fatura var) · red.',
+      not:
+        'Karar VERME (resolve/kilit sahipte). Sınıf: tam · incele · fatura_yok (Luca\'da var) · luca_yok (fatura var) · red. ' +
+        'ocrSupheli satırlar için yenidenOkunacakImageIds → kdv_kontrol_belge_yeniden_oku → teyit → kdv_kontrol_eslestir (en çok 2 tur).',
+    };
+  }
+
+  // ------------------------------------------------------------
+  // OCR TEYİT (R1 7b/9b, 2026-09-22) — kdv_kontrol_belge_yeniden_oku / kdv_kontrol_ocr_teyit
+  // Muzaffer Bey: "teyit bekleyen belgede belgeyle OCR tablosunu karşılaştır, yanlışı/eksiği yaz; eşleşme hatası OCR'dan
+  // kaynaklanıyorsa düzelt, Teyit Et, kontrolü tekrar başlat; hâlâ hata varsa beni uyar." Canlı bulgu: Azure %1 KDV'li hal
+  // faturalarında matrahı KDV sanıyor (4.335,00 %20 · Luca 43,35 %1) ve ajanın kendi rakamları uydurmaydı → rakam yalnız
+  // belgeden (Max-vision yeniden okuma + kanıt kapısı, kdv-ocr-ipucu.ts). Ekrandaki "AI" ve "Teyit Et" düğmeleriyle aynı servis
+  // metotları (reocrSingleImageSync / confirmImageOcr); karar (resolve) ve kilit yine Muzaffer Bey'de.
+  // ------------------------------------------------------------
+
+  /** Oturumdaki görselleri id → satır olarak getir (kilit ve tenant denetimi serviste). */
+  private async kdvOturumGorselleri(svc: any, sessionId: string, tenantId: string): Promise<Map<string, any>> {
+    const images: any[] = await svc.getImages(sessionId, tenantId);
+    return new Map((Array.isArray(images) ? images : []).map((i: any) => [String(i.id), i]));
+  }
+
+  private teyitBekliyorMu(img: any): boolean {
+    return ['NEEDS_REVIEW', 'LOW_CONFIDENCE', 'FAILED'].includes(String(img?.ocrStatus || '').toUpperCase());
+  }
+
+  /** R1 7b/9b — seçilen görselleri Max-vision ile yeniden oku (bekleyen; ≤6 belge, ~60 sn bütçe). */
+  private async kdvKontrolBelgeYenidenOku(input: any, ctx: { tenantId: string; signal?: AbortSignal }) {
+    const sessionId = String(input?.sessionId || '').trim();
+    if (!sessionId) return { ok: false, error: 'sessionId gerekli.' };
+    const svc = await this.kdvKontrolServisi();
+    if (!svc?.reocrSingleImageSync || !svc?.getImages || !svc?.findSession) return { ok: false, error: 'KDV Kontrol servisi kullanılamıyor.' };
+    let session: any;
+    try {
+      session = await svc.findSession(sessionId, ctx.tenantId);
+    } catch (e: any) {
+      return { ok: false, neden: this.hataBilgisi(e).mesaj };
+    }
+    if (session?.status === 'COMPLETED') return { ok: false, neden: 'Oturum kilitli (COMPLETED) — yeniden okuma yapılmadı; kilit açma sahipte.' };
+    if (!isMaxAvailable()) return { ok: false, neden: 'Max bağlı değil (CLAUDE_CODE_OAUTH_TOKEN yok) — yeniden okuma yapılmadı; teyit Muzaffer Bey’de.' };
+
+    const gorseller = await this.kdvOturumGorselleri(svc, sessionId, ctx.tenantId);
+    const istenen: string[] = Array.isArray(input?.imageIds) ? Array.from(new Set<string>(input.imageIds.map((x: any) => String(x || '').trim()).filter(Boolean))) : [];
+    const secilen: string[] = istenen.length ? istenen : Array.from(gorseller.values()).filter((i) => this.teyitBekliyorMu(i) && !i.isManuallyConfirmed).map((i) => String(i.id));
+    if (!secilen.length) return { ok: true, sessionId, okunan: [], kalan: [], not: 'Teyit bekleyen görsel yok.' };
+
+    // Süre: Max-vision OCR canlıda p50 10 sn · p90 40 sn · en çok 63 sn (AiUsageLog, 14 gün). Yeni okuma başlatma bütçesi 40 sn,
+    // görsel başına tavan 60 sn (aşarsa OCR arkada sürer, sonraki çağrı PROCESSING dalında sonucu bekleyip değerlendirir);
+    // en kötü ~100 sn < MCP_TOOL_TIMEOUT (runner 180 sn).
+    const TAVAN = 6;
+    const BUTCE_MS = 40_000;
+    const GORSEL_TAVAN_MS = 60_000;
+    const sira = secilen.slice(0, TAVAN);
+    const kalan = secilen.slice(TAVAN);
+    const baslangic = Date.now();
+    const okunan: any[] = [];
+    const lucaKayitlari: any[] = await this.prisma.kdvRecord
+      .findMany({ where: { sessionId }, select: { id: true, belgeNo: true, belgeDate: true, karsiTaraf: true, kdvTutari: true, kdvOrani: true } })
+      .catch(() => []);
+    const lucaAyni = (belgeNo: any) => {
+      const n = String(belgeNo || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      return n ? lucaKayitlari.filter((l) => String(l.belgeNo || '').toUpperCase().replace(/[^A-Z0-9]/g, '') === n) : [];
+    };
+
+    const ozet = (x: any) => ({ ocrStatus: x?.ocrStatus, motor: x?.ocrEngine, belgeNo: x?.ocrBelgeNo, tarih: x?.ocrDate, kdv: x?.ocrKdvTutari, tevkifat: x?.ocrKdvTevkifat, kirilim: x?.ocrKdvBreakdown ?? null });
+    const degerlendir = (imageId: string, img: any, once: any, sonra: any, geriAlindi: boolean, not?: string) => {
+      const oneri = yenidenOkumaOnerisi(once || {}, sonra || {}, lucaAyni(sonra?.ocrBelgeNo || once?.ocrBelgeNo), geriAlindi);
+      return {
+        imageId,
+        belge: img.originalName,
+        ok: true,
+        once: ozet(once),
+        sonra: { ...ozet(sonra), satici: sonra?.ocrSatici, dogrulama: sonra?.ocrValidationScore ?? null },
+        geriAlindi,
+        ...(not ? { not } : {}),
+        ...oneri,
+        teyitGirdisi: oneri.teyitGirdisi ? { imageId, ...oneri.teyitGirdisi, gerekce: `yeniden okuma (${sonra?.ocrEngine || 'max'}): ${oneri.farklar.join('; ') || 'değerler doğrulandı'}` } : null,
+      };
+    };
+    const birini = async (imageId: string) => {
+      const img = gorseller.get(imageId);
+      if (!img) return { imageId, ok: false, neden: 'görsel bu oturumda değil' };
+      if (img.isManuallyConfirmed) return { imageId, belge: img.originalName, ok: true, atlandi: 'Muzaffer Bey elle teyit etmiş — dokunulmadı', oneri: 'muzaffer' };
+      try {
+        // Önceki çağrıda süre tavanını aşıp arkada süren okuma: yeniden BAŞLATMA, bitmesini bekle ve değerlendir (önceki değer bilinmez).
+        if (String(img.ocrStatus || '').toUpperCase() === 'PROCESSING') {
+          const t0 = Date.now();
+          let simdiki: any = img;
+          while (String(simdiki?.ocrStatus || '').toUpperCase() === 'PROCESSING' && Date.now() - t0 < GORSEL_TAVAN_MS && !ctx.signal?.aborted) {
+            await this.bekle(5000, ctx.signal);
+            simdiki = await this.prisma.receiptImage.findUnique({ where: { id: imageId } }).catch(() => simdiki);
+          }
+          if (String(simdiki?.ocrStatus || '').toUpperCase() === 'PROCESSING') {
+            return { imageId, belge: img.originalName, ok: false, suruyor: true, neden: 'okuma hâlâ sürüyor — bir sonraki çağrıda tekrar ver', oneri: 'muzaffer' };
+          }
+          return degerlendir(imageId, img, {}, simdiki, false, 'önceki çağrıda başlayan okuma bitti; önceki değer bilinmiyor');
+        }
+        let zamanlayici: NodeJS.Timeout | null = null;
+        const tavan = new Promise<'tavan'>((cozum) => { zamanlayici = setTimeout(() => cozum('tavan'), GORSEL_TAVAN_MS); });
+        const r: any = await Promise.race([svc.reocrSingleImageSync(imageId, ctx.tenantId, { forceClaude: true }), tavan]).finally(() => { if (zamanlayici) clearTimeout(zamanlayici); });
+        if (r === 'tavan') {
+          return { imageId, belge: img.originalName, ok: false, suruyor: true, neden: `okuma ${Math.round(GORSEL_TAVAN_MS / 1000)} sn içinde bitmedi; arkada sürüyor — bir sonraki kdv_kontrol_belge_yeniden_oku çağrısında bu görseli tekrar ver (yeniden başlatılmaz, sonucu beklenir)`, oneri: 'muzaffer' };
+        }
+        return degerlendir(imageId, img, r?.once, r?.sonra, !!r?.geriAlindi);
+      } catch (e: any) {
+        return { imageId, belge: img.originalName, ok: false, neden: this.hataBilgisi(e).mesaj, oneri: 'muzaffer' };
+      }
+    };
+
+    // 2 paralel işçi; süre bütçesi dolunca kalanı `kalan`a at.
+    const kuyruk = [...sira];
+    const isci = async () => {
+      for (;;) {
+        if (ctx.signal?.aborted) return;
+        if (Date.now() - baslangic > BUTCE_MS) return;
+        const id = kuyruk.shift();
+        if (!id) return;
+        okunan.push(await birini(id));
+      }
+    };
+    await Promise.all([isci(), isci()]);
+    const kalanHepsi = [...kuyruk, ...kalan, ...okunan.filter((o) => o.suruyor).map((o) => o.imageId)];
+    const teyit = okunan.filter((o) => o.oneri === 'teyit');
+    const muzaffer = okunan.filter((o) => o.oneri === 'muzaffer');
+    return {
+      ok: true,
+      sessionId,
+      okunan,
+      kalan: kalanHepsi,
+      ozet: { okunan: okunan.length, teyitOnerilen: teyit.length, degismedi: okunan.filter((o) => o.oneri === 'degismedi').length, muzafferBeye: muzaffer.length, kalan: kalanHepsi.length },
+      sure: `${Math.round((Date.now() - baslangic) / 1000)} sn`,
+      sonraki: kalanHepsi.length
+        ? `kalan ${kalanHepsi.length} görsel için kdv_kontrol_belge_yeniden_oku {imageIds: kalan} tekrar çağır.`
+        : teyit.length
+          ? 'oneri "teyit" olanların teyitGirdisi listesini kdv_kontrol_ocr_teyit {teyitler} ile AYNEN gönder; sonra kdv_kontrol_eslestir.'
+          : 'teyit önerisi yok; muzaffer olanları rapora "teyit Muzaffer Bey’de" yaz.',
+    };
+  }
+
+  /** R1 7b/9b — "Teyit Et & Sonraki" karşılığı (toplu, kanıt kapılı). */
+  private async kdvKontrolOcrTeyit(input: any, ctx: { tenantId: string }) {
+    const sessionId = String(input?.sessionId || '').trim();
+    if (!sessionId) return { ok: false, error: 'sessionId gerekli.' };
+    const teyitler: TeyitGirdisi[] = Array.isArray(input?.teyitler) ? input.teyitler.filter((t: any) => t && typeof t === 'object') : [];
+    if (!teyitler.length) return { ok: false, error: 'teyitler boş — kdv_kontrol_belge_yeniden_oku çıktısındaki teyitGirdisi satırlarını ver.' };
+    if (teyitler.length > 20) return { ok: false, error: 'Bir çağrıda en çok 20 teyit.' };
+    const svc = await this.kdvKontrolServisi();
+    if (!svc?.confirmImageOcr || !svc?.getImages) return { ok: false, error: 'KDV Kontrol servisi kullanılamıyor.' };
+    let gorseller: Map<string, any>;
+    try {
+      gorseller = await this.kdvOturumGorselleri(svc, sessionId, ctx.tenantId);
+    } catch (e: any) {
+      return { ok: false, neden: this.hataBilgisi(e).mesaj };
+    }
+    const satirlar: any[] = [];
+    for (const t of teyitler) {
+      const imageId = String(t?.imageId || '').trim();
+      const img = imageId ? gorseller.get(imageId) : null;
+      if (!img) {
+        satirlar.push({ imageId, ok: false, neden: 'görsel bu oturumda değil' });
+        continue;
+      }
+      if (img.isManuallyConfirmed) {
+        satirlar.push({ imageId, belge: img.originalName, ok: false, atlandi: true, neden: 'zaten elle teyitli (Muzaffer Bey) — dokunulmadı' });
+        continue;
+      }
+      if (!String(t?.gerekce || '').trim()) {
+        satirlar.push({ imageId, belge: img.originalName, ok: false, neden: 'gerekce zorunlu' });
+        continue;
+      }
+      const d = teyitDogrula(t, {
+        originalName: img.originalName,
+        ocrBelgeNo: img.ocrBelgeNo,
+        ocrDate: img.ocrDate,
+        ocrKdvTutari: img.ocrKdvTutari,
+        ocrKdvTevkifat: img.ocrKdvTevkifat,
+        ocrKdvBreakdown: img.ocrKdvBreakdown,
+        ocrRawText: img.ocrRawText,
+      });
+      if (!d.ok) {
+        satirlar.push({ imageId, belge: img.originalName, ok: false, neden: d.neden });
+        continue;
+      }
+      try {
+        await svc.confirmImageOcr(imageId, ctx.tenantId, d.dto);
+        satirlar.push({ imageId, belge: img.originalName, ok: true, degisenler: d.degisenler, kanit: d.kanit, gerekce: String(t.gerekce).slice(0, 300) });
+      } catch (e: any) {
+        const h = this.hataBilgisi(e);
+        satirlar.push({ imageId, belge: img.originalName, ok: false, neden: h.status === 400 && /kilitli/i.test(h.mesaj) ? `Oturum kilitli: ${h.mesaj}` : h.mesaj });
+      }
+    }
+    const teyitEdilen = satirlar.filter((s) => s.ok).length;
+    const reddedilen = satirlar.filter((s) => !s.ok && !s.atlandi).length;
+    return {
+      ok: true,
+      sessionId,
+      teyitEdilen,
+      reddedilen,
+      atlanan: satirlar.filter((s) => s.atlandi).length,
+      satirlar,
+      sonraki: teyitEdilen ? 'kdv_kontrol_eslestir {sessionId} ile eşleştirmeyi yeniden çalıştır; sonra kdv_kontrol_sonuc_satirlari.' : 'teyit yazılmadı; reddedilenleri rapora "teyit Muzaffer Bey’de" yaz.',
+      not: 'Reddedilen satır: belge metninde görülmeyen değer — kendi hesabınla rakam yazma, Muzaffer Bey’e bırak.',
     };
   }
 
