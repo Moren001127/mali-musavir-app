@@ -186,8 +186,10 @@ export function EDefterDetayPenceresi({
   const aralikHatasi = aralik.bas && aralik.bit && aralikAylari.length === 0 ? 'Bitiş, başlangıçtan önce olamaz' : aralikAylari.length > 12 ? 'En fazla 12 ay' : null;
   const sorgulanacakAylar = aralikAylari.length > 0 && !aralikHatasi ? aralikAylari : ekranAylari;
 
+  // Mükellef seçimi: boş = listedeki tüm e-Defter mükellefleri; seçiliyse yalnız o mükellef sorgulanır.
+  const [seciliMukellef, setSeciliMukellef] = useState('');
   const sorgula = async () => {
-    const ids = mukellefler.map((m) => m.taxpayerId);
+    const ids = seciliMukellef ? mukellefler.filter((m) => m.taxpayerId === seciliMukellef).map((m) => m.taxpayerId) : mukellefler.map((m) => m.taxpayerId);
     if (ids.length === 0 || baslatiliyor || aralikHatasi) return;
     setBaslatiliyor(true);
     setSorguHatasi(null);
@@ -262,7 +264,7 @@ export function EDefterDetayPenceresi({
             </p>
           </div>
           <div className="edd-eylemler">
-            <button type="button" className="edd-dugme edd-dugme--birincil" onClick={sorgula} disabled={baslatiliyor || izleniyor || mukellefler.length === 0 || !!aralikHatasi} title={sorgulanacakAylar.length ? `Listedeki e-Defter mükellefleri için ${sorgulanacakAylar.map(ayEtiketi).join(', ')} beratlarını Dijital Vergi Dairesi'nden sorgula` : 'Sorgulanacak ay yok'}>
+            <button type="button" className="edd-dugme edd-dugme--birincil" onClick={sorgula} disabled={baslatiliyor || izleniyor || mukellefler.length === 0 || !!aralikHatasi} title={sorgulanacakAylar.length ? `${seciliMukellef ? (mukellefler.find((m) => m.taxpayerId === seciliMukellef)?.ad || 'Seçili mükellef') : 'Listedeki e-Defter mükellefleri'} için ${sorgulanacakAylar.map(ayEtiketi).join(', ')} beratlarını Dijital Vergi Dairesi'nden sorgula` : 'Sorgulanacak ay yok'}>
               {baslatiliyor ? 'Başlatılıyor…' : izleniyor ? 'Sorgu sürüyor…' : 'Sorgula'}
             </button>
             <button type="button" className="edd-dugme" onClick={listeyiIndir} disabled={liste.length === 0}>Listeyi İndir</button>
@@ -274,6 +276,14 @@ export function EDefterDetayPenceresi({
           <p>3 Aylık mükellefler yalnızca çeyrek son yükleme aylarında sorgulanır: Haziran, Eylül, Aralık (4. çeyrek: Şahıs Nisan · Firma Mayıs).</p>
           <p>Gece sorgusu güncel dönemi kontrol eder. <b>Sorgula</b> ekrandaki dönemi ({ekranAylari.length ? ekranAylari.map(ayEtiketi).join(', ') : '—'}) sorgular; başka dönem için başlangıç–bitiş ayı seçin (en fazla 12 ay).</p>
           <div className="edd-aralik">
+            <label>Mükellef
+              <select value={seciliMukellef} onChange={(e) => setSeciliMukellef(e.target.value)} aria-label="Sorgulanacak mükellef">
+                <option value="">Listedeki tüm mükellefler ({mukellefler.length})</option>
+                {[...mukellefler].sort((a, b) => a.ad.localeCompare(b.ad, 'tr-TR')).map((m) => (
+                  <option key={m.taxpayerId} value={m.taxpayerId}>{m.ad}</option>
+                ))}
+              </select>
+            </label>
             <label>Başlangıç <input type="month" value={aralik.bas} onChange={(e) => setAralik({ ...aralik, bas: e.target.value })} aria-label="Başlangıç dönemi" /></label>
             <label>Bitiş <input type="month" value={aralik.bit} onChange={(e) => setAralik({ ...aralik, bit: e.target.value })} aria-label="Bitiş dönemi" /></label>
             {aralikHatasi ? <span className="edd-hata">{aralikHatasi}</span> : aralikAylari.length > 0 ? <span className="edd-aralik-not">{aralikAylari.length} ay sorgulanacak</span> : null}
