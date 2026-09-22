@@ -402,6 +402,9 @@ const INTEGRATOR_CATALOG = [
   { provider: 'LOGO_ISBASI', label: 'Logo Isbasi', kind: 'efatura', tone: 'gold' },
   { provider: 'TURMOB_EFATURA', label: 'TURMOB e-Fatura', kind: 'efatura', tone: 'red' },
   { provider: 'TURKCELL', label: 'Turkcell e-Şirket', kind: 'efatura', tone: 'gold' },
+  // Eczacıkart (TEB Eczacı Kart) — altyapı KOLAYSOFT (2026-09-22 doğrulandı: portal.eczacikartfatura.com ile
+  //   servis.kolaysoft.com.tr aynı uygulamaya (/accounting) düşüyor, API kökü /accounting/api).
+  { provider: 'ECZACIKART', label: 'Eczacıkart', kind: 'efatura', tone: 'green' },
 ] as const;
 
 const PROVIDER_DEFAULT_BASE_URL: Record<string, string> = {
@@ -419,6 +422,7 @@ const PROVIDER_DEFAULT_BASE_URL: Record<string, string> = {
   KOLAYSOFT: 'https://efatura.kolaysoft.com.tr',
   TURMOB_EFATURA: 'https://turmobefatura.luca.com.tr',
   TURKCELL: 'https://efaturaservice.turkcellesirket.com',
+  ECZACIKART: 'https://portal.eczacikartfatura.com',
 };
 
 // Saglayicilara ozel kullanici yardim metinleri (UI'da entegrator eklerken gosterilir)
@@ -433,6 +437,7 @@ export const PROVIDER_AUTH_HINTS: Record<string, string> = {
   KOLAYSOFT: "Kolaysoft kullanici ve sifresi. Servis URL hesabiniza ozeldir.",
   TURMOB_EFATURA: "TÜRMOB e-Belge portalına mükellefin TCKN ve parolasıyla otomatik giriş yapılıp gelen/giden faturalar XML olarak çekilir (kod/2FA sormaz).",
   TURKCELL: "Turkcell e-Şirket (isim360): mükellefin panelinden (API Yönetimi > Yeni API Anahtarı) oluşturulan API anahtarını girin — ya da e-Şirket kullanıcı adı+şifresini yazın. Fatura çekerken SMS gitmez.",
+  ECZACIKART: "Eczacıkart (TEB Eczacı Kart — altyapı Kolaysoft): Kullanıcı adı = eczanenin GLN numarası (868… 13 hane), şifre = Eczacıkart fatura portalı şifresi. Servis adresi otomatik dolar. Portal doğrulama kodu (SMS) isterse Kolaysoft'tan web servis hesabı açtırılması gerekir.",
   GIB_PORTAL: "GIB Portal: dogrudan API yok. Luca Local Agent veya mali muhur ile portal otomasyonu gerekir.",
 };
 
@@ -9260,6 +9265,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (cfg.provider === 'TURMOB_EFATURA') return this.fetchTurmobPortalInvoices(cfg, opts);
     if (cfg.provider === 'PARASUT') return this.fetchParasutInvoices(cfg, opts);
     if (cfg.provider === 'TURKCELL') return this.fetchTurkcellInvoices(cfg, opts);
+    if (cfg.provider === 'ECZACIKART') return this.fetchEczacikartInvoices(cfg, opts);
     if (cfg.provider === 'ELOGO') return this.fetchElogoInvoices(cfg, opts);
     if (cfg.provider === 'MIKRO') return this.fetchMikroInvoices(cfg, opts);
     return this.fetchGenericRestInvoices(cfg, opts);
@@ -11280,6 +11286,130 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
    * NOT: Canlı bir mükellef hesabıyla ilk çekimde alan adları (getUBL id parametresi,
    *      liste JSON alanları) teyit edilip gerekiyorsa buradan ayarlanacak.
    */
+  /**
+   * ECZACIKART (TEB Eczacı Kart) — altyapı KOLAYSOFT portalı.
+   *
+   * 2026-09-22 keşfi (kimliksiz, yalnız yol doğrulama):
+   *  • portal.eczacikartfatura.com ve servis.kolaysoft.com.tr AYNI uygulamaya düşüyor (/accounting), React arayüz.
+   *  • API kökü: /accounting/api — `GET /accounting/api/elektra/login` 401 döndü (yol var, kimlik gerekiyor).
+   *  • Giriş: `POST /elektra/login` {username, password}; yanıtta `otpRequired` alanı var → portal doğrulama kodu
+   *    isteyebilir. Mihsap aynı kimlikle SMS'siz çekiyor; OTP çıkarsa Kolaysoft'tan web servis hesabı gerekir.
+   *  • Gelen kutusu uçlarının tam adı kimliksiz doğrulanamadı (401/404 ayrımı yapılamıyor) → ilk gerçek girişte
+   *    ADAY uçlar sırayla denenir, ilk çalışan kullanılır ve log'a yazılır (sonra buraya sabitlenecek).
+   *
+   * Kimlik bilgisi Muzaffer Bey tarafından portalden girilir (şifre koda/loga yazılmaz).
+   */
+  private async fetchEczacikartInvoices(
+    cfg: RuntimeIntegrationConfig,
+    opts: {
+      taxpayer: any;
+      direction: 'ALIS' | 'SATIS';
+      period: { donem: string; startDate: string; endDate: string };
+      limit: number;
+      channel?: string;
+      onPayload?: (p: ProviderInvoicePayload) => Promise<void>;
+      skipExistingExternalIds?: Set<string>;
+      progress?: { rateLimited?: boolean };
+    },
+  ): Promise<ProviderInvoicePayload[]> {
+    const base = (cfg.baseUrl || PROVIDER_DEFAULT_BASE_URL.ECZACIKART).replace(/\/+$/, '');
+    const api = `${base}/accounting/api`;
+    if (!cfg.username || !cfg.password) throw new Error('Eczacıkart için kullanıcı adı (GLN) ve şifre gerekli');
+
+    // --- GİRİŞ ---
+    const loginRes = await fetch(`${api}/elektra/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ username: cfg.username, password: cfg.password }),
+    });
+    const loginText = await loginRes.text();
+    let loginJson: any = {};
+    try { loginJson = JSON.parse(loginText); } catch { /* HTML/boş olabilir */ }
+    if (loginJson?.otpRequired) {
+      throw new Error('Eczacıkart doğrulama kodu (SMS) istedi — otomatik çekim için Kolaysoft\'tan WEB SERVİS hesabı açtırılmalı (portal şifresiyle olmuyor).');
+    }
+    if (!loginRes.ok) {
+      throw new Error(`Eczacıkart girişi başarısız: ${loginRes.status} ${String(loginJson?.message || loginText).slice(0, 200)}`);
+    }
+    const token = loginJson?.token || loginJson?.accessToken || loginJson?.jwt || null;
+    const cookie = loginRes.headers.get('set-cookie') || '';
+    const authHeaders: Record<string, string> = { Accept: 'application/json', 'Content-Type': 'application/json' };
+    if (token) authHeaders['Authorization'] = /^Bearer /i.test(String(token)) ? String(token) : `Bearer ${token}`;
+    if (cookie) authHeaders['Cookie'] = cookie.split(';')[0];
+    if (!token && !cookie) throw new Error('Eczacıkart girişi oturum döndürmedi (token/çerez yok) — kimlik bilgilerini kontrol edin.');
+
+    // --- GELEN/GİDEN KUTUSU (aday uçlar; ilk çalışan kullanılır) ---
+    const gelen = opts.direction === 'ALIS';
+    const adaylar = gelen
+      // Aday sırası: portal paketinde (main.js) gecen adlar once. 2026-09-22 kesif: '/eInvoiceInbox' ve
+      //   '/eInvoiceInboxList' adlari pakette geciyor; '/store/...Info' ise Kolaysoft'un klasik ucu.
+      ? ['/store/getInboxEInvoiceInfo', '/eInvoiceInbox/list', '/eInvoiceInboxList', '/eInvoiceInbox']
+      : ['/store/getOutboxEInvoiceInfo', '/eInvoiceOutbox/list', '/eInvoiceOutboxList', '/eInvoiceOutbox'];
+    const govde = {
+      startDate: opts.period.startDate,
+      endDate: opts.period.endDate,
+      pageIndex: 0,
+      pageSize: Math.min(Math.max(opts.limit, 1), 500),
+    };
+    let liste: any[] | null = null;
+    const denenen: string[] = [];
+    for (const yol of adaylar) {
+      const r = await fetch(`${api}${yol}`, { method: 'POST', headers: authHeaders, body: JSON.stringify(govde) });
+      const t = await r.text();
+      denenen.push(`${yol}=${r.status}`);
+      if (!r.ok) continue;
+      let j: any; try { j = JSON.parse(t); } catch { continue; }
+      const satirlar = Array.isArray(j?.content) ? j.content
+        : Array.isArray(j?.data) ? j.data
+        : Array.isArray(j?.items) ? j.items
+        : Array.isArray(j?.list) ? j.list
+        : Array.isArray(j) ? j : null;
+      if (satirlar) {
+        liste = satirlar;
+        this.logger.log(`Eczacıkart liste ucu bulundu: ${yol} (${satirlar.length} satır)`);
+        break;
+      }
+    }
+    if (!liste) {
+      throw new Error(`Eczacıkart fatura listesi alınamadı — denenen uçlar: ${denenen.join(', ')}. (Portal ucu değişmiş olabilir; Kolaysoft entegrasyon kılavuzu gerekiyor.)`);
+    }
+
+    // --- BELGE (UBL) İNDİR ---
+    const payloads: ProviderInvoicePayload[] = [];
+    let kept = 0;
+    for (const item of liste) {
+      if (kept >= opts.limit) break;
+      const id = item?.id ?? item?.uuid ?? item?.ettn ?? item?.documentId;
+      if (!id) continue;
+      const externalId = `eczacikart:${gelen ? 'inbox' : 'outbox'}:${id}`;
+      if (opts.skipExistingExternalIds?.has(externalId)) { kept++; continue; }
+      const faturaNo = String(item?.invoiceNumber || item?.documentNumber || item?.faturaNo || id).trim();
+      const belgeYollari = gelen
+        ? [`/store/getInboxEInvoiceDocument/${encodeURIComponent(String(id))}`, `/inbox/downloadMedia/xml/${encodeURIComponent(String(id))}`]
+        : [`/store/getOutboxEInvoiceDocument/${encodeURIComponent(String(id))}`, `/outbox/downloadMedia/xml/${encodeURIComponent(String(id))}`];
+      let xml: string | null = null;
+      for (const yol of belgeYollari) {
+        const r = await fetch(`${api}${yol}`, { headers: { ...authHeaders, Accept: 'application/xml, application/json, */*' } });
+        if (!r.ok) continue;
+        const buf = Buffer.from(await r.arrayBuffer());
+        if (buf.length >= 2 && buf[0] === 0x50 && buf[1] === 0x4b) { xml = await this.elogoUnzipXml(buf); }
+        else {
+          const t = buf.toString('utf8').trim();
+          xml = t.startsWith('<') ? t : (/^[A-Za-z0-9+/=\s]+$/.test(t) && t.length > 100 ? Buffer.from(t, 'base64').toString('utf8') : null);
+        }
+        if (xml && xml.includes('<')) break;
+        xml = null;
+      }
+      if (!xml) { this.logger.warn(`Eczacıkart belge indirilemedi: ${faturaNo}`); continue; }
+      const payload: ProviderInvoicePayload = { externalId, originalName: `${faturaNo}.xml`, xml, providerStatus: this.providerStatusFromListItem(item) };
+      kept++;
+      if (opts.onPayload) await opts.onPayload(payload);
+      else payloads.push(payload);
+      await new Promise((res) => setTimeout(res, 400)); // nazik hız
+    }
+    return payloads;
+  }
+
   private async fetchTurkcellInvoices(
     cfg: RuntimeIntegrationConfig,
     opts: {
