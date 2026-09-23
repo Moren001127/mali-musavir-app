@@ -86,7 +86,7 @@
   //   Luca'nın beklediği adlarla TEK SEFERDE hizalanır (her denemede tek sütun hatası okumak yerine).
   // v1.47.48 (2026-09-15): firma onay düğmesi regex'indeki `\b` sınırları kaynakta gerçek backspace (0x08) baytına
   //   dönüşmüştü (sec/aç/ac seçenekleri ölüydü) → düzeltildi.
-  const AGENT_VERSION = '1.47.58';
+  const AGENT_VERSION = '1.47.59';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -2926,10 +2926,35 @@
                     } else {
                       await log(`⚠ HIZLI FİŞ dönem seçici bulunamadı (ay=${hedefAy}) — ekrandaki dönem elle kontrol edilmeli`);
                     }
-                    // (B) TOPLU TEMİZLE — ekranda kalıntı satır varsa sıfırla
-                    let kalinti = 0;
-                    try { const s = new Set(); for (const el of hazirlikDoc.querySelectorAll('[name^="detaylar["]')) { const m = String(el.name || '').match(/^detaylar\[(\d+)\]/); if (m) s.add(m[1]); } kalinti = s.size; } catch {}
-                    if (kalinti > 1) {
+                    // (B) TOPLU TEMİZLE — v1.47.59: ÖLÇÜ ARTIK "SATIR SAYISI" DEĞİL, "VERİ İÇEREN SATIR".
+                    //   23.09 canlı olay (DOĞAN ÖZKAN): API dağıtım sırasında 502 verdi → ajan günlüğünü
+                    //   yazamadı → ilerleme izleyicisi "yeni adım yok" deyip işi YENİDEN SIRAYA ALDI →
+                    //   aynı CSV İKİNCİ KEZ yüklendi. Ekranda aynı fatura 2 satır oldu (Tutar 257.400 =
+                    //   128.700×2, KDV 25.740 = 12.870×2) ve Fiş Kes reddedildi.
+                    //   Eski eşik "kalinti > 1" idi; 2 satır/1 belge durumu TAM BU BOŞLUKTAN geçiyordu.
+                    //   Artık DOLU satır bir tane bile olsa ekran yüklemeden önce temizlenir.
+                    const satirBilgisi = (doc) => {
+                      const s = new Map();
+                      try {
+                        for (const el of doc.querySelectorAll('[name^="detaylar["]')) {
+                          const m = String(el.name || '').match(/^detaylar\[(\d+)\]\.(\w+)/);
+                          if (!m) continue;
+                          const kayit = s.get(m[1]) || { dolu: false, evrakNo: '' };
+                          const deger = String((el.value === undefined ? '' : el.value) || '').trim();
+                          if (m[2] === 'evrakNo' && deger) kayit.evrakNo = deger;
+                          // "dolu" = kimlik/evrak/tutar alanlarindan biri gercekten yazilmis (0,00 sayilmaz)
+                          if (deger && /^(evrakNo|tckn|soyadi|tutar|kdvTutar|toplamTutar)$/.test(m[2]) && !/^0([,.]0+)?$/.test(deger)) kayit.dolu = true;
+                          s.set(m[1], kayit);
+                        }
+                      } catch {}
+                      return s;
+                    };
+                    const doluSay = (doc) => [...satirBilgisi(doc).values()].filter((x) => x.dolu).length;
+                    const bilgiIlk = satirBilgisi(hazirlikDoc);
+                    const kalinti = [...bilgiIlk.values()].filter((x) => x.dolu).length;
+                    if (kalinti > 0) {
+                      const evraklar = [...new Set([...bilgiIlk.values()].filter((x) => x.evrakNo).map((x) => x.evrakNo))];
+                      await log(`🧹 Ekranda ${kalinti} DOLU satır var (toplam satır ${bilgiIlk.size})${evraklar.length ? ` · evrak: ${evraklar.slice(0, 6).join(', ')}` : ''} — yüklemeden ÖNCE temizleniyor`);
                       let temizlendi = false;
                       for (const etiket of ['Toplu Temizle', 'Temizle']) {
                         try {
@@ -2958,10 +2983,10 @@
                       }
                       await sleep(1200);
                       if (!temizlendi) throw new Error('HIZLI FİŞ ekranında kalıntı satırlar var ama "Toplu Temizle" düğmesi bulunamadı — mükerrer fiş riski, aktarım durduruldu.');
-                      let kalan = 0;
-                      try { const s3 = new Set(); for (const el of hazirlikDoc.querySelectorAll('[name^="detaylar["]')) { const m = String(el.name || '').match(/^detaylar\[(\d+)\]/); if (m) s3.add(m[1]); } kalan = s3.size; } catch {}
-                      await log(`🧹 temizlik sonrası satır=${kalan}`);
-                      if (kalan > 1) throw new Error(`"Toplu Temizle" sonrası ekranda hâlâ ${kalan} satır var — mükerrer fiş kesilmesin diye aktarım durduruldu. Luca'da HIZLI FİŞ ekranını elle temizleyip tekrar deneyin.`);
+                      // v1.47.59: doğrulama DOLU satıra bakar; boş şablon satırı sorun değil.
+                      const kalan = doluSay(hazirlikDoc);
+                      await log(`🧹 temizlik sonrası DOLU satır=${kalan}`);
+                      if (kalan > 0) throw new Error(`"Toplu Temizle" sonrası ekranda hâlâ ${kalan} dolu satır var — mükerrer fiş kesilmesin diye aktarım durduruldu. Luca'da HIZLI FİŞ ekranını elle temizleyip tekrar deneyin.`);
                     }
                   }
                 } catch (e) {
@@ -3295,9 +3320,37 @@
                       //   MÜKERRER kayıt olur → basmıyoruz, net hata veriyoruz.
                       let satirNo = new Set();
                       try { for (const el of hf.querySelectorAll('[name^="detaylar["]')) { const m = String(el.name || '').match(/^detaylar\[(\d+)\]/); if (m) satirNo.add(Number(m[1])); } } catch {}
-                      const beklenen = Number(p.totalCount || 0);
-                      if (beklenen > 0 && satirNo.size > beklenen + 1) {
-                        throw new Error(`HIZLI FİŞ ekranında ${satirNo.size} satır var ama bu aktarımda ${beklenen} belge gönderildi — ekranda önceki denemeden KALINTI satırlar var. Mükerrer fiş kesilmesin diye "Fiş Kes" basılmadı; Luca'da HIZLI FİŞ ekranını temizleyip tekrar deneyin.`);
+                      // v1.47.59 — KALINTI KORUMASI YENİDEN KURULDU.
+                      //   (1) Eski ölçü BELGE sayısıydı; oysa çok oranlı KDV'de BİR belge BİRDEN FAZLA satır
+                      //       üretir → yanlış alarm riski. Doğru ölçü CSV'nin ürettiği SATIR sayısı, o da
+                      //       payload'daki isletme.satirlar uzunluklarının toplamıdır (Excel üreticisiyle birebir).
+                      //   (2) Eski toleransta "+1" vardı (boş şablon satırı için). 2 satır / 1 belge olan
+                      //       MÜKERRER YÜKLEME tam bu boşluktan geçti (23.09 DOĞAN ÖZKAN). Tolerans kalktı;
+                      //       bunun yerine yalnız DOLU satırlar sayılıyor, boş şablon satırı zaten sayılmıyor.
+                      let ekrandaDolu = 0;
+                      try {
+                        const g = new Set();
+                        for (const el of hf.querySelectorAll('[name^="detaylar["]')) {
+                          const m = String(el.name || '').match(/^detaylar\[(\d+)\]\.(\w+)/);
+                          if (!m) continue;
+                          const d = String((el.value === undefined ? '' : el.value) || '').trim();
+                          if (d && /^(evrakNo|tckn|soyadi|tutar|kdvTutar|toplamTutar)$/.test(m[2]) && !/^0([,.]0+)?$/.test(d)) g.add(m[1]);
+                        }
+                        ekrandaDolu = g.size;
+                      } catch {}
+                      const beklenenSatir = (() => {
+                        try {
+                          let n = 0;
+                          for (const inv of (p.invoices || [])) {
+                            const st = inv && inv.isletme && inv.isletme.satirlar;
+                            n += (Array.isArray(st) && st.length) ? st.length : 1;
+                          }
+                          return n || Number(p.totalCount || 0);
+                        } catch { return Number(p.totalCount || 0); }
+                      })();
+                      await log(`🔢 Kalıntı denetimi: ekranda DOLU satır=${ekrandaDolu} · beklenen CSV satırı=${beklenenSatir} (${Number(p.totalCount || 0)} belge)`);
+                      if (beklenenSatir > 0 && ekrandaDolu > beklenenSatir) {
+                        throw new Error(`HIZLI FİŞ ekranında ${ekrandaDolu} DOLU satır var ama bu aktarım ${beklenenSatir} satır göndermeliydi (${Number(p.totalCount || 0)} belge) — ekranda önceki denemeden KALINTI/MÜKERRER satırlar var. Mükerrer fiş kesilmesin diye "Fiş Kes" basılmadı; Luca'da HIZLI FİŞ ekranını temizleyip tekrar deneyin.`);
                       }
                       // 1) Sayfanın kendi satır doldurma fonksiyonu (populate(i)) varsa satır satır çağır.
                       const satirNolar = satirNo;
