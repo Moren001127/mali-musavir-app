@@ -86,7 +86,7 @@
   //   Luca'nın beklediği adlarla TEK SEFERDE hizalanır (her denemede tek sütun hatası okumak yerine).
   // v1.47.48 (2026-09-15): firma onay düğmesi regex'indeki `\b` sınırları kaynakta gerçek backspace (0x08) baytına
   //   dönüşmüştü (sec/aç/ac seçenekleri ölüydü) → düzeltildi.
-  const AGENT_VERSION = '1.47.76';
+  const AGENT_VERSION = '1.47.77';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -4013,6 +4013,33 @@
                   //   Düğmeye basmak hatayı YUTAR (onclick içinde kaybolur); doğrudan çağırıp
                   //   try/catch ile yakalıyoruz. Çift fiş riski yok: doğrudan çağrı tuttuysa
                   //   düğme yoluna HİÇ girilmez.
+                  // ═══ v1.47.77 — HANGİ FORM GİDİYOR? ═══
+                  //   v1.47.76 canlı: gönderim gerçekleşti (url=editHizliFisAction.do?fisKes=true)
+                  //   ama satır ekranda kaldı ve sunucu görünür bir hata yazmadı.
+                  //   fisKes() `document.forms[0]`'ı gönderiyor. Eğer bu belgede birden fazla form
+                  //   varsa ve grid alanları (detaylar[...]) BAŞKA formdaysa, POST boş gider ve
+                  //   sunucu kesecek bir şey bulamaz — tam olarak gördüğümüz sessiz sonuç.
+                  //   Bunu ölçmek tahmin gerektirmiyor: her formun alan sayısını yazıyoruz.
+                  try {
+                    const fms = (fkDoc && fkDoc.forms) || [];
+                    const dok = [];
+                    for (let fi = 0; fi < fms.length && fi < 6; fi++) {
+                      const f = fms[fi];
+                      let detay = 0, secili = 0, kutu = 0;
+                      try {
+                        for (const el of f.querySelectorAll('[name^="detaylar["]')) { detay++; }
+                        for (const el of f.querySelectorAll('input[type="checkbox"][id^="fisKes"]')) { kutu++; if (el.checked) secili++; }
+                      } catch {}
+                      dok.push(`#${fi} ad="${String(f.name || f.id || '-')}" action="${String(f.action || '').split('/').pop().slice(0, 40)}" detaylar=${detay} fisKesKutu=${secili}/${kutu}`);
+                    }
+                    // Belgenin TAMAMINDAKİ alan sayısı — formlardakiyle karşılaştırmak için
+                    let belgeDetay = 0, belgeKutu = 0, belgeSecili = 0;
+                    try {
+                      belgeDetay = fkDoc.querySelectorAll('[name^="detaylar["]').length;
+                      for (const el of fkDoc.querySelectorAll('input[type="checkbox"][id^="fisKes"]')) { belgeKutu++; if (el.checked) belgeSecili++; }
+                    } catch {}
+                    await log(`ℹ[form dökümü] form sayısı=${fms.length} · ${dok.join(' | ') || '-'} · BELGE TOPLAM detaylar=${belgeDetay} fisKesKutu=${belgeSecili}/${belgeKutu}`);
+                  } catch (eFm) { await log(`form dökümü uyarısı: ${(eFm && eFm.message) || eFm}`); }
                   const fkUrlOnce = (() => { try { return String((fkDoc && fkDoc.location && fkDoc.location.href) || ''); } catch { return ''; } })();
                   let fk = false;
                   if (fkDogrulamaGecti && typeof fkWin.fisKes === 'function') {
@@ -4045,6 +4072,23 @@
                       }
                       await log(`ℹ[gönderim sonrası] url=${uS.slice(-110)}`);
                       await log(`ℹ[gönderim sonrası metin] ${tS.slice(0, 1000) || '(metin yok)'}`);
+                      // v1.47.77 — İlk 1000 karakter hep tablo BAŞLIĞI çıkıyor; asıl satır verisi ve
+                      //   varsa sunucu mesajı daha sonra geliyor. Devamını da yaz.
+                      if (tS.length > 1000) await log(`ℹ[gönderim sonrası metin-2] ${tS.slice(1000, 2600)}`);
+                      // Satır GERÇEKTEN kaldı mı? Değerlerden say — metin yanıltıcı (select'in
+                      //   textContent'i TÜM seçenekleri içerir, dolu sanılır).
+                      try {
+                        const st = new Set();
+                        if (dS) {
+                          for (const el of dS.querySelectorAll('input[name^="detaylar["]')) {
+                            const m = String(el.name || '').match(/^detaylar\[(\d+)\]\.(\w+)/);
+                            if (!m || !/^(evrakNo|tckn|soyadi|tutar|kdvTutar|toplamTutar)$/.test(m[2])) continue;
+                            const v = String((el.value === undefined ? '' : el.value) || '').trim();
+                            if (v && !/^0([,.]0+)?$/.test(v)) st.add(m[1]);
+                          }
+                        }
+                        await log(`ℹ[gönderim sonrası grid] DOLU satır=${st.size}`);
+                      } catch {}
                       // Açık pencerelerin tümünde url dökümü — yanıt başka pencereye düşmüş olabilir.
                       const urlListe = [];
                       try {
