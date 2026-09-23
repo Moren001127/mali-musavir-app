@@ -601,8 +601,17 @@ export class DriveService implements OnModuleInit, OnModuleDestroy {
     let errorMsg: string | null = null;
 
     try {
-      // Kapsam: dosyasi indirilebilen her kayit (mihsapFileLink dolu)
-      const where: any = { tenantId, mihsapFileLink: { not: null } };
+      // Kapsam: dosyasi indirilebilen her kayit (mihsapFileLink dolu) — AMA BEKLEYEN HARIC.
+      //   2026-09-23 (Muzaffer Bey): "Mihsap'tan cek yapinca aldigi faturalari hemen Drive yedeklemesin;
+      //   ancak Arsivim kismina gelince, yani Luca'ya aktarildiktan sonra yedeklesin."
+      //   kaynak='bekleyen' = Mihsap Gelen Belgeler'den gelen HAM belge (henuz islenmemis) → yedeklenmez.
+      //   Belge Mihsap'ta onaylanip arsive gecince (kaynak 'arsiv') ya da FM Arsivim'e (kaynak 'fm-arsiv')
+      //   dusunce kendiliginden kapsama girer.
+      const where: any = {
+        tenantId,
+        mihsapFileLink: { not: null },
+        OR: [{ kaynak: null }, { kaynak: { not: 'bekleyen' } }],
+      };
       if (mukellefId) where.mukellefId = mukellefId;
       if (donem) where.donem = donem;
       const invoices: any[] = await (this.prisma as any).mihsapInvoice.findMany({

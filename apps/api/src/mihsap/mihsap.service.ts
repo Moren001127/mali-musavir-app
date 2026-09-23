@@ -885,7 +885,11 @@ export class MihsapService implements OnModuleInit {
 
     // === Drive otomatik yedek tetikle (Drive bağlıysa DriveService dinler) ===
     // Hata olsa bile şimdiye dek kaydedilenler yedeklenebilsin diye throw'dan önce yayınla.
-    if (this.eventBus) {
+    // BEKLEYEN ÇEKİMİNDE YEDEK YOK (2026-09-23, Muzaffer Bey): "Mihsap'tan Çek yapınca FM merkezine
+    //   aldığı faturaları hemen İşlenen Faturalar ve Drive yedeklemesin; ancak Arşivim kısmına gelince,
+    //   yani Luca'ya aktarıldıktan sonra yedeklesin." Bekleyen belge henüz işlenmemiş ham belgedir;
+    //   yedek, belge Arşivim'e (Luca'ya aktarılmış) geçince alınır.
+    if (this.eventBus && !((params.kaynak || 'arsiv') === 'bekleyen')) {
       try {
         this.eventBus.emit('Mihsap.InvoicesFetched', {
           tenantId: params.tenantId,
