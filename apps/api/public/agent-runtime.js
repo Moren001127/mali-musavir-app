@@ -86,7 +86,7 @@
   //   Luca'nın beklediği adlarla TEK SEFERDE hizalanır (her denemede tek sütun hatası okumak yerine).
   // v1.47.48 (2026-09-15): firma onay düğmesi regex'indeki `\b` sınırları kaynakta gerçek backspace (0x08) baytına
   //   dönüşmüştü (sec/aç/ac seçenekleri ölüydü) → düzeltildi.
-  const AGENT_VERSION = '1.47.63';
+  const AGENT_VERSION = '1.47.64';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -3053,25 +3053,16 @@
                             if (adaylar.length) { try { adaylar[adaylar.length - 1].click(); } catch {} basildi = true; }
                           } catch {}
                           if (!basildi) { await log('⚠ satır silme düğmesi (deleteRow) bulunamadı'); break; }
-                          await sleep(700);
-                          // Silme onayı çıkarsa evetle (yalnız GERÇEK onay düğmeleri; kısayol penceresine dokunma)
-                          try {
-                            for (const d6 of lucaDocuments()) {
-                              let bitti = false;
-                              for (const el of d6.querySelectorAll('button, input[type="button"], input[type="submit"]')) {
-                                const t6 = String(el.value || el.textContent || '').replace(/\s+/g, ' ').trim();
-                                const oc6 = String(el.getAttribute('onclick') || '');
-                                if (/closeKisayolDiv/.test(oc6)) continue; // kısayollar penceresinin Tamam'ı DEĞİL
-                                if (/^(Evet|Tamam|Onayla)$/i.test(t6)) { try { el.click(); } catch {} bitti = true; break; }
-                              }
-                              if (bitti) break;
-                            }
-                          } catch {}
-                          await sleep(500);
+                          // v1.47.64 — SİLMEDEN SONRA ONAY ARAMA YOK.
+                          //   23.09 canlı: silme sonrası "Tamam" aranırken TÜM Luca pencereleri taranıyordu ve
+                          //   FİRMA SEÇİM penceresindeki `tamam → formsubmit(...)` düğmesine basıldı → sayfa
+                          //   gönderildi, HIZLI FİŞ penceresi KAYBOLDU (günlükte "DOLU satır=-1").
+                          //   deleteRow() satırı istemci tarafında DOM'dan siler, onay istemez.
+                          await sleep(600);
                         }
                         const dSon = hfBulTaze();
                         kalan = dSon ? doluSay(dSon) : -1;
-                        await log(`🧹 tek tek silme sonrası DOLU satır=${kalan}`);
+                        await log(`🧹 tek tek silme sonrası DOLU satır=${kalan === -1 ? 'PENCERE YOK (silme sonrası ekran kapandı)' : kalan}`);
                       }
                       if (kalan !== 0) {
                         // v1.47.63 — BAŞARISIZLIK TEŞHİSİ: bir daha TAHMİNLE dönmeyelim.
@@ -3081,6 +3072,7 @@
                         //   böylece bir sonraki bakışta ne yapılması gerektiği kesin görülür.
                         try {
                           const dT = hfBulTaze();
+                          if (!dT) await log(`ℹ[temizlik-tanı] HIZLI FİŞ belgesi BULUNAMADI · açık pencere sayısı=${(() => { try { return lucaDocuments().length; } catch { return '?'; } })()}`);
                           if (dT) {
                             const wT = dT.defaultView || window;
                             const kontroller = [];
@@ -3237,6 +3229,7 @@
                   let yOk = false;
                   let postTr = 0; // fetch-POST yanıtındaki tablo satırı sayısı = grid doldu göstergesi
                   let gridSatir = -1; // v1.47.44: yanıt HTML'indeki detaylar[N] satır sayısı (1 = boş şablon satırı)
+                  let gridDolu = -1;  // v1.47.64: bunlardan VERİ İÇEREN satır sayısı (boş şablon sayılmaz)
                   try {
                     const pw = popupWin();
                     const fi = findFileInput();
@@ -3374,6 +3367,25 @@
                       } catch {}
                       const detaySayisi = (h) => { try { const set = new Set(); for (const m of String(h).matchAll(/detaylar\[(\d+)\]/g)) set.add(m[1]); return set.size; } catch { return -1; } };
                       gridSatir = detaySayisi(html);
+                      // v1.47.64 — HAM SATIR YETMEZ, DOLU SATIR SAY.
+                      //   23.09 canlı: ekran TEMİZKEN 1 CSV satırı yüklendi; boş şablon satırının YERİNE geçti,
+                      //   ham sayı 1 → 1 kaldı ve "CSV satırları grid'e girmedi" YANLIŞ ALARMI verildi —
+                      //   oysa Luca "Verileriniz başarıyla aktarıldı" diyordu. Ölçü artık veri içeren satır.
+                      const doluDetaySayisi = (h) => {
+                        try {
+                          const set = new Set();
+                          for (const mm of String(h).matchAll(/<input\b[^>]*>/gi)) {
+                            const tag = mm[0];
+                            const nm = tag.match(/name="detaylar\[(\d+)\]\.(\w+)"/);
+                            if (!nm) continue;
+                            if (!/^(evrakNo|tckn|soyadi|tutar|kdvTutar|toplamTutar)$/.test(nm[2])) continue;
+                            const v = String((tag.match(/value="([^"]*)"/) || [])[1] || '').trim();
+                            if (v && !/^0([,.]0+)?$/.test(v)) set.add(nm[1]);
+                          }
+                          return set.size;
+                        } catch { return -1; }
+                      };
+                      gridDolu = doluDetaySayisi(html);
                       try {
                         const alanTum = []; for (const el of alanlar) { try { if (el.name && (el.type || '').toLowerCase() !== 'file') alanTum.push(`${el.name}=${String(el.value == null ? '' : el.value).slice(0, 60)}`); } catch {} }
                         let pencere = {};
@@ -3423,7 +3435,8 @@
                   if (gc <= 8) throw new Error(`CSV grid'e yüklenmedi (gösterge=${gc}, yanıtTr=${postTr}).`);
                   // v1.47.44: yanıtta GERÇEK grid satırı yoksa (yalnız boş şablon satırı detaylar[0]) Fiş Kes BASILMAZ —
                   //   boş/tek satırlık fiş kesme riski. Satırlar gelmediyse hata ver, tanı snapshot'ı incelenir.
-                  if (gridSatir >= 0 && gridSatir <= 1) throw new Error(`CSV satırları HIZLI FİŞ grid'ine girmedi (yanıtta detaylar satırı=${gridSatir}); "Fiş Kes" basılmadı. Luca'nın hata metni logda (⚠[Luca]).`);
+                  await log(`ℹ[grid] ham satır=${gridSatir} · DOLU satır=${gridDolu}`);
+                  if (gridDolu === 0) throw new Error(`CSV satırları HIZLI FİŞ grid'ine girmedi (dolu satır=0, ham satır=${gridSatir}); "Fiş Kes" basılmadı. Luca'nın hata metni logda (⚠[Luca]).`);
                   // v1.47.53 — SATIR AÇILIR KUTULARINI DOLDUR (Fiş Kes'in sessiz başarısızlığının kökü).
                   //   Luca satır kutularını (Kayıt Alt Türü, Belge Türü…) HTML'de BOŞ gönderip içini kendi
                   //   JS'iyle data-value'dan doldurur. Yanıtı doc.write ile bastığımız için o doldurma
@@ -3572,15 +3585,33 @@
                   const hfSon = hizliFisDoc();
                   let liveTr = 0; try { if (hfSon) liveTr = hfSon.querySelectorAll('table tr').length; } catch {}
                   if (postTr > 8 && liveTr > 0 && liveTr < postTr - 4) ok = true; // Fiş Kes sonrası grid boşaldı
-                  if (gridSatir >= 2 && !hfSon) ok = true;                        // HIZLI FİŞ ekranı tamamen kapandı = fiş kesildi
+                  if (gridDolu >= 1 && !hfSon) ok = true;                        // HIZLI FİŞ ekranı tamamen kapandı = fiş kesildi (v1.47.64: ölçü DOLU satır)
                   // v1.47.46: HIZLI FİŞ grid satırı (detaylar[N] girdileri) — yüklemede ≥2 satır girdiyse ve Fiş Kes sonrası
                   //   hiçbir belgede ≥2 satır kalmadıysa fiş kesilmiş demektir (boş şablon satırı detaylar[0] kalır).
                   let sonDetay = 0;
                   try {
                     for (const d of lucaDocuments()) { try { const set = new Set(); for (const el of d.querySelectorAll('input[name^="detaylar["],select[name^="detaylar["]')) { const m = String(el.name).match(/^detaylar\[(\d+)\]/); if (m) set.add(m[1]); } if (set.size > sonDetay) sonDetay = set.size; } catch {} }
                   } catch {}
-                  if (gridSatir >= 2 && sonDetay <= 1) ok = true;
-                  await log(`ℹ Fiş Kes sonrası tr=${liveTr} (yükleme tr=${postTr}) · gridSatır yükleme=${gridSatir} sonra=${sonDetay} · başarı=${ok}`);
+                  // v1.47.64 — ölçü DOLU satır: yüklemede en az 1 dolu satır vardıysa ve Fiş Kes sonrası
+                  //   hiç dolu satır kalmadıysa fiş kesilmiştir (boş şablon satırı kalabilir).
+                  let sonDolu = 0;
+                  try {
+                    for (const d of lucaDocuments()) {
+                      try {
+                        const set = new Set();
+                        for (const el of d.querySelectorAll('input[name^="detaylar["]')) {
+                          const m = String(el.name).match(/^detaylar\[(\d+)\]\.(\w+)/);
+                          if (!m) continue;
+                          if (!/^(evrakNo|tckn|soyadi|tutar|kdvTutar|toplamTutar)$/.test(m[2])) continue;
+                          const v = String((el.value === undefined ? '' : el.value) || '').trim();
+                          if (v && !/^0([,.]0+)?$/.test(v)) set.add(m[1]);
+                        }
+                        if (set.size > sonDolu) sonDolu = set.size;
+                      } catch {}
+                    }
+                  } catch {}
+                  if (gridDolu >= 1 && sonDolu === 0) ok = true;
+                  await log(`ℹ Fiş Kes sonrası tr=${liveTr} (yükleme tr=${postTr}) · DOLU satır yükleme=${gridDolu} sonra=${sonDolu} · ham=${gridSatir}/${sonDetay} · başarı=${ok}`);
                   // v1.47.43 TANI: Fiş Kes sonrası hangi ekran? (popup URL + metin; en kalabalık belge)
                   try {
                     const pw3 = popupWin();
