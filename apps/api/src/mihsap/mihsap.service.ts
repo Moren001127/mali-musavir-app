@@ -636,6 +636,15 @@ export class MihsapService implements OnModuleInit {
       const duzelt: any = {};
       if (String(existing.donem || '') !== donemEtiketi) duzelt.donem = donemEtiketi;
       if (!existing.faturaTarihi || new Date(existing.faturaTarihi).getTime() !== faturaTarihi.getTime()) duzelt.faturaTarihi = faturaTarihi;
+      // KAYNAK TAZELEME (2026-09-23, HANİFE ARSLAN 2026-08): belge Mihsap'ta BEKLEYEN iken çekilmiş,
+      //   sonra onaylanıp ARŞİVE geçmiş olabilir. Bu dal kaynağı hiç güncellemediği için kayıt sonsuza
+      //   dek 'bekleyen' kalıyordu ve İşlenen Faturalar onu gizliyordu (69 alış görünmüyordu).
+      //   Yalnız YÜKSELTME yapılır: bekleyen → arsiv. Tersi (arsiv → bekleyen) YAPILMAZ.
+      if (kaynak && String(existing.kaynak || '') !== kaynak && !(existing.kaynak === 'arsiv' && kaynak === 'bekleyen')) {
+        duzelt.kaynak = kaynak;
+      }
+      // Onay durumu da tazelensin (arşive geçen belgenin durumu değişmiş olur).
+      if (item.onayDurumu && String(existing.onayDurumu || '') !== String(item.onayDurumu)) duzelt.onayDurumu = item.onayDurumu;
       if (Object.keys(duzelt).length) {
         await (this.prisma as any).mihsapInvoice.update({
           where: { mihsapId: String(mihsapInternalId) },
