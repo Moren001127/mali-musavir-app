@@ -5152,28 +5152,20 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                   <div className="dm"><span className="dml">Cari Ünvanı</span><input className="dmi" value={meta.cariUnvan || ''} placeholder="satıcı/alıcı ünvanı" onChange={(e) => setMeta({ ...meta, cariUnvan: e.target.value })} /></div>
                 </div>
                 )}
-                {isIsletme ? (
-                  <div className="balance">
-                    <Ico html={I.checkSm} size={16} /><b>{islKind === 'SATIS' ? 'Gelir' : 'Gider'} · {islBelgeAd}</b>
-                    <span className="bnote">{islKayitAd} · Matrah {fmtMoney(islTotMatrah)} ₺ + KDV {fmtMoney(islTotKdv)} ₺ = {fmtMoney(islTotMatrah + islTotKdv)} ₺{isl.plakaNo ? ` · ${isl.plakaNo}` : ''}</span>
-                  </div>
-                ) : (
+                {/* İŞLETME ÖZET KUTUSU KALDIRILDI (2026-09-23, Muzaffer Bey: "gereksiz yer kaplıyor").
+                    Aynı değerler (kayıt türü, matrah, KDV, toplam) hemen üstteki formda ve
+                    "Toplam Tutar" satırında zaten görünüyor — tekrar ediyordu.
+                    Bilanço belgelerindeki "Denge tutmuyor" kutusu KALIYOR: o gerçek bir kontrol. */}
+                {isIsletme ? null : (
                   <div className="balance" style={!dengeli ? { background: '#fdeaea', borderColor: '#f3c9c9' } : undefined}>
                     <Ico html={I.checkSm} size={16} /><b style={!dengeli ? { color: '#c0353a' } : undefined}>{dengeli ? 'Denge tamam' : 'Denge tutmuyor'}</b>
                     <span className="bnote">Borç {fmtMoney(borc)} {dengeli ? '=' : '≠'} Alacak {fmtMoney(alacak)} ₺</span>
                   </div>
                 )}
                 <div className="wactions">
-                  {isabet && (Number(isabet.toplam) > 0 || Number(isabet.boslukVar) > 0) ? (
-                    // İSABET PİLİ — üst bara sığmıyordu; Kaydet satırının SOL boşluğuna taşındı
-                    //   (kullanıcı isteği). Detay sayılar ipucu balonunda.
-                    <span
-                      title={`İsabet panosu (bu dönem):\nDokunmasız: %${Number(isabet.dokunmasizOran) || 0} (${Number(isabet.dokunmasiz) || 0}/${Number(isabet.toplam) || 0}) — hiçbir satırı elle düzeltilmeden onaylanan\nElle düzeltilen: ${Number(isabet.kullaniciDuzeltmeli) || 0}\nEksik kodlu (bekleyen): ${Number(isabet.boslukVar) || 0}`}
-                      style={{ display: 'inline-flex', alignItems: 'center', flex: '0 1 auto', minWidth: 0, maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', padding: '3px 10px', borderRadius: 999, background: 'rgba(21,128,61,0.07)', border: '1px solid rgba(21,128,61,0.22)', fontSize: 11.5, fontWeight: 700, color: '#15803d', whiteSpace: 'nowrap' }}
-                    >
-                      Dokunmasız %{Number(isabet.dokunmasizOran) || 0}
-                    </span>
-                  ) : null}
+                  {/* "Dokunmasız %" pili KALDIRILDI (2026-09-23, Muzaffer Bey) — düğme satırında
+                      yer kaplıyordu; üç düğme tek satıra sığsın diye çıkarıldı. İsabet verisi
+                      (isabetQ) duruyor, gerekirse başka yerde gösterilir. */}
                   <div className="sp" />
                   {/* LİSTEYE DÖN (2026-09-23, Muzaffer Bey): belge işlendikten sonra geldiği listeye tek tıkla
                       dönülsün. Yön BELGEDEN okunur — alış belgesindeyken Alış Faturaları, satış belgesindeyken
@@ -8478,7 +8470,10 @@ const CSS = `
 #fm-root .screen-muhasebe .muhmain .balance b{font-size:12.5px;line-height:1.1}
 #fm-root .screen-muhasebe .muhmain .balance .bnote{font-size:11px;line-height:1.2}
 #fm-root .screen-muhasebe .muhmain .fgrp .fgt{padding:4px 8px}
-#fm-root .screen-muhasebe .muhmain .fispane > .wactions{margin-top:6px;padding-top:6px;min-height:36px}
+#fm-root .screen-muhasebe .muhmain .fispane > .wactions{margin-top:6px;padding-top:6px;min-height:36px;flex-wrap:nowrap}
+/* Listeye Dön · Kaydet · Kaydet ve Onayla TEK SATIRDA yan yana (2026-09-23, Muzaffer Bey).
+   Dar ekranda sarmak yerine düğmeler kısalır; yazı bölünmez. */
+#fm-root .screen-muhasebe .muhmain .fispane > .wactions .btn{white-space:nowrap;flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
 #fm-root .queryveil{gap:12px;justify-content:center;color:#243042}
 #fm-root .queryveil b{font-size:12.5px;font-weight:700;margin-top:0;color:#243042}
 #fm-root .querydoc{width:180px;height:8px;border-radius:999px;box-shadow:inset 0 0 0 1px var(--accent-line)}
