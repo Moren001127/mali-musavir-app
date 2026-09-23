@@ -652,6 +652,57 @@ let lastLoginAttemptAt = 0;
 let loginFailStreak = 0;
 const LOGIN_COOLDOWN_MS = 90_000;
 const LOGIN_FAIL_MAX = 3;
+// Giriş/güvenlik-kodu ekranı sayılan adresler — gardiyan, ön-ısıtma ve iş akışı AYNI ölçüyü kullanır.
+//   2026-09-23 (DOĞAN ÖZKAN): ön-ısıtma bu listede captchaKontrol'ü tanımıyordu → başarısız bir girişten
+//   sonra tarayıcı SAATLERCE kod ekranında kaldı (gardiyan her 4 dk "giriş deniyor" deyip 3 sn'de çıktı).
+const GIRIS_VEYA_KOD_EKRANI = /giris\.erp|LUCASSO\/login|\/Luca\/giris\.do|captchaKontrol/i;
+
+// NODE GİRİŞ KİLİDİ (2026-09-23): ajan kimlik + 2captcha ile giriş yaparken sayfa-içi çalışma zamanının
+//   captcha köprüsü (agent-runtime.js bridgeLucaCaptchaToPortal) aynı forma İKİNCİ bir cevap yazıp kodu
+//   tüketiyordu; ikisi de "yanlış" görüp yeni kod istiyordu (VPS 23.09: 12 köprü denemesi + 10 ajan denemesi
+//   boşa gitti). Kilit açıkken: çerez `moren_node_giris=1` → başlangıç betiği (installGirisKilidi) sonraki
+//   HER yüklemede `window.__lucaJobRunning`'i sabit true okutur (çalışma zamanı iş döngüsüne/köprüye hiç girmez);
+//   evaluate ise ŞU ANKİ sayfayı kapsar. Kilit kapanınca özellik silinir, çalışma zamanının son yazmak istediği
+//   değer geri konur. İç içe çağrılar (loginToLuca → captchaVarsaCoz) sayaçla TEK kilit olur.
+let girisKilidiDerinlik = 0;
+async function girisKilidi(page, acik) {
+  try {
+    if (acik) {
+      girisKilidiDerinlik++;
+      if (girisKilidiDerinlik > 1) return;
+      await page.context().addCookies([{ name: 'moren_node_giris', value: '1', domain: '.luca.com.tr', path: '/', secure: true }]);
+      await page.evaluate(() => {
+        if (window.__morenNodeGirisKilidi) return;
+        window.__morenNodeGirisKilidi = true;
+        window.__morenNodeGirisSonDeger = !!window.__lucaJobRunning;
+        Object.defineProperty(window, '__lucaJobRunning', {
+          configurable: true,
+          get: () => true,
+          set: (v) => { window.__morenNodeGirisSonDeger = !!v; },
+        });
+      }).catch(() => {});
+      return;
+    }
+    girisKilidiDerinlik = Math.max(0, girisKilidiDerinlik - 1);
+    if (girisKilidiDerinlik > 0) return;
+    await page.context().addCookies([{ name: 'moren_node_giris', value: '0', domain: '.luca.com.tr', path: '/', secure: true }]);
+    // Sayfa o an yükleniyorsa evaluate düşebilir → kısa aralıkla iki kez dene (kilit sayfada asılı kalmasın).
+    for (let deneme = 0; deneme < 2; deneme++) {
+      const ok = await page.evaluate(() => {
+        if (!window.__morenNodeGirisKilidi) return true;
+        const son = !!window.__morenNodeGirisSonDeger;
+        delete window.__lucaJobRunning;
+        window.__lucaJobRunning = son;
+        delete window.__morenNodeGirisKilidi;
+        return true;
+      }).catch(() => false);
+      if (ok) break;
+      await page.waitForTimeout(1500).catch(() => {});
+    }
+  } catch (err) {
+    log.warn(`Giriş kilidi ${acik ? 'kurulamadı' : 'kaldırılamadı'}: ${err.message}`);
+  }
+}
 
 function getCurrentRuntimeVersionForApi() {
   return browserSession?.runtimeVersion || BUNDLED_RUNTIME_VERSION || LOCAL_AGENT_VERSION;
@@ -1186,7 +1237,24 @@ async function installMorenRuntimeBridge(context, page) {
       installCredentialBridge();
     };
 
+    // NODE GİRİŞ KİLİDİ (2026-09-23) — bkz. agent.js girisKilidi: çerez açıkken bu sayfada
+    //   __lucaJobRunning sabit true okunur → çalışma zamanı iş döngüsüne/captcha köprüsüne girmez.
+    const installGirisKilidi = () => {
+      try {
+        if (window.__morenNodeGirisKilidi) return;
+        if (!/(?:^|;\s*)moren_node_giris=1(?:;|$)/.test(document.cookie || '')) return;
+        window.__morenNodeGirisKilidi = true;
+        window.__morenNodeGirisSonDeger = false;
+        Object.defineProperty(window, '__lucaJobRunning', {
+          configurable: true,
+          get: () => true,
+          set: (v) => { window.__morenNodeGirisSonDeger = !!v; },
+        });
+      } catch {}
+    };
+
     installIdentity();
+    installGirisKilidi();
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', boot, { once: true });
     } else {
@@ -1241,7 +1309,23 @@ async function installMorenRuntimeBridge(context, page) {
         installCredentialBridge();
       };
 
+      // NODE GİRİŞ KİLİDİ — yukarıdaki bridgeScript ile aynı (sayfa düzeyi kopya).
+      const installGirisKilidi = () => {
+        try {
+          if (window.__morenNodeGirisKilidi) return;
+          if (!/(?:^|;\s*)moren_node_giris=1(?:;|$)/.test(document.cookie || '')) return;
+          window.__morenNodeGirisKilidi = true;
+          window.__morenNodeGirisSonDeger = false;
+          Object.defineProperty(window, '__lucaJobRunning', {
+            configurable: true,
+            get: () => true,
+            set: (v) => { window.__morenNodeGirisSonDeger = !!v; },
+          });
+        } catch {}
+      };
+
       installIdentity();
+      installGirisKilidi();
       if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', boot, { once: true });
       } else {
@@ -1575,6 +1659,16 @@ function captchaGardiyaniBaslat(page, jobId) {
  * penceresi captcha ekraninda takili kaldi - 2026-08-22 canli goruldu).
  */
 async function captchaVarsaCoz(page) {
+  // Çözüm boyunca sayfa-içi köprü kilitli (bkz. girisKilidi) — aynı koda iki cevap gitmesin.
+  await girisKilidi(page, true);
+  try {
+    return await captchaVarsaCozKilitsiz(page);
+  } finally {
+    await girisKilidi(page, false);
+  }
+}
+
+async function captchaVarsaCozKilitsiz(page) {
   await page.waitForSelector('#captcha-input', { timeout: 15_000 }).catch(() => {});
   if (await page.$('#captcha-input')) {
     const twoCaptchaKey = process.env.TWOCAPTCHA_API_KEY || process.env.TWO_CAPTCHA_API_KEY;
@@ -1642,6 +1736,16 @@ async function captchaVarsaCoz(page) {
 }
 
 async function loginToLuca(page) {
+  // Giriş boyunca sayfa-içi köprü kilitli (bkz. girisKilidi); kilit kalkınca çağıran main.erp'ye geçer.
+  await girisKilidi(page, true);
+  try {
+    return await loginToLucaKilitsiz(page);
+  } finally {
+    await girisKilidi(page, false);
+  }
+}
+
+async function loginToLucaKilitsiz(page) {
   log.info('Luca login sayfasına gidiliyor...');
   await gotoLucaWithFallback(page, LUCA_URLS.login, null, 'Luca giris');
   // Form alanları render olsun
@@ -1928,14 +2032,17 @@ async function preWarmBrowserSession() {
             await page.goto(LUCA_CLASSIC_ENTRY, { waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(() => {});
           });
         await page.waitForTimeout(3500).catch(() => {});
+      } else if (GIRIS_VEYA_KOD_EKRANI.test(currentUrl)) {
+        // Giriş/kod ekranında yeniden yükleme YOK: kod sayfası bir form yanıtıdır, yenilemek kodu
+        // eskitir/yeniden gönderir. loginToLuca zaten giriş sayfasına kendisi gider.
       } else {
         // Zaten Luca sayfasındaysa reload et ki yeni eklenen init script çalışsın.
         await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(() => {});
       }
-      // Login sayfasindaysak otomatik giris yap (kimlik + 2captcha) — oturumu
+      // Login/kod sayfasindaysak otomatik giris yap (kimlik + 2captcha) — oturumu
       // proaktif ac ki ilk is hizli olsun + session sicak kalsin. Ayni cooldown +
-      // fail-streak korumasi (hesap kilidi riskine karsi).
-      if (/giris\.erp|LUCASSO\/login|\/Luca\/giris\.do/i.test(page.url() || '')) {
+      // fail-streak korumasi (hesap kilidi riskine karsi). captchaKontrol da DAHİL (2026-09-23).
+      if (GIRIS_VEYA_KOD_EKRANI.test(page.url() || '')) {
         if (loginFailStreak < LOGIN_FAIL_MAX && Date.now() - lastLoginAttemptAt >= LOGIN_COOLDOWN_MS) {
           lastLoginAttemptAt = Date.now();
           log.info('Pre-warm: Luca login sayfasi; otomatik giris deneniyor (2captcha)...');

@@ -86,7 +86,10 @@
   //   Luca'nın beklediği adlarla TEK SEFERDE hizalanır (her denemede tek sütun hatası okumak yerine).
   // v1.47.48 (2026-09-15): firma onay düğmesi regex'indeki `\b` sınırları kaynakta gerçek backspace (0x08) baytına
   //   dönüşmüştü (sec/aç/ac seçenekleri ölüydü) → düzeltildi.
-  const AGENT_VERSION = '1.47.80';
+  // v1.47.81 (2026-09-23): İŞLETME CSV — doğal yükleme satır eklemeyince Luca'nın red gerekçesi (lucaNotYaz) artık bu
+  //   yolda da okunup loga yazılır; fetch-POST yedeği, doğal gönderimde boşalan dosya girdisine indirilen dosyayı yeniden
+  //   koyarak GERÇEKTEN çalışır (23.09 canlı: "dosya=false" → yedek hiç koşmadı, sebep görünmedi).
+  const AGENT_VERSION = '1.47.81';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -3472,7 +3475,29 @@
                           break;
                         }
                       }
-                      if (!yOk) await log('⚠ Doğal yükleme sonuç vermedi (satır artmadı) — fetch-POST yedeğine düşülüyor');
+                      if (!yOk) {
+                        await log('⚠ Doğal yükleme sonuç vermedi (satır artmadı) — fetch-POST yedeğine düşülüyor');
+                        // v1.47.81 — Luca'nın CSV'yi neden reddettiğini OKU: doğal yolda yanıt iframe'e düşer; fetch yolundaki
+                        //   ⚠[Luca] ayıklaması burada yoktu (23.09 canlı: vergi dairesi sütunu dolunca red — sebep hiç görünmedi).
+                        try {
+                          const notlar = [];
+                          for (const d2 of lucaDocuments()) {
+                            try {
+                              for (const sc of d2.querySelectorAll('script')) {
+                                for (const m of String(sc.textContent || '').matchAll(/lucaNotYaz\(\s*["'`]([\s\S]*?)["'`]\s*[,)]/g)) {
+                                  const t = m[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+                                  if (t && t.length > 3 && !notlar.includes(t)) notlar.push(t.slice(0, 400));
+                                }
+                              }
+                              for (const el of d2.querySelectorAll('.red, .error, .hata')) {
+                                const t = String(el.textContent || '').replace(/\s+/g, ' ').trim();
+                                if (t && t.length > 3 && !notlar.includes(t)) notlar.push(t.slice(0, 400));
+                              }
+                            } catch {}
+                          }
+                          await log(notlar.length ? `⚠[Luca doğal-yükleme] ${notlar.join(' || ').slice(0, 900)}` : 'ℹ[Luca doğal-yükleme] yanıtta lucaNotYaz / hata metni bulunamadı');
+                        } catch (eN) { await log(`Luca not okuma uyarısı: ${(eN && eN.message) || eN}`); }
+                      }
                     }
                   } catch (eDogal) { await log(`doğal yükleme uyarısı: ${(eDogal && eDogal.message) || eDogal}`); }
 
@@ -3483,6 +3508,14 @@
                     // v1.47.42: dosya girdisinin KENDİ penceresi (iframe içindeyse iframe'in window'u) — fetch/FormData/URL oradan.
                     const fw = (fi && fi.ownerDocument && fi.ownerDocument.defaultView) || pw;
                     const fdoc = fi && fi.ownerDocument;
+                    // v1.47.81 — doğal yükleme formu gönderince dosya girdisi BOŞ yeniden yükleniyor (23.09 canlı: "dosya=false" →
+                    //   yedek hiç çalışmadı). İndirilen dosya elimizde (file): girdiye yeniden konur, yedek gerçekten koşar.
+                    try {
+                      if (fi && !(fi.files && fi.files[0]) && typeof file !== 'undefined' && file) {
+                        const dt2 = new DataTransfer(); dt2.items.add(file); fi.files = dt2.files;
+                        await log('🔁 fetch-POST için dosya girdiye yeniden kondu (doğal yükleme sonrası boşalmıştı)');
+                      }
+                    } catch (eDt) { await log(`dosya yeniden koyma uyarısı: ${(eDt && eDt.message) || eDt}`); }
                     if (!fi || !fw || !fw.fetch || !fw.FormData || !(fi.files && fi.files[0])) {
                       await log(`⚠ fetch-POST atlandı: popup=${!!pw} girdi=${!!fi} dosya=${!!(fi && fi.files && fi.files[0])} form=${!!form} pencere=${!!fw} fetch=${!!(fw && fw.fetch)}`);
                     } else {
