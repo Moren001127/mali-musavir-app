@@ -86,7 +86,7 @@
   //   Luca'nın beklediği adlarla TEK SEFERDE hizalanır (her denemede tek sütun hatası okumak yerine).
   // v1.47.48 (2026-09-15): firma onay düğmesi regex'indeki `\b` sınırları kaynakta gerçek backspace (0x08) baytına
   //   dönüşmüştü (sec/aç/ac seçenekleri ölüydü) → düzeltildi.
-  const AGENT_VERSION = '1.47.69';
+  const AGENT_VERSION = '1.47.70';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -2964,6 +2964,7 @@
                       //   Artık: (1) sayfanın KENDİ topluTemizle() fonksiyonu çağrılır, (2) olmazsa
                       //   onclick'i topluTemizle içeren düğmeye basılır, (3) o da yoksa metin araması.
                       let temizlendi = false;
+                      let sunucudanSilindi = false; // v1.47.70: GERCEK sunucu silmesi kullanildi mi
                       const hwTemiz = hazirlikDoc.defaultView || window;
                       // v1.47.68 — SATIRLARI SEÇ (23.09 canlı kök neden).
                       //   Luca'nın doğrulama metni "Lütfen satır seçin." diyor; günlükte secim=0/false.
@@ -3005,10 +3006,13 @@
                       //   deleteRow sayaci sifirladigi icin hic tetiklenmedi. Artik CAGRIDAN ONCE,
                       //   kosulsuz olarak Luca'nin kendi kodunu yaziyoruz; hangi ucu cagirdigi gorulecek.
                       try {
-                        for (const fnAd of ['topluTemizle', 'temizle', 'gonder', 'deleteRow']) {
+                        // v1.47.70 — temizliğin kaynağı çözüldü; sıra FİŞ KES'te.
+                        //   gonder('fisKes') → showMask(); fisKesControl();  — fisKesControl da aynı
+                        //   confirm_window tuzağında olabilir. Görmeden yine tahmin etmiyoruz.
+                        for (const fnAd of ['fisKesControl', 'ekraniKaydetControl', 'confirm_window']) {
                           let src = '';
                           try { if (typeof hwTemiz[fnAd] === 'function') src = hwTemiz[fnAd].toString(); } catch {}
-                          const tmz = String(src).replace(/https?:\/\/\S+/g, '[url]').replace(/["']/g, '`').replace(/\s+/g, ' ').slice(0, 600);
+                          const tmz = String(src).replace(/https?:\/\/\S+/g, '[url]').replace(/["']/g, '`').replace(/\s+/g, ' ').slice(0, 1100);
                           await log(`ℹ[fnsrc ${fnAd}] ${tmz || 'ERISILEMEDI'}`);
                         }
                         // Ekrandaki temizlik/fis dugmelerinin GERCEK onclick hedefleri
@@ -3021,16 +3025,58 @@
                         await log(`ℹ[dugmeler] ${dg.join(' | ') || '-'}`);
                       } catch (eSrc) { await log(`fnsrc uyarisi: ${(eSrc && eSrc.message) || eSrc}`); }
 
+                      // ═══ v1.47.70 — KAYNAK OKUNDU, TAHMİN BİTTİ ═══
+                      //   v1.47.69 Luca'nın kendi kodunu döktü ve kesin cevabı verdi:
+                      //     function topluTemizle(){
+                      //       var ok_function = function(){ $j.ajax({
+                      //           url:'isletme/gelir_gider_toplu_sil.jq', method:'POST',
+                      //           data: JSON.stringify({donem_id: session('DONEM_ID')}) ... }) }
+                      //       confirm_window( ... ) }
+                      //   Yani topluTemizle() silme isteğini KENDİSİ ATMIYOR; işi LUCA'NIN KENDİ
+                      //   MODALINA (confirm_window) devrediyor — tarayıcının confirm()'i DEĞİL.
+                      //   O modalın onayına kimse basmadığı için ok_function HİÇ ÇALIŞMIYOR ve istek
+                      //   sunucuya GİTMİYOR. v1.47.67'deki `window.confirm = () => true` bu yüzden
+                      //   boşunaydı (5 → 5); v1.47.68'deki satır seçimi de (10 kutu, 5 → 5).
+                      //   ÇÖZÜM: diyalog kovalamayı bırak, Luca'nın çağırdığı UCU DOĞRUDAN çağır.
+                      //   Sayfanın KENDİ $j'si ve KENDİ session('DONEM_ID')'i kullanılır → oturum,
+                      //   çerez ve göreli URL birebir Luca'nın yaptığı gibi olur.
                       try {
-                        const secildi = satirlariSec(hazirlikDoc);
-                        await log(`☑ Temizlik öncesi ${secildi} kutucuk işaretlendi (Luca seçili satırda çalışıyor)`);
-                        await sleep(400);
-                        if (typeof hwTemiz.topluTemizle === 'function') {
-                          hwTemiz.topluTemizle();
+                        const donemId = (() => { try { return hwTemiz.session ? hwTemiz.session('DONEM_ID') : null; } catch { return null; } })();
+                        if (hwTemiz.$j && hwTemiz.$j.ajax && donemId) {
+                          await log(`🧹 gelir_gider_toplu_sil.jq çağrılıyor (donem_id=${donemId}) — ekranda ${kalinti} dolu satır`);
+                          const yanit = await new Promise((cz) => {
+                            let bitti = false;
+                            const kapat = (v) => { if (!bitti) { bitti = true; cz(v); } };
+                            try {
+                              hwTemiz.$j.ajax({
+                                url: 'isletme/gelir_gider_toplu_sil.jq',
+                                method: 'POST',
+                                contentType: 'application/json',
+                                data: JSON.stringify({ donem_id: donemId }),
+                                success: (r) => kapat(r),
+                                error: (x) => kapat({ error: `http ${(x && x.status) || '?'}` }),
+                              });
+                            } catch (e) { kapat({ error: String((e && e.message) || e) }); }
+                            setTimeout(() => kapat({ error: 'zaman aşımı' }), 25000);
+                          });
+                          await log(`🧹 toplu silme yanıtı: ${JSON.stringify(yanit === undefined ? {} : yanit).slice(0, 180)}`);
                           temizlendi = true;
-                          await log(`🧹 topluTemizle() çağrıldı (confirm=EVET sabitlendi) — ekranda ${kalinti} dolu satır vardı`);
+                          sunucudanSilindi = true;
+                          // Luca başarıdan sonra popup'ı yeniden yüklüyor; aynısını yap ki ekran taze olsun.
+                          try {
+                            const sablonId = (() => { try { const e = hwTemiz.byId && hwTemiz.byId('sablonId'); return (e && e.value) || ''; } catch { return ''; } })();
+                            hwTemiz.location = `hizliFisPopUp.do?r=${Math.random()}&sablonId=${sablonId}`;
+                            await log('🔄 HIZLI FİŞ ekranı yeniden yükleniyor (Luca kendi akışında da böyle yapıyor)');
+                          } catch (eR) { await log(`ekran tazeleme uyarısı: ${(eR && eR.message) || eR}`); }
+                          await sleep(4500);
+                        } else {
+                          await log(`⚠ Doğrudan silme yapılamadı (jq=${!!(hwTemiz.$j && hwTemiz.$j.ajax)} donem_id=${donemId}) — eski yola düşülüyor`);
+                          const secildi = satirlariSec(hazirlikDoc);
+                          await log(`☑ Temizlik öncesi ${secildi} kutucuk işaretlendi`);
+                          await sleep(400);
+                          if (typeof hwTemiz.topluTemizle === 'function') { hwTemiz.topluTemizle(); temizlendi = true; }
                         }
-                      } catch (eT) { await log(`topluTemizle() çağrısı hata verdi: ${(eT && eT.message) || eT}`); }
+                      } catch (eT) { await log(`toplu silme hata verdi: ${(eT && eT.message) || eT}`); }
                       finally {
                         // Sayfanın kendi davranışını geri ver (başka akışlar etkilenmesin).
                         try { if (eskiConfirm !== undefined) hwTemiz.confirm = eskiConfirm; if (eskiAlert !== undefined) hwTemiz.alert = eskiAlert; } catch {}
@@ -3101,7 +3147,14 @@
                       //   Oysa her satırın başında kendi silme düğmesi var:
                       //     <input type="button" value="-" onclick='deleteRow("tr0")'>
                       //   Toplu yol işe yaramazsa satırlar SONDAN BAŞA tek tek silinir (indeks kaymasın).
-                      if (kalan !== 0) {
+                      // v1.47.70 — sunucudan GERÇEKTEN silindiyse DOM-only yedek ÇALIŞMAMALI.
+                      //   Kaynak kanıtı: temizle() yalnızca deleteRow döngüsü kurup kullanıcıya
+                      //   "Ekranı Kaydet'e basın" diyor; deleteRow(id) ise <tr>'yi DOM'dan çıkarıp
+                      //   forma gizli `silinenler` alanı ekliyor — yani form KAYDEDİLMEDEN sunucuda
+                      //   hiçbir şey silinmiyor. Sunucu silmesi tutmadığı hâlde DOM'u boşaltırsak
+                      //   temizlik OLMUŞ sanılır → MÜKERRER FİŞ. 22.09'da bir kez yaşandı;
+                      //   artık maskelemiyoruz, dürüstçe hata veriyoruz.
+                      if (kalan !== 0 && !sunucudanSilindi) {
                         await log(`🧹 Toplu temizlik sonuç vermedi (${kalan} dolu satır) — satırlar TEK TEK siliniyor`);
                         for (let tur = 0; tur < 40; tur++) {
                           const dSil = hfBulTaze();
