@@ -27,6 +27,17 @@
         "EXPO_PUBLIC_API_URL": "https://mali-musavir-app-production.up.railway.app/api/v1"
       },
       "channel": "production"
+    },
+    "tarayici": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://mali-musavir-app-production.up.railway.app/api/v1",
+        "EXPO_PUBLIC_MOREN_APP": "tara"
+      },
+      "channel": "preview"
     }
   },
   "submit": {

@@ -8,10 +8,18 @@ import { colors } from '../lib/theme';
 
 // TEK EKRAN: app/index.tsx (tam ekran WebView köprüsü). Elle port edilmiş eski ekranlar
 // (app/(advisor), app/(taxpayer), login, select) 2026-09-13'te kaldırıldı — tasarımın tek kaynağı assets/app.html.
+// BELGE TARAYICI APK (2026-09-23): EXPO_PUBLIC_MOREN_APP=tara ile derlenen yapı doğrudan
+//   tarama ekranıyla açılır (portalın asıl mobil uygulaması çıkana kadar evrak yükleme aracı).
+//   Bayrak yoksa davranış aynen eskisi: tam ekran portal (index).
+const TARAYICI_MODU = process.env.EXPO_PUBLIC_MOREN_APP === 'tara';
+
+export const unstable_settings = { initialRouteName: TARAYICI_MODU ? 'tara' : 'index' };
+
 export default function RootLayout() {
   const stack = (
     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
       <Stack.Screen name="index" />
+      <Stack.Screen name="tara" />
     </Stack>
   );
 
