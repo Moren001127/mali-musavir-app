@@ -86,7 +86,7 @@
   //   Luca'nın beklediği adlarla TEK SEFERDE hizalanır (her denemede tek sütun hatası okumak yerine).
   // v1.47.48 (2026-09-15): firma onay düğmesi regex'indeki `\b` sınırları kaynakta gerçek backspace (0x08) baytına
   //   dönüşmüştü (sec/aç/ac seçenekleri ölüydü) → düzeltildi.
-  const AGENT_VERSION = '1.47.66';
+  const AGENT_VERSION = '1.47.67';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -2965,13 +2965,28 @@
                       //   onclick'i topluTemizle içeren düğmeye basılır, (3) o da yoksa metin araması.
                       let temizlendi = false;
                       const hwTemiz = hazirlikDoc.defaultView || window;
+                      // v1.47.67 — confirm() TUZAĞI (23.09 canlı kök neden).
+                      //   Luca'nın topluTemizle()'si "emin misiniz?" diye confirm() soruyor. Ajan
+                      //   Playwright üstünde çalışıyor ve Playwright diyalogları OTOMATİK REDDEDER →
+                      //   confirm() false döner → fonksiyon hiçbir şey yapmadan çıkar, SUNUCUYA HİÇ
+                      //   GİTMEZ. Kullanıcı elle basınca çalışmasının sebebi buydu ("Toplam Kayıt
+                      //   Sayısı: 0" ekran görüntüsü). Kanıt: ekran DOM'da 0'a indi ama yükleme
+                      //   sonrası 1 satırlık CSV'den 4 DOLU satır çıktı — 3'ü sunucuda duruyordu.
+                      //   Çağrı süresince confirm/alert EVET'e sabitlenir, sonra eski hâline konur.
+                      const eskiConfirm = (() => { try { return hwTemiz.confirm; } catch { return undefined; } })();
+                      const eskiAlert = (() => { try { return hwTemiz.alert; } catch { return undefined; } })();
+                      try { hwTemiz.confirm = () => true; hwTemiz.alert = () => undefined; } catch {}
                       try {
                         if (typeof hwTemiz.topluTemizle === 'function') {
                           hwTemiz.topluTemizle();
                           temizlendi = true;
-                          await log(`🧹 topluTemizle() çağrıldı (sayfa fonksiyonu) — ekranda ${kalinti} dolu satır vardı`);
+                          await log(`🧹 topluTemizle() çağrıldı (confirm=EVET sabitlendi) — ekranda ${kalinti} dolu satır vardı`);
                         }
                       } catch (eT) { await log(`topluTemizle() çağrısı hata verdi: ${(eT && eT.message) || eT}`); }
+                      finally {
+                        // Sayfanın kendi davranışını geri ver (başka akışlar etkilenmesin).
+                        try { if (eskiConfirm !== undefined) hwTemiz.confirm = eskiConfirm; if (eskiAlert !== undefined) hwTemiz.alert = eskiAlert; } catch {}
+                      }
                       if (!temizlendi) {
                         try {
                           for (const el of hazirlikDoc.querySelectorAll('[onclick]')) {
@@ -3268,6 +3283,21 @@
                         if (!dTaze) continue;
                         const simdi = doluSatirSay(dTaze);
                         if (simdi > oncekiDolu) {
+                          // v1.47.67 — satır geldi ama Luca'nın AJAX doldurması SONRA koşuyor.
+                          //   Açılır kutular dolana kadar (seçenek > 1) en çok ~12 sn daha bekle;
+                          //   yoksa cari sorgu ve Fiş Kes boş kutularla çalışıyor (opt=1 tanısı).
+                          for (let kb = 0; kb < 12; kb++) {
+                            let tekSecenek = 0, toplamSec = 0;
+                            try {
+                              for (const sel of dTaze.querySelectorAll('select[name^="detaylar["]')) {
+                                toplamSec++;
+                                if (!sel.options || sel.options.length <= 1) tekSecenek++;
+                              }
+                            } catch {}
+                            if (toplamSec > 0 && tekSecenek === 0) { await log(`✓ Satır kutuları Luca tarafından dolduruldu (${toplamSec} kutu)`); break; }
+                            if (kb === 11) await log(`⚠ Satır kutularının ${tekSecenek}/${toplamSec} tanesi hâlâ tek seçenekli — Luca doldurmayı bitirmemiş olabilir`);
+                            await sleep(1000);
+                          }
                           gridDolu = simdi;
                           gridSatir = (() => { try { const st = new Set(); for (const el of dTaze.querySelectorAll('[name^="detaylar["]')) { const m = String(el.name || '').match(/^detaylar\[(\d+)\]/); if (m) st.add(m[1]); } return st.size; } catch { return -1; } })();
                           try { postTr = dTaze.querySelectorAll('table tr').length; } catch {}
@@ -3634,6 +3664,12 @@
                   if (bosKutular.length) throw new Error(`Satır açılır kutuları dolmadı (${bosKutular.slice(0, 4).join(', ')}). "Fiş Kes" BASILMADI — eksik fiş kesilmesin.`);
 
                   // 3) "Fiş Kes" — sayfa fonksiyonu (fn:gonder) → popup-trusted → ana native → fireEl
+                  // v1.47.67 — Fiş Kes de confirm() soruyor olabilir; Playwright reddettiği için
+                  //   fonksiyon sessizce çıkıyor olabilirdi. Çağrı boyunca EVET'e sabitle.
+                  const fkDoc = hizliFisDoc();
+                  const fkWin = (fkDoc && fkDoc.defaultView) || window;
+                  const fkEskiConfirm = (() => { try { return fkWin.confirm; } catch { return undefined; } })();
+                  try { fkWin.confirm = () => true; } catch {}
                   const fkEl = findBtn(/^Fi[şs]\s*Kes$/i);
                   let fk = false;
                   if (fkEl) fk = firePageBtn(fkEl);
@@ -3672,6 +3708,7 @@
                     if (oe && fireEl(oe)) { await log(`↳ "${lbl}" onaylandı (dom · onclick=${String((oe.getAttribute && oe.getAttribute('onclick')) || '-').replace(/\s+/g, '').slice(0, 40)})`); break; }
                   }
                   await sleep(2500);
+                  try { if (fkEskiConfirm !== undefined) fkWin.confirm = fkEskiConfirm; } catch {}
                   // 5) DOĞRULA — DÜRÜST: sadece GERÇEK sinyal (başarı metni ya da grid satırları temizlendi).
                   //   gc2<gc gibi zayıf sinyalle done DEME (yanlış POSTED olur).
                   let ok = false;
