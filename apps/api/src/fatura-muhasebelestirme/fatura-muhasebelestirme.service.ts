@@ -8775,7 +8775,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const payload: any = {
       mode: 'BATCH_EXCEL', format: isIsletme ? 'ISLETME_CSV' : 'BATCH_EXCEL', direction: kind,
       period: q.period || '', totalCount: docs.length,
-      fisAciklama: `${kind === 'SATIS' ? 'SATIŞ' : 'ALIŞ'} faturaları - ${q.period || ''} (${docs.length} belge)`, // düz tire: uzun tire Luca'da '?' görünüyordu (2026-09-15)
+      fisAciklama: kind === 'SATIS' ? 'Satışlar' : 'Alışlar', // Mihsap kalıbı (2026-09-23)
       invoices: docs.map(toInvoicePayload),
     };
     const yon = kind === 'SATIS' ? 'satis' : 'alis';
@@ -9010,7 +9010,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             direction: g.kind,
             period: dominantPeriod,
             totalCount: g.docs.length,
-            fisAciklama: `${kindLabel} faturaları - ${dominantPeriod} (${g.docs.length} belge)${(g as any).parcaNo ? ` ${(g as any).parcaNo}/${(g as any).parcaToplam}` : ''}`, // 200 satır sınırında parçalandıysa numaralı
+            // FİŞ AÇIKLAMASI = MİHSAP KALIBI (2026-09-23, Muzaffer Bey): "Satışlar" / "Alışlar";
+            //   birden çok fiş varsa ikincisinden itibaren numaralanır → Satışlar, Satışlar1, Satışlar2…
+            fisAciklama: `${g.kind === 'SATIS' ? 'Satışlar' : 'Alışlar'}${(g as any).parcaNo && (g as any).parcaNo > 1 ? String((g as any).parcaNo - 1) : ''}`,
             invoices: g.docs.map(toInvoicePayload),
           },
         },
