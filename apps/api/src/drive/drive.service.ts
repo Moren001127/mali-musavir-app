@@ -17,6 +17,8 @@ import { encrypt, decrypt } from '../common/crypto';
 const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const GOOGLE_USERINFO_URL = 'https://www.googleapis.com/oauth2/v2/userinfo';
+import * as AdmZip from 'adm-zip';
+
 const DRIVE_FILES_URL = 'https://www.googleapis.com/drive/v3/files';
 const DRIVE_UPLOAD_URL =
   'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id&supportsAllDrives=true';
@@ -561,10 +563,11 @@ export class DriveService implements OnModuleInit, OnModuleDestroy {
           const bas = (file.buffer || Buffer.alloc(0)).slice(0, 300).toString('utf8').trimStart().toLowerCase();
           const htmlMi = /html/i.test(String(file.contentType || '')) || bas.startsWith('<!doctype html') || bas.startsWith('<html');
           if (!htmlMi) {
-            return {
+            // ZIP ise içinden görüntülenebilir dosyayı çıkar (TÜRMOB e-Fatura paketleri).
+            return this.zipiAc({
               ...file,
               filename: backup.fileName || `${inv.faturaNo || invoiceId}`,
-            };
+            });
           }
           steps.push('drive-get: html yedek, görsele çevrilmek üzere mihsap yoluna düşüldü');
         } else steps.push('drive-get: dosya okunamadi');
@@ -580,12 +583,62 @@ export class DriveService implements OnModuleInit, OnModuleDestroy {
 
     // Fallback: MIHSAP proxy (invoiceId ile DOĞRU belge; CDN erişilebilirse)
     try {
-      return await this.mihsap.getInvoiceFile(tenantId, invoiceId);
+      return this.zipiAc(await this.mihsap.getInvoiceFile(tenantId, invoiceId));
     } catch (e: any) {
       steps.push(`mihsap: ${e?.response?.message || e?.message || e}`);
       const detay = steps.join(' | ').slice(0, 350);
       this.logger.error(`serveInvoiceFile ${invoiceId} tum yollar tukendi: ${detay}`);
       throw new BadGatewayException(`Belge dosyasi alinamadi — ${detay}`);
+    }
+  }
+
+  /** ZIP ise İÇİNDEN görüntülenebilir dosyayı çıkarır (PDF > görsel > HTML > XML).
+   *  NEDEN: TÜRMOB e-Fatura paketleri ZIP olarak saklanıyor; görüntüleyici <img>/<iframe>
+   *  ZIP baytlarını gösteremiyor ve "Görüntü yüklenemedi (dosya bozuk olabilir)" diyordu.
+   *  2026-09-23 (Muzaffer Bey, YORGUN NAKLİYAT 2026-08): 703 belgenin 80'i bu yüzden hiç
+   *  açılmıyordu. Kodda bu işin YORUMU vardı ama fonksiyon hiç yazılmamıştı (sahipsiz yorum
+   *  mihsap.service.ts:1050). Açılamazsa ORİJİNAL döner — belge göstermemektense ham dönsün. */
+  private zipiAc(file: { buffer: Buffer; contentType: string; filename: string }):
+    { buffer: Buffer; contentType: string; filename: string } {
+    const b = file?.buffer;
+    // PK\x03\x04 (normal), PK\x05\x06 (boş), PK\x07\x08 (parçalı)
+    const zipMi = !!b && b.length > 4 && b[0] === 0x50 && b[1] === 0x4b && (b[2] === 3 || b[2] === 5 || b[2] === 7);
+    if (!zipMi) return file;
+    try {
+      const zip = new AdmZip(b);
+      const puan = (ad: string) => {
+        const a = ad.toLowerCase();
+        if (a.endsWith('.pdf')) return 4;
+        if (/\.(jpe?g|png|webp|tiff?)$/.test(a)) return 3;
+        if (/\.html?$/.test(a)) return 2;
+        if (a.endsWith('.xml')) return 1;
+        return 0;
+      };
+      const en = zip
+        .getEntries()
+        .filter((e: any) => !e.isDirectory)
+        .map((e: any) => ({ e, p: puan(String(e.entryName || '')) }))
+        .filter((x: any) => x.p > 0)
+        .sort((a: any, b2: any) => b2.p - a.p)[0];
+      if (!en) {
+        this.logger.warn(`ZIP icinde goruntulenebilir dosya yok (${file.filename || '-'})`);
+        return file;
+      }
+      const ad = String(en.e.entryName || '');
+      const icerik: Buffer = en.e.getData();
+      const tip = /\.pdf$/i.test(ad) ? 'application/pdf'
+        : /\.png$/i.test(ad) ? 'image/png'
+        : /\.(jpe?g)$/i.test(ad) ? 'image/jpeg'
+        : /\.webp$/i.test(ad) ? 'image/webp'
+        : /\.tiff?$/i.test(ad) ? 'image/tiff'
+        : /\.html?$/i.test(ad) ? 'text/html; charset=utf-8'
+        : /\.xml$/i.test(ad) ? 'application/xml'
+        : 'application/octet-stream';
+      this.logger.log(`ZIP acildi: ${file.filename || '-'} -> ${ad} (${tip}, ${icerik.length}B)`);
+      return { buffer: icerik, contentType: tip, filename: ad.split('/').pop() || file.filename };
+    } catch (e: any) {
+      this.logger.warn(`ZIP acilamadi (${file.filename || '-'}): ${e?.message || e}`);
+      return file;
     }
   }
 

@@ -1402,7 +1402,11 @@ function InvoicePreviewModal({
             const urlExt = cleanPath.split('.').pop() || '';
             const isPdf = contentType.includes('pdf') || urlExt === 'pdf';
             const isXml = contentType.includes('xml') || urlExt === 'xml';
-            if (isPdf || isXml) {
+            // HTML de ÇERÇEVEDE gösterilir (2026-09-23): e-Arşiv/e-Fatura belgeleri HTML olarak
+            //   saklanıyor ve ZIP içinden de HTML çıkabiliyor; <img> bunu gösteremeyip
+            //   "dosya bozuk" diyordu. iframe HTML'i olduğu gibi render eder.
+            const isHtml = contentType.includes('html') || urlExt === 'html' || urlExt === 'htm';
+            if (isPdf || isXml || isHtml) {
               return (
                 <iframe
                   src={url}
