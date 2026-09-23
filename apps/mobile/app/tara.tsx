@@ -28,7 +28,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFonts, KaushanScript_400Regular } from '@expo-google-fonts/kaushan-script';
 import DocumentScanner, { ResponseType } from 'react-native-document-scanner-plugin';
@@ -139,6 +139,10 @@ const mk = StyleSheet.create({
 export default function TaraEkrani() {
   const { status, login, logout } = useAuth();
   const [fontHazir] = useFonts({ KaushanScript_400Regular });
+  // Alt bar `position:absolute; bottom:0` — SafeAreaView'in alt dolgusunu ALMAZ; Android gezinme
+  //   çubuğu (geri/ana/son) düğmelerin üstünü örtüyordu (2026-09-24, Muzaffer Bey'in ekran görüntüsü).
+  //   Boşluk buradan eklenir; çubuksuz (tam ekran hareket) cihazlarda insets.bottom 0 → görünüm aynı.
+  const insets = useSafeAreaInsets();
 
   // giriş
   const [eposta, setEposta] = useState('');
@@ -468,7 +472,7 @@ export default function TaraEkrani() {
         </>
       )}
 
-      <ScrollView contentContainerStyle={s.docList}>
+      <ScrollView contentContainerStyle={[s.docList, { paddingBottom: 130 + insets.bottom }]}>
         {belgeler.map((b) => (
           <Pressable key={b.anahtar} style={[s.doc, b.secili && s.docOn]} onPress={() => seciliDegistir(b.anahtar)}>
             {b.secili
@@ -497,7 +501,7 @@ export default function TaraEkrani() {
         {!!sonuc && <Text style={s.basari}>{sonuc}</Text>}
       </ScrollView>
 
-      <View style={s.bar}>
+      <View style={[s.bar, { paddingBottom: 17 + insets.bottom }]}>
         <Pressable style={s.b2} onPress={dosyaEkle} disabled={hazirlaniyor}><Text style={s.b2T}>Dosya Ekle</Text></Pressable>
         <Pressable style={s.b2} onPress={tara} disabled={hazirlaniyor}><Text style={s.b2T}>Belge Tara</Text></Pressable>
         <Pressable style={[s.b1w, (!seciliSayi || hazirlaniyor) && s.pasif]} onPress={gonder} disabled={!seciliSayi || hazirlaniyor}>
