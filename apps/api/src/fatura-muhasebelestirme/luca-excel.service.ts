@@ -46,6 +46,10 @@ export interface InvoicePayload {
   currency?: string | null;
   /** Belge kuru (invoiceAccountingDocument.exchangeRate) — döviz faturasında Kur/Döviz Tutar kolonları için. */
   exchangeRate?: string | number | null;
+  /** KARŞI TARAF vergi dairesi + adres (2026-09-23): işletme HIZLI FİŞ, Luca'da kayıtlı olmayan cari için bunları ister;
+   *  boş kalınca Fiş Kes satırı sessizce reddediyordu. Kaynak: cari defteri ya da belgenin GİB görünümü. */
+  counterpartyVergiDairesi?: string | null;
+  counterpartyAdres?: string | null;
   lines: InvoiceLine[];
   /** İşletme defteri (Defter-Beyan) sınıflandırması — ocrData.isletme'den gelir. */
   isletme?: {
@@ -453,10 +457,13 @@ export function buildLucaIsletmeHizliFisCsv(payload: BatchPayload): Buffer {
         inv.seriNo || '',                             // 6 SERİ NO
         inv.belgeNo || '',                            // 7 EVRAK NO
         counterpartyVkn,                              // 8 TCKN/VKN
-        '',                                           // 9 VERGİ DAİRESİ
+        // 9 VERGİ DAİRESİ + 12 ADRES (2026-09-23, DOĞAN ÖZKAN → ECT TURİZM): Luca'da kayıtlı olmayan cari için Fiş Kes
+        //   bunları ister (kendi cari sorgusu VKN'yi bulamayınca satır sessizce kalıyordu). Vergi dairesi GİB'in
+        //   yazdığı resmi adla (ör. "BEYLİKDÜZÜ VERGİ DAİRESİ MÜD."); adres ünvan gibi ASCII'ye katlanır (özel karakter reddi).
+        String(inv.counterpartyVergiDairesi || '').replace(/\s+/g, ' ').trim().slice(0, 120), // 9 VERGİ DAİRESİ
         counterpartyName,                             // 10 SOYADI ÜNVAN
         '',                                           // 11 ADI DEVAMI
-        '',                                           // 12 ADRES
+        isletmeUnvanDuzelt(String(inv.counterpartyAdres || '').replace(/\s+/g, ' ').trim().slice(0, 200)), // 12 ADRES
         st.hesapKodu || '',                           // 13 CARİ HESAP
         kdvIstisnasi,                                 // 14 KDV İSTİSNASI (KDV tablo türü: tevkifatlı satışta Tablo 2 / isteğe bağlı tam)
         tevkifatKod,                                  // 15 KOD (normal satış 1100 · kısmi tevkifat 6xx)

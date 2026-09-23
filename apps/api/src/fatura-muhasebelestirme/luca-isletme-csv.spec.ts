@@ -44,7 +44,27 @@ describe('İşletme HIZLI FİŞ CSV — Luca fiş türü ve tevkifatlı satış 
     expect(h[23]).toBe('5/10');
     const normal: any = { ...satis, invoices: [{ ...satis.invoices[0], isletme: { ...satis.invoices[0].isletme, tevkifatOrani: '', tevkifatKodu: '' } }] };
     const n = hucreler(buildLucaIsletmeHizliFisCsv(normal));
-    expect([n[13], n[14], n[16], n[23]]).toEqual(['', '', 'Normal Satışlar', '']);
+    // 2026-09-23 (045e14b): normal satışta da KDV İSTİSNASI Tablo 1 + KOD 1100 dolu gider (eskiden boştu — test o günkü hâlde kalmıştı).
+    expect([n[13], n[14], n[16], n[23]]).toEqual(['Tablo 1(TEVKİFAT UYGULANMAYAN İŞLEMLER)', '1100', 'Normal Satışlar', '']);
+  });
+});
+
+describe('İşletme HIZLI FİŞ CSV — karşı taraf VERGİ DAİRESİ + ADRES (2026-09-23, DOĞAN ÖZKAN → ECT TURİZM)', () => {
+  const hucreler = (buf: Buffer) => require('iconv-lite').decode(buf, 'win1254').split('\r\n')[1].split(';');
+  it('vergi dairesi 9. sütuna GİB adıyla, adres 12. sütuna ASCII katlanmış; bilgi yoksa ikisi de boş', () => {
+    process.env.LUCA_ISLETME_UNVAN_ASCII = '2';
+    const p: any = { ...payload(), direction: 'SATIS', invoices: [{ ...payload().invoices[0], invoiceKind: 'SATIS', buyerVkn: '3241180695', customerName: 'ECT TURİZM VE OTOMOTİV TİCARET LİMİTED ŞİRKETİ', vendorName: null,
+      counterpartyVergiDairesi: ' BEYLİKDÜZÜ  VERGİ DAİRESİ MÜD. ', counterpartyAdres: 'YAKUPLU MAH. HÜRRİYET CAD. NO:131/6 BEYLİKDÜZÜ / İSTANBUL',
+      isletme: { belgeTuruKod: '8', belgeTuruAd: 'e-Arşiv Fatura', kayitTuruKod: '2', kayitTuruAd: 'Hizmet Satışı', kayitAltKod: '2', kayitAltAd: 'Hizmet Satışı', kdvOranKod: 'KDV20' },
+      lines: [{ group: 'matrah', description: 'x', rate: '20', debit: '0', credit: '128700', orderNo: 0 }, { group: 'vergi', description: 'kdv', rate: '20', debit: '0', credit: '12870', orderNo: 1 }] }] };
+    const h = hucreler(buildLucaIsletmeHizliFisCsv(p));
+    expect(h[7]).toBe('3241180695');
+    expect(h[8]).toBe('BEYLİKDÜZÜ VERGİ DAİRESİ MÜD.');
+    expect(h[11]).toBe(require('./luca-excel.service').isletmeUnvanDuzelt('YAKUPLU MAH. HÜRRİYET CAD. NO:131/6 BEYLİKDÜZÜ / İSTANBUL'));
+    expect(h[11]).not.toMatch(/[ÜİŞ]/);
+    const bos: any = { ...p, invoices: [{ ...p.invoices[0], counterpartyVergiDairesi: null, counterpartyAdres: undefined }] };
+    const b = hucreler(buildLucaIsletmeHizliFisCsv(bos));
+    expect([b[8], b[11]]).toEqual(['', '']);
   });
 });
 

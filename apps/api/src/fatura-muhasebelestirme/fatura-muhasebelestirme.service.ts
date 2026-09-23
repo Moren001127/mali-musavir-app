@@ -16,6 +16,7 @@ import { MAX_MODEL_CHEAP, MAX_MODEL_DEFAULT } from '../common/max-inference';
 import { fmTextAi, fmAiBaglamIle, fmAiBaglamGuncelle, fmAiBaglamOku, fmAiDefterBagla, fmAiBekciDurumu, fmAiBekciDevam, FmAiBaglam } from '../common/fm-ai';
 import { saticiHafizasiKarari, HafizaOrnegi, SaticiHafizasiKarari, saticiHafizasiModu } from './satici-hafizasi';
 import { buildLucaImportExcel, buildLucaIsletmeHizliFisCsv } from './luca-excel.service';
+import { earsivHtmlKarsiTaraf } from './karsi-taraf-bilgisi';
 import { reconcileMatrahSplit } from './kalem-split';
 // PLAN/15 Faz 1-B (2026-09-12): plan adayları TEK kaynaktan (yön sıralı + rol etiketli + grup tavanlı) + satış gelir kuralı sabiti.
 import { planAdaylariHazirla, planAdayKodSeti, SATIS_GELIR_HESABI_KURALI, PLAN_ADAY_ROL_ACIKLAMASI } from './plan-adaylari';
@@ -8784,6 +8785,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     });
     if (!docs.length) throw new BadRequestException(isIsletme ? 'Aktarılacak (belge/kayıt türü tamam) İşletme belgesi yok' : 'İndirilecek (dengeli, kodlu) belge yok');
     const kind: 'ALIS' | 'SATIS' = q.direction === 'SATIS' || (!q.direction && String(docs[0].invoiceKind).toUpperCase() === 'SATIS') ? 'SATIS' : 'ALIS';
+    // İndirilen CSV de Luca'ya elle yüklenir → aynı karşı taraf bilgisi (vergi dairesi/adres) burada da yazılır.
+    const karsiTaraf = isIsletme ? await this.karsiTarafBilgileri(tenantId, docs) : new Map<string, { vergiDairesi: string; adres: string }>();
     const toInvoicePayload = (d: any) => ({
       documentId: d.id, documentType: d.documentType, invoiceKind: d.invoiceKind, belgeNo: d.belgeNo,
       seriNo: d.seriNo, faturaTarihi: d.faturaTarihi ? d.faturaTarihi.toISOString() : null,
@@ -8791,6 +8794,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       totalAmount: d.totalAmount ? String(d.totalAmount) : null, currency: d.currency || 'TL',
       exchangeRate: d.exchangeRate != null ? String(d.exchangeRate) : null,
       isletme: isIsletme ? isletmeWithBelgeDefaults(d) : (d.ocrData?.isletme || null),
+      counterpartyVergiDairesi: karsiTaraf.get(d.id)?.vergiDairesi || null,
+      counterpartyAdres: karsiTaraf.get(d.id)?.adres || null,
       lines: (d.lines || []).map((line: any) => ({
         group: line.group, accountCode: line.accountCode, description: line.description, rate: line.rate,
         debit: line.debit ? String(line.debit) : '0', credit: line.credit ? String(line.credit) : '0', orderNo: line.orderNo,
@@ -8809,6 +8814,41 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     }
     const buf = await buildLucaImportExcel(payload);
     return { buffer: buf, filename: `luca-fis-${yon}-${q.period || 'donem'}.xlsx`, contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };
+  }
+
+  /**
+   * KARŞI TARAF VERGİ DAİRESİ + ADRES (2026-09-23, DOĞAN ÖZKAN → ECT TURİZM): Luca HIZLI FİŞ, alıcı/satıcı Luca'da
+   * kayıtlı değilse cari kartını Fiş Kes anında kendisi açar ve bunun için VERGİ DAİRESİ ister; boş kalınca satır
+   * SESSİZCE reddediliyordu (ekranda hata yok, satır olduğu gibi kalıyor; Luca'nın kendi cari sorgusu da bu VKN'yi
+   * bulamadı: 0/1). Sıra: (1) cari defteri (vendor_memory), (2) belgenin kendi GİB görünümü (HTML) — bulunan bilgi
+   * deftere de öğretilir (bir sonraki aktarım anında). Hata hiçbir zaman aktarımı durdurmaz; bilgi yoksa sütun boş kalır.
+   */
+  private async karsiTarafBilgileri(tenantId: string, docs: any[]): Promise<Map<string, { vergiDairesi: string; adres: string }>> {
+    const sonuc = new Map<string, { vergiDairesi: string; adres: string }>();
+    for (const d of docs) {
+      const satis = String(d.invoiceKind || 'ALIS').toUpperCase() === 'SATIS';
+      const kimlik = String((satis ? d.buyerVkn : d.sellerVkn) || '').replace(/\D/g, '');
+      if (kimlik.length !== 10 && kimlik.length !== 11) continue;
+      try {
+        const defter = await this.vendorMemory.cariAra(tenantId, kimlik).catch(() => null);
+        if (defter && (defter.vergiDairesi || defter.adres)) {
+          sonuc.set(d.id, { vergiDairesi: defter.vergiDairesi || '', adres: defter.adres || '' });
+          if (defter.vergiDairesi) continue;
+        }
+        const dosya: any = await this.fileUrl(tenantId, d.id).catch(() => null);
+        const html = String(dosya?.inlineHtml || '');
+        if (!html) continue;
+        const kt = earsivHtmlKarsiTaraf(html, satis ? 'SATIS' : 'ALIS', kimlik);
+        if (!kt) continue;
+        const onceki = sonuc.get(d.id);
+        sonuc.set(d.id, { vergiDairesi: kt.vergiDairesi || onceki?.vergiDairesi || '', adres: kt.adres || onceki?.adres || '' });
+        await this.vendorMemory.cariOgren(tenantId, { kimlikNo: kimlik, unvan: kt.unvan, vergiDairesi: kt.vergiDairesi, adres: kt.adres }, 'earsiv-html').catch(() => null);
+        this.logger.log(`[KARSI-TARAF] ${d.belgeNo || d.id}: ${kimlik} → vergi dairesi "${kt.vergiDairesi || '-'}" (belge görünümünden, deftere öğretildi)`);
+      } catch (e: any) {
+        this.logger.warn(`Karşı taraf bilgisi alınamadı (${d.id}): ${e?.message || e}`);
+      }
+    }
+    return sonuc;
   }
 
   async batchPostToLuca(
@@ -8904,6 +8944,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // v2.3: Kullanici talebi — ALIS ve SATIS faturalari AYRI dosya/fis olarak
     // aktarilir (her biri tek fis; kullanici Luca'da "fis bol" yapar).
     // Bu yuzden belgeleri yone gore gruplayip her grup icin ayri INVOICE_POST job uretiyoruz.
+    // İşletme CSV'sinde karşı tarafın vergi dairesi/adresi (Luca'da kayıtsız cari için Fiş Kes şartı).
+    const karsiTaraf = isIsletme ? await this.karsiTarafBilgileri(tenantId, docs) : new Map<string, { vergiDairesi: string; adres: string }>();
     const toInvoicePayload = (d: any) => ({
       documentId: d.id,
       documentType: d.documentType,
@@ -8919,6 +8961,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       currency: d.currency || 'TL',
       exchangeRate: d.exchangeRate != null ? String(d.exchangeRate) : null,
       isletme: isIsletme ? isletmeWithBelgeDefaults(d) : (d.ocrData?.isletme || null),
+      counterpartyVergiDairesi: karsiTaraf.get(d.id)?.vergiDairesi || null,
+      counterpartyAdres: karsiTaraf.get(d.id)?.adres || null,
       lines: (d.lines || []).map((line: any) => ({
         group: line.group,
         accountCode: line.accountCode,

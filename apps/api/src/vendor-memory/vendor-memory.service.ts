@@ -889,6 +889,34 @@ Yanlış ipucuna uyup yanlış karar vermek, ipucu olmamasından DAHA KÖTÜDÜR
   }
 
   /**
+   * TEK CARİYİ ÖĞRET (2026-09-23) — belgenin kendi GİB görünümünden okunan vergi dairesi/adres deftere yazılır.
+   * Var olan DOLU alan ezilmez (defterdeki UBL bilgisi öncelikli), boş alan doldurulur; kayıt yoksa açılır.
+   */
+  async cariOgren(
+    tenantId: string,
+    c: { kimlikNo: string; unvan?: string; vergiDairesi?: string; adres?: string },
+    kaynak = 'earsiv-html',
+  ) {
+    const no = String(c.kimlikNo || '').replace(/\D/g, '');
+    if (no.length !== 10 && no.length !== 11) return null;
+    const mevcut: any = await (this.prisma as any).vendorMemory.findUnique({
+      where: { tenantId_firmaKimlikNo: { tenantId, firmaKimlikNo: no } },
+      select: { id: true, firmaUnvan: true, vergiDairesi: true, adres: true, cariKaynak: true },
+    }).catch(() => null);
+    const veri = {
+      firmaUnvan: mevcut?.firmaUnvan || String(c.unvan || '').trim() || null,
+      vergiDairesi: mevcut?.vergiDairesi || String(c.vergiDairesi || '').trim() || null,
+      adres: mevcut?.adres || String(c.adres || '').trim() || null,
+      cariKaynak: mevcut?.cariKaynak || kaynak,
+    };
+    if (mevcut) {
+      if (mevcut.firmaUnvan === veri.firmaUnvan && mevcut.vergiDairesi === veri.vergiDairesi && mevcut.adres === veri.adres) return mevcut;
+      return (this.prisma as any).vendorMemory.update({ where: { id: mevcut.id }, data: veri }).catch(() => null);
+    }
+    return (this.prisma as any).vendorMemory.create({ data: { tenantId, firmaKimlikNo: no, ...veri } }).catch(() => null);
+  }
+
+  /**
    * DEFTERİ KUR — elimizdeki UBL XML'lerini tarayıp cari defterini doldurur/günceller.
    * Faturanın HER İKİ tarafı da alınır (satıcı + alıcı). Var olan kayıtta boş alan varsa doldurulur;
    * dolu alan yeni bilgiyle güncellenir (ünvan/adres zamanla değişir, en son görülen esastır).
