@@ -59,7 +59,7 @@ export interface InvoicePayload {
     hesapKodu?: string; tevkifatOrani?: string; tevkifatTutar?: number; tevkifatKodu?: string; stopajOrani?: string; stopajTutar?: number; stopajKod?: string;
     /** KDV matrahına dahil olmayan bedel (ÖİV/telsiz/damga …) — Luca 28. sütun; belge okumasından (diger_vergi satırları). */
     digerVergi?: number;
-    satirlar?: Array<{ kayitTuruAd?: string; kayitAltAd?: string; kdvOranKod?: string; matrah?: number; kdvTutar?: number; krediliTutar?: number; donem?: boolean; hesapKodu?: string; tevkifatOrani?: string; stopajOrani?: string; stopajTutar?: number }>;
+    satirlar?: Array<{ kayitTuruAd?: string; kayitAltAd?: string; kdvOranKod?: string; matrah?: number; kdvTutar?: number; krediliTutar?: number; donem?: boolean; hesapKodu?: string; tevkifatOrani?: string; tevkifatKodu?: string; tevkifatTutar?: number; stopajOrani?: string; stopajTutar?: number }>;
   } | null;
 }
 
@@ -337,7 +337,7 @@ export function buildLucaIsletmeHizliFisCsv(payload: BatchPayload): Buffer {
     // ÇOKLU SATIR: her İşletme satırı (farklı KDV oranı / gider türü) AYRI CSV satırı.
     const satirlar: any[] = Array.isArray(isl.satirlar) && isl.satirlar.length
       ? isl.satirlar
-      : [{ kayitTuruAd: isl.kayitTuruAd, kayitAltAd: isl.kayitAltAd, kdvOranKod: isl.kdvOranKod, matrah: isl.matrah ?? lineMatrah, kdvTutar: isl.kdvTutar ?? lineKdv, krediliTutar: isl.krediliTutar, donem: isl.donem, hesapKodu: isl.hesapKodu, tevkifatOrani: isl.tevkifatOrani, stopajOrani: isl.stopajOrani, stopajTutar: isl.stopajTutar, digerVergi: isl.digerVergi ?? lineDiger }];
+      : [{ kayitTuruAd: isl.kayitTuruAd, kayitAltAd: isl.kayitAltAd, kdvOranKod: isl.kdvOranKod, matrah: isl.matrah ?? lineMatrah, kdvTutar: isl.kdvTutar ?? lineKdv, krediliTutar: isl.krediliTutar, donem: isl.donem, hesapKodu: isl.hesapKodu, tevkifatOrani: isl.tevkifatOrani, tevkifatKodu: isl.tevkifatKodu, tevkifatTutar: isl.tevkifatTutar, stopajOrani: isl.stopajOrani, stopajTutar: isl.stopajTutar, digerVergi: isl.digerVergi ?? lineDiger }];
 
     // KOD→AD ÇÖZÜMÜ: belge Muhasebeleştir formunda AÇILMADAN otomatik sınıflanıp onaylandıysa
     //   ...Ad alanları BOŞ olur; eskiden CSV bunları sabit "Normal Alım/Satış" ya da boş yazıyordu
@@ -420,8 +420,10 @@ export function buildLucaIsletmeHizliFisCsv(payload: BatchPayload): Buffer {
             ? (tamTevkifat ? 'Tablo (İSTEĞE BAĞLI TAM TEVKİFAT UYGULANAN İŞLEMLER)' : 'Tablo 2(KISMİ TEVKİFAT UYGULANAN İŞLEMLER)')
             : 'Tablo 1(TEVKİFAT UYGULANMAYAN İŞLEMLER)')
         : '';
+      // Kod ÖNCE satırdan, yoksa belge kökünden (2026-09-23): ekran kodu SATIRA yazıyor, burası yalnız
+      //   kökü okuyordu → elle seçilen kod bile Luca dosyasına gitmiyordu. Oranla aynı sıra artık.
       const tevkifatKod = satisTevkifatli
-        ? String(isl.tevkifatKodu || '').replace(/\D/g, '')
+        ? String(st.tevkifatKodu || isl.tevkifatKodu || '').replace(/\D/g, '')
         : (isSale ? '1100' : '');
       const alisSatisTuruCsv = satisTevkifatli
         ? (tamTevkifat ? 'İsteğe Bağlı Tam Tevkifat Uygulanan İşlemler' : 'Kısmi Tevkifat Uygulanan İşlemler')

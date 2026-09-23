@@ -169,12 +169,15 @@ function isletmeAmountReady(doc: any): boolean {
  *  Kod: UBL'den okunan varsa o; yoksa kalem/açıklama metninden kural tahmini (oran payı tutuyorsa) → satıcı kodu 6xx. */
 function isletmeTevkifatVarsayilanlari(doc: any, isl: any): any {
   const ocr: any = doc?.ocrData || {};
+  // ALAN ALAN (2026-09-23, DOĞAN ÖZKAN): eskiden "oran zaten doluysa hiç dokunma" deniyordu; bu, oran bir kez
+  //   kaydedildikten sonra KODUN ASLA dolmaması demekti (ekranda "Tevkifat Kodu: Yok" kalıyordu).
+  //   Artık her alan kendi başına bakılır: DOLU olan korunur, BOŞ olan doldurulur.
+  const mevcutOran = String(isl?.tevkifatOrani || '').trim();
   const oran = Number(ocr?.tevkifatOrani) || 0;
-  if (!(oran > 0) || String(isl?.tevkifatOrani || '').trim()) return isl;
-  const oranTxt = oranMetni(oran);
+  const oranTxt = mevcutOran || (oran > 0 ? oranMetni(oran) : '');
   if (!oranTxt) return isl;
   const pay = oranPay(oranTxt);
-  let kod = String(ocr?.tevkifatKodu || '').replace(/\D/g, '');
+  let kod = String(isl?.tevkifatKodu || '').replace(/\D/g, '') || String(ocr?.tevkifatKodu || '').replace(/\D/g, '');
   if (!kod) {
     const kalemler = [
       ...(Array.isArray(ocr?.kalemler) ? ocr.kalemler.map((k: any) => String(k?.ad || '')) : []),
@@ -183,7 +186,9 @@ function isletmeTevkifatVarsayilanlari(doc: any, isl: any): any {
     const kural = tevkifatKuralTahmin({ giderTuru: ocr?.giderTuru, kalemler, oranPay: pay });
     if (kural) kod = String(Number(kural.kod) + 400); // 214 → 614 (satıcı / UBL kodu)
   } else if (/^2\d\d$/.test(kod)) kod = String(Number(kod) + 400);
-  const tevkifatTutar = Number(ocr?.tevkifatKdv) || Number(ocr?.kdvTevkifat) || undefined;
+  const tevkifatTutar = Number(isl?.tevkifatTutar) > 0
+    ? Number(isl.tevkifatTutar)
+    : (Number(ocr?.tevkifatKdv) || Number(ocr?.kdvTevkifat) || undefined);
   return { ...isl, tevkifatOrani: oranTxt, ...(tevkifatTutar ? { tevkifatTutar } : {}), ...(kod ? { tevkifatKodu: kod } : {}) };
 }
 
@@ -1037,7 +1042,26 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // GÜVEN SKORU (iyileştirme #1): her belgeye deterministik güven ekle → müşavir yalnız "bakılmalı"
     //   olanları görsün, "güvenli"leri toplu onaylasın. Ekstra AI çağrısı YOK; mevcut sinyaller:
     //   doğrulama durumu + hesap satırı KAYNAĞI (öğrenilmiş mi) + boş kod/cari + uyarı.
-    return docs.map((d: any) => ({ ...d, guven: this.computeDocConfidence(d) }));
+    // İŞLETME VARSAYILANLARI LİSTEDE DE UYGULANIR (2026-09-23, DOĞAN ÖZKAN "tevkifat kodu Yok"):
+    //   Belge işleme ekranı belgeyi get() ile DEĞİL BU LİSTEDEN alıyor (navList → selDoc). Varsayılanlar
+    //   yalnız get()/approve()/Excel üretiminde uygulandığı için kural motorunun bulduğu kod ekrana hiç
+    //   ulaşmıyordu ("PERSONEL TAŞIMA BEDELİ" → 214 → satıcı kodu 614). Artık ekran, onay ve Luca dosyası
+    //   AYNI varsayılanları görür.
+    const isletmeTpler = new Set<string>();
+    const tpIdler = [...new Set(docs.map((d: any) => String(d.taxpayerId || '')).filter(Boolean))] as string[];
+    if (tpIdler.length) {
+      const tpler = await (this.prisma as any).taxpayer
+        .findMany({ where: { id: { in: tpIdler } }, select: { id: true, defterTuru: true, mihsapDefterTuru: true } })
+        .catch(() => []);
+      for (const tp of tpler) if (isIsletmeLedger(tp?.defterTuru, tp?.mihsapDefterTuru)) isletmeTpler.add(String(tp.id));
+    }
+    return docs.map((d: any) => ({
+      ...d,
+      guven: this.computeDocConfidence(d),
+      ...(isletmeTpler.has(String(d.taxpayerId || ''))
+        ? { ocrData: { ...(d.ocrData || {}), isletme: isletmeWithBelgeDefaults(d) } }
+        : {}),
+    }));
   }
 
   /** Belge güveni: 'yuksek' (öğrenilmiş/kesin, otomatik onaya uygun) | 'orta' (AI tahmini, tam ama
