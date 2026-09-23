@@ -86,7 +86,7 @@
   //   Luca'nın beklediği adlarla TEK SEFERDE hizalanır (her denemede tek sütun hatası okumak yerine).
   // v1.47.48 (2026-09-15): firma onay düğmesi regex'indeki `\b` sınırları kaynakta gerçek backspace (0x08) baytına
   //   dönüşmüştü (sec/aç/ac seçenekleri ölüydü) → düzeltildi.
-  const AGENT_VERSION = '1.47.75';
+  const AGENT_VERSION = '1.47.76';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -4026,6 +4026,38 @@
                     await sleep(2500);
                     const fkUrlSonra = (() => { try { return String((fkDoc && fkDoc.location && fkDoc.location.href) || ''); } catch { return '(belge değişti)'; } })();
                     await log(`ℹ[fisKes] url önce=${fkUrlOnce.slice(-70)} · sonra=${fkUrlSonra.slice(-70)}`);
+                    // ═══ v1.47.76 — SUNUCUNUN DÖNDÜRDÜĞÜ SAYFAYI OKU ═══
+                    //   v1.47.75 canlı: fisKes() HATA FIRLATMADI ve url boşaldı → form GERÇEKTEN
+                    //   gönderildi. Buna rağmen satır ekranda kaldı ve BİR SONRAKİ koşu onu
+                    //   "kalıntı" olarak buldu (evrak: GIB2026000000010) → sunucu fişi OLUŞTURMUYOR.
+                    //   (İyi haber: mükerrer fiş riski yok, satırlar bekleyen olarak kalıyor.)
+                    //   Doğrulama zaten TAZE belge okuyor (hizliFisDoc()), yani ölçüm doğru.
+                    //   Eksik olan tek şey: editHizliFisAction.do?fisKes=true'nun DÖNDÜRDÜĞÜ sayfa.
+                    //   Sunucu neden reddediyorsa oray a yazıyor olmalı. Tahmin etmeden okuyoruz.
+                    await sleep(5000);
+                    try {
+                      const dS = hizliFisDoc();
+                      let uS = '(HIZLI FİŞ belgesi YOK)';
+                      let tS = '';
+                      if (dS) {
+                        try { uS = String((dS.location && dS.location.href) || '(url okunamadı)'); } catch { uS = '(url erişilemedi)'; }
+                        try { tS = String((dS.body && dS.body.textContent) || '').replace(/\s+/g, ' ').trim(); } catch {}
+                      }
+                      await log(`ℹ[gönderim sonrası] url=${uS.slice(-110)}`);
+                      await log(`ℹ[gönderim sonrası metin] ${tS.slice(0, 1000) || '(metin yok)'}`);
+                      // Açık pencerelerin tümünde url dökümü — yanıt başka pencereye düşmüş olabilir.
+                      const urlListe = [];
+                      try {
+                        for (const d of lucaDocuments()) {
+                          let u2 = '';
+                          try { u2 = String((d.location && d.location.href) || ''); } catch {}
+                          let tr2 = 0; try { tr2 = d.querySelectorAll('table tr').length; } catch {}
+                          urlListe.push(`${u2.split('/').pop().slice(0, 52)}(tr=${tr2})`);
+                          if (urlListe.length >= 8) break;
+                        }
+                      } catch {}
+                      await log(`ℹ[gönderim sonrası pencereler] ${urlListe.join(' | ') || '-'}`);
+                    } catch (eGs) { await log(`gönderim sonrası okuma uyarısı: ${(eGs && eGs.message) || eGs}`); }
                   }
                   const fkEl = fk ? null : findBtn(/^Fi[şs]\s*Kes$/i);
                   if (!fk && fkEl) fk = firePageBtn(fkEl);
