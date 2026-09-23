@@ -47,8 +47,11 @@ function TopbarTaxpayerPicker({ taxpayers }: { taxpayers: TopbarTaxpayer[] }) {
         if (!term) return true;
         return `${taxpayerLabel(item)} ${item.taxNumber || ''}`.toLocaleUpperCase('tr-TR').includes(term);
       })
-      .sort((a, b) => collator.compare(taxpayerLabel(a), taxpayerLabel(b)))
-      .slice(0, 60);
+      .sort((a, b) => collator.compare(taxpayerLabel(a), taxpayerLabel(b)));
+    // TAVAN KALDIRILDI (2026-09-23, Muzaffer Bey): eskiden .slice(0, 60) vardı → alfabetik 60. sıradan
+    //   (SİLBER İNŞAAT) sonrası listede HİÇ görünmüyordu; Ş/T/U/V/Y/Z ile başlayan mükellefler yalnız
+    //   arama yazılınca bulunabiliyordu. Liste zaten kaydırılabilir (max-h-[360px] overflow-y-auto),
+    //   birkaç yüz satır render maliyeti önemsiz — kesmek sessiz veri kaybıydı.
   }, [search, taxpayers]);
 
   useEffect(() => {
