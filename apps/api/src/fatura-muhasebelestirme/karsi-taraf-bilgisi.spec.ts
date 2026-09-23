@@ -20,6 +20,17 @@ describe('htmlMetne', () => {
   });
 });
 
+describe('earsivHtmlKarsiTaraf — adlı/sayısal HTML varlıkları (canlı 23.09: &Uuml; çözülmeyince Luca\'ya bozuk gitti)', () => {
+  it('&Uuml; &uuml; &#304; &#x15E; çözülür; vergi dairesi ve adres temiz çıkar', () => {
+    const html = '<div>SAYIN<br>ECT TUR&#304;ZM &#x15E;&#x130;RKET&#x130;<br>YAKUPLU MAH. H&Uuml;RR&#304;YET CAD. NO:131/6 BEYL&#304;KD&Uuml;Z&Uuml;/&#304;STANBUL  No: <br>Kap&#305; No: <br> /  T&uuml;rkiye <br>Vergi Dairesi: BEYL&#304;KD&Uuml;Z&Uuml; VERG&#304; DA&#304;RES&#304; M&Uuml;D.<br>VKN: 3241180695</div><div>Fatura No: X</div>';
+    const k = earsivHtmlKarsiTaraf(html, 'SATIS');
+    expect(k!.vergiDairesi).toBe('BEYLİKDÜZÜ VERGİ DAİRESİ MÜD.');
+    expect(k!.unvan).toBe('ECT TURİZM ŞİRKETİ');
+    expect(k!.adres).toBe('YAKUPLU MAH. HÜRRİYET CAD. NO:131/6 BEYLİKDÜZÜ/İSTANBUL');
+    expect(k!.adres).not.toMatch(/&|Türkiye/);
+  });
+});
+
 describe('earsivHtmlKarsiTaraf', () => {
   it('SATIS: "SAYIN" altındaki alıcı — vergi dairesi, VKN, ünvan, temiz adres', () => {
     const k = earsivHtmlKarsiTaraf(GIB_HTML, 'SATIS');

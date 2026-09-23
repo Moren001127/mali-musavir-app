@@ -24,14 +24,22 @@ export function htmlMetne(html: string): string {
   s = s.replace(/<\/(td|th)>/gi, '\t');
   s = s.replace(/<\/(p|div|tr|li|h\d|table|thead|tbody|section)>/gi, '\n');
   s = s.replace(/<[^>]+>/g, ' ');
-  s = s
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#(\d+);/g, (_m, n) => String.fromCharCode(Number(n)));
-  return s;
+  return varliklariCoz(s);
+}
+
+/** GİB görünümünde Türkçe harfler adlı varlıkla yazılı (BEYLİKD&Uuml;Z&Uuml;) — canlı 23.09: çözülmeyince Luca'ya bozuk gitti. */
+const ADLI_VARLIKLAR: Record<string, string> = {
+  nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '"', apos: "'",
+  Uuml: 'Ü', uuml: 'ü', Ouml: 'Ö', ouml: 'ö', Ccedil: 'Ç', ccedil: 'ç', Auml: 'Ä', auml: 'ä',
+  Acirc: 'Â', acirc: 'â', Icirc: 'Î', icirc: 'î', Ucirc: 'Û', ucirc: 'û', Ecirc: 'Ê', ecirc: 'ê', Ocirc: 'Ô', ocirc: 'ô',
+  Eacute: 'É', eacute: 'é', Agrave: 'À', agrave: 'à', Egrave: 'È', egrave: 'è', Iacute: 'Í', iacute: 'í', Oacute: 'Ó', oacute: 'ó', Uacute: 'Ú', uacute: 'ú',
+  szlig: 'ß', ndash: '–', mdash: '—', hellip: '…', lsquo: '‘', rsquo: '’', ldquo: '“', rdquo: '”', copy: '©', reg: '®', deg: '°', middot: '·', times: '×',
+};
+export function varliklariCoz(s: string): string {
+  return String(s || '')
+    .replace(/&#x([0-9a-f]+);/gi, (_m, h) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_m, n) => String.fromCodePoint(Number(n)))
+    .replace(/&([A-Za-z]+);/g, (m, ad) => (Object.prototype.hasOwnProperty.call(ADLI_VARLIKLAR, ad) ? ADLI_VARLIKLAR[ad] : m));
 }
 
 /** Adres olmayan etiket satırları (bu satırda adres biter). */
