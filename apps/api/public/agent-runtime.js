@@ -86,7 +86,7 @@
   //   Luca'nın beklediği adlarla TEK SEFERDE hizalanır (her denemede tek sütun hatası okumak yerine).
   // v1.47.48 (2026-09-15): firma onay düğmesi regex'indeki `\b` sınırları kaynakta gerçek backspace (0x08) baytına
   //   dönüşmüştü (sec/aç/ac seçenekleri ölüydü) → düzeltildi.
-  const AGENT_VERSION = '1.47.59';
+  const AGENT_VERSION = '1.47.60';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -2983,10 +2983,25 @@
                       }
                       await sleep(1200);
                       if (!temizlendi) throw new Error('HIZLI FİŞ ekranında kalıntı satırlar var ama "Toplu Temizle" düğmesi bulunamadı — mükerrer fiş riski, aktarım durduruldu.');
-                      // v1.47.59: doğrulama DOLU satıra bakar; boş şablon satırı sorun değil.
-                      const kalan = doluSay(hazirlikDoc);
+                      // v1.47.60 — BELGE REFERANSI HER TURDA TAZELENİR.
+                      //   23.09 canlı: "Toplu Temizle" basıldı, onay verildi, ama 1 sn sonraki sayım
+                      //   "DOLU satır=2" dedi ve aktarım durdu. Sebep: Toplu Temizle Luca'da FORM
+                      //   GÖNDERİMİ yapıyor → HIZLI FİŞ penceresinin document'ı DEĞİŞİYOR; eski
+                      //   `hazirlikDoc` referansı silinmiş satırları hâlâ gösteriyordu (bayat DOM).
+                      //   Artık her turda belge YENİDEN bulunur ve sayı sıfırlanana kadar ~15 sn beklenir.
+                      const hfBulTaze = () => {
+                        try { for (const d of lucaDocuments()) { try { if (d.querySelector('[name="ay"], [name^="detaylar["]')) return d; } catch {} } } catch {}
+                        return null;
+                      };
+                      let kalan = -1;
+                      for (let t = 0; t < 15; t++) {
+                        const dTaze = hfBulTaze();
+                        kalan = dTaze ? doluSay(dTaze) : -1;
+                        if (kalan === 0) break;
+                        await sleep(1000);
+                      }
                       await log(`🧹 temizlik sonrası DOLU satır=${kalan}`);
-                      if (kalan > 0) throw new Error(`"Toplu Temizle" sonrası ekranda hâlâ ${kalan} dolu satır var — mükerrer fiş kesilmesin diye aktarım durduruldu. Luca'da HIZLI FİŞ ekranını elle temizleyip tekrar deneyin.`);
+                      if (kalan !== 0) throw new Error(`"Toplu Temizle" sonrası ekranda hâlâ ${kalan} dolu satır var — mükerrer fiş kesilmesin diye aktarım durduruldu. Luca'da HIZLI FİŞ ekranını elle temizleyip tekrar deneyin.`);
                     }
                   }
                 } catch (e) {
