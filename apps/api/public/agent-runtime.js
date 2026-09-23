@@ -86,7 +86,7 @@
   //   Luca'nın beklediği adlarla TEK SEFERDE hizalanır (her denemede tek sütun hatası okumak yerine).
   // v1.47.48 (2026-09-15): firma onay düğmesi regex'indeki `\b` sınırları kaynakta gerçek backspace (0x08) baytına
   //   dönüşmüştü (sec/aç/ac seçenekleri ölüydü) → düzeltildi.
-  const AGENT_VERSION = '1.47.78';
+  const AGENT_VERSION = '1.47.79';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -4094,6 +4094,38 @@
                     } catch {}
                     await log(`ℹ[form dökümü] form sayısı=${fms.length} · ${dok.join(' | ') || '-'} · BELGE TOPLAM detaylar=${belgeDetay} fisKesKutu=${belgeSecili}/${belgeKutu}`);
                   } catch (eFm) { await log(`form dökümü uyarısı: ${(eFm && eFm.message) || eFm}`); }
+                  // ═══ v1.47.79 — SATIRIN TÜM ALANLARI (gönderim ÖNCESİ/SONRASI) ═══
+                  //   v1.47.78 canlı: "Ekranı Kaydet" çalıştı (editHizliFisAction.do, DOLU satır=1)
+                  //   ama Fiş Kes yine boşa gitti. Elenenler: temizlik, dosya, yükleme, dönem,
+                  //   form, kutucuk, doğrulama, kaydetme. Geriye tek şüphe kaldı ve Luca'nın
+                  //   KENDİ KALIBI onu işaret ediyor — gönderim sonrası sayfadan:
+                  //     getElementById(`kod0`).autocompleter = createObjAutoCompleter(`kod0`,`IsmCariImpl`,10,`cariId0`,...)
+                  //     getElementById(`malhizmetKodu0`).autocompleter = createObjAutoCompleter(`malhizmetKodu0`,`IsmStokImpl`,10,`stokId0`,...)
+                  //   Yani her kod alanının GİZLİ BİR KİMLİK EŞİ var (kod0→cariId0,
+                  //   malhizmetKodu0→stokId0). kodNo0'a "614" yazdık ama eşi boş kalmış olabilir;
+                  //   sunucu da boş kimlikli satırı sessizce yok sayabilir.
+                  //   Hangi alanın boş kaldığını TAHMİN ETMEDEN görmek için satır 0'ın BÜTÜN
+                  //   alanlarını gönderimden ÖNCE ve SONRA yazıyoruz; fark gerçeği gösterecek.
+                  const satirDokumu = (doc, etiket) => {
+                    const par = [];
+                    try {
+                      if (doc) {
+                        for (const el of doc.querySelectorAll('input, select, textarea')) {
+                          const ad = String(el.id || el.name || '');
+                          if (!ad) continue;
+                          // yalnızca 0. satıra ait alanlar (ad "0" ile biter ya da detaylar[0])
+                          if (!(/0$/.test(ad) || /detaylar\[0\]/.test(String(el.name || '')))) continue;
+                          const tg = String(el.tagName || '').toLowerCase();
+                          let v = '';
+                          try { v = (el.type === 'checkbox' || el.type === 'radio') ? (el.checked ? 'ISARETLI' : 'bos') : String(el.value === undefined ? '' : el.value); } catch {}
+                          par.push(`${ad}${tg === 'select' ? '(s)' : ''}="${v.slice(0, 26)}"`);
+                          if (par.length >= 60) break;
+                        }
+                      }
+                    } catch {}
+                    return `ℹ[satır0 ${etiket}] ${par.join(' ') || '(alan yok)'}`;
+                  };
+                  await log(satirDokumu(fkDoc, 'ÖNCE').slice(0, 1900));
                   const fkUrlOnce = (() => { try { return String((fkDoc && fkDoc.location && fkDoc.location.href) || ''); } catch { return ''; } })();
                   let fk = false;
                   if (fkDogrulamaGecti && typeof fkWin.fisKes === 'function') {
@@ -4143,6 +4175,8 @@
                         }
                         await log(`ℹ[gönderim sonrası grid] DOLU satır=${st.size}`);
                       } catch {}
+                      await log(satirDokumu(dS, 'SONRA').slice(0, 1900));
+                      if (tS.length > 2600) await log(`ℹ[gönderim sonrası metin-3] ${tS.slice(2600, 4200)}`);
                       // Açık pencerelerin tümünde url dökümü — yanıt başka pencereye düşmüş olabilir.
                       const urlListe = [];
                       try {
