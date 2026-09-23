@@ -404,6 +404,75 @@ export class DriveService implements OnModuleInit, OnModuleDestroy {
     return { ids: invs.map((i: any) => i.id) };
   }
 
+  /** BEKLEYEN YEDEK TEMİZLİĞİ (2026-09-23, Muzaffer Bey — HANİFE ARSLAN 2026-08).
+   *  Belgeler Mihsap'ta BEKLEYEN iken çekildiği dönemde Drive'a da yedekleniyordu. Bunların bir kısmı
+   *  hiç işlenmiyor / işleme sırasında siliniyor → Mihsap Arşivim'e hiç girmiyor. Drive'da kalınca
+   *  KDV Kontrol'ün OCR kümesi Luca verisinden FAZLA çıkıyor ve mutabakat tutmuyor.
+   *  Bu iş, mihsap kaydı HÂLÂ kaynak='bekleyen' olan yedekleri Drive'da ÇÖP KUTUSUNA taşır ve
+   *  drive_backups kütüğünden düşer. KALICI SİLME YOK — yanlışlık olursa Drive çöpünden geri alınır.
+   *  UYARI: ÖNCE ARŞİV ÇEKİMİ YAPILMALI; etiket tazelenmemişse gerçek belge çöpe gidebilir.
+   *  Bu yüzden `uygula` verilmezse yalnız LİSTELER (kuru çalışma). */
+  async bekleyenYedekleriTemizle(
+    tenantId: string,
+    opts: { mukellefId?: string; donem?: string; uygula?: boolean } = {},
+  ): Promise<{ aday: number; tasindi: number; kutukSilindi: number; hatalar: string[]; liste: any[] }> {
+    const bekleyenler = await (this.prisma as any).mihsapInvoice.findMany({
+      where: {
+        tenantId,
+        kaynak: 'bekleyen',
+        ...(opts.mukellefId ? { mukellefId: opts.mukellefId } : {}),
+        ...(opts.donem ? { donem: opts.donem } : {}),
+      },
+      select: { mihsapId: true, faturaNo: true, faturaTarihi: true, firmaUnvan: true, toplamTutar: true, donem: true, faturaTuru: true },
+      take: 5000,
+    });
+    const idler = bekleyenler.map((x: any) => x.mihsapId).filter(Boolean);
+    if (!idler.length) return { aday: 0, tasindi: 0, kutukSilindi: 0, hatalar: [], liste: [] };
+
+    const yedekler = await (this.prisma as any).driveBackup.findMany({ where: { tenantId, mihsapId: { in: idler } } });
+    const bilgi = new Map<string, any>(bekleyenler.map((x: any) => [x.mihsapId, x]));
+    const liste = yedekler.map((y: any) => ({
+      mihsapId: y.mihsapId,
+      driveFileId: y.driveFileId,
+      fileName: y.fileName,
+      donem: y.donem,
+      faturaNo: bilgi.get(y.mihsapId)?.faturaNo ?? null,
+      firmaUnvan: bilgi.get(y.mihsapId)?.firmaUnvan ?? null,
+      tutar: bilgi.get(y.mihsapId)?.toplamTutar ?? null,
+    }));
+
+    if (!opts.uygula) {
+      this.logger.log(`[bekleyen-temizlik] KURU CALISMA: ${liste.length} aday (uygula=false — hicbir dosyaya dokunulmadi)`);
+      return { aday: liste.length, tasindi: 0, kutukSilindi: 0, hatalar: [], liste };
+    }
+
+    const token = await this.getValidAccessToken(tenantId);
+    const hatalar: string[] = [];
+    const basarili: string[] = [];
+    for (const y of yedekler) {
+      try {
+        const res = await fetch(`${DRIVE_FILES_URL}/${y.driveFileId}?supportsAllDrives=true`, {
+          method: 'PATCH',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ trashed: true }),
+          signal: AbortSignal.timeout(30000),
+        });
+        // 404 = dosya Drive'da zaten yok → kutuk satirini yine de dusur.
+        if (!res.ok && res.status !== 404) throw new Error(`Drive ${res.status}: ${(await res.text()).slice(0, 160)}`);
+        basarili.push(y.mihsapId);
+      } catch (e: any) {
+        hatalar.push(`${y.fileName || y.driveFileId}: ${e?.message || e}`);
+      }
+    }
+    let kutukSilindi = 0;
+    if (basarili.length) {
+      const r = await (this.prisma as any).driveBackup.deleteMany({ where: { tenantId, mihsapId: { in: basarili } } });
+      kutukSilindi = r?.count || 0;
+    }
+    this.logger.log(`[bekleyen-temizlik] ${liste.length} aday · ${basarili.length} cope tasindi · ${kutukSilindi} kutuk satiri silindi · ${hatalar.length} hata`);
+    return { aday: liste.length, tasindi: basarili.length, kutukSilindi, hatalar, liste };
+  }
+
   async listJobs(tenantId: string, limit = 5) {
     return (this.prisma as any).driveBackupJob.findMany({
       where: { tenantId },

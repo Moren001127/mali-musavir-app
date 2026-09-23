@@ -5180,13 +5180,27 @@ ${JSON.stringify(payload, null, 2)}`;
         // "SATIS_FATURA" / "ALIS_EARSIV" gibi bileşik değerle döndürüyor.
         // Tam eşleşme ("SATIS") bu kayıtları kaçırıyordu — substring match yapıyoruz.
         faturaTuru: { contains: faturaTuru },
+        // BEKLEYEN BELGE OCR'A VERİLMEZ (2026-09-23, HANİFE ARSLAN 2026-08).
+        //   kaynak='bekleyen' = Mihsap Gelen Belgeler'den çekilmiş, Arşivim'e HİÇ girmemiş belge.
+        //   Bunlar işlenmiyor / işleme sırasında siliniyor; Luca'ya da gitmiyor. OCR kümesine
+        //   girince KDV Kontrol mutabakatı Luca verisinden FAZLA çıkıyordu (Muzaffer Bey:
+        //   "yedeklenen ama işlenmemesi gereken faturalar"). Canlı: 69 alıştan 9'u böyleydi.
+        //   NOT: Etiket arşiv çekiminde tazelenir (bekleyen → arsiv); Mihsap onayladıysa belge
+        //   kendiliğinden kapsama girer. kaynak=null eski kayıtlardır, dışarıda BIRAKILMAZ.
+        OR: [{ kaynak: null }, { kaynak: { not: 'bekleyen' } }],
       },
       orderBy: { faturaTarihi: 'asc' },
     });
 
     if (invoices.length === 0) {
+      // Hepsi 'bekleyen' diye elendiyse SEBEBİ AÇIKÇA söyle — sessizce "fatura yok" deme.
+      const bekleyenSayi = await (this.prisma as any).mihsapInvoice
+        .count({ where: { tenantId, mukellefId: session.taxpayerId, donem, faturaTuru: { contains: faturaTuru }, kaynak: 'bekleyen' } })
+        .catch(() => 0);
       throw new BadRequestException(
-        `Bu mükellefin ${donem} döneminde (${faturaTuru}) Mihsap'tan çekilmiş faturası yok. Önce Mihsap'tan faturaları çekin.`,
+        bekleyenSayi > 0
+          ? `Bu mükellefin ${donem} döneminde (${faturaTuru}) ${bekleyenSayi} belgesi var ama hepsi Mihsap'ta BEKLEYEN durumda (Arşivim'e girmemiş) — OCR'a verilmez. Mihsap'ta onaylayıp İşlenen Faturalar'dan "Hepsini Çek" yapın.`
+          : `Bu mükellefin ${donem} döneminde (${faturaTuru}) Mihsap'tan çekilmiş faturası yok. Önce Mihsap'tan faturaları çekin.`,
       );
     }
 

@@ -95,6 +95,21 @@ export class DriveController {
     return result;
   }
 
+  /** Mihsap'ta BEKLEYEN kalmis (= Arsivim'e hic girmemis) belgelerin Drive yedegini temizler.
+   *  Dosya KALICI SILINMEZ, Drive cop kutusuna tasinir. uygula verilmezse yalniz LISTELER. */
+  @Post('bekleyen-yedek-temizle')
+  @UseGuards(AuthGuard('jwt'))
+  async bekleyenYedekTemizle(
+    @Req() req: any,
+    @Body() body: { mukellefId?: string; donem?: string; uygula?: boolean },
+  ) {
+    return this.service.bekleyenYedekleriTemizle(req.user.tenantId, {
+      mukellefId: body?.mukellefId,
+      donem: body?.donem,
+      uygula: body?.uygula === true,
+    });
+  }
+
   /** Son yedekleme isleri (ilerleme gosterimi) */
   @Get('jobs')
   @UseGuards(AuthGuard('jwt'))
