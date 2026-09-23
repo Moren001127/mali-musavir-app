@@ -312,6 +312,27 @@ export function isletmeUnvanDuzelt(ad: string): string {
   return s;
 }
 
+/**
+ * Luca'nın VERGİ DAİRESİ ADI (2026-09-23, DOĞAN ÖZKAN → ECT TURİZM): Luca CSV'de vergi dairesini ADIYLA arar; canlı yanıt
+ * "BEYLİKDÜZÜ VERGİ DAİRESİ MÜD. adlı vergi dairesi bulunamadı" — GİB görünümündeki uzun ad Luca listesinde yok. UBL'lerde
+ * de "KAĞITHANE V.D." / "ESENYURT VERGİ DAİRESİ MÜDÜRLÜĞÜ - İSTANBUL" gibi karışık biçimler var. Luca listesi ÇEKİRDEK adla
+ * tutulur ("BEYLİKDÜZÜ"): son ekler ve il eki atılır, Türkçe büyük harfe çevrilir. Deftere orijinal ad yazılır, yalnız CSV'de
+ * bu biçim kullanılır.
+ */
+export function lucaVergiDairesiAdi(ad: string): string {
+  const ham = String(ad || '').replace(/\s+/g, ' ').trim();
+  if (!ham) return '';
+  let s = ham.toLocaleUpperCase('tr-TR');
+  s = s.replace(/\s+[-–—]\s+[^-–—]{2,30}$/u, ''); // "… - İSTANBUL" il eki
+  s = s
+    .replace(/\s*\bVERGİ\s+DAİRESİ(?:\s+(?:MÜDÜRLÜĞÜ|MÜD\.?|MD\.?|BAŞKANLIĞI|BŞK\.?))?\s*$/u, '')
+    .replace(/\s*\bV\.?\s?D\.?\s*$/u, '')
+    .replace(/\s*\bMÜD(?:ÜRLÜĞÜ|\.)\s*$/u, '')
+    .replace(/[\s.]+$/u, '')
+    .trim();
+  return s || ham;
+}
+
 export function buildLucaIsletmeHizliFisCsv(payload: BatchPayload): Buffer {
   const isSaleKind = (k?: string | null) => String(k || 'ALIS').toUpperCase() === 'SATIS';
   const kodlama = isletmeCsvKodlama();
@@ -458,9 +479,9 @@ export function buildLucaIsletmeHizliFisCsv(payload: BatchPayload): Buffer {
         inv.belgeNo || '',                            // 7 EVRAK NO
         counterpartyVkn,                              // 8 TCKN/VKN
         // 9 VERGİ DAİRESİ + 12 ADRES (2026-09-23, DOĞAN ÖZKAN → ECT TURİZM): Luca'da kayıtlı olmayan cari için Fiş Kes
-        //   bunları ister (kendi cari sorgusu VKN'yi bulamayınca satır sessizce kalıyordu). Vergi dairesi GİB'in
-        //   yazdığı resmi adla (ör. "BEYLİKDÜZÜ VERGİ DAİRESİ MÜD."); adres ünvan gibi ASCII'ye katlanır (özel karakter reddi).
-        String(inv.counterpartyVergiDairesi || '').replace(/\s+/g, ' ').trim().slice(0, 120), // 9 VERGİ DAİRESİ
+        //   bunları ister (kendi cari sorgusu VKN'yi bulamayınca satır sessizce kalıyordu). Vergi dairesi Luca'nın ÇEKİRDEK
+        //   adıyla (lucaVergiDairesiAdi: "BEYLİKDÜZÜ"); adres ünvan gibi ASCII'ye katlanır (özel karakter reddi).
+        lucaVergiDairesiAdi(inv.counterpartyVergiDairesi || '').slice(0, 120), // 9 VERGİ DAİRESİ
         counterpartyName,                             // 10 SOYADI ÜNVAN
         '',                                           // 11 ADI DEVAMI
         isletmeUnvanDuzelt(String(inv.counterpartyAdres || '').replace(/\s+/g, ' ').trim().slice(0, 200)), // 12 ADRES

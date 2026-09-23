@@ -49,6 +49,20 @@ describe('İşletme HIZLI FİŞ CSV — Luca fiş türü ve tevkifatlı satış 
   });
 });
 
+describe('lucaVergiDairesiAdi — Luca çekirdek vergi dairesi adı (2026-09-23)', () => {
+  const { lucaVergiDairesiAdi } = require('./luca-excel.service');
+  it('GİB uzun adı, UBL kısaltmaları ve il eki → çekirdek ad, Türkçe büyük harf', () => {
+    expect(lucaVergiDairesiAdi('BEYLİKDÜZÜ VERGİ DAİRESİ MÜD.')).toBe('BEYLİKDÜZÜ');
+    expect(lucaVergiDairesiAdi('KAĞITHANE V.D.')).toBe('KAĞITHANE');
+    expect(lucaVergiDairesiAdi('Boğaziçi Kurumlar V.D.')).toBe('BOĞAZİÇİ KURUMLAR');
+    expect(lucaVergiDairesiAdi('ESENYURT VERGİ DAİRESİ MÜDÜRLÜĞÜ - İSTANBUL')).toBe('ESENYURT');
+    expect(lucaVergiDairesiAdi('KASIMPAŞA VERGİ DAİRESİ')).toBe('KASIMPAŞA');
+    expect(lucaVergiDairesiAdi('Beylikdüzü')).toBe('BEYLİKDÜZÜ');
+    expect(lucaVergiDairesiAdi('B.MUKELLEFLER')).toBe('B.MUKELLEFLER');
+    expect(lucaVergiDairesiAdi('')).toBe('');
+  });
+});
+
 describe('İşletme HIZLI FİŞ CSV — karşı taraf VERGİ DAİRESİ + ADRES (2026-09-23, DOĞAN ÖZKAN → ECT TURİZM)', () => {
   const hucreler = (buf: Buffer) => require('iconv-lite').decode(buf, 'win1254').split('\r\n')[1].split(';');
   it('vergi dairesi 9. sütuna GİB adıyla, adres 12. sütuna ASCII katlanmış; bilgi yoksa ikisi de boş', () => {
@@ -59,7 +73,8 @@ describe('İşletme HIZLI FİŞ CSV — karşı taraf VERGİ DAİRESİ + ADRES (
       lines: [{ group: 'matrah', description: 'x', rate: '20', debit: '0', credit: '128700', orderNo: 0 }, { group: 'vergi', description: 'kdv', rate: '20', debit: '0', credit: '12870', orderNo: 1 }] }] };
     const h = hucreler(buildLucaIsletmeHizliFisCsv(p));
     expect(h[7]).toBe('3241180695');
-    expect(h[8]).toBe('BEYLİKDÜZÜ VERGİ DAİRESİ MÜD.');
+    // Luca adla arar; uzun GİB adı listede yok (canlı: "… adlı vergi dairesi bulunamadı") → çekirdek ad.
+    expect(h[8]).toBe('BEYLİKDÜZÜ');
     expect(h[11]).toBe(require('./luca-excel.service').isletmeUnvanDuzelt('YAKUPLU MAH. HÜRRİYET CAD. NO:131/6 BEYLİKDÜZÜ / İSTANBUL'));
     expect(h[11]).not.toMatch(/[ÜİŞ]/);
     const bos: any = { ...p, invoices: [{ ...p.invoices[0], counterpartyVergiDairesi: null, counterpartyAdres: undefined }] };
