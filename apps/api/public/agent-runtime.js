@@ -86,7 +86,7 @@
   //   Luca'nın beklediği adlarla TEK SEFERDE hizalanır (her denemede tek sütun hatası okumak yerine).
   // v1.47.48 (2026-09-15): firma onay düğmesi regex'indeki `\b` sınırları kaynakta gerçek backspace (0x08) baytına
   //   dönüşmüştü (sec/aç/ac seçenekleri ölüydü) → düzeltildi.
-  const AGENT_VERSION = '1.47.60';
+  const AGENT_VERSION = '1.47.61';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -2955,15 +2955,46 @@
                     if (kalinti > 0) {
                       const evraklar = [...new Set([...bilgiIlk.values()].filter((x) => x.evrakNo).map((x) => x.evrakNo))];
                       await log(`🧹 Ekranda ${kalinti} DOLU satır var (toplam satır ${bilgiIlk.size})${evraklar.length ? ` · evrak: ${evraklar.slice(0, 6).join(', ')}` : ''} — yüklemeden ÖNCE temizleniyor`);
+                      // v1.47.61 — DÜĞMEYİ METİNDEN DEĞİL onclick'TEN BUL.
+                      //   23.09 canlı kanıt (ekran anlık görüntüsü): HIZLI FİŞ ekranındaki düğmelerin
+                      //   METNİ BOŞ, hepsi ikon düğme; iş onclick'te duruyor:
+                      //     <button onclick="topluTemizle();">  <button onclick="gonder('fisKes');">
+                      //   Eski kod 'Toplu Temizle' YAZISINI arıyordu → doğru düğmeyi bulamıyor, başka bir
+                      //   öğeye basıp "basıldı" diyordu. Satırlar bu yüzden hiç silinmiyordu (2 kez üst üste).
+                      //   Artık: (1) sayfanın KENDİ topluTemizle() fonksiyonu çağrılır, (2) olmazsa
+                      //   onclick'i topluTemizle içeren düğmeye basılır, (3) o da yoksa metin araması.
                       let temizlendi = false;
-                      for (const etiket of ['Toplu Temizle', 'Temizle']) {
+                      const hwTemiz = hazirlikDoc.defaultView || window;
+                      try {
+                        if (typeof hwTemiz.topluTemizle === 'function') {
+                          hwTemiz.topluTemizle();
+                          temizlendi = true;
+                          await log(`🧹 topluTemizle() çağrıldı (sayfa fonksiyonu) — ekranda ${kalinti} dolu satır vardı`);
+                        }
+                      } catch (eT) { await log(`topluTemizle() çağrısı hata verdi: ${(eT && eT.message) || eT}`); }
+                      if (!temizlendi) {
                         try {
-                          for (const el of hazirlikDoc.querySelectorAll('button, input[type="button"], input[type="submit"], a')) {
-                            const t = String(el.value || el.textContent || '').replace(/\s+/g, ' ').trim();
-                            if (t.indexOf(etiket) !== -1) { try { el.click(); } catch {} temizlendi = true; break; }
+                          for (const el of hazirlikDoc.querySelectorAll('[onclick]')) {
+                            const oc = String(el.getAttribute('onclick') || '');
+                            if (/topluTemizle\s*\(/.test(oc)) {
+                              try { el.click(); } catch {}
+                              temizlendi = true;
+                              await log(`🧹 "Toplu Temizle" düğmesine basıldı (onclick=topluTemizle) — ekranda ${kalinti} dolu satır vardı`);
+                              break;
+                            }
                           }
                         } catch {}
-                        if (temizlendi) { await log(`🧹 "${etiket}" basıldı (ekranda ${kalinti} kalıntı satır vardı)`); break; }
+                      }
+                      if (!temizlendi) {
+                        for (const etiket of ['Toplu Temizle', 'Temizle']) {
+                          try {
+                            for (const el of hazirlikDoc.querySelectorAll('button, input[type="button"], input[type="submit"], a')) {
+                              const t = String(el.value || el.textContent || '').replace(/\s+/g, ' ').trim();
+                              if (t && t.indexOf(etiket) !== -1) { try { el.click(); } catch {} temizlendi = true; break; }
+                            }
+                          } catch {}
+                          if (temizlendi) { await log(`🧹 "${etiket}" metinle bulunup basıldı (ekranda ${kalinti} dolu satır vardı)`); break; }
+                        }
                       }
                       await sleep(1800);
                       // onay kutusu çıkarsa evetle
