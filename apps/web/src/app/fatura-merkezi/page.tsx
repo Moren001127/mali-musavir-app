@@ -5310,6 +5310,15 @@ function ScreenAktarilanlar({ taxpayerId, period, mode = 'bekleyen', isIsletme =
     const ls = Array.isArray(d.lines) ? d.lines : [];
     return accountCodeOnly((ls.find((l: any) => String(l.group) === 'matrah' && l.accountCode) || ls.find((l: any) => l.accountCode))?.accountCode || '');
   };
+  // İŞLETME DEFTERİ (2026-09-23, DOĞAN ÖZKAN): hesap kodu YOK, KAYIT TÜRÜ var. Eskiden işletme belgesine de
+  //   "Hesap kodu yok — Eşleştirme Kuralları'ndan kod atayın" yazılıyor, sayaç "Eksik bilgi" sayıyordu (yanlış yere yönlendirme).
+  //   Arka uçtaki gerçek kapı (isletmeDocumentReady) kayıt türüne bakar; ekran da ona bakar.
+  const isletmeSatir0 = (d: any): any => {
+    const isl: any = (d.ocrData && (d.ocrData as any).isletme) || {};
+    return Array.isArray(isl.satirlar) && isl.satirlar.length ? { ...isl, ...isl.satirlar[0] } : isl;
+  };
+  const isletmeKayitTuru = (d: any): string => String(isletmeSatir0(d).kayitTuruKod || '').trim();
+  const isletmeKayitTuruAd = (d: any): string => { const s = isletmeSatir0(d); return String(s.kayitTuruAd || '').trim() + (s.kayitAltAd && s.kayitAltAd !== s.kayitTuruAd ? ` · ${s.kayitAltAd}` : ''); };
   /** Aktarım kuyruğunda satırın hâli: k = süzgeç anahtarı, sira = listede önceliği, neden = ekranda yazan sebep. */
   const satirDurum = (d: any): { k: string; sira: number; neden: string } => {
     const st = String(d.lucaStatus || '');
@@ -5317,7 +5326,9 @@ function ScreenAktarilanlar({ taxpayerId, period, mode = 'bekleyen', isIsletme =
     const uy = uyariOzetFE((d.ocrData as any)?.uyarilar);
     if (uy.kararBekliyor) return { k: 'eksik', sira: 1, neden: 'Demirbaş kararı bekliyor — karar verilmeden gönderilmez' };
     if (String((d.ocrData as any)?.demirbasKarar?.karar || '') === 'elle_islendi') return { k: 'eksik', sira: 1, neden: "Demirbaş kararı: Luca'da elle işlenecek — portaldan gönderilmez" };
-    if (!satirKodu(d)) return { k: 'eksik', sira: 1, neden: 'Hesap kodu yok — Eşleştirme Kuralları\'ndan bu satıcıya kod atayın' };
+    if (isIsletme) {
+      if (!isletmeKayitTuru(d)) return { k: 'eksik', sira: 1, neden: "Kayıt türü seçilmemiş — Muhasebeleştir'de kayıt türünü seç" };
+    } else if (!satirKodu(d)) return { k: 'eksik', sira: 1, neden: 'Hesap kodu yok — Eşleştirme Kuralları\'ndan bu satıcıya kod atayın' };
     if (st === 'POSTING' || st === 'QUEUED') return { k: 'gidiyor', sira: 2, neden: '' };
     if (st === 'POSTED') return { k: 'aktarildi', sira: 3, neden: '' };
     if (st === 'MANUAL_DONE') return { k: 'elle', sira: 3, neden: '' };
@@ -5354,10 +5365,8 @@ function ScreenAktarilanlar({ taxpayerId, period, mode = 'bekleyen', isIsletme =
   const renderRow = (d: any) => {
     const sat = (d.invoiceKind || 'ALIS') === 'SATIS';
     const firma = (sat ? d.customerName : d.vendorName) || (String(d.documentType || '').toUpperCase() === 'Z_RAPORU' ? 'Z RAPORU' : '—');
-    const code = (() => {
-      const ls = Array.isArray(d.lines) ? d.lines : [];
-      return accountCodeOnly((ls.find((l: any) => String(l.group) === 'matrah' && l.accountCode) || ls.find((l: any) => l.accountCode))?.accountCode || '');
-    })();
+    // İşletmede bu sütun KAYIT TÜRÜ (hesap kodu yok); bilançoda matrah satırının hesap kodu.
+    const code = isIsletme ? isletmeKayitTuruAd(d) : satirKodu(d);
     const acik = detayId === d.id;
     const lines: any[] = Array.isArray(d.lines) ? d.lines : [];
     const sd = satirDurum(d);
@@ -5531,7 +5540,7 @@ function ScreenAktarilanlar({ taxpayerId, period, mode = 'bekleyen', isIsletme =
         </div>
         <div className="twrap">
           <table>
-            <thead><tr><th>Tarih</th><th>Fatura No</th><th>Firma</th><th className="num">Tutar</th><th>Hesap Kodu</th><th>Durum</th>{arsiv && <th>Fiş No</th>}{arsiv && <th>Aktarım</th>}<th className="actcol" style={{ width: 40 }} /></tr></thead>
+            <thead><tr><th>Tarih</th><th>Fatura No</th><th>Firma</th><th className="num">Tutar</th><th>{isIsletme ? 'Kayıt Türü' : 'Hesap Kodu'}</th><th>Durum</th>{arsiv && <th>Fiş No</th>}{arsiv && <th>Aktarım</th>}<th className="actcol" style={{ width: 40 }} /></tr></thead>
             <tbody>
               {dd.map(renderRow)}
               {dd.length === 0 && (

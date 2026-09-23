@@ -10,6 +10,7 @@ import { join } from 'path';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NOTIFICATION_TYPES } from '../notifications/notification-types';
+import { postingBelgeKarari } from './posting-serbest-birak';
 
 /**
  * Luca entegrasyonu — Mihsap deseninin Luca'ya uyarlanmış hali.
@@ -712,6 +713,9 @@ export class LucaService {
   async reapStaleJobs() {
     await this.requeueNoProgressJobs().catch(() => {});
     await this.cleanupStuckRunning().catch(() => {});
+    // İşi bitmiş (iptal/başarısız/tamam/silinmiş) ama "Aktarılıyor"da unutulmuş belgeler — takılı-iş temizliği ve
+    //   bayat-iş iptali belgeye dokunmaz; burada dakikada bir toparlanır (2026-09-23, DOĞAN ÖZKAN olayı).
+    await this.postingBelgeleriSerbestBirak().catch(() => {});
 
     // BAYAT İŞ TEMİZLİĞİ (kullanıcı bulgusu 2026-09-12: "hiçbir işlem yapmazken sürekli bildirim geliyor"): Ağustos'tan kalan
     //   3-4 pending iş (gece e-Arşiv 2026-07, tarayıcı eklentisi EKRAN_OKU — eklenti artık kullanılmıyor) hiçbir ajan tarafından
@@ -896,7 +900,51 @@ export class LucaService {
       where: { id: jobId },
       data: { status: 'cancelled', finishedAt: new Date() },
     });
+    // Durdurulan INVOICE_POST işine bağlı belgeler hemen serbest kalsın (yoksa "Aktarılıyor…"da kilitli kalıyordu).
+    await this.postingBelgeleriSerbestBirak([jobId]).catch(() => {});
     return (this.prisma as any).lucaFetchJob.findUnique({ where: { id: jobId } });
+  }
+
+  /**
+   * "AKTARILIYOR"DA (POSTING) UNUTULAN BELGELERİ SERBEST BIRAK (2026-09-23, DOĞAN ÖZKAN 2026/08 satış olayı).
+   *   Toplu aktarım belgeyi POSTING + lucaJobId ile işe bağlar; yalnız markJobDone/markJobFailed çözerdi. İş
+   *   başka yoldan bitince (kullanıcı durdurdu → cancelled, takılı-iş temizliği → failed, bayat iş → cancelled,
+   *   iş kaydı silindi) belge sonsuza kadar "Aktarılıyor…"da kalıyordu: aktar düğmesi pasif, tekrar dene yok,
+   *   geri al kilitli. Karar mantığı saf ve testli (posting-serbest-birak.ts); burada yalnız uygulanır.
+   *   jobIds verilirse yalnız o işlerin belgeleri, verilmezse tüm kiracılarda POSTING'dekiler taranır (az sayıda).
+   *   Belge güncellemesi `lucaStatus: 'POSTING'` şartıyla yapılır → eşzamanlı markJobDone/markJobFailed ezilmez.
+   */
+  async postingBelgeleriSerbestBirak(jobIds?: string[]): Promise<number> {
+    const belgeler: Array<{ id: string; lucaJobId: string | null }> = await (this.prisma as any).invoiceAccountingDocument.findMany({
+      where: { lucaStatus: 'POSTING', ...(jobIds?.length ? { lucaJobId: { in: jobIds } } : {}) },
+      select: { id: true, lucaJobId: true },
+      take: 500,
+    });
+    if (!belgeler.length) return 0;
+    const isIdleri = Array.from(new Set(belgeler.map((b) => b.lucaJobId).filter(Boolean))) as string[];
+    const isler: Array<{ id: string; status: string; errorMsg: string | null; finishedAt: Date | null }> = isIdleri.length
+      ? await (this.prisma as any).lucaFetchJob.findMany({
+          where: { id: { in: isIdleri } },
+          select: { id: true, status: true, errorMsg: true, finishedAt: true },
+        })
+      : [];
+    const isHaritasi = new Map(isler.map((j) => [j.id, j]));
+    let sayac = 0;
+    for (const b of belgeler) {
+      const karar = postingBelgeKarari(b.lucaJobId ? isHaritasi.get(b.lucaJobId) : null);
+      if (!karar) continue;
+      const r = await (this.prisma as any).invoiceAccountingDocument.updateMany({
+        where: { id: b.id, lucaStatus: 'POSTING' },
+        data: karar.lucaStatus === 'POSTED'
+          ? { lucaStatus: 'POSTED', lucaPostedAt: karar.lucaPostedAt, lucaErrorMessage: null }
+          : { lucaStatus: 'FAILED', lucaErrorMessage: karar.lucaErrorMessage },
+      });
+      if (r?.count) {
+        sayac += r.count;
+        this.logger.warn(`[LUCA-POSTING] belge ${b.id} iş ${b.lucaJobId || '-'} → ${karar.lucaStatus} (${karar.lucaStatus === 'FAILED' ? karar.lucaErrorMessage.slice(0, 120) : 'iş tamamlanmış'})`);
+      }
+    }
+    return sayac;
   }
   /**
    * Job'a ilerleme mesajı ekle — frontend polling ile canlı gösterir.
