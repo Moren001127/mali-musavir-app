@@ -1426,11 +1426,23 @@ function InvoicePreviewModal({
                       const ifr = e.currentTarget as HTMLIFrameElement;
                       const d = ifr.contentDocument;
                       if (!d?.body) return;
+                      // GERİLEN ÖĞEYİ SAYMA (2026-09-23 düzeltmesi): e-fatura HTML'inde %100 genişlikte
+                      //   sarmalayıcı <div> var; onu içerik sanınca ölçü hep tam genişlik çıkıyordu ve
+                      //   çerçeve hiç daralmıyordu. Gerçek içerik TABLO ve GÖRSELdir; ayrıca çerçevenin
+                      //   %98'inden geniş olan her öğe "gerilmiş" sayılıp elenir.
+                      const cerceveG = ifr.clientWidth || d.documentElement.clientWidth || 0;
+                      const gerilmisMi = (r: DOMRect) => cerceveG > 0 && r.width >= cerceveG * 0.98;
                       let sag = 0;
-                      d.body.querySelectorAll('table, img, div, p').forEach((el) => {
+                      d.body.querySelectorAll('table, img').forEach((el) => {
                         const r = (el as HTMLElement).getBoundingClientRect();
-                        if (r.width > 0) sag = Math.max(sag, r.right);
+                        if (r.width > 0 && !gerilmisMi(r)) sag = Math.max(sag, r.right);
                       });
+                      if (!sag) {
+                        d.body.querySelectorAll('div, p, pre').forEach((el) => {
+                          const r = (el as HTMLElement).getBoundingClientRect();
+                          if (r.width > 0 && !gerilmisMi(r)) sag = Math.max(sag, r.right);
+                        });
+                      }
                       const icerikG = Math.ceil(sag) || d.body.scrollWidth;
                       const icerikY = Math.ceil(d.documentElement.scrollHeight || d.body.scrollHeight);
                       if (!icerikG || !icerikY) return;
