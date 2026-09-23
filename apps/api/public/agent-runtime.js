@@ -86,7 +86,7 @@
   //   Luca'nın beklediği adlarla TEK SEFERDE hizalanır (her denemede tek sütun hatası okumak yerine).
   // v1.47.48 (2026-09-15): firma onay düğmesi regex'indeki `\b` sınırları kaynakta gerçek backspace (0x08) baytına
   //   dönüşmüştü (sec/aç/ac seçenekleri ölüydü) → düzeltildi.
-  const AGENT_VERSION = '1.47.70';
+  const AGENT_VERSION = '1.47.71';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -3009,7 +3009,9 @@
                         // v1.47.70 — temizliğin kaynağı çözüldü; sıra FİŞ KES'te.
                         //   gonder('fisKes') → showMask(); fisKesControl();  — fisKesControl da aynı
                         //   confirm_window tuzağında olabilir. Görmeden yine tahmin etmiyoruz.
-                        for (const fnAd of ['fisKesControl', 'ekraniKaydetControl', 'confirm_window']) {
+                        // v1.47.71 — fisKesControl çözüldü: yalnızca autocomplete/DWR bekleyip
+                        //   fisKes() çağırıyor; confirm_window tuzağında DEĞİL. Sıra asıl gövdelerde.
+                        for (const fnAd of ['fisKes', 'ekraniKaydet', 'gonder']) {
                           let src = '';
                           try { if (typeof hwTemiz[fnAd] === 'function') src = hwTemiz[fnAd].toString(); } catch {}
                           const tmz = String(src).replace(/https?:\/\/\S+/g, '[url]').replace(/["']/g, '`').replace(/\s+/g, ' ').slice(0, 1100);
@@ -3108,7 +3110,14 @@
                       await sleep(1800);
                       // onay kutusu çıkarsa evetle
                       // Onay kutusu: popupNativeClick bu kapsamda TANIMLI DEĞİL (23.09 hatası) → DOM'dan bas.
-                      for (const lbl of ['Evet', 'Tamam', 'Onayla']) {
+                      // v1.47.71 — KÖRLEMESİNE ONAY ARAMASI ARTIK KOŞULLU.
+                      //   Kaynak (v1.47.70 dökümü) gösterdi ki confirm_window yalnızca
+                      //   topluTemizle() çağrılınca açılıyor. Biz artık onu çağırmıyoruz
+                      //   (ucu doğrudan çağırıyoruz) → ortada onaylanacak pencere YOK.
+                      //   Böyle bir durumda tüm Luca pencerelerinde "Tamam" aramak TEHLİKELİ:
+                      //   daha önce FİRMA SEÇİM penceresindeki `tamam → formsubmit(...)` düğmesine
+                      //   basılmış ve HIZLI FİŞ penceresi kaybolmuştu (v1.47.64 notu).
+                      for (const lbl of (sunucudanSilindi ? [] : ['Evet', 'Tamam', 'Onayla'])) {
                         let bs = false;
                         try {
                           for (const d2 of lucaDocuments()) {
@@ -3222,6 +3231,62 @@
                   // Dönem ve KALINTI hataları YUTULMAZ — ikisi de yanlış/mükerrer fiş demek.
                   if (/dönemi .* yapılamadı|mükerrer fiş|kalıntı satır/i.test(msj)) throw e;
                   await log(`ekran hazırlık uyarısı: ${msj}`);
+                }
+              }
+
+              // ═══ v1.47.71 — TEMİZLİK SONRASI EKRANI YENİDEN HAZIRLA ═══
+              //   v1.47.70 canlı kanıtı: temizlik artık GERÇEKTEN çalışıyor
+              //     "toplu silme yanıtı: {success:'Toplu silme başarı ile tamamlandı.'}"
+              //     "temizlik sonrası DOLU satır=0"   (7 kalıntı satır gerçekten silindi)
+              //   Ama temizliğin ekranı tazelemesi, temizlikten ÖNCE hazırlanan iki şeyi bozuyor:
+              //     (1) `input` (dosya alanı) KOPUYOR. csvSablonYukle() kaynağı bunu açıklıyor:
+              //         `document.forms[0].action = uploadHizliFisAktarimCsvAction.do; submit()`
+              //         — dosya alanı Excel-Şablon İFRAME'inin formunda; popup tazelenince o
+              //         iframe yeniden kuruluyor. Dosya kopmuş düğüme konuyordu → canlı alan boş
+              //         ("dosya=(boş)") → "CSV grid'e yüklenmedi (gösterge=1, yanıtTr=0)".
+              //     (2) DÖNEM seçici varsayılana dönebiliyor → fiş YANLIŞ AYA kesilebilir.
+              //         Dönem tuzağı daha önce yaşandı; bir daha yaşanmayacak.
+              //   Çözüm: dosya konulmadan hemen önce ikisi de TAZE belgeden yeniden kurulur.
+              //   Tazelenme olmadıysa hiçbir şey değişmez (tekrarlanabilir).
+              if (isCsv) {
+                try {
+                  let tazeInput = (() => { try { return findFileInput(); } catch { return null; } })();
+                  if (!tazeInput) {
+                    await log('⚠ Dosya alanı kayboldu (ekran tazelendi) — "Excel Aktarım" yeniden açılıyor');
+                    try {
+                      let ac = await nativeClickLucaText('Excel Aktarım', { settleMs: 1200, timeoutMs: 6000 });
+                      if (!ac) lucaClickByText('Excel Aktarım');
+                    } catch {}
+                    for (let i = 0; i < 12 && !tazeInput; i++) { await sleep(800); try { tazeInput = findFileInput(); } catch {} }
+                  }
+                  if (tazeInput && tazeInput !== input) {
+                    input = tazeInput;
+                    await log('🔁 Dosya alanı temizlik sonrası yeniden bulundu');
+                  }
+                  if (!input) throw new Error('Temizlik sonrası HIZLI FİŞ dosya alanı bulunamadı — aktarım durduruldu.');
+                  // DÖNEM — taze belgeden yeniden doğrula/kur
+                  const hedefAy2 = String(p.period || '').slice(5, 7);
+                  const dHazir2 = (() => {
+                    try { for (const d of lucaDocuments()) { try { if (d.querySelector('select[name="ay"]')) return d; } catch {} } } catch {}
+                    return null;
+                  })();
+                  const aySel2 = dHazir2 && dHazir2.querySelector('select[name="ay"]');
+                  if (aySel2 && hedefAy2) {
+                    const onceki2 = String(aySel2.value || '');
+                    if (onceki2 !== hedefAy2) {
+                      aySel2.value = hedefAy2;
+                      try { aySel2.dispatchEvent(new (dHazir2.defaultView || window).Event('change', { bubbles: true })); } catch {}
+                      await sleep(1200);
+                      await log(`📅 Dönem temizlik sonrası yeniden kuruldu: ${onceki2 || '?'} → ${String(aySel2.value || '')}`);
+                    }
+                    if (String(aySel2.value || '') !== hedefAy2) {
+                      throw new Error(`HIZLI FİŞ dönemi ${hedefAy2} yapılamadı (ekranda ${aySel2.value}). Fiş yanlış döneme kesilmesin diye durduruldu.`);
+                    }
+                  }
+                } catch (eRe) {
+                  const mRe = String((eRe && eRe.message) || eRe);
+                  if (/dönemi .* yapılamadı|dosya alanı bulunamadı/i.test(mRe)) throw eRe;
+                  await log(`temizlik sonrası hazırlık uyarısı: ${mRe}`);
                 }
               }
 
