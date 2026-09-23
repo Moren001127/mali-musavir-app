@@ -86,7 +86,7 @@
   //   Luca'nın beklediği adlarla TEK SEFERDE hizalanır (her denemede tek sütun hatası okumak yerine).
   // v1.47.48 (2026-09-15): firma onay düğmesi regex'indeki `\b` sınırları kaynakta gerçek backspace (0x08) baytına
   //   dönüşmüştü (sec/aç/ac seçenekleri ölüydü) → düzeltildi.
-  const AGENT_VERSION = '1.47.61';
+  const AGENT_VERSION = '1.47.62';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -3032,7 +3032,48 @@
                         await sleep(1000);
                       }
                       await log(`🧹 temizlik sonrası DOLU satır=${kalan}`);
-                      if (kalan !== 0) throw new Error(`"Toplu Temizle" sonrası ekranda hâlâ ${kalan} dolu satır var — mükerrer fiş kesilmesin diye aktarım durduruldu. Luca'da HIZLI FİŞ ekranını elle temizleyip tekrar deneyin.`);
+                      // v1.47.62 — YEDEK YOL: SATIR SATIR SİL.
+                      //   23.09 canlı: topluTemizle() sayfanın KENDİ fonksiyonu olarak çağrıldı, onay
+                      //   verildi, 16 sn beklendi — satırlar YİNE silinmedi (v1.47.61 günlüğü).
+                      //   Oysa her satırın başında kendi silme düğmesi var:
+                      //     <input type="button" value="-" onclick='deleteRow("tr0")'>
+                      //   Toplu yol işe yaramazsa satırlar SONDAN BAŞA tek tek silinir (indeks kaymasın).
+                      if (kalan !== 0) {
+                        await log(`🧹 Toplu temizlik sonuç vermedi (${kalan} dolu satır) — satırlar TEK TEK siliniyor`);
+                        for (let tur = 0; tur < 40; tur++) {
+                          const dSil = hfBulTaze();
+                          if (!dSil) break;
+                          if (doluSay(dSil) === 0) break;
+                          let basildi = false;
+                          try {
+                            const adaylar = [];
+                            for (const el of dSil.querySelectorAll('[onclick]')) {
+                              if (/deleteRow\s*\(/.test(String(el.getAttribute('onclick') || ''))) adaylar.push(el);
+                            }
+                            if (adaylar.length) { try { adaylar[adaylar.length - 1].click(); } catch {} basildi = true; }
+                          } catch {}
+                          if (!basildi) { await log('⚠ satır silme düğmesi (deleteRow) bulunamadı'); break; }
+                          await sleep(700);
+                          // Silme onayı çıkarsa evetle (yalnız GERÇEK onay düğmeleri; kısayol penceresine dokunma)
+                          try {
+                            for (const d6 of lucaDocuments()) {
+                              let bitti = false;
+                              for (const el of d6.querySelectorAll('button, input[type="button"], input[type="submit"]')) {
+                                const t6 = String(el.value || el.textContent || '').replace(/\s+/g, ' ').trim();
+                                const oc6 = String(el.getAttribute('onclick') || '');
+                                if (/closeKisayolDiv/.test(oc6)) continue; // kısayollar penceresinin Tamam'ı DEĞİL
+                                if (/^(Evet|Tamam|Onayla)$/i.test(t6)) { try { el.click(); } catch {} bitti = true; break; }
+                              }
+                              if (bitti) break;
+                            }
+                          } catch {}
+                          await sleep(500);
+                        }
+                        const dSon = hfBulTaze();
+                        kalan = dSon ? doluSay(dSon) : -1;
+                        await log(`🧹 tek tek silme sonrası DOLU satır=${kalan}`);
+                      }
+                      if (kalan !== 0) throw new Error(`Temizlik sonrası ekranda hâlâ ${kalan} dolu satır var (toplu temizle + satır satır silme denendi) — mükerrer fiş kesilmesin diye aktarım durduruldu. Luca'da HIZLI FİŞ ekranını elle temizleyip tekrar deneyin.`);
                     }
                   }
                 } catch (e) {
