@@ -1216,6 +1216,11 @@ function InvoicePreviewModal({
   onClose: () => void;
 }) {
   const [url, setUrl] = useState<string | null>(null);
+  // BELGE ÖLÇÜSÜ (2026-09-23, Muzaffer Bey: "kocaman beyaz boşluk niye var, sadece fatura
+  //   boyutu kadar genişlikte görmek istiyorum"). Modal eskiden hep w-full h-full açılıyordu;
+  //   HTML e-Fatura dar olduğu için sağda/altta devasa boşluk kalıyordu. İçerik yüklenince
+  //   gerçek genişlik/yükseklik ölçülüp çerçeve ona daraltılır (blob aynı köken → ölçülebilir).
+  const [olcu, setOlcu] = useState<{ w: number; h: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [contentType, setContentType] = useState('');
@@ -1257,6 +1262,7 @@ function InvoicePreviewModal({
       try {
         setLoading(true);
         setError(null);
+        setOlcu(null); // yeni belge → ölçüyü sıfırla, eski belgenin boyutunda açılmasın
         const resp = await api.get(`/agent/drive/invoices/${invoice.id}/file`, {
           responseType: 'blob',
           params: { v: 2 }, // önbellek anahtarı (HTML→PNG geçişi; sunucu no-cache) — 2026-09-15
@@ -1309,7 +1315,8 @@ function InvoicePreviewModal({
       onClick={onClose}
     >
       <div
-        className="relative max-w-[95vw] max-h-[95vh] w-full h-full flex flex-col"
+        className="relative max-w-[95vw] max-h-[95vh] flex flex-col"
+        style={olcu ? { width: olcu.w, height: olcu.h } : { width: '100%', height: '100%' }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Üst bar */}
@@ -1412,6 +1419,27 @@ function InvoicePreviewModal({
                   src={url}
                   className="w-full h-full bg-white"
                   title={invoice.faturaNo}
+                  onLoad={(e) => {
+                    // İçeriğin GERÇEK sağ kenarını ölç: body blok olduğu için scrollWidth hep
+                    //   çerçeve kadar çıkar; en sağa uzanan öğeye bakmak doğru sonucu verir.
+                    try {
+                      const ifr = e.currentTarget as HTMLIFrameElement;
+                      const d = ifr.contentDocument;
+                      if (!d?.body) return;
+                      let sag = 0;
+                      d.body.querySelectorAll('table, img, div, p').forEach((el) => {
+                        const r = (el as HTMLElement).getBoundingClientRect();
+                        if (r.width > 0) sag = Math.max(sag, r.right);
+                      });
+                      const icerikG = Math.ceil(sag) || d.body.scrollWidth;
+                      const icerikY = Math.ceil(d.documentElement.scrollHeight || d.body.scrollHeight);
+                      if (!icerikG || !icerikY) return;
+                      // Başlık çubuğu ~52px; kenar payı 40px. Ekranı aşarsa kırpılır (kaydırma kalır).
+                      const w = Math.min(Math.max(icerikG + 40, 420), Math.floor(window.innerWidth * 0.95));
+                      const h = Math.min(Math.max(icerikY + 52 + 24, 320), Math.floor(window.innerHeight * 0.95));
+                      setOlcu({ w, h });
+                    } catch { /* farklı köken → ölçme, tam ekranda kal */ }
+                  }}
                 />
               );
             }
