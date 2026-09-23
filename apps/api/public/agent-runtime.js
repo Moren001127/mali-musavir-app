@@ -86,7 +86,7 @@
   //   Luca'nın beklediği adlarla TEK SEFERDE hizalanır (her denemede tek sütun hatası okumak yerine).
   // v1.47.48 (2026-09-15): firma onay düğmesi regex'indeki `\b` sınırları kaynakta gerçek backspace (0x08) baytına
   //   dönüşmüştü (sec/aç/ac seçenekleri ölüydü) → düzeltildi.
-  const AGENT_VERSION = '1.47.64';
+  const AGENT_VERSION = '1.47.65';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -3539,9 +3539,17 @@
                     const cd = hizliFisDoc();
                     const simgeler = cd ? [...cd.querySelectorAll('img[onclick*="tcknSorgula"]')] : [];
                     let tiklanan = 0;
+                    // v1.47.65 — SAYFANIN KENDİ FONKSİYONUNU ÇAĞIR (topluTemizle'de işe yarayan yol).
+                    //   23.09 canlı: im.click() ile "1 satırda tıklandı" yazdı ama vergi dairesi 0/1 kaldı;
+                    //   sentetik tıklama Luca'nın satır sorgusunu tetiklemiyor. Önce tcknSorgula(true, im)
+                    //   doğrudan çağrılır, olmazsa tıklamaya düşülür.
+                    const cw = cd ? (cd.defaultView || window) : window;
                     for (const im of simgeler) {
-                      try { im.click(); tiklanan++; } catch {}
-                      await sleep(900); // her sorgu Luca'ya AJAX gidiyor — üst üste bindirme
+                      let calisti = false;
+                      try { if (typeof cw.tcknSorgula === 'function') { cw.tcknSorgula(true, im); calisti = true; } } catch (eC) { await log(`tcknSorgula çağrısı hata: ${(eC && eC.message) || eC}`); }
+                      if (!calisti) { try { im.click(); calisti = true; } catch {} }
+                      if (calisti) tiklanan++;
+                      await sleep(1200); // her sorgu Luca'ya AJAX gidiyor — üst üste bindirme
                     }
                     // vergi dairesi kutuları dolana kadar bekle (en çok ~20 sn)
                     for (let b = 0; b < 20; b++) {
@@ -3554,6 +3562,24 @@
                     try { for (const s2 of cd.querySelectorAll('select[name$=".vergiDairesiKod"]')) { toplamVd++; if (!String(s2.value || '').trim()) kalanVd++; } } catch {}
                     await log(`🔎 Cari sorgu simgesi ${tiklanan} satırda tıklandı · vergi dairesi dolan ${toplamVd - kalanVd}/${toplamVd}`);
                     if (!simgeler.length) await log('⚠ Cari sorgu simgesi (tcknSorgula) bulunamadı — kesilen fişte cari boş kalabilir');
+                    if (toplamVd > 0 && kalanVd > 0) {
+                      // v1.47.65 — CARİ TANISI: bir daha tahminle dönmeyelim. Fonksiyonun kaynağını ve
+                      //   satırdaki ilgili alanların durumunu yaz (vergi dairesi neden dolmadı görülsün).
+                      try {
+                        let src = '';
+                        try { if (typeof cw.tcknSorgula === 'function') src = cw.tcknSorgula.toString(); } catch {}
+                        await log(`ℹ[fnsrc tcknSorgula] ${String(src).replace(/https?:\/\/\S+/g, '[url]').replace(/["']/g, '`').replace(/\s+/g, ' ').slice(0, 500) || 'ERİŞİLEMEDİ'}`);
+                        const durum = [];
+                        for (const ad of ['tckn', 'vergiDairesiKod', 'soyadi', 'cariId', 'kdvIstisnasi', 'beyanBelgeTuru']) {
+                          for (const el of cd.querySelectorAll(`[name$=".${ad}"]`)) {
+                            const v = String((el.value === undefined ? '' : el.value) || '').trim();
+                            const dv = String((el.getAttribute && el.getAttribute('data-value')) || '').trim();
+                            durum.push(`${ad}="${v.slice(0, 18)}"${dv ? ` dv="${dv.slice(0, 14)}"` : ''}${el.options ? ` opt=${el.options.length}` : ''}`);
+                          }
+                        }
+                        await log(`ℹ[cari-tanı] ${durum.slice(0, 14).join(' | ')}`);
+                      } catch (eT2) { await log(`cari tanı uyarısı: ${(eT2 && eT2.message) || eT2}`); }
+                    }
                   } catch (e) { await log(`cari sorgulama uyarısı: ${(e && e.message) || e}`); }
                   if (bosKutular.length) throw new Error(`Satır açılır kutuları dolmadı (${bosKutular.slice(0, 4).join(', ')}). "Fiş Kes" BASILMADI — eksik fiş kesilmesin.`);
 
@@ -3566,11 +3592,34 @@
                   await log(fk ? '✂ "Fiş Kes" tetiklendi' : '⚠ "Fiş Kes" bulunamadı');
                   await sleep(1800);
                   // 4) Onay dialog'u (Evet/Tamam/Onayla) — popup dahil
+                  // v1.47.65 — KISAYOLLAR PENCERESİNİN "Tamam"INA BASMA (23.09 canlı kök neden).
+                  //   HIZLI FİŞ ekranında GİZLİ bir <button onclick="closeKisayolDiv(); return false;">Tamam</button>
+                  //   duruyor; `^Tamam$` araması ONA denk geliyordu. Günlükte "↳ Tamam onaylandı (dom)" yazıyor
+                  //   ama gerçek Fiş Kes onayı hiç verilmiyor → fiş KESİLMİYOR ("commit sinyali yok").
+                  //   Artık closeKisayolDiv elenir ve düğmenin GÖRÜNÜR olması şartı aranır.
+                  const onayDugmesiBul = (lbl) => {
+                    const re = new RegExp('^' + lbl + '$', 'i');
+                    try {
+                      for (const d of lucaDocuments()) {
+                        for (const el of d.querySelectorAll('button, input[type="button"], input[type="submit"], a')) {
+                          const t = String(el.value || el.textContent || '').replace(/\s+/g, ' ').trim();
+                          if (!re.test(t)) continue;
+                          const oc = String((el.getAttribute && el.getAttribute('onclick')) || '');
+                          if (/closeKisayolDiv/.test(oc)) continue;
+                          let gorunur = true;
+                          try { gorunur = !!(el.offsetParent !== null || (el.getClientRects && el.getClientRects().length)); } catch {}
+                          if (!gorunur) continue;
+                          return el;
+                        }
+                      }
+                    } catch {}
+                    return null;
+                  };
                   for (const lbl of ['Evet', 'Tamam', 'Onayla', 'Onay']) {
                     if (await popupNativeClick(lbl, { exact: true, settleMs: 900, timeoutMs: 2000 })) { await log(`↳ "${lbl}" onaylandı`); break; }
                     if (await nativeClickLucaText(lbl, { exact: true, settleMs: 900, timeoutMs: 2000 })) { await log(`↳ "${lbl}" onaylandı`); break; }
-                    const oe = findEl(new RegExp('^' + lbl + '$', 'i'));
-                    if (oe && fireEl(oe)) { await log(`↳ "${lbl}" onaylandı (dom)`); break; }
+                    const oe = onayDugmesiBul(lbl);
+                    if (oe && fireEl(oe)) { await log(`↳ "${lbl}" onaylandı (dom · onclick=${String((oe.getAttribute && oe.getAttribute('onclick')) || '-').replace(/\s+/g, '').slice(0, 40)})`); break; }
                   }
                   await sleep(2500);
                   // 5) DOĞRULA — DÜRÜST: sadece GERÇEK sinyal (başarı metni ya da grid satırları temizlendi).
