@@ -4623,21 +4623,19 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
         const kodHam = String(saved.tevkifatKodu || selDoc.ocrData?.tevkifatKodu || '').replace(/\D/g, '');
         // Belgeden gelen kod ALICI tarafı (2xx) olabilir; satıcı tarafı = +400 (214 → 614).
         const kod = kodHam ? (/^2\d\d$/.test(kodHam) ? String(Number(kodHam) + 400) : kodHam) : '';
-        satirlar = satirlar.map((st: any, i: number) => (
-          st.tevkifatOrani || st.tevkifatKodu
-            ? st
-            : {
-                ...st,
-                ...(oranTxt ? { tevkifatOrani: oranTxt } : {}),
-                ...(kod ? { tevkifatKodu: kod } : {}),
-                // Tevkifat tutarı tek satırda birebir; çok satırlıysa satırın KDV'sinden oranla.
-                ...(tevkTutar && satirlar.length === 1
-                  ? { tevkifatTutar: tevkTutar }
-                  : oranTxt
-                    ? { tevkifatTutar: Math.round((Number(st.kdvTutar) || 0) * (pay / payda) * 100) / 100 }
-                    : {}),
-              }
-        ));
+        // ALAN ALAN doldur: "oran varsa hiç dokunma" demek, kaydedilmiş satırda kodun ASLA dolmaması
+        //   demekti (2026-09-23 canlı bulgu — oran 5/10 geldi, kod 'Yok' kaldı). Her alan kendi
+        //   başına bakılır; DOLU olan korunur, BOŞ olan doldurulur.
+        satirlar = satirlar.map((st: any) => {
+          const yamalar: any = {};
+          if (!String(st.tevkifatOrani || '').trim() && oranTxt) yamalar.tevkifatOrani = oranTxt;
+          if (!String(st.tevkifatKodu || '').trim() && kod) yamalar.tevkifatKodu = kod;
+          if (!(Number(st.tevkifatTutar) > 0)) {
+            if (tevkTutar && satirlar.length === 1) yamalar.tevkifatTutar = tevkTutar;
+            else if (oranTxt && payda) yamalar.tevkifatTutar = Math.round((Number(st.kdvTutar) || 0) * (pay / payda) * 100) / 100;
+          }
+          return Object.keys(yamalar).length ? { ...st, ...yamalar } : st;
+        });
       }
     }
 
