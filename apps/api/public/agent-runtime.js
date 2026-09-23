@@ -86,7 +86,7 @@
   //   Luca'nın beklediği adlarla TEK SEFERDE hizalanır (her denemede tek sütun hatası okumak yerine).
   // v1.47.48 (2026-09-15): firma onay düğmesi regex'indeki `\b` sınırları kaynakta gerçek backspace (0x08) baytına
   //   dönüşmüştü (sec/aç/ac seçenekleri ölüydü) → düzeltildi.
-  const AGENT_VERSION = '1.47.71';
+  const AGENT_VERSION = '1.47.72';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -3852,6 +3852,39 @@
                     await log(`☑ Fiş Kes öncesi ${fkSec} kutucuk işaretlendi`);
                     await sleep(500);
                   }
+                  // ═══ v1.47.72 — FİŞ KES KANITI (tahmin yok) ═══
+                  //   v1.47.71 canlı: yükleme ART IK ÇALIŞIYOR (DOLU satır 0→1, beklenen 1),
+                  //   temizlik çalışıyor, dönem 08 doğru — ama Fiş Kes commit sinyali vermiyor.
+                  //   Temizlik kaynağını okuyunca 5 sürümlük tıkanıklık tek seferde çözülmüştü;
+                  //   aynısını Fiş Kes için yapıyoruz: (1) fisKes()'in GÖVDESİ, (2) Luca'nın
+                  //   ekrana YAZDIĞI doğrulama metni (önce/sonra karşılaştırmalı).
+                  //   ŞÜPHE (doğrulanacak): cari-tanı satırı vergiDairesiKod="" opt=1 · cariId="0"
+                  //   diyor; zorunlu alan boş kaldığı için reddediliyor olabilir. GÖRMEDEN dokunmuyoruz.
+                  const uyariTara = (etiket) => {
+                    const kalip = /(L[üu]tfen[^.!]{0,130}[.!]?|zorunlu[^.!]{0,90}|bo[şs]\s*(?:b[ıi]rak|ge[çc])[^.!]{0,90}|se[çc]iniz[^.!]{0,70}|se[çc]ilmelidir[^.!]{0,70}|girilmelidir[^.!]{0,70}|ge[çc]ersiz[^.!]{0,90}|bulunamad[ıi][^.!]{0,70}|hatal[ıi][^.!]{0,90}|başar[ıi][^.!]{0,70})/gi;
+                    const bulgu = [];
+                    try {
+                      for (const d of lucaDocuments()) {
+                        const t = String((d.body && d.body.textContent) || '').replace(/\s+/g, ' ').trim();
+                        if (!t) continue;
+                        for (const s of new Set((t.match(kalip) || []).map((x) => x.trim()))) {
+                          if (s.length > 3) bulgu.push(s.slice(0, 120));
+                          if (bulgu.length >= 12) break;
+                        }
+                        if (bulgu.length >= 12) break;
+                      }
+                    } catch {}
+                    return `ℹ[fkUyarı ${etiket}] ${bulgu.join(' ; ').slice(0, 700) || '(uyarı metni yok)'}`;
+                  };
+                  try {
+                    for (const fnAd of ['fisKes', 'ekraniKaydet', 'gonder', 'lucaNotYaz']) {
+                      let src = '';
+                      try { if (typeof fkWin[fnAd] === 'function') src = fkWin[fnAd].toString(); } catch {}
+                      const tmz = String(src).replace(/https?:\/\/\S+/g, '[url]').replace(/["']/g, '`').replace(/\s+/g, ' ').slice(0, 1400);
+                      await log(`ℹ[fkKaynak ${fnAd}] ${tmz || 'ERISILEMEDI'}`);
+                    }
+                  } catch (eFk) { await log(`fkKaynak uyarısı: ${(eFk && eFk.message) || eFk}`); }
+                  await log(uyariTara('ÖNCE'));
                   const fkEskiConfirm = (() => { try { return fkWin.confirm; } catch { return undefined; } })();
                   try { fkWin.confirm = () => true; } catch {}
                   const fkEl = findBtn(/^Fi[şs]\s*Kes$/i);
@@ -3861,6 +3894,8 @@
                   if (!fk) fk = await nativeClickLucaText('Fiş Kes', { settleMs: 1500, timeoutMs: 4000 });
                   await log(fk ? '✂ "Fiş Kes" tetiklendi' : '⚠ "Fiş Kes" bulunamadı');
                   await sleep(1800);
+                  // v1.47.72 — Luca Fiş Kes'ten sonra ne YAZDI? ÖNCE/SONRA farkı gerçeği gösterir.
+                  await log(uyariTara('SONRA'));
                   // 4) Onay dialog'u (Evet/Tamam/Onayla) — popup dahil
                   // v1.47.65 — KISAYOLLAR PENCERESİNİN "Tamam"INA BASMA (23.09 canlı kök neden).
                   //   HIZLI FİŞ ekranında GİZLİ bir <button onclick="closeKisayolDiv(); return false;">Tamam</button>
