@@ -86,7 +86,7 @@
   //   Luca'nın beklediği adlarla TEK SEFERDE hizalanır (her denemede tek sütun hatası okumak yerine).
   // v1.47.48 (2026-09-15): firma onay düğmesi regex'indeki `\b` sınırları kaynakta gerçek backspace (0x08) baytına
   //   dönüşmüştü (sec/aç/ac seçenekleri ölüydü) → düzeltildi.
-  const AGENT_VERSION = '1.47.74';
+  const AGENT_VERSION = '1.47.75';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -3970,9 +3970,17 @@
                   //   gövdesini yazar, (2) fonksiyonu DOĞRUDAN çağırıp dönüşünü kaydeder,
                   //   (3) lucaNotYaz'ın yazdığı .alert metnini HEMEN okur (mesaj kısa ömürlü).
                   //   Davranış değiştirilmiyor; yalnızca kanıt toplanıyor.
+                  let fkDogrulamaGecti = false;
                   try {
                     let vSrc = '';
                     try { if (typeof fkWin.validateFisKes === 'function') vSrc = fkWin.validateFisKes.toString(); } catch {}
+                    // v1.47.75 — fisKes() doğrulamadan SONRA vergiDairesiUndefinedCozum() çağırıyor.
+                    //   Bu satırda vergi dairesi BOŞ (cari-tanı: vergiDairesiKod="" opt=1). O fonksiyon
+                    //   hata fırlatırsa submit() HİÇ çalışmaz — gördüğümüz sessiz başarısızlık.
+                    try {
+                      const vdSrc = (typeof fkWin.vergiDairesiUndefinedCozum === 'function') ? fkWin.vergiDairesiUndefinedCozum.toString() : '';
+                      await log(`ℹ[fkKaynak vergiDairesiUndefinedCozum] ${String(vdSrc).replace(/https?:\/\/\S+/g, '[url]').replace(/["']/g, '`').replace(/\s+/g, ' ').slice(0, 1200) || 'ERISILEMEDI'}`);
+                    } catch {}
                     const vTmz = String(vSrc).replace(/https?:\/\/\S+/g, '[url]').replace(/["']/g, '`').replace(/\s+/g, ' ').slice(0, 2600);
                     await log(`ℹ[fkKaynak validateFisKes] ${vTmz || 'ERISILEMEDI'}`);
                     if (typeof fkWin.validateFisKes === 'function') {
@@ -3989,15 +3997,38 @@
                           if (uyarilar.length >= 10) break;
                         }
                       } catch {}
+                      fkDogrulamaGecti = (vSonuc === 'true');
                       await log(`ℹ[validateFisKes] sonuç=${vSonuc} · alert=${[...new Set(uyarilar)].join(' | ').slice(0, 700) || '(yok)'}`);
                     }
                   } catch (eVv) { await log(`validateFisKes tanı uyarısı: ${(eVv && eVv.message) || eVv}`); }
                   await log(uyariTara('ÖNCE'));
                   const fkEskiConfirm = (() => { try { return fkWin.confirm; } catch { return undefined; } })();
                   try { fkWin.confirm = () => true; } catch {}
-                  const fkEl = findBtn(/^Fi[şs]\s*Kes$/i);
+                  // ═══ v1.47.75 — DOĞRULAMA GEÇTİYSE fisKes()'İ DOĞRUDAN ÇAĞIR ═══
+                  //   v1.47.74 canlı: tevkifat tablo/kod yazıldı (tablo=6 · kod=614) ve
+                  //   validateFisKes() artık TRUE dönüyor — kapı AÇIK. Ama fiş hâlâ kesilmiyor.
+                  //   Kaynak: if(validateFisKes()){ vergiDairesiUndefinedCozum(); ...submit(); } hideMask();
+                  //   Doğrulama geçtiyse geriye iki ihtimal kalıyor: (a) vergiDairesiUndefinedCozum()
+                  //   hata fırlatıp submit'i engelliyor, (b) submit oluyor ama doğrulamamız görmüyor.
+                  //   Düğmeye basmak hatayı YUTAR (onclick içinde kaybolur); doğrudan çağırıp
+                  //   try/catch ile yakalıyoruz. Çift fiş riski yok: doğrudan çağrı tuttuysa
+                  //   düğme yoluna HİÇ girilmez.
+                  const fkUrlOnce = (() => { try { return String((fkDoc && fkDoc.location && fkDoc.location.href) || ''); } catch { return ''; } })();
                   let fk = false;
-                  if (fkEl) fk = firePageBtn(fkEl);
+                  if (fkDogrulamaGecti && typeof fkWin.fisKes === 'function') {
+                    try {
+                      fkWin.fisKes();
+                      fk = true;
+                      await log('✂ fisKes() DOĞRUDAN çağrıldı (doğrulama geçti) — düğme yoluna girilmiyor');
+                    } catch (eFs) {
+                      await log(`✗ fisKes() HATA FIRLATTI: ${(eFs && eFs.name) || ''} ${(eFs && eFs.message) || eFs}`);
+                    }
+                    await sleep(2500);
+                    const fkUrlSonra = (() => { try { return String((fkDoc && fkDoc.location && fkDoc.location.href) || ''); } catch { return '(belge değişti)'; } })();
+                    await log(`ℹ[fisKes] url önce=${fkUrlOnce.slice(-70)} · sonra=${fkUrlSonra.slice(-70)}`);
+                  }
+                  const fkEl = fk ? null : findBtn(/^Fi[şs]\s*Kes$/i);
+                  if (!fk && fkEl) fk = firePageBtn(fkEl);
                   if (!fk) fk = await popupNativeClick('Fiş Kes', { settleMs: 1500, timeoutMs: 5000 });
                   if (!fk) fk = await nativeClickLucaText('Fiş Kes', { settleMs: 1500, timeoutMs: 4000 });
                   await log(fk ? '✂ "Fiş Kes" tetiklendi' : '⚠ "Fiş Kes" bulunamadı');
