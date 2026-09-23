@@ -86,7 +86,7 @@
   //   Luca'nın beklediği adlarla TEK SEFERDE hizalanır (her denemede tek sütun hatası okumak yerine).
   // v1.47.48 (2026-09-15): firma onay düğmesi regex'indeki `\b` sınırları kaynakta gerçek backspace (0x08) baytına
   //   dönüşmüştü (sec/aç/ac seçenekleri ölüydü) → düzeltildi.
-  const AGENT_VERSION = '1.47.73';
+  const AGENT_VERSION = '1.47.74';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -3876,6 +3876,85 @@
                     } catch {}
                     return `ℹ[fkUyarı ${etiket}] ${bulgu.join(' ; ').slice(0, 700) || '(uyarı metni yok)'}`;
                   };
+                  // ═══ v1.47.74 — TEVKİFAT TABLO TÜRÜ + KODU SATIRA YAZILIR ═══
+                  //   v1.47.73 canlı kanıtı — Luca kendi ağzıyla söyledi:
+                  //     ℹ[validateFisKes] sonuç=false · alert=
+                  //        "Tevkifat seçilmiş ise Tablo türü ve kodu seçilmelidir!"
+                  //   Kaynaktaki engelleyen dal:
+                  //     else if (tevkifat != `0`){
+                  //       if ((TABLO_TURU == `0` || kodNo == ``) && !(tevkifat==`5` && islem==`0`))
+                  //         { lucaNotYaz(...); return false; } }
+                  //   GÖNDERDİĞİMİZ CSV KUSURSUZ (canlı indirildi, doğrulandı):
+                  //     KDV İSTİSNASI="Tablo 2(KISMİ TEVKİFAT UYGULANAN İŞLEMLER)" · KOD="614"
+                  //     TEVKİFAT="5/10"
+                  //   Luca tevkifat oranını satıra işliyor ama TABLO TÜRÜ ve KODU'nu İŞLEMİYOR
+                  //   (günlük: "Satır açılır kutusu dolduruldu=0"). Sonuç: tevkifat dolu ama
+                  //   tablo/kod boş → doğrulama reddediyor → fisKes() sunucuya HİÇ gitmiyor.
+                  //   Çözüm: işin payload'ındaki tevkifatKodu (614) EVRAK NO ile eşleştirilip
+                  //   satırın TABLO_TURU ve kodNo alanlarına yazılır. UYDURMA YOK: kod portalda
+                  //   onaylanmış belgeden gelir, ekrandaki seçeneklerle eşleşmezse yazılmaz.
+                  try {
+                    const bId = (ad) => { try { return (fkDoc && fkDoc.getElementById(ad)) || null; } catch { return null; } };
+                    const tevkHaritasi = new Map();
+                    try {
+                      for (const inv of ((p && p.invoices) || [])) {
+                        const isl = (inv && inv.isletme) || {};
+                        const no = String((inv && inv.belgeNo) || '').trim();
+                        const kod = String(isl.tevkifatKodu || '').trim();
+                        if (no && kod) tevkHaritasi.set(no, kod);
+                      }
+                    } catch {}
+                    const secenekDok = (el) => {
+                      if (!el) return 'YOK';
+                      const tg = String(el.tagName || '').toLowerCase();
+                      if (tg !== 'select') return `${tg}="${String(el.value || '')}"`;
+                      const ops = [];
+                      try { for (const o of el.options) { ops.push(`${o.value}|${String(o.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 28)}`); if (ops.length >= 10) break; } } catch {}
+                      return `select v="${el.value}" [${ops.join(' , ')}]`;
+                    };
+                    const yaz = (el, aday, metinKalip) => {
+                      if (!el) return 'ALAN-YOK';
+                      const tg = String(el.tagName || '').toLowerCase();
+                      if (tg === 'select') {
+                        try {
+                          for (const o of el.options) {
+                            const v = String(o.value || '').trim();
+                            const t = String(o.textContent || '').replace(/\s+/g, ' ').trim();
+                            if (v === aday || (metinKalip && metinKalip.test(t))) {
+                              el.value = o.value;
+                              try { el.dispatchEvent(new fkWin.Event('change', { bubbles: true })); } catch {}
+                              return `seçildi=${o.value}`;
+                            }
+                          }
+                        } catch {}
+                        return `EŞLEŞMEDİ(opt=${(el.options && el.options.length) || 0})`;
+                      }
+                      el.value = aday;
+                      try { el.dispatchEvent(new fkWin.Event('input', { bubbles: true })); } catch {}
+                      try { el.dispatchEvent(new fkWin.Event('change', { bubbles: true })); } catch {}
+                      return `yazıldı=${aday}`;
+                    };
+                    const sayac = (() => { try { return Number(fkWin.counter) || 0; } catch { return 0; } })();
+                    const rapor = [];
+                    for (let i = 0; i <= sayac + 2; i++) {
+                      const tev = bId('tevkifat' + i);
+                      if (!tev) continue;
+                      const tevDeger = String(tev.value || '0');
+                      const evrakNo = String(((bId('evrakNo' + i) || {}).value) || '').trim();
+                      const islemD = String(((bId('islem' + i) || {}).value) || '');
+                      await log(`ℹ[tevk satır ${i}] evrakNo=${evrakNo} tevkifat="${tevDeger}" islem="${islemD}" · TABLO_TURU=${secenekDok(bId('TABLO_TURU' + i))} · kodNo=${secenekDok(bId('kodNo' + i))}`);
+                      if (tevDeger === '0') continue;
+                      if (tevDeger === '5' && islemD === '0') { rapor.push(`${i}:muaf(5/islem0)`); continue; }
+                      const kod = tevkHaritasi.get(evrakNo) || (tevkHaritasi.size === 1 ? [...tevkHaritasi.values()][0] : '');
+                      if (!kod) { rapor.push(`${i}:KOD-YOK(evrak ${evrakNo} eşleşmedi)`); continue; }
+                      const s1 = yaz(bId('TABLO_TURU' + i), '2', /tablo\s*2|k[ıi]sm[ıi]\s*tevkifat/i);
+                      await sleep(800); // tablo türü değişinca kod listesi AJAX ile dolabilir
+                      const s2 = yaz(bId('kodNo' + i), kod, new RegExp('^\\s*' + kod.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+                      rapor.push(`${i}: tablo=${s1} kod(${kod})=${s2}`);
+                    }
+                    await log(`🧾 Tevkifat tablo/kod yazımı: ${rapor.join(' | ') || '(tevkifatlı satır yok)'}`);
+                  } catch (eTv) { await log(`tevkifat tablo/kod uyarısı: ${(eTv && eTv.message) || eTv}`); }
+
                   // ══ v1.47.73 — TEK KAPI BULUNDU: validateFisKes() ══
                   //   v1.47.72 canlı dökümü Fiş Kes'in TAM gövdesini verdi:
                   //     function fisKes(){
