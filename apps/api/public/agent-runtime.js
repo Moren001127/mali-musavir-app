@@ -86,7 +86,7 @@
   //   Luca'nın beklediği adlarla TEK SEFERDE hizalanır (her denemede tek sütun hatası okumak yerine).
   // v1.47.48 (2026-09-15): firma onay düğmesi regex'indeki `\b` sınırları kaynakta gerçek backspace (0x08) baytına
   //   dönüşmüştü (sec/aç/ac seçenekleri ölüydü) → düzeltildi.
-  const AGENT_VERSION = '1.47.68';
+  const AGENT_VERSION = '1.47.69';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -2999,6 +2999,28 @@
                       const eskiConfirm = (() => { try { return hwTemiz.confirm; } catch { return undefined; } })();
                       const eskiAlert = (() => { try { return hwTemiz.alert; } catch { return undefined; } })();
                       try { hwTemiz.confirm = () => true; hwTemiz.alert = () => undefined; } catch {}
+                      // v1.47.69 — TAHMIN BITTI: fonksiyonlarin KAYNAGINI HER ZAMAN dok.
+                      //   Dort surumdur temizlik tutmuyor; metin araması, sayfa fonksiyonu, confirm=EVET
+                      //   ve satir secimi denendi, hicbiri sunucuya ulasmadi (5 -> 5). Teshis blogu
+                      //   deleteRow sayaci sifirladigi icin hic tetiklenmedi. Artik CAGRIDAN ONCE,
+                      //   kosulsuz olarak Luca'nin kendi kodunu yaziyoruz; hangi ucu cagirdigi gorulecek.
+                      try {
+                        for (const fnAd of ['topluTemizle', 'temizle', 'gonder', 'deleteRow']) {
+                          let src = '';
+                          try { if (typeof hwTemiz[fnAd] === 'function') src = hwTemiz[fnAd].toString(); } catch {}
+                          const tmz = String(src).replace(/https?:\/\/\S+/g, '[url]').replace(/["']/g, '`').replace(/\s+/g, ' ').slice(0, 600);
+                          await log(`ℹ[fnsrc ${fnAd}] ${tmz || 'ERISILEMEDI'}`);
+                        }
+                        // Ekrandaki temizlik/fis dugmelerinin GERCEK onclick hedefleri
+                        const dg = [];
+                        for (const el of hazirlikDoc.querySelectorAll('[onclick]')) {
+                          const oc = String(el.getAttribute('onclick') || '');
+                          if (/temizle|fisKes|gonder|delete/i.test(oc)) dg.push(oc.replace(/\s+/g, '').slice(0, 44));
+                          if (dg.length >= 12) break;
+                        }
+                        await log(`ℹ[dugmeler] ${dg.join(' | ') || '-'}`);
+                      } catch (eSrc) { await log(`fnsrc uyarisi: ${(eSrc && eSrc.message) || eSrc}`); }
+
                       try {
                         const secildi = satirlariSec(hazirlikDoc);
                         await log(`☑ Temizlik öncesi ${secildi} kutucuk işaretlendi (Luca seçili satırda çalışıyor)`);
