@@ -86,7 +86,7 @@
   //   Luca'nın beklediği adlarla TEK SEFERDE hizalanır (her denemede tek sütun hatası okumak yerine).
   // v1.47.48 (2026-09-15): firma onay düğmesi regex'indeki `\b` sınırları kaynakta gerçek backspace (0x08) baytına
   //   dönüşmüştü (sec/aç/ac seçenekleri ölüydü) → düzeltildi.
-  const AGENT_VERSION = '1.47.67';
+  const AGENT_VERSION = '1.47.68';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -2965,6 +2965,29 @@
                       //   onclick'i topluTemizle içeren düğmeye basılır, (3) o da yoksa metin araması.
                       let temizlendi = false;
                       const hwTemiz = hazirlikDoc.defaultView || window;
+                      // v1.47.68 — SATIRLARI SEÇ (23.09 canlı kök neden).
+                      //   Luca'nın doğrulama metni "Lütfen satır seçin." diyor; günlükte secim=0/false.
+                      //   Muzaffer Bey elle temizleyip başardığında ekran görüntüsünde satır kutucukları
+                      //   İŞARETLİYDİ. Hem "Toplu Temizle" hem "Fiş Kes" SEÇİLİ satır üzerinde çalışıyor;
+                      //   bizim çağrılarımızda hiçbir satır seçili olmadığı için ikisi de sessizce
+                      //   hiçbir şey yapmıyordu (confirm teorisi yanlıştı — v1.47.67 kanıtladı).
+                      const satirlariSec = (doc) => {
+                        let n = 0;
+                        try {
+                          for (const cb of doc.querySelectorAll('input[type="checkbox"]')) {
+                            const ad = String(cb.name || cb.id || '');
+                            const satirMi = /detaylar\[/.test(ad) || /fisKes/i.test(ad) || /^(secTum|tumSec|selectAll|checkAll)$/i.test(ad);
+                            if (!satirMi) continue;
+                            if (!cb.checked) {
+                              cb.checked = true;
+                              try { cb.dispatchEvent(new (doc.defaultView || window).Event('change', { bubbles: true })); } catch {}
+                              try { cb.dispatchEvent(new (doc.defaultView || window).Event('click', { bubbles: true })); } catch {}
+                            }
+                            n++;
+                          }
+                        } catch {}
+                        return n;
+                      };
                       // v1.47.67 — confirm() TUZAĞI (23.09 canlı kök neden).
                       //   Luca'nın topluTemizle()'si "emin misiniz?" diye confirm() soruyor. Ajan
                       //   Playwright üstünde çalışıyor ve Playwright diyalogları OTOMATİK REDDEDER →
@@ -2977,6 +3000,9 @@
                       const eskiAlert = (() => { try { return hwTemiz.alert; } catch { return undefined; } })();
                       try { hwTemiz.confirm = () => true; hwTemiz.alert = () => undefined; } catch {}
                       try {
+                        const secildi = satirlariSec(hazirlikDoc);
+                        await log(`☑ Temizlik öncesi ${secildi} kutucuk işaretlendi (Luca seçili satırda çalışıyor)`);
+                        await sleep(400);
                         if (typeof hwTemiz.topluTemizle === 'function') {
                           hwTemiz.topluTemizle();
                           temizlendi = true;
@@ -3668,6 +3694,24 @@
                   //   fonksiyon sessizce çıkıyor olabilirdi. Çağrı boyunca EVET'e sabitle.
                   const fkDoc = hizliFisDoc();
                   const fkWin = (fkDoc && fkDoc.defaultView) || window;
+                  // v1.47.68 — Fiş Kes de SEÇİLİ satırda çalışıyor ("Lütfen satır seçin.").
+                  if (fkDoc) {
+                    let fkSec = 0;
+                    try {
+                      for (const cb of fkDoc.querySelectorAll('input[type="checkbox"]')) {
+                        const ad = String(cb.name || cb.id || '');
+                        if (!(/detaylar\[/.test(ad) || /fisKes/i.test(ad) || /^(secTum|tumSec|selectAll|checkAll)$/i.test(ad))) continue;
+                        if (!cb.checked) {
+                          cb.checked = true;
+                          try { cb.dispatchEvent(new fkWin.Event('change', { bubbles: true })); } catch {}
+                          try { cb.dispatchEvent(new fkWin.Event('click', { bubbles: true })); } catch {}
+                        }
+                        fkSec++;
+                      }
+                    } catch {}
+                    await log(`☑ Fiş Kes öncesi ${fkSec} kutucuk işaretlendi`);
+                    await sleep(500);
+                  }
                   const fkEskiConfirm = (() => { try { return fkWin.confirm; } catch { return undefined; } })();
                   try { fkWin.confirm = () => true; } catch {}
                   const fkEl = findBtn(/^Fi[şs]\s*Kes$/i);
