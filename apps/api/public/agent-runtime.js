@@ -86,7 +86,7 @@
   //   Luca'nın beklediği adlarla TEK SEFERDE hizalanır (her denemede tek sütun hatası okumak yerine).
   // v1.47.48 (2026-09-15): firma onay düğmesi regex'indeki `\b` sınırları kaynakta gerçek backspace (0x08) baytına
   //   dönüşmüştü (sec/aç/ac seçenekleri ölüydü) → düzeltildi.
-  const AGENT_VERSION = '1.47.65';
+  const AGENT_VERSION = '1.47.66';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -3230,7 +3230,57 @@
                   let postTr = 0; // fetch-POST yanıtındaki tablo satırı sayısı = grid doldu göstergesi
                   let gridSatir = -1; // v1.47.44: yanıt HTML'indeki detaylar[N] satır sayısı (1 = boş şablon satırı)
                   let gridDolu = -1;  // v1.47.64: bunlardan VERİ İÇEREN satır sayısı (boş şablon sayılmaz)
+
+                  // ─────────── v1.47.66 — ÖNCE DOĞAL YOL: sayfanın KENDİ csvSablonYukle()'si ───────────
+                  //   23.09 canlı KÖK NEDEN: fetch-POST + doc.write ile yanıtı BİZ basıyorduk. Luca'nın
+                  //   sayfa JS'i o zaman çalışmıyor → satır açılır kutuları BOŞ kalıyor (cari-tanı:
+                  //   "vergiDairesiKod='' opt=1", "beyanBelgeTuru dv=8 opt=1"), tcknSorgula vergi dairesini
+                  //   dolduramıyor, Fiş Kes doğrulamayı geçemiyor ("commit sinyali yok").
+                  //   Sayfanın kendi fonksiyonu formu gerçekten gönderir, iframe doğal yüklenir, Luca kendi
+                  //   JS'ini çalıştırır. Bu yol tutarsa fetch-POST'a HİÇ girilmez (doc.write yapılmaz).
+                  //   Tutmazsa eski yol yedek olarak duruyor — davranış kaybı yok.
+                  const doluSatirSay = (d) => {
+                    try {
+                      const g = new Set();
+                      for (const el of d.querySelectorAll('input[name^="detaylar["]')) {
+                        const m = String(el.name || '').match(/^detaylar\[(\d+)\]\.(\w+)/);
+                        if (!m) continue;
+                        if (!/^(evrakNo|tckn|soyadi|tutar|kdvTutar|toplamTutar)$/.test(m[2])) continue;
+                        const v = String((el.value === undefined ? '' : el.value) || '').trim();
+                        if (v && !/^0([,.]0+)?$/.test(v)) g.add(m[1]);
+                      }
+                      return g.size;
+                    } catch { return 0; }
+                  };
                   try {
+                    const fi0 = findFileInput();
+                    const fw0 = fi0 && fi0.ownerDocument && fi0.ownerDocument.defaultView;
+                    const dosyaVar = !!(fi0 && fi0.files && fi0.files[0]);
+                    if (dosyaVar && fw0 && typeof fw0.csvSablonYukle === 'function') {
+                      const oncekiDolu = doluSatirSay(fi0.ownerDocument);
+                      fw0.csvSablonYukle();
+                      await log('⏫ csvSablonYukle() çağrıldı (sayfanın kendi yükleme fonksiyonu) — iframe doğal yükleniyor');
+                      // Luca formu gönderir, iframe yeniden yüklenir ve KENDİ JS'i kutuları doldurur.
+                      //   En çok ~25 sn bekle: DOLU satır artınca tamam.
+                      for (let bek = 0; bek < 25; bek++) {
+                        await sleep(1000);
+                        const dTaze = hizliFisDoc();
+                        if (!dTaze) continue;
+                        const simdi = doluSatirSay(dTaze);
+                        if (simdi > oncekiDolu) {
+                          gridDolu = simdi;
+                          gridSatir = (() => { try { const st = new Set(); for (const el of dTaze.querySelectorAll('[name^="detaylar["]')) { const m = String(el.name || '').match(/^detaylar\[(\d+)\]/); if (m) st.add(m[1]); } return st.size; } catch { return -1; } })();
+                          try { postTr = dTaze.querySelectorAll('table tr').length; } catch {}
+                          yOk = true;
+                          await log(`✓ Doğal yükleme tamam · DOLU satır ${oncekiDolu} → ${simdi} (ham ${gridSatir}, tr ${postTr})`);
+                          break;
+                        }
+                      }
+                      if (!yOk) await log('⚠ Doğal yükleme sonuç vermedi (satır artmadı) — fetch-POST yedeğine düşülüyor');
+                    }
+                  } catch (eDogal) { await log(`doğal yükleme uyarısı: ${(eDogal && eDogal.message) || eDogal}`); }
+
+                  if (!yOk) try {
                     const pw = popupWin();
                     const fi = findFileInput();
                     const form = fi && (fi.form || (fi.closest && fi.closest('form')));
