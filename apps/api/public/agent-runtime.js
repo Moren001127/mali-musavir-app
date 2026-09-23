@@ -86,7 +86,7 @@
   //   Luca'nın beklediği adlarla TEK SEFERDE hizalanır (her denemede tek sütun hatası okumak yerine).
   // v1.47.48 (2026-09-15): firma onay düğmesi regex'indeki `\b` sınırları kaynakta gerçek backspace (0x08) baytına
   //   dönüşmüştü (sec/aç/ac seçenekleri ölüydü) → düzeltildi.
-  const AGENT_VERSION = '1.47.77';
+  const AGENT_VERSION = '1.47.78';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -3832,6 +3832,60 @@
                   // 3) "Fiş Kes" — sayfa fonksiyonu (fn:gonder) → popup-trusted → ana native → fireEl
                   // v1.47.67 — Fiş Kes de confirm() soruyor olabilir; Playwright reddettiği için
                   //   fonksiyon sessizce çıkıyor olabilirdi. Çağrı boyunca EVET'e sabitle.
+                  // ═══ v1.47.78 — ÖNCE "EKRANI KAYDET", SONRA "FİŞ KES" ═══
+                  //   v1.47.77 canlı dökümü iki ihtimali ELEDİ:
+                  //     [form dökümü] form sayısı=1 · #0 ad="hizliFisTopluForm"
+                  //                  detaylar=45 fisKesKutu=1/1
+                  //   Tek form var, 45 alanın hepsi onun içinde ve fiş kes kutucuğu işaretli.
+                  //   Yani DOĞRU form DOĞRU veriyle gidiyor; sorun formda değil.
+                  //   Gönderim sonrası sayfa da satırın durduğunu söylüyor:
+                  //     "Satır Sayısı: 1 Belge Sayısı: 1 ... (Toplam Kayıt Sayısı: 1)"
+                  //   ve ekranda "Ekranı Kaydet" düğmesi + "Alt+K : Ekranı kaydeder" kısayolu var.
+                  //   Luca'nın kendi temizle() kodu da kullanıcıya "Ekranı Kaydet'e basın" diyor:
+                  //   bu ekran bir BEKLEME ALANI (hesap listesi ucu bile ...TempAction.do).
+                  //   İnsan operatörün sırasını uyguluyoruz: önce kaydet, sonra fiş kes.
+                  //   ekraniKaydet() doğrulama kapısı olmadan formu gönderiyor:
+                  //     function ekraniKaydet(){ vergiDairesiUndefinedCozum();
+                  //       document.forms[0].action=`editHizliFisAction.do?r=`+Math.random();
+                  //       document.forms[0].submit(); }
+                  //   Kaydetme sayfayı tazelediği için fkDoc/fkWin BUNDAN SONRA alınır; böylece
+                  //   kutucuk seçimi ve tevkifat tablo/kod yazımı taze ekranda çalışır.
+                  try {
+                    const dK = hizliFisDoc();
+                    const wK = (dK && dK.defaultView) || null;
+                    if (wK && typeof wK.ekraniKaydet === 'function') {
+                      const kUrlOnce = (() => { try { return String((dK.location && dK.location.href) || ''); } catch { return ''; } })();
+                      wK.ekraniKaydet();
+                      await log('💾 "Ekranı Kaydet" çağrıldı — CSV satırları kalıcı hâle getiriliyor');
+                      let kBitti = false;
+                      for (let b = 0; b < 15; b++) {
+                        await sleep(1000);
+                        const dY = hizliFisDoc();
+                        if (!dY) continue;
+                        let u = ''; try { u = String((dY.location && dY.location.href) || ''); } catch {}
+                        if (u && u !== kUrlOnce) { await log(`💾 Kaydet sonrası ekran: ${u.slice(-72)}`); kBitti = true; break; }
+                      }
+                      if (!kBitti) await log('⚠ Kaydet sonrası ekran değişimi görülmedi — yine de devam ediliyor');
+                      await sleep(2000);
+                      // Kaydet gerçekten tuttu mu: satır hâlâ ekranda mı?
+                      try {
+                        const dZ = hizliFisDoc();
+                        const st = new Set();
+                        if (dZ) {
+                          for (const el of dZ.querySelectorAll('input[name^="detaylar["]')) {
+                            const m = String(el.name || '').match(/^detaylar\[(\d+)\]\.(\w+)/);
+                            if (!m || !/^(evrakNo|tckn|soyadi|tutar|kdvTutar|toplamTutar)$/.test(m[2])) continue;
+                            const v = String((el.value === undefined ? '' : el.value) || '').trim();
+                            if (v && !/^0([,.]0+)?$/.test(v)) st.add(m[1]);
+                          }
+                        }
+                        await log(`💾 Kaydet sonrası DOLU satır=${st.size}`);
+                      } catch {}
+                    } else {
+                      await log('⚠ ekraniKaydet() bulunamadı — doğrudan Fiş Kes denenecek');
+                    }
+                  } catch (eK) { await log(`Ekranı Kaydet uyarısı: ${(eK && eK.message) || eK}`); }
+
                   const fkDoc = hizliFisDoc();
                   const fkWin = (fkDoc && fkDoc.defaultView) || window;
                   // v1.47.68 — Fiş Kes de SEÇİLİ satırda çalışıyor ("Lütfen satır seçin.").
