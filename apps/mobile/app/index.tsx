@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { Redirect } from 'expo-router';
 import { View, StyleSheet, ActivityIndicator, Platform, Alert } from 'react-native';
 import { WebView, WebViewMessageEvent } from 'react-native-webview';
 import { Asset } from 'expo-asset';
@@ -110,7 +111,18 @@ function inits(name: string) {
   );
 }
 
+/**
+ * BELGE TARAYICI APK (2026-09-24): `unstable_settings.initialRouteName` TEK BAŞINA yetmiyordu —
+ * uygulama "/" rotasını, yani bu portal ekranını açıyordu (Muzaffer Bey: "belge tarama uygulaması
+ * değil ki, mobil uygulamayı indirdi"). Tarayıcı derlemesinde "/" doğrudan tarama ekranına yönlenir.
+ * Bayrak yoksa davranış aynen eskisi (tam ekran portal).
+ */
 export default function IndexScreen() {
+  if (process.env.EXPO_PUBLIC_MOREN_APP === 'tara') return <Redirect href="/tara" />;
+  return <PortalEkrani />;
+}
+
+function PortalEkrani() {
   const auth = useAuth();
   const personaRef = useRef<'adv' | 'tax'>('adv');
   // Bildirime dokununca ilgili ekrana git (push paketi): HTML go(route)
