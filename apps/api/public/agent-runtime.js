@@ -89,7 +89,9 @@
   // v1.47.81 (2026-09-23): İŞLETME CSV — doğal yükleme satır eklemeyince Luca'nın red gerekçesi (lucaNotYaz) artık bu
   //   yolda da okunup loga yazılır; fetch-POST yedeği, doğal gönderimde boşalan dosya girdisine indirilen dosyayı yeniden
   //   koyarak GERÇEKTEN çalışır (23.09 canlı: "dosya=false" → yedek hiç koşmadı, sebep görünmedi).
-  const AGENT_VERSION = '1.47.81';
+  // v1.47.82 (2026-09-23): İŞLETME Fiş Kes — Luca'nın gönderim sonrası mesajı (lucaNotYaz) önce/sonra FARKIYLA loga
+  //   yazılır (sayfa metni 4.200 karakterde kesiliyor, mesajlar sonda kalıyordu); sayfanın son 1.200 karakteri de yazılır.
+  const AGENT_VERSION = '1.47.82';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -4160,6 +4162,31 @@
                   };
                   await log(satirDokumu(fkDoc, 'ÖNCE').slice(0, 1900));
                   const fkUrlOnce = (() => { try { return String((fkDoc && fkDoc.location && fkDoc.location.href) || ''); } catch { return ''; } })();
+                  // v1.47.82 — LUCA'NIN FİŞ KES SONRASI MESAJI: sayfa metni 4.200 karakterde kesiliyor, lucaNotYaz çağrıları
+                  //   sayfanın SONUNDA → sebep hiç okunmuyordu. Gönderimden ÖNCE ve SONRA tüm belgelerdeki lucaNotYaz
+                  //   metinleri + .red/.error öğeleri toplanır; yalnız YENİ olanlar yazılır (fonksiyon gövdelerindeki
+                  //   statik "Beklenmedik hata." gibi sabitler elenir).
+                  const lucaNotlariTopla = () => {
+                    const notlar = [];
+                    try {
+                      for (const d2 of lucaDocuments()) {
+                        try {
+                          for (const sc of d2.querySelectorAll('script')) {
+                            for (const m of String(sc.textContent || '').matchAll(/lucaNotYaz\(\s*["'`]([\s\S]*?)["'`]\s*[,)]/g)) {
+                              const t = m[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+                              if (t && t.length > 3 && !notlar.includes(t)) notlar.push(t.slice(0, 400));
+                            }
+                          }
+                          for (const el of d2.querySelectorAll('.red, .error, .hata, .lucaNot, [id*="lucaNot" i], [class*="notYaz" i]')) {
+                            const t = String(el.textContent || '').replace(/\s+/g, ' ').trim();
+                            if (t && t.length > 3 && !notlar.includes(t)) notlar.push(t.slice(0, 400));
+                          }
+                        } catch {}
+                      }
+                    } catch {}
+                    return notlar;
+                  };
+                  const fkNotOnce = lucaNotlariTopla();
                   let fk = false;
                   if (fkDogrulamaGecti && typeof fkWin.fisKes === 'function') {
                     try {
@@ -4210,6 +4237,15 @@
                       } catch {}
                       await log(satirDokumu(dS, 'SONRA').slice(0, 1900));
                       if (tS.length > 2600) await log(`ℹ[gönderim sonrası metin-3] ${tS.slice(2600, 4200)}`);
+                      // v1.47.82 — Luca'nın Fiş Kes sonrası YENİ mesajları (önce/sonra farkı) + sayfanın son 1.200 karakteri.
+                      try {
+                        const fkNotSonra = lucaNotlariTopla();
+                        const yeniNot = fkNotSonra.filter((x) => !fkNotOnce.includes(x));
+                        await log(yeniNot.length
+                          ? `⚠[Luca fiş-kes YENİ] ${yeniNot.join(' || ').slice(0, 1200)}`
+                          : `ℹ[Luca fiş-kes] yeni lucaNotYaz/hata metni YOK (önce ${fkNotOnce.length}, sonra ${fkNotSonra.length} sabit metin)`);
+                        if (tS.length > 4200) await log(`ℹ[gönderim sonrası metin-SON] …${tS.slice(-1200)}`);
+                      } catch (eNot) { await log(`fiş-kes not okuma uyarısı: ${(eNot && eNot.message) || eNot}`); }
                       // ═══ v1.47.80 — GÖRÜNÜR DİYALOĞU BUL VE YANITLA ═══
                       //   v1.47.79 canlı: sunucu satırı AYNEN geri döndürdü (TABLO_TURU=6,
                       //   kodNo=614 korundu → veri kabul edildi) ama fiş kesilmedi. Yanıt
