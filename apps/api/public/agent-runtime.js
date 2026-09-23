@@ -86,7 +86,7 @@
   //   Luca'nın beklediği adlarla TEK SEFERDE hizalanır (her denemede tek sütun hatası okumak yerine).
   // v1.47.48 (2026-09-15): firma onay düğmesi regex'indeki `\b` sınırları kaynakta gerçek backspace (0x08) baytına
   //   dönüşmüştü (sec/aç/ac seçenekleri ölüydü) → düzeltildi.
-  const AGENT_VERSION = '1.47.79';
+  const AGENT_VERSION = '1.47.80';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -4177,6 +4177,65 @@
                       } catch {}
                       await log(satirDokumu(dS, 'SONRA').slice(0, 1900));
                       if (tS.length > 2600) await log(`ℹ[gönderim sonrası metin-3] ${tS.slice(2600, 4200)}`);
+                      // ═══ v1.47.80 — GÖRÜNÜR DİYALOĞU BUL VE YANITLA ═══
+                      //   v1.47.79 canlı: sunucu satırı AYNEN geri döndürdü (TABLO_TURU=6,
+                      //   kodNo=614 korundu → veri kabul edildi) ama fiş kesilmedi. Yanıt
+                      //   sayfasının sonunda şu var:
+                      //     "Eksik Ünvan Bilgisi Sorgulama — Seçili kayıtların ünvan bilgilerini
+                      //      sorgulamak istiyor musunuz? İptal Sorgula"  ve  "Beklenmedik hata."
+                      //   Satırda vergi dairesi (vergiDairesiKod0="") ve cari (kod0="", cariId0="0")
+                      //   BOŞ — Luca bu yüzden ünvan sorgu diyaloğunu açıyor olabilir.
+                      //   Mevcut onay arayıcımız yalnızca Evet/Tamam/Onayla arıyor; bu diyaloğun
+                      //   düğmeleri İPTAL / SORGULA — hiç eşleşmiyor, diyalog açık kalıyor.
+                      //   Önce GÖRÜNÜR denetimleri yazıyoruz (tahmin yok), sonra açıksa yanıtlıyoruz.
+                      try {
+                        const gorunurMu = (el) => {
+                          try {
+                            const d2 = el.ownerDocument; const w2 = (d2 && d2.defaultView) || null;
+                            if (!w2) return false;
+                            const r = el.getBoundingClientRect();
+                            if (!r || r.width < 2 || r.height < 2) return false;
+                            const st = w2.getComputedStyle(el);
+                            if (!st || st.visibility === 'hidden' || st.display === 'none' || Number(st.opacity) === 0) return false;
+                            return true;
+                          } catch { return false; }
+                        };
+                        const denetim = [];
+                        let sorgulaEl = null;
+                        for (const d2 of lucaDocuments()) {
+                          for (const el of d2.querySelectorAll('button, input[type="button"], input[type="submit"], a')) {
+                            if (!gorunurMu(el)) continue;
+                            const t = String(el.value || el.textContent || '').replace(/\s+/g, ' ').trim();
+                            if (!t) continue;
+                            denetim.push(t.slice(0, 22));
+                            if (!sorgulaEl && /^Sorgula$/i.test(t)) sorgulaEl = el;
+                            if (denetim.length >= 26) break;
+                          }
+                          if (denetim.length >= 26) break;
+                        }
+                        await log(`ℹ[görünür denetimler] ${denetim.join(' | ') || '(görünür düğme yok)'}`);
+                        if (sorgulaEl) {
+                          await log('🔎 "Eksik Ünvan Bilgisi Sorgulama" diyaloğu AÇIK — "Sorgula" yanıtlanıyor');
+                          try { sorgulaEl.click(); } catch {}
+                          await sleep(9000);
+                          const dU = hizliFisDoc();
+                          await log(satirDokumu(dU, 'ÜNVAN-SORGU-SONRASI').slice(0, 1200));
+                          // Diyalog kalktıysa Fiş Kes'i TEKRAR dene (ilk gidiş bu yüzden boşa gitmişti)
+                          try {
+                            const wU = (dU && dU.defaultView) || null;
+                            if (wU && typeof wU.validateFisKes === 'function' && typeof wU.fisKes === 'function') {
+                              try { for (const cb of dU.querySelectorAll('input[type="checkbox"][id^="fisKes"]')) { if (!cb.checked) { cb.checked = true; try { cb.dispatchEvent(new wU.Event('change', { bubbles: true })); } catch {} } } } catch {}
+                              let v2 = 'CAGRILAMADI';
+                              try { v2 = String(wU.validateFisKes()); } catch (e2) { v2 = 'HATA: ' + ((e2 && e2.message) || e2); }
+                              await log(`ℹ[ünvan sonrası validateFisKes] sonuç=${v2}`);
+                              if (v2 === 'true') {
+                                try { wU.fisKes(); await log('✂ Ünvan sorgusundan sonra fisKes() TEKRAR çağrıldı'); } catch (e3) { await log(`✗ 2. fisKes() hata: ${(e3 && e3.message) || e3}`); }
+                                await sleep(6000);
+                              }
+                            }
+                          } catch (eU) { await log(`ünvan sonrası fiş kes uyarısı: ${(eU && eU.message) || eU}`); }
+                        }
+                      } catch (eD) { await log(`görünür denetim uyarısı: ${(eD && eD.message) || eD}`); }
                       // Açık pencerelerin tümünde url dökümü — yanıt başka pencereye düşmüş olabilir.
                       const urlListe = [];
                       try {
