@@ -86,7 +86,7 @@
   //   Luca'nın beklediği adlarla TEK SEFERDE hizalanır (her denemede tek sütun hatası okumak yerine).
   // v1.47.48 (2026-09-15): firma onay düğmesi regex'indeki `\b` sınırları kaynakta gerçek backspace (0x08) baytına
   //   dönüşmüştü (sec/aç/ac seçenekleri ölüydü) → düzeltildi.
-  const AGENT_VERSION = '1.47.72';
+  const AGENT_VERSION = '1.47.73';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -3876,14 +3876,43 @@
                     } catch {}
                     return `ℹ[fkUyarı ${etiket}] ${bulgu.join(' ; ').slice(0, 700) || '(uyarı metni yok)'}`;
                   };
+                  // ══ v1.47.73 — TEK KAPI BULUNDU: validateFisKes() ══
+                  //   v1.47.72 canlı dökümü Fiş Kes'in TAM gövdesini verdi:
+                  //     function fisKes(){
+                  //       if(validateFisKes()){ vergiDairesiUndefinedCozum();
+                  //         document.forms[0].action='editHizliFisAction.do?fisKes=true&r='+Math.random();
+                  //         document.forms[0].submit(); }
+                  //       hideMask(); }
+                  //   Yani sunucuya gidiş TAMAMEN validateFisKes()'e bağlı; false dönerse
+                  //   hiçbir şey olmuyor, maske kapanıyor ve ekran aynı kalıyor — gördüğümüz
+                  //   "commit sinyali yok" tam olarak bu. gonder('fisKes') yolu doğru çalışıyor
+                  //   (showMask(); fisKesControl(); → fisKes()), sorun orada DEĞİL.
+                  //   Bu sürüm hangi alanın reddedildiğini KESİN görmek için: (1) validateFisKes
+                  //   gövdesini yazar, (2) fonksiyonu DOĞRUDAN çağırıp dönüşünü kaydeder,
+                  //   (3) lucaNotYaz'ın yazdığı .alert metnini HEMEN okur (mesaj kısa ömürlü).
+                  //   Davranış değiştirilmiyor; yalnızca kanıt toplanıyor.
                   try {
-                    for (const fnAd of ['fisKes', 'ekraniKaydet', 'gonder', 'lucaNotYaz']) {
-                      let src = '';
-                      try { if (typeof fkWin[fnAd] === 'function') src = fkWin[fnAd].toString(); } catch {}
-                      const tmz = String(src).replace(/https?:\/\/\S+/g, '[url]').replace(/["']/g, '`').replace(/\s+/g, ' ').slice(0, 1400);
-                      await log(`ℹ[fkKaynak ${fnAd}] ${tmz || 'ERISILEMEDI'}`);
+                    let vSrc = '';
+                    try { if (typeof fkWin.validateFisKes === 'function') vSrc = fkWin.validateFisKes.toString(); } catch {}
+                    const vTmz = String(vSrc).replace(/https?:\/\/\S+/g, '[url]').replace(/["']/g, '`').replace(/\s+/g, ' ').slice(0, 2600);
+                    await log(`ℹ[fkKaynak validateFisKes] ${vTmz || 'ERISILEMEDI'}`);
+                    if (typeof fkWin.validateFisKes === 'function') {
+                      let vSonuc = 'CAGRILAMADI';
+                      try { vSonuc = String(fkWin.validateFisKes()); } catch (eV) { vSonuc = 'HATA: ' + ((eV && eV.message) || eV); }
+                      const uyarilar = [];
+                      try {
+                        for (const d of lucaDocuments()) {
+                          for (const a of d.querySelectorAll('.alert, .not, .notification, [class*="alert"], [class*="not-"]')) {
+                            const t = String(a.textContent || '').replace(/\s+/g, ' ').trim();
+                            if (t) uyarilar.push(t.slice(0, 170));
+                            if (uyarilar.length >= 10) break;
+                          }
+                          if (uyarilar.length >= 10) break;
+                        }
+                      } catch {}
+                      await log(`ℹ[validateFisKes] sonuç=${vSonuc} · alert=${[...new Set(uyarilar)].join(' | ').slice(0, 700) || '(yok)'}`);
                     }
-                  } catch (eFk) { await log(`fkKaynak uyarısı: ${(eFk && eFk.message) || eFk}`); }
+                  } catch (eVv) { await log(`validateFisKes tanı uyarısı: ${(eVv && eVv.message) || eVv}`); }
                   await log(uyariTara('ÖNCE'));
                   const fkEskiConfirm = (() => { try { return fkWin.confirm; } catch { return undefined; } })();
                   try { fkWin.confirm = () => true; } catch {}
