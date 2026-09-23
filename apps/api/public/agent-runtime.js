@@ -91,7 +91,8 @@
   //   koyarak GERÇEKTEN çalışır (23.09 canlı: "dosya=false" → yedek hiç koşmadı, sebep görünmedi).
   // v1.47.82 (2026-09-23): İŞLETME Fiş Kes — Luca'nın gönderim sonrası mesajı (lucaNotYaz) önce/sonra FARKIYLA loga
   //   yazılır (sayfa metni 4.200 karakterde kesiliyor, mesajlar sonda kalıyordu); sayfanın son 1.200 karakteri de yazılır.
-  const AGENT_VERSION = '1.47.82';
+  // v1.47.83 (2026-09-23): İŞLETME Fiş Kes — KOD alanı Luca biçiminde "614 | 5/10" yazılır (yalnız "614" sessizce reddediliyordu).
+  const AGENT_VERSION = '1.47.83';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -4038,8 +4039,20 @@
                       if (!kod) { rapor.push(`${i}:KOD-YOK(evrak ${evrakNo} eşleşmedi)`); continue; }
                       const s1 = yaz(bId('TABLO_TURU' + i), '2', /tablo\s*2|k[ıi]sm[ıi]\s*tevkifat/i);
                       await sleep(800); // tablo türü değişinca kod listesi AJAX ile dolabilir
-                      const s2 = yaz(bId('kodNo' + i), kod, new RegExp('^\\s*' + kod.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
-                      rapor.push(`${i}: tablo=${s1} kod(${kod})=${s2}`);
+                      // v1.47.83 (2026-09-23, Muzaffer Bey'in ekran görüntüsü — ASIL KÖK): KOD alanının Luca'daki biçimi
+                      //   "614 | 5/10" (kod + BOŞLUK + dikey çizgi + tevkifat oranı). Kullanıcı listeden seçince böyle yazılıyor;
+                      //   biz yalnız "614" yazdığımız için sunucu satırı SESSİZCE geri çeviriyordu (elle seçilince fiş kesildi).
+                      //   Oran satırın kendi tevkifat kutusunun METNİNDEN alınır (uydurma yok); metin okunamazsa eski davranış.
+                      const tevMetin = (() => {
+                        try {
+                          const o = tev.options && tev.selectedIndex >= 0 ? tev.options[tev.selectedIndex] : null;
+                          const t = String((o && o.textContent) || '').replace(/\s+/g, ' ').trim();
+                          return /^\d{1,2}\s*\/\s*10$/.test(t) ? t.replace(/\s+/g, '') : '';
+                        } catch { return ''; }
+                      })();
+                      const kodDeger = tevMetin ? `${kod} | ${tevMetin}` : kod;
+                      const s2 = yaz(bId('kodNo' + i), kodDeger, new RegExp('^\\s*' + kod.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+                      rapor.push(`${i}: tablo=${s1} kod(${kodDeger})=${s2}`);
                     }
                     await log(`🧾 Tevkifat tablo/kod yazımı: ${rapor.join(' | ') || '(tevkifatlı satır yok)'}`);
                   } catch (eTv) { await log(`tevkifat tablo/kod uyarısı: ${(eTv && eTv.message) || eTv}`); }
