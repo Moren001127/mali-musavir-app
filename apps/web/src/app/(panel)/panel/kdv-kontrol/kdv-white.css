@@ -394,3 +394,219 @@ html[data-theme='D'] [data-kdv-page] > div.fixed > div select { background: #fff
 html[data-theme='D'] [data-kdv-page] > div.fixed > div label { color: var(--kv-sec) !important; }
 html[data-theme='D'] [data-kdv-page] > div.fixed > div table thead th { background: var(--kv-head) !important; color: var(--kv-sec) !important; }
 html[data-theme='D'] [data-kdv-page] > div.fixed > div table tbody td { color: var(--kv-ink) !important; border-color: var(--kv-line-2) !important; }
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+   NETLEŞTİRME TURU — 2026-09-25 (Muzaffer Bey: "bazı alanlar net görünmüyor, ayırt edici olmuyor")
+   Önek `body` ile yazılır: modülün kendi geniş seçicileri (ör. içerik denetimi rozet kuralları) ile ortak
+   portal katmanını özgüllükle geçer. Düzen, uçlar ve tıklamalar DEĞİŞMEZ — yalnız okunabilirlik ve hiyerarşi.
+   ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════ */
+
+/* ── 1. Devre dışı öğeler okunur olsun ──────────────────────────────────────────────────────────────────────────────
+   Eski hal: yazı #cbd5e1 / zemin #f8fafc → 1.4:1 kontrast, düğme yazısı kaybolyordu.
+   Yeni hal: okunur soluk yazı + KESİKLİ kenar. "Seçilemez" mesajını renk değil biçim taşır. */
+html[data-theme='D'] body [data-kdv-page] [data-kdv-commands] .grid-cols-2 > button:disabled {
+  background: #fff !important; border: 1px dashed #cdd6e0 !important; color: #78879b !important;
+  opacity: 1 !important; cursor: not-allowed;
+}
+html[data-theme='D'] body [data-kdv-page] [data-kdv-commands] input[type='month']:disabled {
+  background: #fff !important; border: 1px dashed #cdd6e0 !important; color: #78879b !important;
+}
+html[data-theme='D'] body [data-kdv-page] [data-kdv-action-grid] > [data-kdv-action]:disabled {
+  background: #fcfdfe !important; border-style: dashed !important; border-color: #d7dee8 !important; opacity: 1 !important; cursor: not-allowed;
+}
+html[data-theme='D'] body [data-kdv-page] [data-kdv-action-grid] > [data-kdv-action]:disabled > div > p { color: #55657a !important; }
+html[data-theme='D'] body [data-kdv-page] [data-kdv-action-grid] > [data-kdv-action]:disabled > p { color: #78879b !important; }
+html[data-theme='D'] body [data-kdv-page] [data-kdv-action-grid] > [data-kdv-action]:disabled > div > div { filter: saturate(.4); opacity: .8; }
+html[data-theme='D'] body [data-kdv-page] [data-kdv-action-grid] > [data-kdv-action='primary']:disabled {
+  background: #e6ebf5 !important; border-style: solid !important; border-color: #d7dee8 !important;
+}
+html[data-theme='D'] body [data-kdv-page] [data-kdv-action-grid] > [data-kdv-action='primary']:disabled > div > p { color: #55657a !important; }
+html[data-theme='D'] body [data-kdv-page] [data-kdv-action-grid] > [data-kdv-action='primary']:disabled > p { color: #78879b !important; }
+html[data-theme='D'] body [data-kdv-page] [data-kdv-action-grid] > [data-kdv-action='primary']:disabled > div > div { background: rgba(15, 23, 42, .07) !important; }
+html[data-theme='D'] body [data-kdv-page] [data-kdv-action-grid] > [data-kdv-action='primary']:disabled > div > div svg { color: #55657a !important; }
+html[data-theme='D'] body [data-kdv-page] table tbody td:last-child :is(button, a):disabled {
+  background: #fff !important; border: 1px dashed #dde3ea !important; color: #9aa7b8 !important;
+}
+
+/* ── 2. Komut şeridi: adım rakamı ÇİVİT (kehribara boyanıyordu) + alan dengesi ─────────────────────────────────── */
+html[data-theme='D'] body [data-kdv-page] [data-kdv-commands] label > span:first-child {
+  background: var(--kv-civit-soft) !important; color: var(--kv-civit-ink) !important; border: 1px solid var(--kv-civit-line) !important;
+  width: 18px !important; height: 18px !important; font-size: 10px !important; flex: none;
+}
+html[data-theme='D'] body [data-kdv-page] [data-kdv-commands] > div > div:first-child { flex: 1 1 360px !important; max-width: 640px; }
+html[data-theme='D'] body [data-kdv-page] [data-kdv-commands] .grid-cols-2 > button { letter-spacing: .02em; }
+
+/* ── 3. Seans sayaçları: rakamlar TEK HİZADA + sıfırlar soluk + sorunlu olan göze çarpsın ───────────────────────
+   Kart ölçüsü değişmez (13.08.2026 kuralı). Değişen: etiket alanı sabitlenir (rakamlar hizalanır),
+   yenile düğmesi köşeye taşınır (tek biçim), alt çubuk "ilerleme" sanılmasın diye kısa vurgu çizgisine iner. */
+html[data-theme='D'] body [data-kdv-page] [data-portal-kpi] { position: relative; }
+html[data-theme='D'] body [data-kdv-page] [data-kpi-ust] {
+  min-height: 30px; align-items: flex-start !important; margin-bottom: 4px !important;
+}
+html[data-theme='D'] body [data-kdv-page] [data-kpi-etiket] { line-height: 1.3 !important; align-items: flex-start !important; }
+html[data-theme='D'] body [data-kdv-page] [data-kpi-etiket] > svg { margin-top: 1px; }
+html[data-theme='D'] body [data-kdv-page] [data-portal-kpi]:has([data-kpi-yenile]) [data-kpi-etiket] { padding-right: 24px; }
+html[data-theme='D'] body [data-kdv-page] [data-kpi-yenile] {
+  position: absolute; top: 8px; right: 8px; width: 22px; height: 22px; padding: 0 !important; justify-content: center;
+  background: #fff !important; border: 1px solid var(--kv-field-line) !important; color: var(--kv-sec) !important; border-radius: 8px !important;
+  font-size: 12px !important; line-height: 1;
+}
+html[data-theme='D'] body [data-kdv-page] [data-kpi-yenile]:hover:not(:disabled) { background: var(--kv-civit-soft) !important; border-color: var(--kv-civit-line) !important; color: var(--kv-civit-ink) !important; box-shadow: none; }
+html[data-theme='D'] body [data-kdv-page] [data-kpi-yenile-yazi] { display: none !important; }
+html[data-theme='D'] body [data-kdv-page] [data-kpi-deger] { font-size: 24px !important; font-weight: 750 !important; color: var(--kv-ink) !important; }
+html[data-theme='D'] body [data-kdv-page] [data-kpi-deger][data-kpi-sifir='evet'] { color: #b6c1cf !important; }
+html[data-theme='D'] body [data-kdv-page] [data-kpi-alt] { font-family: var(--kv-font) !important; color: var(--kv-muted) !important; font-size: 10.5px !important; line-height: 1.35 !important; }
+/* Kısa vurgu çizgisi (tam genişlik çubuk "ilerleme" sanılıyordu) — rakamın hemen altında durur,
+   kartın dibine itilmez; aksi halde rakam ile çizgi arası kocaman boşluk kalıyordu. */
+html[data-theme='D'] body [data-kdv-page] [data-portal-kpi]::after {
+  width: 34px; height: 3px; opacity: 1; margin-top: 9px !important; margin-bottom: auto;
+}
+html[data-theme='D'] body [data-kdv-page] [data-portal-kpi] > p:last-of-type { margin-bottom: 0 !important; }
+/* Sorunlu sayaçlar: dolu olduklarında kendi tonlarında zemin alır; sıfırsa sade beyaz kalır */
+html[data-theme='D'] body [data-kdv-page] [data-portal-kpi][data-kpi-tur='pending'][data-kpi-dolu='evet'],
+html[data-theme='D'] body [data-kdv-page] [data-portal-kpi][data-kpi-tur='review'][data-kpi-dolu='evet'] {
+  background: var(--kv-kehribar-soft) !important; border-color: var(--kv-kehribar-line) !important;
+}
+html[data-theme='D'] body [data-kdv-page] [data-portal-kpi][data-kpi-tur='failed'][data-kpi-dolu='evet'] {
+  background: var(--kv-kirmizi-soft) !important; border-color: var(--kv-kirmizi-line) !important;
+}
+html[data-theme='D'] body [data-kdv-page] [data-portal-kpi][data-kpi-tur='failed'][data-kpi-dolu='evet'] [data-kpi-deger] { color: var(--kv-kirmizi-ink) !important; }
+html[data-theme='D'] body [data-kdv-page] [data-portal-kpi][data-kpi-dolu='evet']:is([data-kpi-tur='pending'], [data-kpi-tur='review']) [data-kpi-deger] { color: var(--kv-kehribar-ink) !important; }
+html[data-theme='D'] body [data-kdv-page] [data-portal-kpi][data-kpi-dolu='evet']:is([data-kpi-tur='pending'], [data-kpi-tur='review'], [data-kpi-tur='failed']) [data-kpi-yenile] { background: #fff !important; }
+
+/* ── 4. Denge özeti + OCR maliyeti: satırlar ayrışsın ──────────────────────────────────────────────────────────── */
+html[data-theme='D'] body [data-kdv-page] [data-kdv-surface] > div[class*='p-3.5'] > div.mt-4.rounded-xl {
+  background: var(--kv-head) !important; border-color: var(--kv-line) !important; border-radius: 12px !important;
+}
+html[data-theme='D'] body [data-kdv-page] [data-kdv-surface] > div[class*='p-3.5'] > div.mt-4.rounded-xl > div { color: var(--kv-sec) !important; }
+html[data-theme='D'] body [data-kdv-page] [data-kdv-surface] > div[class*='p-3.5'] > div.mt-4.rounded-xl > div + div { margin-top: 3px; padding-top: 6px; border-top: 1px solid var(--kv-line); }
+html[data-theme='D'] body [data-kdv-page] [data-kdv-surface] > div[class*='p-3.5'] > div.mt-4.rounded-xl > div > span:first-child { color: var(--kv-ink) !important; font-weight: 650 !important; }
+html[data-theme='D'] body [data-kdv-page] [data-kdv-surface] > div[class*='p-3.5'] > div.mt-4.pt-4.border-t > span:first-child { color: var(--kv-muted) !important; font-weight: 650 !important; }
+
+/* ── 5. OCR teyit paneli — EYLEM ile SÜZGEÇ ayrılsın, etkin süzgeç belli olsun ──────────────────────────────────
+   Eski hal: 9 çip aynı biçimde yan yanaydı; "% Oranları Tamamla" bir eylem olduğu halde süzgeç gibi duruyordu,
+   etkin süzgeç yalnız ince gri halkayla belliydi, "Eşik %70" neredeyse görünmüyordu. */
+html[data-theme='D'] body [data-kdv-page] [data-kdv-ocr] [data-kdv-btn='deniz'] {
+  background: #fff !important; border: 1px solid var(--kv-deniz-line) !important; color: var(--kv-deniz-ink) !important;
+  border-radius: 8px !important; padding: 4px 11px !important; margin-right: 12px; position: relative;
+}
+html[data-theme='D'] body [data-kdv-page] [data-kdv-ocr] [data-kdv-btn='deniz']:hover:not(:disabled) { background: var(--kv-deniz-soft) !important; }
+html[data-theme='D'] body [data-kdv-page] [data-kdv-ocr] [data-kdv-btn='deniz']::after {
+  content: ''; position: absolute; right: -6px; top: 50%; transform: translateY(-50%); width: 1px; height: 18px; background: var(--kv-line);
+}
+html[data-theme='D'] body [data-kdv-page] [data-kdv-chip] {
+  background: var(--kv-notr-soft) !important; border-color: var(--kv-notr-line) !important; color: var(--kv-sec) !important;
+  padding: 4px 10px !important; font-size: 11px !important; font-weight: 600 !important; box-shadow: none !important;
+}
+html[data-theme='D'] body [data-kdv-page] [data-kdv-chip][data-aktif='evet'] {
+  background: #fff !important; border-color: var(--kv-civit) !important; color: var(--kv-civit-ink) !important;
+  font-weight: 700 !important; box-shadow: 0 1px 2px rgba(15, 23, 42, .08), 0 0 0 2px var(--kv-ring) !important;
+}
+html[data-theme='D'] body [data-kdv-page] [data-kdv-chip='kehribar'] { background: var(--kv-kehribar-soft) !important; border-color: var(--kv-kehribar-line) !important; color: var(--kv-kehribar-ink) !important; }
+html[data-theme='D'] body [data-kdv-page] [data-kdv-chip='yesil'] { background: var(--kv-yesil-soft) !important; border-color: var(--kv-yesil-line) !important; color: var(--kv-yesil-ink) !important; }
+html[data-theme='D'] body [data-kdv-page] [data-kdv-chip='kirmizi'] { background: var(--kv-kirmizi-soft) !important; border-color: var(--kv-kirmizi-line) !important; color: var(--kv-kirmizi-ink) !important; }
+html[data-theme='D'] body [data-kdv-page] [data-kdv-chip='mavi'] { background: var(--kv-mavi-soft) !important; border-color: var(--kv-mavi-line) !important; color: var(--kv-mavi-ink) !important; }
+html[data-theme='D'] body [data-kdv-page] [data-kdv-chip='mor'] { background: var(--kv-mor-soft) !important; border-color: var(--kv-mor-line) !important; color: var(--kv-mor-ink) !important; }
+html[data-theme='D'] body [data-kdv-page] [data-kdv-esik] {
+  margin-left: auto !important; color: var(--kv-muted) !important; font-size: 11px !important; font-weight: 600 !important;
+  letter-spacing: .04em !important; padding-left: 12px; border-left: 1px solid var(--kv-line);
+}
+
+/* Belge listesi: dosya adı öne çıksın, motor adı (AZURE/CLAUDE/CACHE/XML) gürültü olmaktan çıksın */
+html[data-theme='D'] body [data-kdv-page] [data-kdv-tag='engine'] {
+  background: transparent !important; border: 0 !important; color: var(--kv-faint) !important;
+  padding: 2px 0 !important; letter-spacing: .08em !important; font-weight: 700 !important;
+}
+html[data-theme='D'] body [data-kdv-page] [data-kdv-doc-ad] { font-size: 13px !important; }
+html[data-theme='D'] body [data-kdv-page] [data-kdv-document='active'] { box-shadow: inset 3px 0 0 var(--kv-civit); }
+html[data-theme='D'] body [data-kdv-page] [data-kdv-document] { padding-top: 9px !important; padding-bottom: 9px !important; }
+
+/* Belge önizleme: beyaz belge beyaz zeminde kayboluyordu → zemin koyulaşır, belgeye çerçeve + gölge gelir */
+html[data-theme='D'] body [data-kdv-page] [data-kdv-preview] { background: #e9eef5 !important; border-color: var(--kv-line) !important; }
+html[data-theme='D'] body [data-kdv-page] [data-kdv-preview] > img,
+html[data-theme='D'] body [data-kdv-page] [data-kdv-preview] > :is(a, div) > img {
+  background: #fff; border: 1px solid #ccd6e2; border-radius: 6px; box-shadow: 0 6px 20px rgba(15, 23, 42, .13);
+}
+/* Büyüteç rozeti: siyah/altın kapsül beyaz temada çamur gibi duruyordu */
+html[data-theme='D'] body [data-kdv-page] [data-kdv-preview] .absolute button {
+  background: rgba(255, 255, 255, .96) !important; color: var(--kv-sec) !important; border: 1px solid var(--kv-field-line) !important;
+  border-radius: 8px !important; box-shadow: 0 2px 8px rgba(15, 23, 42, .12) !important;
+}
+html[data-theme='D'] body [data-kdv-page] [data-kdv-preview] .absolute button svg { color: var(--kv-civit) !important; }
+html[data-theme='D'] body [data-kdv-page] [data-kdv-preview] .absolute button:hover { background: #fff !important; border-color: var(--kv-civit-line) !important; }
+
+/* Girdi alanları: dolu değer ile boş alanın yer tutucusu birbirine karışıyordu */
+html[data-theme='D'] body [data-kdv-page] [data-kdv-input] { font-size: 14.5px !important; font-weight: 600 !important; color: var(--kv-ink) !important; }
+html[data-theme='D'] body [data-kdv-page] [data-kdv-input]::placeholder { color: #c3cddb !important; font-weight: 400 !important; }
+html[data-theme='D'] body [data-kdv-page] [data-kdv-input='salt'] { color: var(--kv-yesil-ink) !important; font-weight: 700 !important; }
+html[data-theme='D'] body [data-kdv-page] [data-kdv-field-label] { color: var(--kv-muted) !important; font-weight: 700 !important; }
+html[data-theme='D'] body [data-kdv-page] [data-kdv-breakdown] { background: #fff !important; border-color: var(--kv-line) !important; }
+html[data-theme='D'] body [data-kdv-page] [data-kdv-breakdown] [data-kdv-input] { background: #fff !important; }
+
+/* ── 6. Eşleşme inceleme paneli: FARKLI olan alan göze çarpsın ─────────────────────────────────────────────────
+   Panelin işi iki kaydı karşılaştırmak; oysa farklı olan tarih/KDV satırı hiç işaretlenmiyordu. */
+html[data-theme='D'] body [data-kdv-page] [data-kdv-match-kutu] > div:has(> [data-kdv-row-value='vurgu']) {
+  background: var(--kv-kehribar-soft); border-left: 2px solid var(--kv-kehribar); border-radius: 0 6px 6px 0;
+  margin-left: -10px; padding: 4px 8px 4px 8px; margin-bottom: 3px;
+}
+html[data-theme='D'] body [data-kdv-page] [data-kdv-match-kutu] > div:has(> [data-kdv-row-value='vurgu']) [data-kdv-row-label] { color: var(--kv-kehribar-ink) !important; }
+html[data-theme='D'] body [data-kdv-page] [data-kdv-row-value='vurgu'] { color: var(--kv-kehribar-ink) !important; font-weight: 700 !important; }
+html[data-theme='D'] body [data-kdv-page] [data-kdv-row-label] { color: var(--kv-muted) !important; }
+html[data-theme='D'] body [data-kdv-page] [data-kdv-match-kutu] { box-shadow: var(--kv-shadow-soft); }
+html[data-theme='D'] body [data-kdv-page] [data-kdv-match-gorsel] { background: #e9eef5 !important; }
+html[data-theme='D'] body [data-kdv-page] [data-kdv-match-gorsel] img { background: #fff; border: 1px solid #ccd6e2; border-radius: 4px; box-shadow: 0 4px 14px rgba(15, 23, 42, .12); }
+
+/* ── 7. Kontroller tablosu: renk yalnız ANLAM taşısın ──────────────────────────────────────────────────────────
+   Eski hal: satır başına 6 renkli kapsül; Luca/Fatura gibi nötr sayılar da renkliydi, sıfırlar yer kaplıyordu. */
+html[data-theme='D'] body [data-kdv-page] table tbody td:nth-child(2) [data-kdv-veri-kalem] {
+  background: transparent !important; border: 0 !important; padding: 2px 0 !important;
+  color: var(--kv-sec) !important; font-weight: 600 !important; font-size: 12.5px !important;
+}
+html[data-theme='D'] body [data-kdv-page] table tbody td:nth-child(2) [data-kdv-veri-kalem='fatura'] { padding-left: 11px !important; position: relative; }
+html[data-theme='D'] body [data-kdv-page] table tbody td:nth-child(2) [data-kdv-veri-kalem='fatura']::before {
+  content: ''; position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 1px; height: 12px; background: var(--kv-line);
+}
+html[data-theme='D'] body [data-kdv-page] table tbody td:nth-child(3) [data-kdv-sonuc-kalem] {
+  border-radius: 999px !important; font-size: 11px !important; font-weight: 650 !important; padding: 3px 9px !important; border: 1px solid transparent;
+}
+html[data-theme='D'] body [data-kdv-page] table tbody td:nth-child(3) [data-kdv-sonuc-kalem][data-kdv-dolu='hayir'] {
+  background: transparent !important; border-color: transparent !important; color: #b6c1cf !important; font-weight: 500 !important; padding-left: 4px !important; padding-right: 4px !important;
+}
+html[data-theme='D'] body [data-kdv-page] table tbody td:nth-child(3) [data-kdv-sonuc-kalem='eslesen'][data-kdv-dolu='evet'] { background: var(--kv-yesil-soft) !important; color: var(--kv-yesil-ink) !important; border-color: var(--kv-yesil-line) !important; }
+html[data-theme='D'] body [data-kdv-page] table tbody td:nth-child(3) :is([data-kdv-sonuc-kalem='inceleme'], [data-kdv-sonuc-kalem='fark'])[data-kdv-dolu='evet'] { background: var(--kv-kehribar-soft) !important; color: var(--kv-kehribar-ink) !important; border-color: var(--kv-kehribar-line) !important; }
+html[data-theme='D'] body [data-kdv-page] table tbody td:nth-child(3) [data-kdv-sonuc-kalem='hata'][data-kdv-dolu='evet'] { background: var(--kv-kirmizi-soft) !important; color: var(--kv-kirmizi-ink) !important; border-color: var(--kv-kirmizi-line) !important; }
+/* İşlem sütunu: SİL en dikkat çeken düğme olmaktan çıkar (fare ile kırmızıya döner), "aç" birincil kalır */
+/* NOT: lucide-react 0.395 sınıfı `lucide-trash2` üretir (tiresiz). Eski `lucide-trash-2` kuralı hiç tutmuyordu. */
+html[data-theme='D'] body [data-kdv-page] table tbody td:last-child button:has(svg.lucide-trash2),
+html[data-theme='D'] body [data-kdv-page] table tbody td:last-child button:has(svg.lucide-trash-2) {
+  background: #fff !important; color: #9aa7b8 !important; border-color: var(--kv-line) !important;
+}
+html[data-theme='D'] body [data-kdv-page] table tbody td:last-child button:has(svg.lucide-trash2):hover:not(:disabled),
+html[data-theme='D'] body [data-kdv-page] table tbody td:last-child button:has(svg.lucide-trash-2):hover:not(:disabled) {
+  background: var(--kv-kirmizi-soft) !important; color: var(--kv-kirmizi-ink) !important; border-color: var(--kv-kirmizi-line) !important; box-shadow: none !important;
+}
+html[data-theme='D'] body [data-kdv-page] table tbody td:last-child button:has(svg.lucide-download) {
+  background: #fff !important; color: var(--kv-sec) !important; border-color: var(--kv-line) !important;
+}
+html[data-theme='D'] body [data-kdv-page] table tbody td:last-child button:has(svg.lucide-download):hover:not(:disabled) {
+  background: var(--kv-yesil-soft) !important; color: var(--kv-yesil-ink) !important; border-color: var(--kv-yesil-line) !important; box-shadow: none !important;
+}
+html[data-theme='D'] body [data-kdv-page] table tbody td:first-child > div:last-child { color: var(--kv-muted) !important; }
+html[data-theme='D'] body [data-kdv-page] table tbody td:first-child > div:last-child > span { color: var(--kv-muted) !important; }
+html[data-theme='D'] body [data-kdv-page] table tbody tr:hover { background: var(--kv-civit-soft) !important; }
+
+/* ── 8. Genel cila: bölümler ayrışsın, tıklanabilir satırlar geri bildirim versin ──────────────────────────────── */
+html[data-theme='D'] body [data-kdv-page] [data-kdv-action-grid] > [data-kdv-action]:hover:not(:disabled) {
+  border-color: var(--kv-civit-line) !important; box-shadow: 0 6px 18px rgba(15, 23, 42, .08) !important;
+}
+html[data-theme='D'] body [data-kdv-page] [data-kdv-match-satir]:hover { background: var(--kv-civit-soft) !important; }
+html[data-theme='D'] body [data-kdv-page] [data-kdv-band] > div > span[class*='w-[3px]'] { border-radius: 999px; }
+
+/* ── 9. Eşleşme paneli ek: fark özeti rozete dönsün, boş kutu esnemesin ────────────────────────────────────────
+   "Tarih farkı (1 gün) · KDV 12,40 ₺ fark" satırın EN ÖNEMLİ bilgisiydi ama soluk gri düz yazıydı. */
+html[data-theme='D'] body [data-kdv-page] [data-kdv-match-satir] [data-kdv-sec].ml-auto {
+  background: var(--kv-kehribar-soft) !important; color: var(--kv-kehribar-ink) !important;
+  border: 1px solid var(--kv-kehribar-line); border-radius: 999px; padding: 3px 10px; font-weight: 600 !important;
+}
+html[data-theme='D'] body [data-kdv-page] [data-kdv-match-kutu='luca'] { align-self: flex-start; }
+html[data-theme='D'] body [data-kdv-page] [data-kdv-match-head] [data-kdv-muted] { color: var(--kv-muted) !important; }

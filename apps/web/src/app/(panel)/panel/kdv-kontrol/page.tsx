@@ -1412,15 +1412,16 @@ export default function KdvKontrolPage() {
                   { key: 'failed',  label: 'Eşleşme Hatalı',    val: _lucaOrphan + _imageOrphan + _otherUnmatched + _rejected, color: '#f43f5e', icon: XCircle, sub: failedSubParts.join(' · ') || null },
                 ];
               })().map(({ key, label, val, color, icon: Icon, showRerun, sub }: any) => (
-                <div key={key} data-portal-kpi className="rounded-lg p-2.5" style={portalStyle({ ...({ '--kpi-tone': portalStyle({ color }).color } as React.CSSProperties), background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' })}>
-                  <div className="flex items-center justify-between mb-1 text-[10px] font-medium uppercase tracking-wide" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>
-                    <span className="flex items-center gap-1.5">
+                <div key={key} data-portal-kpi data-kpi-tur={key} data-kpi-dolu={(val ?? 0) > 0 ? 'evet' : 'hayir'} className="rounded-lg p-2.5" style={portalStyle({ ...({ '--kpi-tone': portalStyle({ color }).color } as React.CSSProperties), background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' })}>
+                  <div data-kpi-ust className="flex items-center justify-between mb-1 text-[10px] font-medium uppercase tracking-wide" style={portalStyle({ color: 'rgba(250,250,249,0.55)' })}>
+                    <span data-kpi-etiket className="flex items-center gap-1.5">
                       <Icon size={12} style={portalStyle({ color })} /> {label}
                     </span>
                     {showRerun && (
                       <button
                         onClick={() => runOcrAgain.mutate()}
                         disabled={runOcrAgain.isPending}
+                        data-kpi-yenile
                         title={key === 'pending'
                           ? 'Bekleyen faturaları yeniden OCR\'la (başarılılara dokunulmaz)'
                           : 'OCR\'ı tekrar çalıştır'}
@@ -1431,15 +1432,15 @@ export default function KdvKontrolPage() {
                         })}
                       >
                         <span>{runOcrAgain.isPending ? '…' : '⟳'}</span>
-                        {key === 'pending' && !runOcrAgain.isPending && <span>Yenile</span>}
+                        {key === 'pending' && !runOcrAgain.isPending && <span data-kpi-yenile-yazi>Yenile</span>}
                       </button>
                     )}
                   </div>
-                  <p className="leading-none tabular-nums" style={portalStyle({ fontFamily: 'Fraunces, serif', fontSize: 22, fontWeight: 700, color: '#fafaf9' })}>
+                  <p data-kpi-deger data-kpi-sifir={(val ?? 0) === 0 ? 'evet' : 'hayir'} className="leading-none tabular-nums" style={portalStyle({ fontFamily: 'Fraunces, serif', fontSize: 22, fontWeight: 700, color: '#fafaf9' })}>
                     {val ?? 0}
                   </p>
                   {sub && (
-                    <p className="mt-1.5 text-[10.5px] tabular-nums leading-tight" style={portalStyle({ color: 'rgba(250,250,249,0.45)', fontFamily: 'JetBrains Mono, monospace' })}>
+                    <p data-kpi-alt className="mt-1.5 text-[10.5px] tabular-nums leading-tight" style={portalStyle({ color: 'rgba(250,250,249,0.45)', fontFamily: 'JetBrains Mono, monospace' })}>
                       {sub}
                     </p>
                   )}
@@ -1854,19 +1855,19 @@ export default function KdvKontrolPage() {
                           </div>
                         </td>
                         <td className="px-3 py-3">
-                          <div className="flex flex-wrap items-center gap-1.5 text-[12px] tabular-nums">
-                            <span className="px-2.5 py-1 rounded-lg" style={portalStyle({ background: 'rgba(184,160,111,0.10)', color: GOLD })}>Luca {luca}</span>
-                            <span className="px-2.5 py-1 rounded-lg" style={portalStyle({ background: 'rgba(96,165,250,0.10)', color: '#93c5fd' })}>Fatura {fatura}</span>
+                          <div data-kdv-veri className="flex flex-wrap items-center gap-1.5 text-[12px] tabular-nums">
+                            <span data-kdv-veri-kalem="luca" className="px-2.5 py-1 rounded-lg" style={portalStyle({ background: 'rgba(184,160,111,0.10)', color: GOLD })}>Luca {luca}</span>
+                            <span data-kdv-veri-kalem="fatura" className="px-2.5 py-1 rounded-lg" style={portalStyle({ background: 'rgba(96,165,250,0.10)', color: '#93c5fd' })}>Fatura {fatura}</span>
                           </div>
                         </td>
                         <td className="px-3 py-3">
-                          <div className="flex flex-wrap items-center gap-1.5 text-[12px] tabular-nums">
-                            <span className="px-2.5 py-1 rounded-lg font-bold" style={portalStyle({ background: 'rgba(34,197,94,0.10)', color: matched != null ? '#22c55e' : 'rgba(250,250,249,0.35)' })}>Eşleşen {matched ?? '—'}</span>
-                            <span className="px-2.5 py-1 rounded-lg font-bold" style={portalStyle({ background: 'rgba(245,158,11,0.10)', color: review && review > 0 ? '#fbbf24' : 'rgba(250,250,249,0.35)' })}>İnceleme {review ?? '—'}</span>
+                          <div data-kdv-sonuc className="flex flex-wrap items-center gap-1.5 text-[12px] tabular-nums">
+                            <span data-kdv-sonuc-kalem="eslesen" data-kdv-dolu={matched ? 'evet' : 'hayir'} className="px-2.5 py-1 rounded-lg font-bold" style={portalStyle({ background: 'rgba(34,197,94,0.10)', color: matched != null ? '#22c55e' : 'rgba(250,250,249,0.35)' })}>Eşleşen {matched ?? '—'}</span>
+                            <span data-kdv-sonuc-kalem="inceleme" data-kdv-dolu={review && review > 0 ? 'evet' : 'hayir'} className="px-2.5 py-1 rounded-lg font-bold" style={portalStyle({ background: 'rgba(245,158,11,0.10)', color: review && review > 0 ? '#fbbf24' : 'rgba(250,250,249,0.35)' })}>İnceleme {review ?? '—'}</span>
                             {amountMismatch > 0 && (
-                              <span className="px-2.5 py-1 rounded-lg font-bold" style={portalStyle({ background: 'rgba(245,158,11,0.14)', color: '#fbbf24' })}>Fark {amountMismatch}</span>
+                              <span data-kdv-sonuc-kalem="fark" data-kdv-dolu="evet" className="px-2.5 py-1 rounded-lg font-bold" style={portalStyle({ background: 'rgba(245,158,11,0.14)', color: '#fbbf24' })}>Fark {amountMismatch}</span>
                             )}
-                            <span className="px-2.5 py-1 rounded-lg font-bold" style={portalStyle({ background: 'rgba(244,63,94,0.10)', color: unmatched && unmatched > 0 ? '#f43f5e' : 'rgba(250,250,249,0.35)' })}>Hata {unmatched ?? '—'}</span>
+                            <span data-kdv-sonuc-kalem="hata" data-kdv-dolu={unmatched && unmatched > 0 ? 'evet' : 'hayir'} className="px-2.5 py-1 rounded-lg font-bold" style={portalStyle({ background: 'rgba(244,63,94,0.10)', color: unmatched && unmatched > 0 ? '#f43f5e' : 'rgba(250,250,249,0.35)' })}>Hata {unmatched ?? '—'}</span>
                           </div>
                         </td>
                         <td className="px-4 py-3 text-right">
