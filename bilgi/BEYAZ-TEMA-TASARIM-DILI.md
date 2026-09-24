@@ -92,3 +92,12 @@ Muzaffer Bey'in isteği: "görselliği, sayaçları, düğmeleri, görünürlü�
 - **`globals.css` `input[type=text]` dolgusu** Tailwind `pl-9`'u eziyor (simge yazının üstüne biner) — modül CSS'inde yalnız D temasında düzeltildi; koyu temada sürüyor.
 - **Sahte çift paylaşımlı:** paralel ajanların yarım içe aktarımları Next dev'i geçici 500'e düşürür; önizleme betikleri 20 sn bekleyip yeniden dener (`tur2-*.cjs`). Yerleşik boş uçlar (`/luca/session-manager/status`, `/akilli-bildirim/settings`) eklentiden önce eşleştiğinden `page.route` ile `/…-sahte/` yoluna yönlendirilir.
 - **Kilitli sayfalar** yalnız CSS ile boyandı ve hash'leri değişmedi (`git status` ile teyit). KDV Kontrol 7 sayaç kartı AYNI boyutta kaldı (Muzaffer Bey kuralı).
+
+## 9. Üçüncü turdan öğrenilenler (2026-09-25, KDV Kontrol netleştirme)
+- **Devre dışı rengi `#cbd5e1` OKUNMUYOR.** Beyaz zeminde 1.4:1 kontrast veriyor; düğme yazısı kayboluyor. Devre dışı öğede **`#78879b` yazı + kesikli (`dashed`) kenar + beyaz zemin** kullan (3.9:1). "Seçilemez" mesajını renk değil **biçim** taşısın. Tailwind'in `disabled:opacity-40` sınıfı da ezilmeli (`opacity: 1 !important`), yoksa süren işlem kartı hayalete döner.
+- **lucide sınıf adlarını canlı DOM'dan doğrula.** lucide-react 0.395'te `Trash2` → **`lucide-trash2`** (tiresiz), `Download` → `lucide-download`. `svg.lucide-trash-2` yazan kural aylarca sessizce ölü kaldı. `:has(svg.lucide-*)` yazmadan önce `getComputedStyle` ile teyit et.
+- **Geniş `span[style*='…-wash']` seçicisi komşu bölümü boyar.** `[data-kdv-band='teal'] + div span[style*='copper-wash']` kuralı, aynı ağaçta kalan komut şeridinin adım rakamlarını da kehribara çevirdi. Yama-CSS'te renk kurallarını **kapsayıcı ile daralt**; başka bir kuralı aşman gerekiyorsa `html[data-theme='D'] body …` önekini kullan.
+- **Sayaç kartlarında rakam hizası.** Etiket 2–3 satıra kırılırsa rakamlar farklı yüksekliğe düşer ve şerit dağınık görünür. Etiket kabına **sabit yükseklik** ver, satır içi düğmeyi (⟳ yenile) karta `position:absolute` ile köşeye al.
+- **Tam genişlik alt çubuk "ilerleme çubuğu" sanılıyor.** Sayaç kartının rengini taşıyan çizgi kısa (≈34px) ve rakamın hemen altında olsun; kartın dibine itilirse arada boşluk kalır.
+- **Beyaz belge beyaz zeminde kaybolur.** Belge/fatura önizlemesinde kabın zemini `#e9eef5`, belgenin kendisine `1px #ccd6e2` kenar + gölge ver.
+- **Yer tutucu ile gerçek değeri ayır.** Girdi değeri 14.5px/600 `#1e293b`; `::placeholder` `#c3cddb`/400. Aksi halde boş alan "0,00 yazıyor" diye okunuyor.
