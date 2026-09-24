@@ -4567,6 +4567,12 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     for (const item of statusPlan) {
       await this.jobProgress(tenantId, job, `status_${item.status}`, `${item.label} beyannameler sorgulaniyor.`);
       await this.selectEBeyannameStatus(page, item.status);
+      // TARIHI HER DURUMDA YENIDEN YAZ (2026-09-25 gercek vaka): durum secimi arama formunu
+      //   kapatip yeniden actirabiliyor, GIB o anda tarihleri KENDI varsayilanina (son ~7 gun)
+      //   donduruyor. Gunlukteki kanit: kullanici 24.09-24.09 sectigi halde "onaylandi" sorgusu
+      //   18.09-25.09 gidiyordu → 31 kayit → 25 satirlik sayfa dolup 2. sayfa gerekiyor, GIB
+      //   sayfalamasi "sistem hatasi" verince HICBIR beyanname inmiyordu.
+      await this.fillEBeyannameSearchCriteria(page, job, notes);
       const beforeCount = declarations.length + documents.length;
       const collected = await this.queryEBeyannameStatus(tenantId, page, item.status, item.download, downloadsPath, taxpayers, job, notes);
       persistedCount += collected.persistedCount || 0;
