@@ -257,6 +257,7 @@ export default function TaraEkrani() {
   const [belgeler, setBelgeler] = useState<Belge[]>([]);
   const [hazirlaniyor, setHazirlaniyor] = useState(false);
   const [sonuc, setSonuc] = useState('');
+  const [onizleme, setOnizleme] = useState<string | null>(null); // listedeki küçük resme dokununca büyür
 
   // gönderim
   const [gonderiliyor, setGonderiliyor] = useState(false);
@@ -364,17 +365,30 @@ export default function TaraEkrani() {
     } finally { setHazirlaniyor(false); }
   }
 
+  /**
+   * SERİ TARAMA (2026-09-25, Muzaffer Bey: "sürekli + yeniye basmayayım, hızlı hızlı tarayayım").
+   * Her kayıttan sonra kamera KENDİLİĞİNDEN yeniden açılır; arka arkaya fiş taranır.
+   * Çıkmak için tarayıcıda geri/iptal — boş sonuç seriyi bitirir. Tavan 40 tur (sonsuz döngü olmasın).
+   */
   async function tara() {
-    try {
-      const mod = belgeTarayici();
-      if (!mod) { Alert.alert('Bu yol yalnız telefonda', 'Belge tarama kamerası tarayıcıda çalışmaz.'); return; }
-      const { scannedImages } = await mod.default.scanDocument({
-        maxNumDocuments: 25,
-        croppedImageQuality: 100, // küçültmeyi BİZ yapıyoruz — iki kez kalite kaybı olmasın
-        responseType: mod.ResponseType.ImageFilePath,
-      });
-      await ekle(scannedImages || []);
-    } catch (e: any) { Alert.alert('Tarama açılamadı', String(e?.message || e)); }
+    const mod = belgeTarayici();
+    if (!mod) { Alert.alert('Bu yol yalnız telefonda', 'Belge tarama kamerası tarayıcıda çalışmaz.'); return; }
+    for (let tur = 0; tur < 40; tur++) {
+      let sonuc: any = null;
+      try {
+        sonuc = await mod.default.scanDocument({
+          maxNumDocuments: 25,
+          croppedImageQuality: 100, // küçültmeyi BİZ yapıyoruz — iki kez kalite kaybı olmasın
+          responseType: mod.ResponseType.ImageFilePath,
+        });
+      } catch (e: any) {
+        if (tur === 0) Alert.alert('Tarama açılamadı', String(e?.message || e));
+        return;
+      }
+      const gelen: string[] = sonuc?.scannedImages || [];
+      if (!gelen.length) return; // iptal edildi → seri biter
+      await ekle(gelen);
+    }
   }
 
   /**
@@ -661,7 +675,9 @@ export default function TaraEkrani() {
       <ScrollView contentContainerStyle={[s.docList, { paddingBottom: 190 + insets.bottom }]}>
         {belgeler.map((b) => (
           <Pressable key={b.anahtar} style={[s.doc, b.secili && s.docOn]} onPress={() => seciliDegistir(b.anahtar)}>
-            <Image source={{ uri: b.uri }} style={s.thumb} resizeMode="cover" />
+            <Pressable onPress={() => setOnizleme(b.uri)} hitSlop={4}>
+              <Image source={{ uri: b.uri }} style={s.thumb} resizeMode="cover" />
+            </Pressable>
             <View style={s.docM}>
               <Text style={s.dn} numberOfLines={1}>{b.ad}</Text>
               <Text style={s.ds}>{mb(b.sonraBayt)}</Text>
@@ -701,6 +717,14 @@ export default function TaraEkrani() {
           </LinearGradient>
         </Pressable>
       </View>
+
+      {/* BELGE ÖNİZLEME: listedeki küçük resme dokununca tam ekran açılır (Muzaffer Bey, 2026-09-25). */}
+      <Modal visible={!!onizleme} transparent animationType="fade" onRequestClose={() => setOnizleme(null)}>
+        <Pressable style={s.onizPerde} onPress={() => setOnizleme(null)}>
+          {onizleme ? <Image source={{ uri: onizleme }} style={s.onizGorsel} resizeMode="contain" /> : null}
+          <Text style={s.onizNot}>Kapatmak için dokunun</Text>
+        </Pressable>
+      </Modal>
 
       <Modal visible={gonderiliyor} transparent animationType="fade">
         <View style={s.veil}>
@@ -855,6 +879,11 @@ const s = StyleSheet.create({
   b1: { paddingVertical: 14, alignItems: 'center', justifyContent: 'center' },
   b1T: { color: C.white, fontSize: 14, fontWeight: '700' },
   pasif: { opacity: 0.45 },
+
+  /* ── belge önizleme ── */
+  onizPerde: { flex: 1, backgroundColor: 'rgba(9,20,40,0.92)', alignItems: 'center', justifyContent: 'center', padding: 16 },
+  onizGorsel: { width: '100%', height: '86%', borderRadius: 12 },
+  onizNot: { color: 'rgba(255,255,255,0.6)', fontSize: 12, marginTop: 14 },
 
   /* ── yükleme ── */
   veil: { flex: 1, backgroundColor: 'rgba(9,20,40,0.55)', alignItems: 'center', justifyContent: 'center', padding: 28 },
