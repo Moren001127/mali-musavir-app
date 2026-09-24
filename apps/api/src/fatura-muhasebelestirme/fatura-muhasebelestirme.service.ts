@@ -3542,6 +3542,43 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     return { files: expanded, skipped };
   }
 
+  /**
+   * Fiş/fatura FOTOĞRAFINI okunur hâle getirir (2026-09-25).
+   *
+   * Telefon kamerası ve ML Kit tarayıcı soluk, grimsi bir görüntü üretiyor; termal fişin zaten
+   * silik yazısı iyice kayboluyordu. Uygulanan zincir (gerçek fişlerle A/B/C/D denendi, C seçildi):
+   *   gri ton → normalize (histogram germe: en açık ton beyaza, en koyu siyaha) → hafif keskinleştirme.
+   * Daha sert kontrast (linear germe) harflerin ince yerlerini koparıyor — ML Kit'in FULL filtresinde
+   * yaşanan sorun buydu, o yüzden yapılmaz.
+   *
+   * Yalnız GÖRÜNTÜ dosyalarında çalışır; PDF/XML/HTML dokunulmadan geçer. Herhangi bir hata
+   * durumunda ORİJİNAL döner — belge kaybetmektense işlenmemiş göndermek yeğdir.
+   */
+  private async fisGoruntusunuIyilestir(buf: Buffer, mime?: string, ad?: string): Promise<Buffer> {
+    if (!buf?.length) return buf;
+    if (!/^image\//i.test(String(mime || ''))) return buf;
+    try {
+      const sharp = require('sharp');
+      const meta = await sharp(buf).metadata();
+      if (!meta?.width || !meta?.height) return buf;
+      const cikti = await sharp(buf)
+        .rotate()                                   // EXIF yönü
+        .flatten({ background: '#ffffff' })         // saydamlık → beyaz
+        .grayscale()
+        .normalize()
+        .sharpen({ sigma: 1 })
+        .resize({ width: 2200, withoutEnlargement: true })
+        .jpeg({ quality: 88 })
+        .toBuffer();
+      if (!cikti?.length) return buf;
+      this.logger.log(`[FIS-IYILESTIR] ${ad || '—'}: ${meta.width}x${meta.height} ${(buf.length / 1024).toFixed(0)}KB → ${(cikti.length / 1024).toFixed(0)}KB (gri+normalize+keskin)`);
+      return cikti;
+    } catch (e: any) {
+      this.logger.warn(`[FIS-IYILESTIR] atlandı (${ad || '—'}): ${e?.message || e}`);
+      return buf;
+    }
+  }
+
   async uploadAndOcr(
     tenantId: string,
     userId: string | undefined,
@@ -3573,8 +3610,18 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // DOSYA ADI (2026-09-15): tarayıcı UTF-8 gönderir, multer Latin-1 çözer → "OTOMOBÄ°L" mojibake; yeniden çöz.
     const dosyaAdi = (ad: string) => { const s = String(ad || ''); return /[ÃÄÅÂ]/.test(s) ? Buffer.from(s, 'latin1').toString('utf8') : s; };
 
+    // FİŞ GÖRÜNTÜSÜ İYİLEŞTİRME (2026-09-25) — telefonla çekilen/taranan fiş soluk ve grimsi
+    //   geliyor: portalda okunmuyor, OCR zorlanıyor. Gri ton + otomatik seviye + hafif
+    //   keskinleştirme uygulanır. ML Kit'in sert siyah-beyaz filtresi gibi harfleri KIRMAZ
+    //   (Muzaffer Bey: "bir önceki çok fazlaydı"). Yalnız fotoğraf kaynaklı belgelerde.
+    const fotografKaynakli = /mobil/i.test(String(opts.source || '')) || String(opts.documentType || '') === 'OKC_FIS';
+
     for (const file of uploadFiles) {
       file.originalname = dosyaAdi(file.originalname);
+      if (fotografKaynakli) {
+        const iyilestirilmis = await this.fisGoruntusunuIyilestir(file.buffer, file.mimetype, file.originalname);
+        if (iyilestirilmis && iyilestirilmis !== file.buffer) { file.buffer = iyilestirilmis; file.mimetype = 'image/jpeg'; }
+      }
       const imageHash = this.ocr.computeImageHash(file.buffer);
       const zaten = await this.zatenYukluMu(tenantId, {
         taxpayerId: opts.taxpayerId || null, imageHash, buffer: file.buffer, mimeType: file.mimetype, invoiceKind: opts.invoiceKind || null,
@@ -16265,11 +16312,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (isImage && imgBuf) {
       try {
         const sharp = require('sharp');
+        // ÖKC fişinde yazı küçüktür: 1500 px'e indirince "FİŞ NO", saat ve kuruşlar kayboluyor.
+        // Fiş/fotoğraf belgelerinde 2000 px + %85 kalite (2026-09-25); diğerlerinde eski ayar.
+        const fisMi = String(d?.documentType || '') === 'OKC_FIS' || /mobil/i.test(String(d?.source || ''));
         imgBuf = await sharp(imgBuf)
           .rotate()
           .flatten({ background: '#ffffff' })
-          .resize({ width: 1500, withoutEnlargement: true })
-          .jpeg({ quality: 75 })
+          .resize({ width: fisMi ? 2000 : 1500, withoutEnlargement: true })
+          .jpeg({ quality: fisMi ? 85 : 75 })
           .toBuffer();
         imgMedia = 'image/jpeg';
       } catch { /* sharp başarısızsa orijinali gönder */ }
