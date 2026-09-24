@@ -5650,12 +5650,16 @@ function ScreenAktarilanlar({ taxpayerId, period, mode = 'bekleyen', isIsletme =
       <>
         <button type="button" className="sn-geri" onClick={() => setSevk(null)}>← Listeye dön</button>
         <div style={{ ['--sc' as any]: renk }}>
-          <div className="sn-bas">
-            <span className="sn-ik"><Ico html={bitti ? I.checkSm : I.sync} size={19} /></span>
+          <div className={`sn-bas${bitti ? '' : ' canli'}`}>
+            <span className={`sn-ik${bitti ? '' : ' donen'}`}><Ico html={bitti ? I.checkSm : I.sync} size={19} /></span>
             <div>
-              <b>{bitti ? `${label} fişi Luca'da oluştu` : `${label} fişi Luca'ya gönderildi`}</b>
-              <span>{gonderilen.length} belge · {periodLabel(period)}{bitti ? '' : ' · ajan yazıyor, fiş numarası birazdan gelecek'}</span>
+              <b>
+                {bitti ? `${label} fişi Luca'da oluştu` : `${label} fişi Luca'ya yazılıyor`}
+                {bitti ? null : <span className="sn-rozet"><i />şu an</span>}
+              </b>
+              <span>{gonderilen.length} belge · {periodLabel(period)}{bitti ? '' : ' · ekranı kapatsanız da devam eder'}</span>
             </div>
+            {bitti ? null : <><div className="sp" style={{ flex: 1 }} /><div className="sn-yuzde">{yuzde}<small>%</small></div></>}
           </div>
           <div className="sn-kunye">
             <div><small>Fiş numarası</small>{fisNo ? <b className="ys">{fisNo}</b> : <b className="bk">ajan yazınca gelir</b>}</div>
@@ -5666,10 +5670,11 @@ function ScreenAktarilanlar({ taxpayerId, period, mode = 'bekleyen', isIsletme =
           <div className="sn-govde">
             {!bitti && (
               <>
-                <div className="sn-ilerle"><i style={{ width: `${Math.max(6, yuzde)}%` }} /></div>
+                <div className="sn-sayac"><b>{yazilan}</b> / {gonderilen.length} belge yazıldı{hataliAdet > 0 ? <> · <span style={{ color: '#b91c1c', fontWeight: 800 }}>{hataliAdet} hata</span></> : null}</div>
+                <div className="sn-ilerle"><i style={{ width: `${Math.max(4, yuzde)}%` }} /></div>
                 <div className="sn-bilgi">
-                  Luca ajanı <b>{yazilan}</b>/{gonderilen.length} belgeyi yazdı{hataliAdet > 0 ? ` · ${hataliAdet} belge hata aldı` : ''}. Bu ekranı kapatabilirsiniz —
-                  işlem arka planda sürer, biten fiş <b>Arşivim</b>&apos;de fiş numarasıyla görünür.
+                  Luca ajanı belgeleri sırayla yazıyor. Bu ekranı kapatabilirsiniz — işlem arka planda sürer,
+                  biten fiş <b>Arşivim</b>&apos;de fiş numarasıyla görünür.
                 </div>
               </>
             )}
@@ -10063,7 +10068,25 @@ const CSS = `
 #fm-root .sn-kunye b.ys{color:#15803d}
 #fm-root .sn-kunye b.bk{color:var(--faint);font-size:13px;font-weight:750;letter-spacing:0}
 #fm-root .sn-govde{border:1px solid var(--line);border-top:0;background:#fff}
-#fm-root .sn-ilerle{height:6px;background:#eef2f7;border-radius:999px;overflow:hidden;margin:14px 17px 12px}
+/* Aktarım sürerken: ekran CANLI görünsün (2026-09-24 — "aktarımın o an yapıldığı belli olsun") */
+#fm-root .sn-bas.canli{background:linear-gradient(120deg,color-mix(in srgb,var(--sc) 16%,#fff),#fff 62%)}
+#fm-root .sn-ik.donen{animation:sn-don 1.6s linear infinite}
+@keyframes sn-don{to{transform:rotate(360deg)}}
+#fm-root .sn-rozet{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 10px;border-radius:999px;
+  background:color-mix(in srgb,var(--sc) 13%,#fff);border:1px solid color-mix(in srgb,var(--sc) 32%,#fff);
+  color:var(--sc);font-size:10.5px;font-weight:900;letter-spacing:.5px;text-transform:uppercase;margin-left:9px;vertical-align:middle}
+#fm-root .sn-rozet i{width:7px;height:7px;border-radius:50%;background:var(--sc);animation:sn-nabiz 1.1s ease-in-out infinite}
+@keyframes sn-nabiz{0%,100%{opacity:1;box-shadow:0 0 0 0 color-mix(in srgb,var(--sc) 55%,transparent)}
+  50%{opacity:.55;box-shadow:0 0 0 5px transparent}}
+#fm-root .sn-yuzde{font-size:26px;font-weight:850;color:var(--sc);font-variant-numeric:tabular-nums;letter-spacing:-1px;white-space:nowrap}
+#fm-root .sn-yuzde small{font-size:14px;font-weight:800;margin-left:1px}
+#fm-root .sn-sayac{display:flex;align-items:baseline;gap:7px;padding:0 17px 4px;font-size:12.5px;color:var(--muted);font-weight:700}
+#fm-root .sn-sayac b{font-size:19px;font-weight:850;color:#0e1726;font-variant-numeric:tabular-nums;letter-spacing:-.4px}
+#fm-root .sn-ilerle{height:10px;background:#eef2f7;border-radius:999px;overflow:hidden;margin:12px 17px 10px;position:relative}
+#fm-root .sn-ilerle::after{content:'';position:absolute;inset:0;border-radius:999px;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.65),transparent);
+  background-size:220px 100%;background-repeat:no-repeat;animation:sn-parilti 1.25s linear infinite}
+@keyframes sn-parilti{from{background-position:-220px 0}to{background-position:calc(100% + 220px) 0}}
 #fm-root .sn-ilerle i{display:block;height:100%;border-radius:999px;transition:width .4s ease;
   background:linear-gradient(90deg,var(--sc),color-mix(in srgb,var(--sc) 55%,#fff))}
 #fm-root .sn-bilgi{padding:0 17px 15px;font-size:12px;color:var(--muted);font-weight:650;line-height:1.6}
