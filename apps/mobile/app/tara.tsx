@@ -38,6 +38,7 @@ import { File } from 'expo-file-system';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { getStoredItem, setStoredItem, deleteStoredItem } from '../lib/secure-storage';
+import * as Application from 'expo-application';
 
 /**
  * BENİ HATIRLA (2026-09-24, Muzaffer Bey: "bir kere girince kayıt etmiyor").
@@ -68,6 +69,9 @@ const C = {
   white: '#ffffff', black: '#000000',
 };
 const KS = 'KaushanScript_400Regular';
+
+/** Kurulu yapının sürümü — giriş ekranının altında yazar (hangi APK kurulu, bakınca anlaşılsın). */
+const SURUM = `${Application.nativeApplicationVersion || '?'} (${Application.nativeBuildVersion || '?'})`;
 
 type Mukellef = { id: string; ad: string; vkn: string; defter: string; bas: string; renk: [string, string] };
 type Yon = 'ALIS' | 'SATIS';
@@ -477,6 +481,7 @@ export default function TaraEkrani() {
             {girisBusy ? <ActivityIndicator color={C.white} /> : <Text style={s.btnPT}>Giriş Yap</Text>}
           </Pressable>
           <Text style={s.gN}>Şifre yalnız bu telefonun güvenli kasasında tutulur.</Text>
+          <Text style={s.surum}>Sürüm {SURUM}</Text>
         </ScrollView>
       </View>
     );
@@ -691,6 +696,7 @@ const s = StyleSheet.create({
   btnP: { marginTop: 20, borderRadius: 14, paddingVertical: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: C.n2 },
   btnPT: { color: C.white, fontSize: 14.5, fontWeight: '700' },
   gN: { fontSize: 10.5, color: C.faint, marginTop: 14, textAlign: 'center', lineHeight: 15 },
+  surum: { fontSize: 10, color: '#b6c2d2', marginTop: 6, textAlign: 'center' },
   hatirlaSatir: { flexDirection: 'row', alignItems: 'center', gap: 9, marginTop: 16, paddingVertical: 4 },
   kutucuk: { width: 20, height: 20, borderRadius: 6, borderWidth: 1.5, borderColor: '#cbd5e1', alignItems: 'center', justifyContent: 'center', backgroundColor: C.white },
   kutucukOn: { backgroundColor: C.teal, borderColor: C.teal },

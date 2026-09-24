@@ -50,6 +50,17 @@
         "EXPO_PUBLIC_MOREN_APP": "tara"
       },
       "channel": "tarayici"
+    },
+    "tarayici-play": {
+      "autoIncrement": true,
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://mali-musavir-app-production.up.railway.app/api/v1",
+        "EXPO_PUBLIC_MOREN_APP": "tara"
+      },
+      "channel": "tarayici"
     }
   },
   "submit": {
