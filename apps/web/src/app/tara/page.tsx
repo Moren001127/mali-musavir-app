@@ -162,6 +162,15 @@ export default function BelgeTarayici() {
       setMukellefler(liste);
       if (!liste.length) setHata('Mükellef listesi boş geldi.');
     } catch (e: any) {
+      // Oturum düşmüşse (yenileme çerezi eskimiş) GİRİŞ EKRANINA dön — telefonda ekranda
+      // "Mükellefler alınamadı: 401" yazısı kalıyordu ve kullanıcı ilerleyemiyordu (2026-09-24).
+      const kod = Number(e?.response?.status || 0);
+      if (kod === 401 || kod === 403) {
+        setGirisli(false);
+        setGirisHata('Oturum süresi doldu — yeniden giriş yapın.');
+        setMukellefler([]);
+        return;
+      }
       setHata(`Mükellefler alınamadı: ${e?.message || 'bağlantı hatası'}`);
     } finally { setYukleniyor(false); }
   }, []);
