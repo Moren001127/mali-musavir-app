@@ -14,7 +14,7 @@
  *   kuyruğuna düşer, OCR kendiliğinden başlar. Belge TÜRÜNÜ OCR kendisi belirler (Z raporu / fatura /
  *   ÖKC fişi); "ÖKC Fişi" yalnız geçici etikettir ve okuma sonrası düzeltilir.
  */
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -37,6 +37,16 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import { File } from 'expo-file-system';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { getStoredItem, setStoredItem, deleteStoredItem } from '../lib/secure-storage';
+
+/**
+ * BENİ HATIRLA (2026-09-24, Muzaffer Bey: "bir kere girince kayıt etmiyor").
+ * Sunucu yenileme belirtecini YALNIZ httpOnly çerezde dönüyor (auth.controller: refreshToken
+ * gövdeden çıkarılıp setRefreshCookie'ye veriliyor); mobilde çerez yok → erişim belirteci dolunca
+ * oturum düşüyor ve şifre yeniden soruluyordu. Portal uygulamasının kanıtlanmış yolu: e-posta+şifre
+ * telefonun güvenli kasasında (SecureStore) saklanır, oturum düşünce SESSİZCE yeniden giriş yapılır.
+ */
+const CREDS_KEY = 'moren.tara.creds';
 
 /** Portal beyaz teması — apps/mobile/assets/app.html :root ile birebir. */
 const C = {
@@ -149,6 +159,8 @@ export default function TaraEkrani() {
   const [sifre, setSifre] = useState('');
   const [girisHata, setGirisHata] = useState('');
   const [girisBusy, setGirisBusy] = useState(false);
+  const [hatirla, setHatirla] = useState(true);
+  const otoDenendi = useRef(false);
 
   // veri
   const [yukleniyor, setYukleniyor] = useState(false);
@@ -197,6 +209,24 @@ export default function TaraEkrani() {
 
   useEffect(() => { if (girisli) mukellefleriYukle(); }, [girisli, mukellefleriYukle]);
 
+  // Oturum düşmüşse kasadaki kimlikle SESSİZCE gir (kullanıcı şifreyi tekrar yazmasın).
+  //   Yalnız bir kez denenir; başarısızsa (şifre değişmiş olabilir) normal giriş ekranı kalır.
+  useEffect(() => {
+    if (status !== 'unauthenticated' || otoDenendi.current) return;
+    otoDenendi.current = true;
+    (async () => {
+      try {
+        const ham = await getStoredItem(CREDS_KEY);
+        const k = ham ? JSON.parse(ham) : null;
+        if (!k?.email || !k?.password) return;
+        setGirisBusy(true);
+        await login({ email: k.email, password: k.password, audience: 'advisor' });
+      } catch {
+        try { await deleteStoredItem(CREDS_KEY); } catch { /* yoksa geç */ }
+      } finally { setGirisBusy(false); }
+    })();
+  }, [status, login]);
+
   const suzulmus = useMemo(() => {
     const q = sadelestir(arama);
     if (!q) return mukellefler;
@@ -210,10 +240,21 @@ export default function TaraEkrani() {
     setGirisBusy(true); setGirisHata('');
     try {
       await login({ email: eposta.trim(), password: sifre, audience: 'advisor' });
+      // Beni hatırla: kasaya yaz (kapalıysa temizle). Kasa yazılamazsa giriş yine de sürer.
+      try {
+        if (hatirla) await setStoredItem(CREDS_KEY, JSON.stringify({ email: eposta.trim(), password: sifre }));
+        else await deleteStoredItem(CREDS_KEY);
+      } catch { /* kasa yoksa geç */ }
       setSifre('');
     } catch (e: any) {
       setGirisHata(e?.response?.data?.message || 'Giriş yapılamadı. E-posta veya şifre hatalı.');
     } finally { setGirisBusy(false); }
+  }
+
+  async function cikisYap() {
+    try { await deleteStoredItem(CREDS_KEY); } catch { /* yoksa geç */ }
+    otoDenendi.current = true; // çıkıştan sonra kasayla kendiliğinden geri girme
+    await logout();
   }
 
   async function ekle(uriler: string[]) {
@@ -333,10 +374,18 @@ export default function TaraEkrani() {
 
           {!!girisHata && <Text style={s.girisHata}>{girisHata}</Text>}
 
+          {/* Beni hatırla: kimlik telefonun güvenli kasasında saklanır; oturum düşerse sessizce girilir. */}
+          <Pressable style={s.hatirlaSatir} onPress={() => setHatirla((h) => !h)} hitSlop={6}>
+            <View style={[s.kutucuk, hatirla && s.kutucukOn]}>
+              {hatirla ? <Text style={s.kutucukT}>✓</Text> : null}
+            </View>
+            <Text style={s.hatirlaT}>Beni hatırla — bir daha şifre sorulmasın</Text>
+          </Pressable>
+
           <Pressable style={[s.btnP, girisBusy && s.pasif]} onPress={girisYap} disabled={girisBusy}>
             {girisBusy ? <ActivityIndicator color={C.white} /> : <Text style={s.btnPT}>Giriş Yap</Text>}
           </Pressable>
-          <Text style={s.gN}>Bir kez girilir; uygulama açık kaldıkça tekrar sorulmaz.</Text>
+          <Text style={s.gN}>Şifre yalnız bu telefonun güvenli kasasında tutulur.</Text>
         </ScrollView>
       </View>
     );
@@ -348,7 +397,7 @@ export default function TaraEkrani() {
       <SafeAreaView style={s.kok}>
         <View style={s.top}>
           <Marka hazir={fontHazir} />
-          <Pressable style={s.iq} onPress={() => logout()} hitSlop={8}>
+          <Pressable style={s.iq} onPress={cikisYap} hitSlop={8}>
             <Text style={s.iqT}>⇥</Text>
           </Pressable>
         </View>
@@ -554,6 +603,11 @@ const s = StyleSheet.create({
   btnP: { marginTop: 20, borderRadius: 14, paddingVertical: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: C.ink2 },
   btnPT: { color: C.white, fontSize: 14.5, fontWeight: '700' },
   gN: { fontSize: 10.5, color: C.faint, marginTop: 14, textAlign: 'center', lineHeight: 15 },
+  hatirlaSatir: { flexDirection: 'row', alignItems: 'center', gap: 9, marginTop: 16, paddingVertical: 4 },
+  kutucuk: { width: 20, height: 20, borderRadius: 6, borderWidth: 1.5, borderColor: '#cbd5e1', alignItems: 'center', justifyContent: 'center', backgroundColor: C.white },
+  kutucukOn: { backgroundColor: C.primary, borderColor: C.primary },
+  kutucukT: { color: C.white, fontSize: 12, fontWeight: '900', lineHeight: 14 },
+  hatirlaT: { flex: 1, fontSize: 12.5, color: C.text2 },
 
   /* üst şerit — marka ORTALI, çıkış sağda sabit */
   top: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18, paddingTop: 6, paddingBottom: 12 },

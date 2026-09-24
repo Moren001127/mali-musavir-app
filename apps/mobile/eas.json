@@ -38,7 +38,8 @@
         "EXPO_PUBLIC_API_URL": "https://mali-musavir-app-production.up.railway.app/api/v1",
         "EXPO_PUBLIC_MOREN_APP": "tara"
       },
-      "channel": "preview"
+      "_not": "KANAL AYRI OLMALI (2026-09-24): 'preview' kanalı MOREN Müşavir'in kablosuz güncellemelerini taşıyor; aynı kanalda olunca Belge Tarayıcı açılışta Müşavir'in JS paketini indirip PORTAL ekranını açıyordu (EXPO_PUBLIC_MOREN_APP bayrağı o pakette yok).",
+      "channel": "tarayici"
     },
     "tarayici-ios": {
       "distribution": "internal",
@@ -49,7 +50,7 @@
         "EXPO_PUBLIC_API_URL": "https://mali-musavir-app-production.up.railway.app/api/v1",
         "EXPO_PUBLIC_MOREN_APP": "tara"
       },
-      "channel": "preview"
+      "channel": "tarayici"
     }
   },
   "submit": {
