@@ -5331,6 +5331,25 @@ function ScreenAktarilanlar({ taxpayerId, period, mode = 'bekleyen', isIsletme =
     onError: (e: any) => { setAktarYon(''); setSevk(null); toast.error("Luca'ya aktarılamadı: " + (e?.response?.data?.message || e?.message || 'hata')); },
   });
   const [detayId, setDetayId] = useState<string>('');
+  // Arşivde satır açılınca belgenin önizlemesini getir (liste 100+ belge olabilir; yalnız AÇILAN çekilir).
+  useEffect(() => {
+    if (!arsiv || !detayId) { setOnizleme(null); return; }
+    let canli = true;
+    setOnizleme({ id: detayId, url: '', html: '', mime: '' });
+    api.get(`/fatura-muhasebelestirme/documents/${detayId}/file-url`)
+      .then((r) => {
+        if (!canli) return;
+        const d: any = r.data || {};
+        setOnizleme({
+          id: detayId,
+          url: typeof d.url === 'string' ? d.url : typeof d.fileUrl === 'string' ? d.fileUrl : '',
+          html: typeof d.inlineHtml === 'string' ? d.inlineHtml : '',
+          mime: String(d.mimeType || ''),
+        });
+      })
+      .catch(() => { if (canli) setOnizleme({ id: detayId, url: '', html: '', mime: '', hata: true }); });
+    return () => { canli = false; };
+  }, [arsiv, detayId]);
   // YENİ DÜZEN (2026-09-23): sorunlu belge listede kaybolmasın — NEDEN beklediği satırda yazsın,
   //   kenarında renk şeridi olsun ve üstteki süzgeç şeridinden tek tıkla süzülebilsin.
   const [filtre, setFiltre] = useState<string>('');
@@ -5511,6 +5530,8 @@ function ScreenAktarilanlar({ taxpayerId, period, mode = 'bekleyen', isIsletme =
   // Aktar'a basınca bu dolar → liste yerine FİŞ SONUCU ekranı görünür. Gönderilen belgelerin
   // id'leri saklanır; fiş no / ilerleme / satır dökümü hep bu belgelerin GÜNCEL hâlinden okunur.
   const [sevk, setSevk] = useState<null | { yon: 'ALIS' | 'SATIS'; ids: string[]; tutar: number; zaman: number }>(null);
+  // ARŞİVİM: açılan satırın belge görseli (file-url yalnız açılan belge için çekilir).
+  const [onizleme, setOnizleme] = useState<null | { id: string; url: string; html: string; mime: string; hata?: boolean }>(null);
   const indirExcel = async (yon: 'ALIS' | 'SATIS') => {
     setIndiriliyor(yon);
     try {
@@ -5685,6 +5706,120 @@ function ScreenAktarilanlar({ taxpayerId, period, mode = 'bekleyen', isIsletme =
       </>
     );
   };
+  /** ARŞİVİM satırı: belge + hangi hesaplara yazıldığı. Açılınca solda görsel, sağda döküm. */
+  const renderArsivSatir = (d: any) => {
+    const sat = (d.invoiceKind || 'ALIS') === 'SATIS';
+    const firma = (sat ? d.customerName : d.vendorName) || (String(d.documentType || '').toUpperCase() === 'Z_RAPORU' ? 'Z RAPORU' : '—');
+    const acik = detayId === d.id;
+    const lines: any[] = Array.isArray(d.lines) ? d.lines : [];
+    // Listede: cari dışındaki hesaplar (gider/mal/KDV) — hangi hesaba yazıldığı tek bakışta.
+    const kodlar = [...new Set(lines.filter((l: any) => String(l.group) !== 'cari' && l.accountCode)
+      .map((l: any) => accountCodeOnly(String(l.accountCode))))].filter(Boolean).slice(0, 4);
+    const matrah = lines.filter((l: any) => ['matrah', 'diger_vergi'].includes(String(l.group)))
+      .reduce((t: number, l: any) => t + Number(l.debit || 0) + Number(l.credit || 0), 0);
+    const kdv = lines.filter((l: any) => String(l.group) === 'vergi')
+      .reduce((t: number, l: any) => t + Number(l.debit || 0) + Number(l.credit || 0), 0);
+    const cariKod = accountCodeOnly(String(lines.find((l: any) => String(l.group) === 'cari')?.accountCode || ''));
+    const el = ghElleDurumu(d);
+    const on = onizleme && onizleme.id === d.id ? onizleme : null;
+    return (
+      <Fragment key={d.id}>
+        <tr className={`sat${acik ? ' acik' : ''}`} onClick={() => setDetayId(acik ? '' : d.id)}>
+          <td>{fmtDate(d.faturaTarihi || d.createdAt)}</td>
+          <td><span className="bno">{d.belgeNo || '—'}</span></td>
+          <td><span className="fr">{firma}</span>
+            {el.durum === 'bekliyor' ? <div className="fm2-neden" style={{ color: '#b45309' }}>Luca&apos;da elle düzeltilecek</div> : null}
+          </td>
+          <td className="num">{fmtMoney(d.totalAmount)}</td>
+          <td>{isIsletme
+            ? (isletmeKayitTuruAd(d) || <span className="hk no">—</span>)
+            : (kodlar.length ? kodlar.map((k) => <span className="av-hk" key={k}>{k}</span>) : <span className="hk no">—</span>)}</td>
+          <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+            <button type="button" className="av-gor" onClick={(e) => { e.stopPropagation(); openDocFile(d.id); }} title="Belgeyi büyük göster">
+              <Ico html={I.eye} size={13} /> Görsel
+            </button>
+            <button type="button" className="av-ok" onClick={(e) => { e.stopPropagation(); setDetayId(acik ? '' : d.id); }} title={acik ? 'Kapat' : 'Nasıl işlendiğini gör'}>{acik ? '▴' : '▾'}</button>
+          </td>
+        </tr>
+        {acik && (
+          <tr className="av-det">
+            <td colSpan={6}>
+              <div className="av-iki">
+                <div className="av-gorsel">
+                  <div className="av-kagit">
+                    {on && on.hata ? <div className="bekle">Belge önizlemesi alınamadı.<br />&quot;Görsel&quot; ile açmayı deneyin.</div>
+                      : on && (on.mime.startsWith('image/') || /\.(jpe?g|png|gif|webp|bmp|tiff?|heic|avif)(\?|#|$)/i.test(on.url)) ? <img src={on.url} alt="" />
+                      : on && on.html ? <iframe title="belge" srcDoc={on.html} sandbox="allow-scripts" />
+                      : on && on.url ? <iframe title="belge" src={on.url} />
+                      : <div className="bekle">Belge yükleniyor…</div>}
+                  </div>
+                  <div className="av-gdug">
+                    <button type="button" className="ana" onClick={() => openDocFile(d.id)}>Büyüt</button>
+                    <button type="button" onClick={() => openDocFile(d.id)}>Aç</button>
+                  </div>
+                </div>
+                <div className="av-nasil">
+                  <div className="av-et">Nasıl işlendi</div>
+                  {lines.length === 0
+                    ? <div className="empty" style={{ padding: 10 }}>Muhasebe satırı yok.</div>
+                    : (
+                      <table className="av-ktbl"><tbody>
+                        {lines.map((l: any, i: number) => {
+                          const borc = Number(l.debit || 0);
+                          const alacak = Number(l.credit || 0);
+                          return (
+                            <tr key={i}>
+                              <td className={`bc ${borc ? 'b' : 'a'}`}>{borc ? 'Borç' : 'Alacak'}</td>
+                              <td className="kod">{accountCodeOnly(String(l.accountCode || '')) || '—'}</td>
+                              <td className="ad">{grpLabel(String(l.group || ''))}{l.description ? ` · ${l.description}` : ''}</td>
+                              <td className="tt">{fmtMoney(borc || alacak)}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody></table>
+                    )}
+                  <div className="av-kunye">
+                    <div><small>Matrah</small><b>{fmtMoney(matrah)} ₺</b></div>
+                    <div><small>KDV</small><b>{fmtMoney(kdv)} ₺</b></div>
+                    <div><small>Toplam</small><b>{fmtMoney(d.totalAmount)} ₺</b></div>
+                    {cariKod ? <div><small>Cari</small><b>{cariKod}</b></div> : null}
+                    {d.documentType ? <div><small>Belge türü</small><b>{String(d.documentType)}</b></div> : null}
+                    {d.lucaPostedAt ? <div><small>Aktarım</small><b>{fmtDate(d.lucaPostedAt)}</b></div> : null}
+                  </div>
+                </div>
+              </div>
+            </td>
+          </tr>
+        )}
+      </Fragment>
+    );
+  };
+  /** ARŞİVİM ekranı: tek tablo + yön sekmesi. */
+  const renderArsiv = () => {
+    const a = yonVerisi('ALIS');
+    const b = yonVerisi('SATIS');
+    const v = sekme === 'SATIS' ? b : a;
+    return (
+      <div className="card">
+        <div className="av-serit">
+          <button type="button" className={`sk${sekme === 'ALIS' ? ' on' : ''}`} onClick={() => { setSekme('ALIS'); setDetayId(''); }}>Alış <b>{a.ddTum.length}</b></button>
+          <button type="button" className={`sk${sekme === 'SATIS' ? ' on' : ''}`} onClick={() => { setSekme('SATIS'); setDetayId(''); }}>Satış <b>{b.ddTum.length}</b></button>
+          <div className="sp" />
+        </div>
+        {v.dd.length === 0
+          ? <div className="av-bos"><b>{periodLabel(period)} döneminde aktarılmış {v.label.toLocaleLowerCase('tr')} faturası yok.</b>
+              Aktarım ekranında gönderilen belgeler buraya düşer.</div>
+          : (
+            <div className="twrap">
+              <table className="av-tbl">
+                <thead><tr><th>Tarih</th><th>Fatura No</th><th>Firma</th><th className="num">Tutar</th><th>{isIsletme ? 'Kayıt Türü' : 'İşlendiği hesaplar'}</th><th /></tr></thead>
+                <tbody>{v.dd.map(renderArsivSatir)}</tbody>
+              </table>
+            </div>
+          )}
+      </div>
+    );
+  };
   const renderSection = (yon: 'ALIS' | 'SATIS') => {
     const { isSat, ddTum, dd, label, kararBekleyen, elleIslenen, hazir, toplam } = yonVerisi(yon);
     const busy = batchMut.isPending && aktarYon === yon;
@@ -5756,7 +5891,7 @@ function ScreenAktarilanlar({ taxpayerId, period, mode = 'bekleyen', isIsletme =
       {docsQ.isLoading
         ? <div className="card"><div className="ch"><h3>Yükleniyor…</h3></div></div>
         : arsiv
-          ? <>{renderSection('ALIS')}{renderSection('SATIS')}</>
+          ? renderArsiv()
           : sevk
             ? renderSonuc()
             : <><div className="ak3-ust">{renderCubuk('ALIS')}{renderCubuk('SATIS')}</div>{renderTekTablo()}</>}
@@ -9949,5 +10084,64 @@ const CSS = `
 #fm-root .sn-uyari{display:flex;align-items:flex-start;gap:9px;font-size:11.5px;color:#7c4a09;font-weight:650;background:#fdf6e9;
   border:1px solid #f2ddb6;border-radius:10px;padding:9px 12px;margin:13px 17px;line-height:1.5}
 #fm-root .sn-uyari b{font-weight:850}
+
+/* ===== ARŞİVİM (2026-09-24, Muzaffer Bey: "arşivim sadece fatura görselleri için gerekli
+   olan yer, ayrıca nasıl işlendiğini göstersin yeter") =========================
+   Fiş no / aktarım sütunları ve fiş kurgusu KALDIRILDI. Satır açılınca solda belgenin
+   görseli, sağda hangi hesaba ne yazıldığı. "Görsel" düğmesi artık küçük göz ikonu değil. */
+#fm-root .av-serit{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--line2);flex-wrap:wrap}
+#fm-root .av-serit .sk{display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 13px;border-radius:9px;
+  border:1px solid var(--line);background:#fff;font:inherit;font-size:12.5px;font-weight:750;color:var(--muted);cursor:pointer}
+#fm-root .av-serit .sk b{font-variant-numeric:tabular-nums;font-weight:850;color:#0e1726}
+#fm-root .av-serit .sk.on{border-color:var(--accent);color:var(--accent);background:color-mix(in srgb,var(--accent) 7%,#fff);box-shadow:inset 0 0 0 1px var(--accent)}
+#fm-root .av-serit .sk.on b{color:var(--accent)}
+#fm-root .av-serit .sp{flex:1}
+#fm-root .av-tbl{width:100%;border-collapse:separate;border-spacing:0}
+#fm-root .av-tbl th{height:34px;padding:0 14px;text-align:left;background:#fbfcfe;color:#94a0b2;font-size:10px;font-weight:850;
+  letter-spacing:.6px;text-transform:uppercase;border-bottom:1px solid var(--line);white-space:nowrap}
+#fm-root .av-tbl td{padding:9px 14px;border-bottom:1px solid #f0f3f8;font-size:12.5px;vertical-align:middle}
+#fm-root .av-tbl tbody tr.sat{cursor:pointer}
+#fm-root .av-tbl tbody tr.sat:hover td{background:#f9fbfd}
+#fm-root .av-tbl tr.acik td{background:color-mix(in srgb,var(--accent) 5%,#fff)}
+#fm-root .av-tbl .num{text-align:right;font-variant-numeric:tabular-nums;font-weight:800;color:#0e1726}
+#fm-root .av-tbl .bno{font-variant-numeric:tabular-nums;font-size:12px;font-weight:650;color:#475569;letter-spacing:.2px}
+#fm-root .av-tbl .fr{font-weight:700;color:#17212f}
+#fm-root .av-hk{display:inline-flex;align-items:center;height:22px;padding:0 9px;border-radius:7px;background:#eef2f7;
+  color:#0e1726;font-size:11.5px;font-weight:850;font-variant-numeric:tabular-nums;margin-right:4px}
+#fm-root .av-gor{display:inline-flex;align-items:center;gap:7px;height:30px;padding:0 11px;border-radius:9px;
+  border:1px solid var(--accent-line);background:var(--accent-soft);color:var(--accent);font:inherit;font-size:12px;
+  font-weight:800;cursor:pointer;white-space:nowrap}
+#fm-root .av-gor:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
+#fm-root .av-ok{width:26px;height:26px;border-radius:7px;border:1px solid var(--line);background:#fff;color:var(--muted);
+  font-size:11px;cursor:pointer;display:inline-grid;place-items:center;margin-left:6px}
+#fm-root .av-det > td{padding:0 !important;background:#fbfcfe}
+#fm-root .av-iki{display:grid;grid-template-columns:300px minmax(0,1fr);border-top:1px solid var(--line2)}
+@media (max-width:1080px){#fm-root .av-iki{grid-template-columns:1fr}}
+#fm-root .av-gorsel{padding:14px;border-right:1px solid var(--line2);display:flex;flex-direction:column;gap:9px;align-items:center}
+#fm-root .av-kagit{width:100%;max-width:250px;aspect-ratio:1/1.35;border:1px solid var(--line);border-radius:9px;background:#fff;
+  box-shadow:0 8px 20px -14px rgba(16,24,40,.6);overflow:hidden;display:grid;place-items:center}
+#fm-root .av-kagit img{width:100%;height:100%;object-fit:contain;display:block}
+#fm-root .av-kagit iframe{width:250%;height:250%;border:0;transform:scale(.4);transform-origin:0 0;background:#fff}
+#fm-root .av-kagit .bekle{font-size:11.5px;color:var(--faint);font-weight:700;text-align:center;padding:12px;line-height:1.6}
+#fm-root .av-gdug{display:flex;gap:7px;width:100%;max-width:250px}
+#fm-root .av-gdug button{flex:1;height:32px;border-radius:9px;border:1px solid var(--line);background:#fff;font:inherit;
+  font-size:11.5px;font-weight:750;color:var(--muted);cursor:pointer}
+#fm-root .av-gdug button.ana{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:800}
+#fm-root .av-nasil{padding:14px 16px;min-width:0}
+#fm-root .av-et{font-size:10px;font-weight:900;letter-spacing:.7px;text-transform:uppercase;color:#94a0b2;margin-bottom:9px}
+#fm-root .av-ktbl{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+#fm-root .av-ktbl td{padding:8px 12px;border-bottom:1px solid #f1f4f9;font-size:12.5px}
+#fm-root .av-ktbl tr:last-child td{border-bottom:0}
+#fm-root .av-ktbl .bc{width:52px;font-size:9.5px;font-weight:900;letter-spacing:.5px;color:#94a0b2}
+#fm-root .av-ktbl .bc.b{color:#1d4ed8}
+#fm-root .av-ktbl .bc.a{color:#b45309}
+#fm-root .av-ktbl .kod{width:54px;font-variant-numeric:tabular-nums;font-weight:850;color:#0e1726}
+#fm-root .av-ktbl .ad{color:var(--muted);font-weight:650}
+#fm-root .av-ktbl .tt{text-align:right;font-variant-numeric:tabular-nums;font-weight:800;color:#0e1726;white-space:nowrap}
+#fm-root .av-kunye{display:flex;gap:22px;flex-wrap:wrap;margin-top:11px;padding-top:11px;border-top:1px dashed var(--line)}
+#fm-root .av-kunye div small{display:block;font-size:10px;font-weight:850;letter-spacing:.5px;text-transform:uppercase;color:#94a0b2}
+#fm-root .av-kunye div b{font-size:12.5px;font-weight:800;color:#0e1726;font-variant-numeric:tabular-nums}
+#fm-root .av-bos{padding:32px 18px;text-align:center;color:var(--faint);font-size:12.5px;line-height:1.7}
+#fm-root .av-bos b{display:block;color:var(--muted);font-size:13px;font-weight:800;margin-bottom:2px}
 /* === /FM YENİ ARAYÜZ — TASLAK 1 === */
 `;
