@@ -35,6 +35,24 @@ export function isRandomDbId(base: string): boolean {
   return /^c[a-z0-9]{23,30}$/.test(base) && /[a-z]/.test(base) && /\d/.test(base);
 }
 
+/**
+ * Dosya adı TARAYICI/KAMERA tarafından üretilmiş jenerik bir ad mı?
+ * ("tarama-2026-09-24-4", "IMG_20260924_101112", "scan001", "WhatsApp Image 2026-09-24…")
+ *
+ * Bunlar belge numarası DEĞİLDİR. 2026-09-24 gerçek vaka: mobil Belge Tarayıcı'dan yüklenen
+ * ÖKC fişlerinde Azure "FİŞ NO: 212" yazısını doğru okuduğu hâlde, dosya adı 10 karakterden
+ * uzun olduğu için "kısa OCR no yerine uzun dosya adını al" kuralı devreye girip belge no'yu
+ * "TARAMA-2026-09-24-4" yapıyordu → Luca/Mihsap ile eşleşme imkânsız hâle geliyordu.
+ */
+export function isJenerikDosyaAdi(base: string): boolean {
+  const b = base.trim();
+  // Onek ayracla bitmeli: "DOC-123" jenerik, "DOC123456789" gercek belge no olabilir -> elenmez.
+  if (/^(?:TARAMA|SCANNED|SCAN|IMAGE|IMG|PHOTO|FOTO|DSC|DCIM|PXL|CAMERA|EKRAN|SCREENSHOT|WHATSAPP|SIGNAL|BELGE|DOCUMENT|DOC)(?:[\s._-]|$)/i.test(b)) return true;
+  // "20260924_101112", "2026-09-24 14.05.11" gibi salt tarih/saat adları
+  if (/^\d{4}[-_.]?[01]\d[-_.]?[0-3]\d(?:[-_. ]\d{2}[-_.:]?\d{2}(?:[-_.:]?\d{2})?)?$/.test(b)) return true;
+  return false;
+}
+
 export function extractBelgeNo(text: string, foldedText: string): string | null {
   // Z RAPORU tespiti — eger metinde Z RAPORU geciyorsa Z NO/Z SAYAC'ı al
   const isZRapor = /z\s*rapor(u|[ıi])?|z\s*report|z\s*g[uü]nl[uü]k/i.test(text);

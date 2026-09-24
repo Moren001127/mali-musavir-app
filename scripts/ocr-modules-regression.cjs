@@ -176,6 +176,14 @@ F.CAKMAK MH.HALKALI CD.
 SEFAKOY IS MERKEZI NO:209
 K.CEKMECE VD:6490011354`;
 eq(vendorParser.extractSaticiUnvan(okcLtdUnvan, foldTr), 'OTO CEM OTO YEDEK PARCA', 'vendor unvan OKC ilk satir');
+// GERCEK bug (mobil tarama, 2026-09-24): dosya adi belge no saniliyordu — Azure "FIS NO: 212"
+// okudugu halde belgeNo "TARAMA-2026-09-24-4" oluyordu (Luca/Mihsap eslesmesi imkansiz).
+const belgeNoParser2 = require(path.join(ROOT, 'apps/api/src/kdv-control/ocr/parsers/belge-no.ts'));
+eq(belgeNoParser2.isJenerikDosyaAdi('tarama-2026-09-24-4'), true, 'jenerik dosya adi: tarama-');
+eq(belgeNoParser2.isJenerikDosyaAdi('IMG_20260924_101112'), true, 'jenerik dosya adi: IMG_');
+eq(belgeNoParser2.isJenerikDosyaAdi('20260924_101112'), true, 'jenerik dosya adi: salt tarih');
+eq(belgeNoParser2.isJenerikDosyaAdi('GIB2026000000123'), false, 'gercek e-belge no jenerik degil');
+eq(belgeNoParser2.isJenerikDosyaAdi('DOC123456789'), false, 'DOC onekli gercek no elenmez');
 // GERCEK bug (ARS OTOMOBIL fisi, YORGUN NAKLIYAT 2026-05): VKN vergi dairesi
 // satirinda "IKITELI VD:0800371588" — (1) "VD" etiketi taninmiyordu,
 // (2) "IKITELI" icindeki "TEL" alt-dizisi satiri telefon sanip atlatiyordu.

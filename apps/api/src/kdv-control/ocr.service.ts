@@ -9,7 +9,7 @@ import {
   extractDateWithOcrRepair as extractDateWithOcrRepairPure,
   normalizeOcrYear as normalizeOcrYearPure,
 } from './ocr/parsers/date';
-import { extractBelgeNo as extractBelgeNoPure, isRandomDbId } from './ocr/parsers/belge-no';
+import { extractBelgeNo as extractBelgeNoPure, isRandomDbId, isJenerikDosyaAdi } from './ocr/parsers/belge-no';
 import {
   extractSaticiVkn as extractSaticiVknPure,
   extractSaticiUnvan as extractSaticiUnvanPure,
@@ -1157,6 +1157,10 @@ export class OcrService {
     // Dosya adı Prisma cuid()/rastgele DB id'si ise belge no üretme — OCR'daki
     // gerçek FİŞ/FATURA NO kullanılsın (yoksa OKC fişleri Luca ile eşleşmez).
     if (isRandomDbId(base)) return null;
+    // Tarayıcı/kamera dosya adı belge no DEĞİLDİR ("tarama-2026-09-24-4", "IMG_20260924_101112").
+    // 2026-09-24: mobil taramalarda Azure "FİŞ NO: 212"yi doğru okuduğu hâlde, dosya adı daha uzun
+    // olduğu için filename-override devreye girip belge no'yu dosya adı yapıyordu.
+    if (isJenerikDosyaAdi(base)) return null;
     if (E_BELGE_NO_REGEX.test(base.toUpperCase())) return base.toUpperCase();
     if (/^[A-Z0-9]{3}\d{4}\d{6,12}$/i.test(base)) return base.toUpperCase();
     if (/^[A-Z0-9\-_]{8,30}$/i.test(base)) return base.toUpperCase();
