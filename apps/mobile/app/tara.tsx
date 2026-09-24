@@ -405,6 +405,8 @@ export default function TaraEkrani() {
 
     const giden: string[] = [];
     let ok = 0, hataAdet = 0;
+    let ilkHata = '';           // ekranda SEBEP yazsın: "gitmedi" tek başına teşhise yaramıyor
+    let yenidenGirisDenendi = false;
 
     for (let i = 0; i < gidecek.length; i++) {
       const b = gidecek[i];
@@ -421,8 +423,23 @@ export default function TaraEkrani() {
           headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000,
         });
         ok++; setBasarili(ok); giden.push(b.anahtar);
-      } catch {
+      } catch (e: any) {
+        const kod = Number(e?.response?.status || 0);
+        // OTURUM DÜŞTÜYSE (401) kasadaki kimlikle SESSİZCE yeniden gir ve aynı belgeyi bir kez
+        // daha dene. 2026-09-25: uygulama açık kalınca belirteç bayatlıyor, gönderim "4 belge
+        // gitmedi" deyip duruyordu; sebep ekranda yazmadığı için de anlaşılmıyordu.
+        if ((kod === 401 || kod === 403) && !yenidenGirisDenendi) {
+          yenidenGirisDenendi = true;
+          const girildi = await kasadanYenidenGir();
+          if (girildi) { i--; continue; }
+        }
         hataAdet++; setBasarisiz(hataAdet);
+        if (!ilkHata) {
+          const sunucu = e?.response?.data?.message;
+          ilkHata = kod
+            ? `${kod}${sunucu ? ` · ${String(Array.isArray(sunucu) ? sunucu[0] : sunucu).slice(0, 80)}` : ''}`
+            : String(e?.message || 'bağlantı kurulamadı').slice(0, 80);
+        }
       }
       setIlerleme(((i + 1) / gidecek.length) * 100);
     }
@@ -430,8 +447,21 @@ export default function TaraEkrani() {
     setBelgeler((s) => s.filter((b) => !giden.includes(b.anahtar)));
     setGonderiliyor(false);
     setSonuc(hataAdet
-      ? `${ok} belge gönderildi · ${hataAdet} belge gitmedi (listede kaldı, tekrar deneyin)`
+      ? `${ok} belge gönderildi · ${hataAdet} belge gitmedi${ilkHata ? ` (${ilkHata})` : ''} — listede kaldı, tekrar deneyin`
       : `${ok} belge gönderildi · ${secili.ad} · ${yon === 'ALIS' ? 'Gider' : 'Gelir'}`);
+  }
+
+  /** Kasadaki kimlikle sessizce yeniden giriş (oturum bayatladığında gönderimi kurtarır). */
+  async function kasadanYenidenGir(): Promise<boolean> {
+    try {
+      const ham = await getStoredItem(CREDS_KEY);
+      const k = ham ? JSON.parse(ham) : null;
+      if (!k?.email || !k?.password) return false;
+      await login({ email: k.email, password: k.password, audience: 'advisor' });
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /* ─────────────── 0) GİRİŞ ─────────────── */
