@@ -3698,13 +3698,8 @@ function MfTanimAlani({ deger, onChange, onKaydet, onVazgec, kaydediliyor, degis
   );
 }
 
-/** Ünvandan 2 harf (avatar). */
-function mfBasHarf(ad: string): string {
-  const p = String(ad || '').trim().split(/\s+/).filter(Boolean);
-  const a = (p[0] || '?')[0] || '?';
-  const b = p.length > 1 ? (p[1][0] || '') : ((p[0] || '')[1] || '');
-  return (a + b).toLocaleUpperCase('tr');
-}
+/* mfBasHarf (ünvandan 2 harf) kaldırıldı — Mükellefler listesindeki avatar kutuları
+   2026-09-24 tasarımında kalktı, başka kullanan yok. */
 
 function ScreenMukellefler({ taxpayers, period, onOpen }: { taxpayers: any[]; period: string; onOpen: (id: string) => void }) {
   const qc = useQueryClient();
@@ -3772,32 +3767,48 @@ function ScreenMukellefler({ taxpayers, period, onOpen }: { taxpayers: any[]; pe
     if (!formDegisti) { toast.info('Değişiklik yok'); return; }
     kaydetMut.mutate({ id: form.id, body: formDegisiklik });
   };
-  // Kullanıcı kararı (2026-09-12): solda Tümü · İşletme · Bilanço; sağda Tanımsız · e-Fatura · GİB e-Arşiv. Başka sayaç yok.
-  const solSayac: Array<{ v: MfSuzgec; l: string; c: string }> = [
+  // Sayaç şeridi — fm2 arayüz dili (kullanıcı onayı 2026-09-24): tek sıra, 6 kart.
+  // Önceki hali iki ayrı hap grubuydu (sol/sağ, 2026-09-12); sorgu ekranlarıyla dil birliği için kart oldu.
+  const sayaclar: Array<{ v: MfSuzgec; l: string; c: string }> = [
     { v: 'tumu', l: 'Tümü', c: 'var(--accent)' },
     { v: 'isletme', l: 'İşletme', c: '#15803d' },
     { v: 'bilanco', l: 'Bilanço', c: '#7c3aed' },
-  ];
-  const sagSayac: Array<{ v: MfSuzgec; l: string; c: string }> = [
-    { v: 'tanimsiz', l: 'Tanımsız', c: '#e5484d' },
+    { v: 'tanimsiz', l: 'Tanımsız', c: '#b91c1c' },
     { v: 'efatura', l: 'e-Fatura', c: '#0891b2' },
     { v: 'earsiv', l: 'GİB e-Arşiv', c: '#b45309' },
   ];
-  const sayacDugme = (t: { v: MfSuzgec; l: string; c: string }) => (
-    <button key={t.v} type="button" className={`mk-sayac${suzgec === t.v ? ' on' : ''}`} style={{ ['--tc' as any]: t.c }} onClick={() => setSuzgec(suzgec === t.v && t.v !== 'tumu' ? 'tumu' : t.v)} title={t.v === 'tumu' ? 'Tüm mükellefler' : `Yalnız ${t.l.toLocaleLowerCase('tr')} olanları göster`}>
-      <b>{sayac[t.v]}</b><span>{t.l}</span>
-    </button>
-  );
 
   return (
     <section className="screen">
-      <div className="mk-sayaclar">
-        <div className="mk-sayac-grup">{solSayac.map(sayacDugme)}</div>
-        <div className="mk-sayac-grup sag">{sagSayac.map(sayacDugme)}</div>
+      <div className="mk-tiles">
+        {sayaclar.map((t) => (
+          <button
+            key={t.v}
+            type="button"
+            className={`mk-tile${suzgec === t.v ? ' on' : ''}`}
+            style={{ ['--tc' as any]: t.c }}
+            onClick={() => setSuzgec(suzgec === t.v && t.v !== 'tumu' ? 'tumu' : t.v)}
+            title={t.v === 'tumu' ? 'Tüm mükellefler' : `Yalnız ${t.l.toLocaleLowerCase('tr')} olanları göster`}
+          >
+            <b>{sayac[t.v]}</b><span>{t.l}</span>
+          </button>
+        ))}
       </div>
+
+      {/* Tanım eksikse hesap kodu eşleştirmesi sektör bilgisi olmadan çalışır — sayfanın üstünde söylenir. */}
+      {sayac.tanimsiz > 0 && suzgec !== 'tanimsiz' ? (
+        <div className="mk-uyari">
+          <span className="mk-uyari-ik">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M12 9v4M12 17h.01M10.3 3.9L2.4 17a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+          </span>
+          <div><b>{sayac.tumu} mükellefin {sayac.tanimsiz} tanesinde faaliyet tanımı yok.</b> Tanımsız mükellefte hesap kodu eşleştirmesi sektör bilgisi olmadan çalışır; yanlış hesaba düşen fatura oranı yükselir.</div>
+          <button type="button" className="btn sm ghost" onClick={() => setSuzgec('tanimsiz')}>Tanımsızları göster</button>
+        </div>
+      ) : null}
+
       <div className="card mk-card">
         <div className="ch mk-head">
-          <h3>{list.length} mükellef <span className="mu">· {periodLabel(period)}{suzgec !== 'tumu' ? ` · ${[...solSayac, ...sagSayac].find((t) => t.v === suzgec)?.l}` : ''}</span></h3>
+          <h3>{list.length} mükellef <span className="mu">· {periodLabel(period)}{suzgec !== 'tumu' ? ` · ${sayaclar.find((t) => t.v === suzgec)?.l}` : ''}</span></h3>
           <div className="sp" />
           <div className="mukara">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
@@ -3809,9 +3820,13 @@ function ScreenMukellefler({ taxpayers, period, onOpen }: { taxpayers: any[]; pe
             <thead>
               <tr>
                 <th>Mükellef</th>
-                <th>Profil</th>
+                <th>Defter</th>
+                <th>Fatura kaynağı</th>
                 <th>Tanım</th>
-                <th>Bu dönem</th>
+                <th className="mk-n">Bekleyen</th>
+                <th className="mk-n">Onaylı</th>
+                <th className="mk-n">Luca&apos;da</th>
+                <th className="mk-n">Sorunlu</th>
                 <th className="mk-th-eylem" />
               </tr>
             </thead>
@@ -3823,38 +3838,34 @@ function ScreenMukellefler({ taxpayers, period, onOpen }: { taxpayers: any[]; pe
                 const approved = Number(s.approvedAlis || 0) + Number(s.approvedSatis || 0);
                 const acik = form?.id === t.id;
                 const ad = taxpayerLabel(t);
+                // Kenar şeridi: sorunlu kırmızı > tanımsız amber (biri gösterilir, ikisi birden değil).
+                const serit = issue > 0 ? ' mk-sorunlu' : (!f.tanimli ? ' mk-tanimsiz' : '');
                 return (
                   <Fragment key={t.id}>
-                    <tr className={`mk-tr${acik ? ' mk-acik' : ''}${issue > 0 ? ' mk-sorunlu' : ''}`} onClick={() => onOpen(t.id)}>
-                      <td>
-                        <div className="mk-kim">
-                          <span className={`mk-avatar ${f.defter === 'Bilanço' ? 'bil' : f.defter === 'İşletme' ? 'isl' : 'bos'}`}>{mfBasHarf(ad)}</span>
-                          <div className="mk-kim-tx">
-                            <b>{ad}</b>
-                            {t.taxNumber ? <small>VKN {t.taxNumber}</small> : null}
-                          </div>
-                        </div>
+                    <tr className={`mk-tr${acik ? ' mk-acik' : ''}${serit}`} onClick={() => onOpen(t.id)}>
+                      <td className="mk-kim">
+                        <b title={ad}>{ad}</b>
+                        {t.taxNumber ? <small>VKN {t.taxNumber}</small> : null}
                       </td>
                       <td>
-                        <div className="mk-profil">
-                          {f.defter ? <span className={`mk-pill ${f.defter === 'İşletme' ? 'isl' : 'bil'}`}>{f.defter}</span> : <span className="mk-pill bos">defter belirsiz</span>}
-                          {f.efatura ? <span className="mk-pill efat" title="e-Fatura mükellefi — faturalar entegratörden (e-Fatura Sorgu) gelir">e-Fatura</span> : <span className="mk-pill earsiv" title="e-Fatura mükellefi değil — satışlar GİB e-Arşiv Sorgu ile çekilir">GİB e-Arşiv</span>}
-                        </div>
+                        {f.defter
+                          ? <span className={`mk-d ${f.defter === 'İşletme' ? 'isl' : 'bil'}`}>{f.defter}</span>
+                          : <span className="mk-d bos">defter belirsiz</span>}
+                      </td>
+                      <td>
+                        {f.efatura
+                          ? <span className="mk-d efat" title="e-Fatura mükellefi — faturalar entegratörden (e-Fatura Sorgu) gelir">e-Fatura</span>
+                          : <span className="mk-d earsiv" title="e-Fatura mükellefi değil — satışlar GİB e-Arşiv Sorgu ile çekilir">GİB e-Arşiv</span>}
                       </td>
                       <td>
                         {f.tanimli
-                          ? <span className="mk-tanimli ok" title={f.ipucu}><i>✓</i> tanımlı</span>
-                          : <span className="mk-tanimli uyar" title={f.ipucu}><i>!</i> tanımsız</span>}
+                          ? <span className="mk-d ok" title={f.ipucu}>tanımlı</span>
+                          : <span className="mk-d uyar" title={f.ipucu}>tanımsız</span>}
                       </td>
-                      <td>
-                        <div className="mk-donem">
-                          {pending > 0 ? <span className="mk-say bekleyen">{pending} bekleyen</span> : null}
-                          {approved > 0 ? <span className="mk-say onayli">{approved} onaylı</span> : null}
-                          {posted > 0 ? <span className="mk-say luca">{posted} Luca'da</span> : null}
-                          {issue > 0 ? <span className="mk-say sorunlu">{issue} sorunlu</span> : null}
-                          {pending + approved + posted + issue === 0 ? <span className="mk-say yok">belge yok</span> : null}
-                        </div>
-                      </td>
+                      <td className={`mk-n${pending > 0 ? '' : ' bos'}`} title={pending > 0 ? 'Muhasebeleştirme bekleyen belge' : undefined}>{pending > 0 ? pending : '–'}</td>
+                      <td className={`mk-n${approved > 0 ? '' : ' bos'}`} title={approved > 0 ? 'Onaylanmış belge' : undefined}>{approved > 0 ? approved : '–'}</td>
+                      <td className={`mk-n${posted > 0 ? '' : ' bos'}`} title={posted > 0 ? 'Luca\u2019ya aktarılmış belge' : undefined}>{posted > 0 ? posted : '–'}</td>
+                      <td className={`mk-n${issue > 0 ? ' kotu' : ' bos'}`} title={issue > 0 ? 'Sorunlu belge — açıp bakın' : undefined}>{issue > 0 ? issue : '–'}</td>
                       <td className="mk-eylem" onClick={(e) => e.stopPropagation()}>
                         <button type="button" className={`btn sm ghost mk-duzenle${acik ? ' on' : ''}`} onClick={() => formuAcKapat(t)} title={acik ? 'Tanım alanını kapat' : 'Faaliyet / defter / e-Fatura tanımı'}>{acik ? 'Kapat ▴' : (f.tanimli ? 'Düzenle' : 'Tanımla')}</button>
                         <button type="button" className="btn sm mk-ac" onClick={() => onOpen(t.id)} title="Bu mükellefin faturalarını aç">Aç →</button>
@@ -3862,7 +3873,7 @@ function ScreenMukellefler({ taxpayers, period, onOpen }: { taxpayers: any[]; pe
                     </tr>
                     {acik && form && (
                       <tr className="mk-formrow" onClick={(e) => e.stopPropagation()}>
-                        <td colSpan={5}>
+                        <td colSpan={9}>
                           <MfTanimAlani
                             deger={form.d}
                             onChange={(d) => setForm({ id: t.id, d })}
@@ -3878,7 +3889,7 @@ function ScreenMukellefler({ taxpayers, period, onOpen }: { taxpayers: any[]; pe
                 );
               })}
               {!sumQ.isLoading && list.length === 0 && (
-                <tr><td colSpan={5}><div className="empty">Mükellef bulunamadı{suzgec !== 'tumu' || nq ? <> — <a href="#" onClick={(e) => { e.preventDefault(); setSuzgec('tumu'); setQ(''); }}>süzgeçleri temizle</a></> : null}.</div></td></tr>
+                <tr><td colSpan={9}><div className="empty">Mükellef bulunamadı{suzgec !== 'tumu' || nq ? <> — <a href="#" onClick={(e) => { e.preventDefault(); setSuzgec('tumu'); setQ(''); }}>süzgeçleri temizle</a></> : null}.</div></td></tr>
               )}
             </tbody>
           </table>
@@ -9208,57 +9219,63 @@ const CSS = `
 /* Süzgeç boş sonuç bağlantısı */
 #fm-root .gf-table .empty a{color:var(--accent);font-weight:700;text-decoration:underline}
 
-/* === PLAN16-F3: MUKELLEFLER — sayaclar sol/sag, 5 sutunlu sade tablo (kullanıcı kararı 2026-09-12) === */
-#fm-root .mk-sayaclar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
-#fm-root .mk-sayac-grup{display:flex;gap:8px;flex-wrap:wrap}
-#fm-root .mk-sayac{display:inline-flex;align-items:center;gap:8px;height:38px;padding:0 14px 0 12px;border-radius:999px;border:1px solid var(--line);background:#fff;cursor:pointer;font-size:12px;font-weight:700;color:var(--muted);transition:border-color .12s,background .12s,box-shadow .12s;box-shadow:0 1px 2px rgba(16,24,40,.04)}
-#fm-root .mk-sayac::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--tc,var(--accent))}
-#fm-root .mk-sayac b{font-size:15px;font-weight:800;color:var(--text);font-variant-numeric:tabular-nums}
-#fm-root .mk-sayac:hover{border-color:var(--tc,var(--accent))}
-#fm-root .mk-sayac.on{border-color:var(--tc,var(--accent));background:color-mix(in srgb,var(--tc,var(--accent)) 10%,#fff);color:var(--tc,var(--accent));box-shadow:inset 0 0 0 1px var(--tc,var(--accent))}
-#fm-root .mk-sayac.on b{color:var(--tc,var(--accent))}
+/* === MÜKELLEFLER — fm2 arayüz dili (2026-09-24, Muzaffer Bey onayı: s6-mukellefler.html) ===
+   Sayaçlar kart şeridine geçti · avatar kalktı · hap etiket yerine NOKTA+YAZI (sorgu ekranlarıyla
+   aynı durum dili) · "Bu dönem" hapları hizalı RAKAM SÜTUNLARINA ayrıldı · sorunlu satırda kırmızı,
+   tanımsız satırda amber kenar şeridi. Kural: renk üstte yaşar, tablo sakin kalır. */
+#fm-root .mk-tiles{display:flex;gap:10px;margin:0 0 13px}
+#fm-root .mk-tile{position:relative;flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:12px 14px 11px 16px;border:1px solid var(--line);border-radius:13px;background:#fff;box-shadow:0 1px 2px rgba(16,24,40,.05);overflow:hidden;cursor:pointer;font-family:inherit;text-align:left;transition:transform .12s,box-shadow .12s,border-color .12s}
+#fm-root .mk-tile::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--tc,var(--accent))}
+#fm-root .mk-tile::after{content:'';position:absolute;right:-24px;top:-24px;width:78px;height:78px;border-radius:50%;background:var(--tc,var(--accent));opacity:.07;pointer-events:none}
+#fm-root .mk-tile:hover{transform:translateY(-1px);box-shadow:0 10px 22px -16px var(--tc,var(--accent))}
+#fm-root .mk-tile b{font-size:23px;font-weight:850;letter-spacing:-.7px;color:var(--tc,var(--accent));font-variant-numeric:tabular-nums;line-height:1.15}
+#fm-root .mk-tile span{font-size:11.5px;font-weight:700;color:#566379;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#fm-root .mk-tile.on{border-color:var(--tc,var(--accent));box-shadow:inset 0 0 0 1px var(--tc,var(--accent)),0 10px 22px -16px var(--tc,var(--accent))}
+#fm-root .mk-tile.on::after{opacity:.13}
+@media (max-width:1100px){#fm-root .mk-tiles{flex-wrap:wrap}#fm-root .mk-tile{flex:1 1 30%}}
+
+/* Tanımsız mükellef uyarısı — tanım yoksa hesap kodu eşleştirmesi sektör bilgisiz çalışır */
+#fm-root .mk-uyari{display:flex;align-items:center;gap:11px;padding:11px 15px;margin-bottom:13px;border-radius:12px;border:1px solid #f3dcb4;background:linear-gradient(135deg,#fffdf8,#fff);font-size:12.5px;color:#7c4a09;line-height:1.5}
+#fm-root .mk-uyari-ik{width:28px;height:28px;flex:0 0 28px;border-radius:9px;background:#fdf3e3;color:#b45309;display:grid;place-items:center}
+#fm-root .mk-uyari b{font-weight:800}
+#fm-root .mk-uyari .btn{margin-left:auto;flex-shrink:0}
+
 #fm-root .mk-head h3 .mu{font-weight:400;color:var(--faint);font-size:12px}
 #fm-root .mk-twrap{overflow:auto;max-height:calc(100vh - 250px)}
-#fm-root .mk-table{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}
-#fm-root .mk-table th{text-align:left;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--th-text);background:var(--th);padding:10px 14px;border-bottom:1px solid var(--line);white-space:nowrap}
-#fm-root .mk-table td{padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:middle}
-#fm-root .mk-tr{cursor:pointer;transition:background .1s}
-#fm-root .mk-tr:hover td{background:#f8fafc}
-#fm-root .mk-tr.mk-sorunlu td:first-child{box-shadow:inset 3px 0 0 #e5484d}
-#fm-root .mk-kim{display:flex;align-items:center;gap:11px;min-width:0}
-#fm-root .mk-avatar{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;font-size:12px;font-weight:900;letter-spacing:.3px;flex-shrink:0;color:#fff}
-#fm-root .mk-avatar.isl{background:linear-gradient(135deg,#15803d,#22a35a)}
-#fm-root .mk-avatar.bil{background:linear-gradient(135deg,#6d28d9,#8b5cf6)}
-#fm-root .mk-avatar.bos{background:linear-gradient(135deg,#94a3b8,#b8c2d0)}
-#fm-root .mk-kim-tx{display:flex;flex-direction:column;min-width:0}
-#fm-root .mk-kim-tx b{font-size:13px;font-weight:800;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:420px}
-#fm-root .mk-kim-tx small{font-size:11px;color:var(--faint);font-weight:600}
-#fm-root .mk-profil{display:flex;gap:6px;flex-wrap:wrap}
-#fm-root .mk-pill{display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:999px;font-size:10.5px;font-weight:700;white-space:nowrap;border:1px solid transparent}
-#fm-root .mk-pill.isl{background:#ecfdf5;color:#15803d;border-color:#bbf7d0}
-#fm-root .mk-pill.bil{background:#f3f0ff;color:#6d28d9;border-color:#ddd6fe}
-#fm-root .mk-pill.bos{background:#f8fafc;color:#94a3b8;border-color:#e2e8f0}
-#fm-root .mk-pill.efat{background:#ecfeff;color:#0e7490;border-color:#a5f3fc}
-#fm-root .mk-pill.earsiv{background:#fff7ed;color:#b45309;border-color:#fed7aa}
-#fm-root .mk-tanimli{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;white-space:nowrap}
-#fm-root .mk-tanimli i{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;font-size:11px;font-style:normal;font-weight:900;color:#fff}
-#fm-root .mk-tanimli.ok{color:#15803d}#fm-root .mk-tanimli.ok i{background:#16a34a}
-#fm-root .mk-tanimli.uyar{color:#b91c1c}#fm-root .mk-tanimli.uyar i{background:#e5484d;box-shadow:0 0 0 3px #fee2e2}
-#fm-root .mk-donem{display:flex;gap:6px;flex-wrap:wrap}
-#fm-root .mk-say{display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:6px;font-size:11px;font-weight:700;white-space:nowrap}
-#fm-root .mk-say.bekleyen{background:#eff6ff;color:#1d4ed8}
-#fm-root .mk-say.onayli{background:#ecfdf5;color:#15803d}
-#fm-root .mk-say.luca{background:#f0fdfa;color:#0f766e}
-#fm-root .mk-say.sorunlu{background:#fef2f2;color:#b91c1c}
-#fm-root .mk-say.yok{color:var(--faint);font-weight:600;padding:0}
-#fm-root .mk-th-eylem{width:190px}
+#fm-root .mk-table{width:100%;border-collapse:separate;border-spacing:0}
+#fm-root .mk-table th{height:34px;padding:0 14px;text-align:left;background:#fbfcfe;color:#94a0b2;font-size:10px;font-weight:850;letter-spacing:.6px;text-transform:uppercase;border-bottom:1px solid var(--line);white-space:nowrap}
+#fm-root .mk-table td{padding:9px 14px;border-bottom:1px solid #f0f3f8;font-size:12.5px;line-height:1.3;vertical-align:middle}
+#fm-root .mk-tr{cursor:pointer}
+#fm-root .mk-tr:hover td{background:#f9fbfd}
+#fm-root .mk-tr.mk-tanimsiz td:first-child{box-shadow:inset 3px 0 0 #b45309}
+#fm-root .mk-tr.mk-sorunlu td:first-child{box-shadow:inset 3px 0 0 #b91c1c}
+#fm-root .mk-kim b{display:block;font-size:12.5px;font-weight:750;color:#0e1726;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:420px}
+#fm-root .mk-kim small{display:block;font-size:11px;color:var(--faint);font-weight:650;font-variant-numeric:tabular-nums}
+/* durum dili: hap değil — nokta + yazı */
+#fm-root .mk-d{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:750;white-space:nowrap}
+#fm-root .mk-d::before{content:'';width:7px;height:7px;border-radius:50%;background:currentColor;flex:0 0 7px}
+#fm-root .mk-d.isl{color:#15803d}
+#fm-root .mk-d.bil{color:#7c3aed}
+#fm-root .mk-d.bos{color:#94a3b8}
+#fm-root .mk-d.efat{color:#0891b2}
+#fm-root .mk-d.earsiv{color:#b45309}
+#fm-root .mk-d.ok{color:#15803d}
+#fm-root .mk-d.uyar{color:#b91c1c}
+/* belge sayıları: hizalı rakam sütunu, boşsa soluk tire */
+#fm-root .mk-table th.mk-n,#fm-root .mk-table td.mk-n{text-align:right}
+#fm-root .mk-table td.mk-n{font-variant-numeric:tabular-nums;font-weight:750;color:#0e1726;white-space:nowrap}
+#fm-root .mk-table td.mk-n.bos{color:#c7d0dc;font-weight:600}
+#fm-root .mk-table td.mk-n.kotu{color:#b91c1c}
+#fm-root .mk-th-eylem{width:186px}
 #fm-root .mk-eylem{white-space:nowrap;text-align:right}
-#fm-root .mk-eylem .btn{height:30px;padding:0 11px;font-size:12px;border-radius:8px;margin-left:6px;box-shadow:none}
-#fm-root .mk-eylem .btn.mk-ac{background:var(--accent-soft);color:var(--accent);border:1px solid var(--accent-line)}
+#fm-root .mk-eylem .btn{height:28px;padding:0 10px;font-size:11.5px;border-radius:8px;margin-left:6px;box-shadow:none;opacity:.78;transition:opacity .12s,background .12s,color .12s}
+#fm-root .mk-tr:hover .mk-eylem .btn{opacity:1}
+#fm-root .mk-tr.mk-tanimsiz .mk-eylem .btn,#fm-root .mk-tr.mk-sorunlu .mk-eylem .btn{opacity:1}
+#fm-root .mk-eylem .btn.mk-ac{opacity:1;background:var(--accent-soft);color:var(--accent);border:1px solid var(--accent-line)}
 #fm-root .mk-eylem .btn.mk-ac:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
 #fm-root .mk-eylem .btn.mk-duzenle.on{background:var(--accent);color:#fff;border-color:var(--accent)}
 #fm-root tr.mk-acik td{background:color-mix(in srgb,var(--accent) 6%,#fff)}
-#fm-root tr.mk-formrow td{padding:0 14px 14px 59px;background:color-mix(in srgb,var(--accent) 6%,#fff);cursor:default}
+#fm-root tr.mk-formrow td{padding:0 14px 14px;background:color-mix(in srgb,var(--accent) 6%,#fff);cursor:default}
 #fm-root .mk-tanim{border:1px solid var(--accent-line);border-radius:12px;background:#fff;padding:14px 16px 12px;box-shadow:0 10px 24px -20px var(--accent)}
 #fm-root .mk-tanim-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px 16px}
 #fm-root .mk-alan{display:flex;flex-direction:column;gap:5px;min-width:0}
