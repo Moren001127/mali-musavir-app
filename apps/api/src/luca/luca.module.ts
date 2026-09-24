@@ -13,12 +13,16 @@ import { EarsivModule } from '../earsiv/earsiv.module';
 import { FaturaMuhasebelestirmeModule } from '../fatura-muhasebelestirme/fatura-muhasebelestirme.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { EDefterControlModule } from '../edefter-control/edefter-control.module';
+import { MihsapModule } from '../mihsap/mihsap.module';
 
 @Module({
   imports: [
     MulterModule.register({ limits: { fileSize: 200 * 1024 * 1024 } }),
     PrismaModule,
     NotificationsModule,
+    // Luca'ya aktarim bitince belgeler Islenen Faturalar'a + Drive'a otomatik yansisin (2026-09-24).
+    // MihsapModule Luca'yi import etmiyor -> dairesel bagimlilik yok, forwardRef gerekmiyor.
+    MihsapModule,
     forwardRef(() => KdvControlModule),
     forwardRef(() => MizanModule),
     forwardRef(() => KdvBeyannameModule),

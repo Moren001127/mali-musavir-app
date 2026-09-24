@@ -3,14 +3,14 @@ import {
   Logger,
   BadRequestException,
   UnauthorizedException,
-  NotFoundException,
-} from '@nestjs/common';
+  NotFoundException, Optional } from '@nestjs/common';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NOTIFICATION_TYPES } from '../notifications/notification-types';
 import { postingBelgeKarari } from './posting-serbest-birak';
+import { MihsapService } from '../mihsap/mihsap.service';
 
 /**
  * Luca entegrasyonu — Mihsap deseninin Luca'ya uyarlanmış hali.
@@ -44,7 +44,46 @@ export class LucaService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
+    // İşlenen Faturalar'a otomatik yansıtma için. @Optional: testlerde/mock kurulumda yoksa
+    // aktarım yine çalışır, yalnız otomatik yansıtma atlanır.
+    @Optional() private readonly mihsap?: MihsapService,
   ) {}
+
+  /**
+   * Luca'ya AKTARILAN belgeleri İşlenen Faturalar'a (+ Drive yedeği) yansıtır.
+   * 2026-09-24 (GÜLŞEN DEMİRCİ bulgusu): belgeler POSTED oluyordu ama İşlenen Faturalar'a
+   * ancak "Hepsini Çek" denince ya da gece otomasyonu koşunca düşüyordu — yani aktarımdan
+   * sonra elle bir adım gerekiyordu. Artık aktarım biter bitmez kendiliğinden yansır.
+   * Hata olursa YUTULUR: aktarımın kendisi asla bozulmaz.
+   */
+  private async fmArsivIslenenFaturalaraYansit(orWhere: any[]): Promise<void> {
+    if (!this.mihsap) return;
+    try {
+      const belgeler: Array<{ tenantId: string; taxpayerId: string | null; faturaTarihi: Date | null }> =
+        await (this.prisma as any).invoiceAccountingDocument.findMany({
+          where: { OR: orWhere, lucaStatus: { in: ['POSTED', 'MANUAL_DONE'] } },
+          select: { tenantId: true, taxpayerId: true, faturaTarihi: true },
+        });
+      // Aynı işte birden çok mükellef/dönem olabilir → benzersiz (tenant, mükellef, dönem) başına bir çağrı.
+      const hedefler = new Map<string, { tenantId: string; mukellefId: string; donem: string }>();
+      for (const b of belgeler) {
+        if (!b.taxpayerId || !b.faturaTarihi) continue; // dönemi belirsiz belge zaten import filtresine girmez
+        const t = new Date(b.faturaTarihi);
+        const donem = `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, '0')}`;
+        hedefler.set(`${b.tenantId}|${b.taxpayerId}|${donem}`, { tenantId: b.tenantId, mukellefId: b.taxpayerId, donem });
+      }
+      for (const h of hedefler.values()) {
+        try {
+          const r = await this.mihsap.importFromFmArsiv({ ...h, faturaTuru: null, triggerDrive: true });
+          this.logger.log(`[FM→İŞLENEN] ${h.mukellefId} / ${h.donem}: ${r.added} eklendi · ${r.skipped} atlandı · ${r.mukerrer} mükerrer`);
+        } catch (err) {
+          this.logger.warn(`[FM→İŞLENEN] ${h.mukellefId} / ${h.donem} yansıtılamadı: ${(err as any)?.message || err}`);
+        }
+      }
+    } catch (err) {
+      this.logger.warn(`[FM→İŞLENEN] yansıtma atlandı: ${(err as any)?.message || err}`);
+    }
+  }
 
   /**
    * İş tipine göre "takıldı say" üst süresi (ms). Tüm stuck / seri-kural /
@@ -532,6 +571,8 @@ export class LucaService {
             ...(extra?.fisNo ? { lucaFisNo: extra.fisNo } : {}),
           },
         });
+        // Aktarim bitti → Islenen Faturalar + Drive (beklemeden, hata aktarimi bozmaz)
+        await this.fmArsivIslenenFaturalaraYansit(orWhere);
       } catch (err) {
         this.logger.warn(`InvoiceAccountingDocument lucaStatus POSTED guncellenemedi: ${(err as any)?.message}`);
       }
@@ -930,6 +971,7 @@ export class LucaService {
       : [];
     const isHaritasi = new Map(isler.map((j) => [j.id, j]));
     let sayac = 0;
+    const postedIdler: string[] = [];
     for (const b of belgeler) {
       const karar = postingBelgeKarari(b.lucaJobId ? isHaritasi.get(b.lucaJobId) : null);
       if (!karar) continue;
@@ -942,8 +984,11 @@ export class LucaService {
       if (r?.count) {
         sayac += r.count;
         this.logger.warn(`[LUCA-POSTING] belge ${b.id} iş ${b.lucaJobId || '-'} → ${karar.lucaStatus} (${karar.lucaStatus === 'FAILED' ? karar.lucaErrorMessage.slice(0, 120) : 'iş tamamlanmış'})`);
+        if (karar.lucaStatus === 'POSTED') postedIdler.push(b.id);
       }
     }
+    // Takılı kalıp sonradan POSTED'e dönen belgeler de İşlenen Faturalar'a yansısın.
+    if (postedIdler.length) await this.fmArsivIslenenFaturalaraYansit([{ id: { in: postedIdler } }]);
     return sayac;
   }
   /**
