@@ -7,6 +7,10 @@
  *     EXPO_PUBLIC_MOREN_APP=tara → paket/bundle com.moren.tarayici, ad "MOREN Belge Tarayıcı".
  *   Bayrak yoksa app.json aynen geçerli (MOREN Müşavir) — mevcut derlemeler etkilenmez.
  */
+// KANAL AYRI OLMALI (2026-09-24): eas.json'da `tarayici` profili "tarayici" kanalını kullanır.
+//   Eskiden MOREN Müşavir ile aynı "preview" kanalındaydı; expo-updates açılışta o kanalın son JS
+//   paketini indirdiği için Belge Tarayıcı bazen Müşavir paketini çekip PORTAL ekranını açıyordu
+//   (o pakette EXPO_PUBLIC_MOREN_APP bayrağı yok). Kanalı bir daha "preview" yapma.
 const TARAYICI = process.env.EXPO_PUBLIC_MOREN_APP === 'tara';
 
 module.exports = ({ config }) => {
