@@ -139,6 +139,24 @@ function MatchRow({
   const isXmlFile = /\.xml$/i.test(faturaDosya);
   const hasTevkifat = parseMoney(faturaTevkifat) > 0;
 
+  // ── Luca ↔ Fatura FARK İŞARETİ (yalnız görsel: hangi alan tutmuyor, gözle aranmasın) ──────────
+  // Biçimler farklı olduğu için (Luca "₺1.252,40" · fatura "1240,00") ham/normalize değer karşılaştırılır.
+  // Taraflardan biri bilinmiyorsa ("—") fark SAYILMAZ. Tevkifatlı alışta net KDV ya da net+tevkifat
+  // toplamı Luca'yı tutuyorsa yine fark sayılmaz — panelin aşağıda anlattığı kuralın aynısı.
+  const bosDeger = (s: string) => !s || s.trim() === '' || s.trim() === '—';
+  const belgeNoFarkli = !bosDeger(lucaBelgeNo) && !bosDeger(faturaBelgeNo)
+    && belgeNoAnahtar(lucaBelgeNo) !== belgeNoAnahtar(faturaBelgeNo);
+  const tarihFarkli = !bosDeger(lucaTarih) && !bosDeger(faturaTarih)
+    && tarihAnahtar(lucaTarih) !== tarihAnahtar(faturaTarih);
+  // DİKKAT: parseMoney yalnız TÜRKÇE biçimi doğru çözer (noktayı binlik ayracı sayar).
+  // Luca'nın HAM değeri "3240.00" gelir → parseMoney onu 324.000 okur ve aynı tutarlar
+  // "farklı" görünürdü. Bu yüzden iki taraf da EKRANDA GÖRÜNEN (TR biçimli) metinden okunur.
+  const lucaKdvSayi = parseMoney(lucaKdv);
+  const faturaKdvSayi = parseMoney(faturaKdv);
+  const kdvFarkli = !bosDeger(lucaKdv) && !bosDeger(faturaKdv) && lucaKdvSayi > 0
+    && Math.abs(lucaKdvSayi - faturaKdvSayi) > 0.01
+    && Math.abs(lucaKdvSayi - (faturaKdvSayi + parseMoney(faturaTevkifat))) > 0.01;
+
   // Satır açıldığında fatura görselinin presigned URL'sini çek
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [lightboxOpen, setLightboxOpen] = useState(false);
@@ -262,10 +280,10 @@ function MatchRow({
           {/* Luca tarafı */}
           <div data-kdv-match-kutu="luca" className="rounded-lg p-3" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' })}>
             <div data-kdv-etiket="luca" className="text-[10px] font-bold uppercase tracking-wider mb-2" style={portalStyle({ color: GOLD })}>Luca Kaydı</div>
-            <Row label="Belge No" value={lucaBelgeNo} />
-            <Row label="Tarih" value={lucaTarih} />
+            <Row label="Belge No" value={lucaBelgeNo} highlight={belgeNoFarkli} />
+            <Row label="Tarih" value={lucaTarih} highlight={tarihFarkli} />
             <Row label="KDV Oranı" value={lucaKdvOrani} />
-            <Row label="KDV" value={lucaKdv} />
+            <Row label="KDV" value={lucaKdv} highlight={kdvFarkli} />
           </div>
 
           {/* Fatura tarafı — görsel önizlemeli */}
@@ -318,9 +336,9 @@ function MatchRow({
             ) : null}
 
             <Row label="Dosya" value={faturaDosya} />
-            <Row label="Belge No" value={faturaBelgeNo} />
-            <Row label="Tarih" value={faturaTarih} highlight={isLikelyOcrDateMisread(lucaTarih, faturaTarih)} />
-            <Row label="KDV" value={faturaKdv} />
+            <Row label="Belge No" value={faturaBelgeNo} highlight={belgeNoFarkli} />
+            <Row label="Tarih" value={faturaTarih} highlight={tarihFarkli || isLikelyOcrDateMisread(lucaTarih, faturaTarih)} />
+            <Row label="KDV" value={faturaKdv} highlight={kdvFarkli} />
             {hasTevkifat && (
               <div data-kdv-kutu="kehribar" className="mt-2 rounded-md px-2.5 py-2" style={portalStyle({ background: 'rgba(251,146,60,0.08)', border: '1px solid rgba(251,146,60,0.22)' })}>
                 <div className="flex items-center justify-between gap-2 text-[11px]">
@@ -457,6 +475,21 @@ function normalizeBreakdown(raw: any): Array<{ oran: number; tutar: number; matr
       matrah: item?.matrah == null ? null : parseMoney(item.matrah),
     }))
     .filter((item) => item.tutar > 0 || item.oran > 0);
+}
+
+/** Belge no karşılaştırma anahtarı: boşluk, tire, nokta, eğik çizgi ve harf büyüklüğü yok sayılır. */
+function belgeNoAnahtar(value: string): string {
+  return String(value ?? '').toLocaleUpperCase('tr-TR').replace(/[\s\-_./\\]/g, '');
+}
+
+/** Tarih karşılaştırma anahtarı: hem 2026-08-11 hem 11.08.2026 biçimi gg.aa.yyyy'ye çevrilir. */
+function tarihAnahtar(value: string): string {
+  const t = String(value ?? '').trim();
+  const iso = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (iso) return `${iso[3].padStart(2, '0')}.${iso[2].padStart(2, '0')}.${iso[1]}`;
+  const tr = t.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})/);
+  if (tr) return `${tr[1].padStart(2, '0')}.${tr[2].padStart(2, '0')}.${tr[3]}`;
+  return t;
 }
 
 function parseMoney(value: unknown): number {

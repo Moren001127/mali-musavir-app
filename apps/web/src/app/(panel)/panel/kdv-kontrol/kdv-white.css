@@ -547,7 +547,7 @@ html[data-theme='D'] body [data-kdv-page] [data-kdv-breakdown] [data-kdv-input] 
    Panelin işi iki kaydı karşılaştırmak; oysa farklı olan tarih/KDV satırı hiç işaretlenmiyordu. */
 html[data-theme='D'] body [data-kdv-page] [data-kdv-match-kutu] > div:has(> [data-kdv-row-value='vurgu']) {
   background: var(--kv-kehribar-soft); border-left: 2px solid var(--kv-kehribar); border-radius: 0 6px 6px 0;
-  margin-left: -10px; padding: 4px 8px 4px 8px; margin-bottom: 3px;
+  margin-left: -12px; margin-right: -12px; padding: 4px 12px 4px 10px; margin-bottom: 3px;
 }
 html[data-theme='D'] body [data-kdv-page] [data-kdv-match-kutu] > div:has(> [data-kdv-row-value='vurgu']) [data-kdv-row-label] { color: var(--kv-kehribar-ink) !important; }
 html[data-theme='D'] body [data-kdv-page] [data-kdv-row-value='vurgu'] { color: var(--kv-kehribar-ink) !important; font-weight: 700 !important; }
