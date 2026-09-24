@@ -3300,45 +3300,52 @@ function ScreenSorgu({ taxpayerId, period, source, onOpenEntegrator }: { taxpaye
         )}
       </div>
 
-      {/* ── SONUÇ ÖZETİ ŞERİDİ: renkli sayaç kartları; tıkla → tabloyu süz, tekrar tıkla → süzgeç kalkar ── */}
-      <div className="filttiles sq-tiles">
-        {ozetKartlar.map((t) => (
-          <button key={t.v || 'toplam'} type="button" className={`ftile${ozetF === t.v ? ' on' : ''}`} style={{ ['--tc' as any]: t.c }} title={t.v ? 'Tıkla: tabloyu süz · tekrar tıkla: süzgeci kaldır' : 'Tüm satırlar'} onClick={() => setOzetF((f) => (f === t.v ? '' : t.v))}>
-            <span className="ftdot" />
-            <span className="fttx"><span className="ftn">{t.n}</span><span className="ftl">{t.l}</span></span>
-          </button>
-        ))}
-        {source === 'earsiv' && <span className="sq-pill gray sq-tilenote" title="GİB’de iptal, itirazlı veya reddedilmiş faturalar listede kalır; aktarıma alınmaz.">İptal / itiraz tabloda görünür, aktarılmaz</span>}
-      </div>
-
-      {source === 'earsiv' ? (
-        <div className={`card sourcepanel sq-panel${earsivOverlayBusy ? ' isbusy' : ''}${earsivJobRunning ? ' sq-running' : ''}`}>
-          <div className="ch sourcehead sq-head">
-            <h3>
-              <span className="sq-src" style={{ ['--sc' as any]: sorguProvRenk('GIB_PORTAL') }}><i>GİB</i>e-Arşiv Portal</span>
-              <span className="mu">{periodLabel(donem)}</span>
-            </h3>
-            <div className="sp" />
+      {/* ── SONUÇ ÖZETİ ŞERİDİ: renkli sayaç kartları; tıkla → tabloyu süz, tekrar tıkla → süzgeç kalkar ──
+           2026-09-24 (Muzaffer Bey: "şeridi tamamen kaldır"): e-Arşiv'de tablo üstündeki başlık + toplu işlem
+           çubuğu KALKTI; arama ve eylemler bu satırın sağına alındı. Kaynak rozeti her satırda, dönem sorgu
+           şeridinde, satır sayısı Toplam kartında zaten var — o şerit üç bilgiyi de tekrar ediyordu. ── */}
+      <div className="sq-ust">
+        <div className="filttiles sq-tiles">
+          {ozetKartlar.map((t) => (
+            <button key={t.v || 'toplam'} type="button" className={`ftile${ozetF === t.v ? ' on' : ''}`} style={{ ['--tc' as any]: t.c }} title={t.v ? 'Tıkla: tabloyu süz · tekrar tıkla: süzgeci kaldır' : 'Tüm satırlar'} onClick={() => setOzetF((f) => (f === t.v ? '' : t.v))}>
+              <span className="ftdot" />
+              <span className="fttx"><span className="ftn">{t.n}</span><span className="ftl">{t.l}</span></span>
+            </button>
+          ))}
+          {source === 'earsiv' && <span className="sq-pill gray sq-tilenote" title="GİB’de iptal, itirazlı veya reddedilmiş faturalar listede kalır; aktarıma alınmaz.">İptal / itiraz tabloda görünür, aktarılmaz</span>}
+        </div>
+        {source === 'earsiv' && rows.length > 0 && (
+          <div className="sq-eylem">
+            {secimAdet > 0 && (
+              <>
+                <span className="sq-selinfo"><b>{secimAdet}</b> seçili</span>
+                <button type="button" className="btn sm ghost" onClick={() => setSel(new Set())}>Seçimi temizle</button>
+              </>
+            )}
             <label className="sq-search">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></svg>
               <input value={ara} onChange={(e) => setAra(e.target.value)} placeholder="Ünvan, belge no, VKN ara…" />
               {ara && <button type="button" onClick={() => setAra('')} title="Aramayı temizle">×</button>}
             </label>
-            <span className="mu">{gorunenAdet}{gorunenAdet !== toplamAdet ? ` / ${toplamAdet}` : ''} satır</span>
+            {gorunenAdet !== toplamAdet && <span className="sq-adet">{gorunenAdet} / {toplamAdet}</span>}
+            <button type="button" className="btn sm ghost" disabled={!taxpayerId || syncMut.isPending || rows.length === 0} onClick={() => syncMut.mutate()} title="Listedeki faturaların muhasebe / Luca durumunu yeniden eşitler"><Ico html={I.checkSm} size={13} /> {syncMut.isPending ? 'Eşitleniyor…' : 'Durumu eşitle'}</button>
+            <button
+              type="button"
+              className="btn sm primary"
+              disabled={!taxpayerId || aktarMut.isPending || waitForFirstRows || processable.length === 0}
+              onClick={() => aktarMut.mutate()}
+              title={processable.length === 0
+                ? `Aktarılabilir fatura yok — listedeki ${rows.length} faturanın tamamı aktarılmış ya da iptal/itiraz/red.`
+                : 'Seçim yoksa aktarılabilir satırların tümü aktarılır. İptal / itiraz / red aktarıma alınmaz.'}
+            >
+              <Ico html={I.download} size={13} /> {aktarMut.isPending ? 'Aktarılıyor…' : `${secimAdet ? secimAdet : processable.length} faturayı aktar`}
+            </button>
           </div>
-          {/* ÜST TOPLU İŞLEM ÇUBUĞU — tablonun ÜSTÜNDE (kullanıcı kararı 2026-09-12: alt çubuk yok); seçim varken vurgulanır */}
-          {rows.length > 0 && (
-            <div className={`sq-bulk${secimAdet ? ' secili' : ''}`}>
-              {secimAdet
-                ? <span className="sq-selinfo"><b>{secimAdet}</b> fatura seçili</span>
-                : <span className="sq-selinfo mu">Seçim yoksa aktarılabilir satırların tümü aktarılır</span>}
-              {secimAdet > 0 && <button type="button" className="btn sm ghost" onClick={() => setSel(new Set())}>Seçimi temizle</button>}
-              <button type="button" className="btn sm ghost" disabled={!taxpayerId || syncMut.isPending || rows.length === 0} onClick={() => syncMut.mutate()} title="Listedeki faturaların muhasebe / Luca durumunu yeniden eşitler"><Ico html={I.checkSm} size={13} /> {syncMut.isPending ? 'Eşitleniyor…' : 'Durumu eşitle'}</button>
-              <span className="sq-pill gray" title="İptal, itirazlı veya reddedilmiş faturalar tabloda görünür ama aktarıma alınmaz.">İptal / itiraz aktarılmaz</span>
-              <div className="sp" />
-              <button type="button" className="btn sm primary" disabled={!taxpayerId || aktarMut.isPending || waitForFirstRows || processable.length === 0} onClick={() => aktarMut.mutate()}><Ico html={I.download} size={13} /> {aktarMut.isPending ? 'Aktarılıyor…' : `${secimAdet ? secimAdet : processable.length} faturayı aktar`}</button>
-            </div>
-          )}
+        )}
+      </div>
+
+      {source === 'earsiv' ? (
+        <div className={`card sourcepanel sq-panel${earsivOverlayBusy ? ' isbusy' : ''}${earsivJobRunning ? ' sq-running' : ''}`}>
           {(earsivQ.isError || jobsQ.isError) && (
             <div className="yuklenemedi">
               <span><Ico html={I.info} size={14} /> Liste alınamadı (bağlantı/sunucu hatası) — "kayıt yok" demek değil.</span>
@@ -3377,7 +3384,7 @@ function ScreenSorgu({ taxpayerId, period, source, onOpenEntegrator }: { taxpaye
                     </td>
                     <td><span className="sq-src" style={{ ['--sc' as any]: sorguProvRenk('GIB_PORTAL') }}><i>GİB</i>e-Arşiv</span></td>
                     <td><div className="sq-party"><b>{r.buyerName || '—'}</b><small>{r.buyerVkn || '—'}</small></div></td>
-                    <td><span className="sq-mono">{r.belgeNo || r.referenceNo || '—'}</span></td>
+                    <td><span className="sq-belgeno">{r.belgeNo || r.referenceNo || '—'}</span></td>
                     <td>{fmtDate(r.issuedAt)}</td>
                     <td className="num">{r.toplam != null ? fmtMoney(r.toplam) : '—'}</td>
                     <td>
@@ -3445,21 +3452,31 @@ function ScreenSorgu({ taxpayerId, period, source, onOpenEntegrator }: { taxpaye
               {ara && <button type="button" onClick={() => setAra('')} title="Aramayı temizle">×</button>}
             </label>
             <span className="mu">{gorunenAdet}{gorunenAdet !== toplamAdet ? ` / ${toplamAdet}` : ''} satır</span>
+            {/* Toplu işlem ayrı çubuk değil — başlık şeridinin sağ ucunda (2026-09-24: "şeridi kaldır"). */}
+            {efaturaRows.length > 0 && (
+              <>
+                {secimAdet > 0 && (
+                  <>
+                    <span className="sq-selinfo"><b>{secimAdet}</b> seçili</span>
+                    <button type="button" className="btn sm ghost" onClick={() => setSel(new Set())}>Seçimi temizle</button>
+                  </>
+                )}
+                <button
+                  type="button"
+                  className="btn sm primary"
+                  disabled={!taxpayerId || efaturaOverlayBusy || efaturaDownloading || efaturaTransferableRows.length === 0}
+                  onClick={() => efaturaImportMut.mutate()}
+                  title={efaturaDownloading
+                    ? 'Belgeler iniyor; bitince aktarabilirsin (görseller önceden inecek)'
+                    : efaturaTransferableRows.length === 0
+                      ? 'Aktarılabilir fatura yok — listedekiler zaten aktarılmış ya da iptal/itiraz/red.'
+                      : 'Seçim yoksa aktarılabilir satırların tümü aktarılır (eşleştirme yapılmaz; sonra "AI ile oku"). İptal / itiraz / red aktarıma alınmaz.'}
+                >
+                  <Ico html={I.download} size={13} /> {efaturaDownloading ? 'Belgeler iniyor…' : (efaturaImportMut.isPending || efaturaQueuedImport) ? 'Aktarılıyor…' : `${secimAdet ? secimAdet : efaturaTransferableRows.length} faturayı aktar`}
+                </button>
+              </>
+            )}
           </div>
-          {/* ÜST TOPLU İŞLEM ÇUBUĞU — tablonun ÜSTÜNDE (kullanıcı kararı 2026-09-12: alt çubuk yok); seçim varken vurgulanır */}
-          {efaturaRows.length > 0 && (
-            <div className={`sq-bulk${secimAdet ? ' secili' : ''}`}>
-              {secimAdet
-                ? <span className="sq-selinfo"><b>{secimAdet}</b> fatura seçili</span>
-                : <span className="sq-selinfo mu">Seçim yoksa aktarılabilir satırların tümü aktarılır (eşleştirme yapılmaz; sonra "AI ile oku")</span>}
-              {secimAdet > 0 && <button type="button" className="btn sm ghost" onClick={() => setSel(new Set())}>Seçimi temizle</button>}
-              <span className="sq-pill gray" title="İptal, itirazlı veya reddedilmiş faturalar tabloda görünür ama aktarıma alınmaz.">İptal / itiraz aktarılmaz</span>
-              <div className="sp" />
-              <button type="button" className="btn sm primary" disabled={!taxpayerId || efaturaOverlayBusy || efaturaDownloading || efaturaTransferableRows.length === 0} onClick={() => efaturaImportMut.mutate()} title={efaturaDownloading ? 'Belgeler iniyor; bitince aktarabilirsin (görseller önceden inecek)' : undefined}>
-                <Ico html={I.download} size={13} /> {efaturaDownloading ? 'Belgeler iniyor…' : (efaturaImportMut.isPending || efaturaQueuedImport) ? 'Aktarılıyor…' : `${secimAdet ? secimAdet : efaturaTransferableRows.length} faturayı aktar`}
-              </button>
-            </div>
-          )}
           {/* AKTAR ŞERİDİ: SUNUCU durumundan beslenir (efaturaImportRunning) → sayfayı değiştirip geri
               gelince de görünür. Yerel isPending/queued yalnız ilk anı köprüler; sonra sunucu sayacı. */}
           {!efaturaDownloading && (efaturaImportMut.isPending || efaturaQueuedImport || efaturaImportRunning) && (
@@ -3517,7 +3534,7 @@ function ScreenSorgu({ taxpayerId, period, source, onOpenEntegrator }: { taxpaye
                     </td>
                     <td><span className="sq-src" style={{ ['--sc' as any]: sorguProvRenk(prov) }} title={prov}><i>{provKisalt(provLabel, prov)}</i>{provLabel}</span></td>
                     <td><div className="sq-party"><b>{title || '—'}</b><small>{taxNo || '—'}</small></div></td>
-                    <td><span className="sq-mono">{r.faturaNo || '—'}</span></td>
+                    <td><span className="sq-belgeno">{r.faturaNo || '—'}</span></td>
                     <td>{fmtDate(r.faturaDate)}</td>
                     <td><span className="sq-pill gray">{r.invoiceProfile || 'e-Fatura'}</span></td>
                     <td className="num">{r.toplam != null ? fmtMoney(r.toplam) : '—'}</td>
@@ -9019,15 +9036,7 @@ const CSS = `
 #fm-root .sq-akt.muh{color:#0f766e}
 #fm-root .sq-akt.yok{color:#94a3b8;font-weight:600}
 /* Alt toplu işlem çubuğu — tablonun hemen altında, sabit DEĞİL */
-#fm-root .sq-bulk{display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:9px 14px;border-bottom:1px solid var(--line);background:#fbfcfe;flex:0 0 auto;border-radius:0}
-#fm-root .sq-bulk.secili{background:linear-gradient(90deg,color-mix(in srgb,var(--accent) 13%,#fff),color-mix(in srgb,var(--accent) 4%,#fff));border-bottom-color:var(--accent-line)}
-#fm-root .sq-bulk .sq-selinfo{font-size:12.5px;color:var(--text)}
-#fm-root .sq-bulk .sq-selinfo.mu{font-size:11.5px;color:var(--muted)}
-#fm-root .sq-bulk .sq-selinfo b{color:var(--accent);font-weight:800}
-#fm-root .sq-bulk .btn{height:34px;border-radius:9px}
-#fm-root .sq-bulk .btn.primary{background:linear-gradient(135deg,#0f766e,var(--accent) 60%,#14b8a6);border:0;color:#fff;box-shadow:0 8px 18px -10px var(--accent)}
-#fm-root .sq-bulk .btn.primary:hover:not(:disabled){filter:brightness(1.06);color:#fff}
-#fm-root .sq-bulk .btn.primary:disabled{opacity:.5;box-shadow:none}
+/* .sq-bulk kuralları kaldırıldı — ayrı toplu işlem çubuğu 2026-09-24'te tamamen kalktı. */
 /* Dar ekran: haplar ve arama alt satıra iner, yatay taşma olmaz */
 @media(max-width:1180px){
   #fm-root .sq-search{min-width:200px}
@@ -9679,5 +9688,31 @@ const CSS = `
 #fm-root .fm2 .kr-sil{color:var(--red);border-color:#f0d4d4}
 #fm-root .fm2 .kr-sil:hover{background:#fdeaea}
 #fm-root .fm2 .kr-bos{padding:36px 18px;text-align:center;color:var(--faint);font-size:12.5px;line-height:1.6}
+
+/* === SORGU EKRANLARI: TABLO ÜSTÜ ŞERİT KALKTI (2026-09-24) ===
+   e-Arşiv'de başlık + toplu işlem çubuğu (110px) tamamen kaldırıldı; arama ve eylemler
+   sayaç kartlarının sağına alındı. e-Fatura'da kanal seçici + entegratör kimlik rozeti
+   başka yere sığmadığı için şerit kalır, toplu işlem çubuğu onun içine girdi. */
+#fm-root .sq-ust{display:flex;align-items:center;gap:10px;margin:4px 0 13px}
+#fm-root .sq-ust .filttiles{flex:1 1 auto;min-width:0;margin:0}
+#fm-root .sq-ust .sq-eylem{display:flex;align-items:center;gap:8px;flex:0 0 auto}
+#fm-root .sq-ust .sq-search{min-width:190px;height:34px}
+#fm-root .sq-ust .btn{height:34px;border-radius:10px;white-space:nowrap}
+#fm-root .sq-ust .btn.primary{background:linear-gradient(135deg,#0f766e,var(--accent) 60%,#14b8a6);border:0;color:#fff;box-shadow:0 8px 18px -10px var(--accent)}
+#fm-root .sq-ust .btn.primary:hover:not(:disabled){filter:brightness(1.06);color:#fff}
+#fm-root .sq-ust .btn.primary:disabled{opacity:.5;box-shadow:none}
+#fm-root .sq-ust .sq-selinfo{font-size:12.5px;color:var(--text);white-space:nowrap}
+#fm-root .sq-ust .sq-selinfo b{color:var(--accent);font-weight:800}
+#fm-root .sq-ust .sq-adet{font-size:11.5px;color:var(--muted);font-weight:650;white-space:nowrap;font-variant-numeric:tabular-nums}
+@media (max-width:1400px){#fm-root .sq-ust{flex-wrap:wrap}#fm-root .sq-ust .filttiles{flex:1 1 100%}#fm-root .sq-ust .sq-eylem{margin-left:auto}}
+/* e-Fatura: aktar düğmesi başlık şeridinde */
+#fm-root .sq-head .btn.primary{background:linear-gradient(135deg,#0f766e,var(--accent) 60%,#14b8a6);border:0;color:#fff;box-shadow:0 8px 18px -10px var(--accent)}
+#fm-root .sq-head .btn.primary:hover:not(:disabled){filter:brightness(1.06);color:#fff}
+#fm-root .sq-head .btn.primary:disabled{opacity:.5;box-shadow:none}
+#fm-root .sq-head .sq-selinfo{font-size:12.5px;color:var(--text);white-space:nowrap}
+#fm-root .sq-head .sq-selinfo b{color:var(--accent);font-weight:800}
+
+/* belge no: tek başına mono duruyordu (Consolas), tablodaki her şey Inter'ken yabancı kalıyordu */
+#fm-root .sq-table .sq-belgeno{font-variant-numeric:tabular-nums;font-size:12px;font-weight:650;color:#475569;letter-spacing:.2px;white-space:nowrap}
 /* === /FM YENİ ARAYÜZ — TASLAK 1 === */
 `;
