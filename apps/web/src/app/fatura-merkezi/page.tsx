@@ -5328,7 +5328,7 @@ function ScreenAktarilanlar({ taxpayerId, period, mode = 'bekleyen', isIsletme =
       setAktarYon('');
       qc.invalidateQueries({ queryKey: ['fm2'] });
     },
-    onError: (e: any) => { setAktarYon(''); toast.error("Luca'ya aktarılamadı: " + (e?.response?.data?.message || e?.message || 'hata')); },
+    onError: (e: any) => { setAktarYon(''); setSevk(null); toast.error("Luca'ya aktarılamadı: " + (e?.response?.data?.message || e?.message || 'hata')); },
   });
   const [detayId, setDetayId] = useState<string>('');
   // YENİ DÜZEN (2026-09-23): sorunlu belge listede kaybolmasın — NEDEN beklediği satırda yazsın,
@@ -5506,6 +5506,11 @@ function ScreenAktarilanlar({ taxpayerId, period, mode = 'bekleyen', isIsletme =
   // Toplu fiş Excel'i Luca'ya GİTMEDEN indir (kullanıcı elle yükler/arşivler). Auth gerektiği
   // için axios (blob) ile çekip tarayıcıda indirme tetiklenir.
   const [indiriliyor, setIndiriliyor] = useState<'' | 'ALIS' | 'SATIS'>('');
+  // Aktarım ekranı (2026-09-24): iki ayrı tablo yerine tek tablo + yön sekmesi.
+  const [sekme, setSekme] = useState<'ALIS' | 'SATIS'>('ALIS');
+  // Aktar'a basınca bu dolar → liste yerine FİŞ SONUCU ekranı görünür. Gönderilen belgelerin
+  // id'leri saklanır; fiş no / ilerleme / satır dökümü hep bu belgelerin GÜNCEL hâlinden okunur.
+  const [sevk, setSevk] = useState<null | { yon: 'ALIS' | 'SATIS'; ids: string[]; tutar: number; zaman: number }>(null);
   const indirExcel = async (yon: 'ALIS' | 'SATIS') => {
     setIndiriliyor(yon);
     try {
@@ -5520,7 +5525,8 @@ function ScreenAktarilanlar({ taxpayerId, period, mode = 'bekleyen', isIsletme =
       toast.error('Excel indirilemedi — dengeli/kodlu belge olmayabilir.');
     } finally { setIndiriliyor(''); }
   };
-  const renderSection = (yon: 'ALIS' | 'SATIS') => {
+  /** Bir yönün (Alış/Satış) listesi ve aktarıma hazır sayıları — hem kısa çubuk hem tablo bunu kullanır. */
+  const yonVerisi = (yon: 'ALIS' | 'SATIS') => {
     const isSat = yon === 'SATIS';
     const ddTum = docs.filter((d) => ((d.invoiceKind || 'ALIS') === 'SATIS') === isSat);
     // Süzgeç şeridinden seçim + SIRALAMA: sorunlular en üstte (aktarım kuyruğunda kaybolmasınlar).
@@ -5529,11 +5535,158 @@ function ScreenAktarilanlar({ taxpayerId, period, mode = 'bekleyen', isIsletme =
     const label = isSat ? 'Satış' : 'Alış';
     // Aktarım sayıları SÜZGEÇTEN ETKİLENMEZ — "Alış'ı aktar (42)" her zaman gerçek hazır sayısını söyler.
     const hazirTum = ddTum.filter((d) => d.status === 'APPROVED' && !['POSTED', 'POSTING', 'MANUAL_DONE'].includes(d.lucaStatus));
-    // A.6 — demirbaş kararı bekleyen / "Luca'da elle işlendi" kararlı belgeler aktarıma GİRMEZ (backend de eler); kartta ayrı sayı.
+    // A.6 — demirbaş kararı bekleyen / "Luca'da elle işlendi" kararlı belgeler aktarıma GİRMEZ (backend de eler).
     const kararBekleyen = hazirTum.filter((d) => uyariOzetFE((d.ocrData as any)?.uyarilar).kararBekliyor);
     const elleIslenen = hazirTum.filter((d) => String((d.ocrData as any)?.demirbasKarar?.karar || '') === 'elle_islendi');
     const hazir = hazirTum.filter((d) => !kararBekleyen.includes(d) && !elleIslenen.includes(d));
     const toplam = hazir.reduce((s, d) => s + (Number(d.totalAmount) || 0), 0);
+    return { isSat, ddTum, dd, label, hazirTum, kararBekleyen, elleIslenen, hazir, toplam };
+  };
+  /** Gönderilen belgelerin satırlarından HESAP KODU bazında borç/alacak dökümü (fişin kendisi). */
+  const fisDokumu = (belgeler: any[]) => {
+    const m = new Map<string, { borc: number; alacak: number }>();
+    belgeler.forEach((d) => (Array.isArray(d.lines) ? d.lines : []).forEach((l: any) => {
+      const kod = accountCodeOnly(String(l.accountCode || '')) || '—';
+      const o = m.get(kod) || { borc: 0, alacak: 0 };
+      o.borc += Number(l.debit || 0);
+      o.alacak += Number(l.credit || 0);
+      m.set(kod, o);
+    }));
+    return [...m.entries()].map(([kod, v]) => ({ kod, ...v })).sort((a, b) => a.kod.localeCompare(b.kod, 'tr'));
+  };
+  /** Aktarım ekranı — yön başına KISA çubuk (tutar + belge sayısı + iki düğme). */
+  const renderCubuk = (yon: 'ALIS' | 'SATIS') => {
+    const { label, hazir, toplam, kararBekleyen, elleIslenen, ddTum } = yonVerisi(yon);
+    const renk = yon === 'SATIS' ? '#15803d' : '#2563eb';
+    const busy = batchMut.isPending && aktarYon === yon;
+    const disli = kararBekleyen.length + elleIslenen.length;
+    return (
+      <div className={`ak3${hazir.length === 0 ? ' bos' : ''}`} style={{ ['--kc' as any]: renk }} key={yon}>
+        <div className="ak3-yz">
+          <div className="ak3-et">{label} faturaları <span>· tek toplu fiş</span></div>
+          {hazir.length > 0
+            ? <div className="ak3-tutar">{fmtMoney(toplam)}<small>₺</small><em>{hazir.length} belge</em></div>
+            : <div className="ak3-tutar yok">Aktarıma hazır {label.toLocaleLowerCase('tr')} belgesi yok</div>}
+        </div>
+        <button type="button" className="btn sm ghost ikon" disabled={indiriliyor === yon || ddTum.length === 0}
+          onClick={() => indirExcel(yon)} title="Bu yöndeki toplu fişi Excel olarak indir">
+          {indiriliyor === yon ? '…' : <Ico html={I.download} size={14} />}
+        </button>
+        <button type="button" className="btn sm primary" disabled={batchMut.isPending || hazir.length === 0}
+          onClick={() => { setAktarYon(yon); setSevk({ yon, ids: hazir.map((d: any) => String(d.id)), tutar: toplam, zaman: Date.now() }); batchMut.mutate(yon); }}
+          title={hazir.length === 0 ? 'Gönderilecek hazır belge yok' : `${hazir.length} belge TEK toplu fiş olarak Luca'ya gönderilir (${period}).`}>
+          <Ico html={I.send} size={13} /> {busy ? 'Aktarılıyor…' : `${label}'ı tek fiş yap`}
+        </button>
+        {disli > 0 && (
+          <div className="ak3-not" title="Bu belgeler backend tarafında da elenir">
+            <b>{disli}</b>&nbsp;belge fişe girmez{kararBekleyen.length ? ` · ${kararBekleyen.length} demirbaş kararı bekliyor` : ''}{elleIslenen.length ? ` · ${elleIslenen.length} Luca'da elle işlenmiş` : ''}
+          </div>
+        )}
+      </div>
+    );
+  };
+  /** Aktarım ekranı — iki ayrı tablo yerine TEK tablo; yön sekmeyle seçilir. */
+  const renderTekTablo = () => {
+    const a = yonVerisi('ALIS');
+    const b = yonVerisi('SATIS');
+    const v = sekme === 'SATIS' ? b : a;
+    return (
+      <div className="card">
+        <div className="ak3-sekme">
+          <button type="button" className={`sk${sekme === 'ALIS' ? ' on' : ''}`} onClick={() => setSekme('ALIS')}>Alış <b>{a.ddTum.length}</b></button>
+          <button type="button" className={`sk${sekme === 'SATIS' ? ' on' : ''}`} onClick={() => setSekme('SATIS')}>Satış <b>{b.ddTum.length}</b></button>
+          <div className="sp" />
+        </div>
+        <div className="twrap">
+          <table>
+            <thead><tr><th>Tarih</th><th>Fatura No</th><th>Firma</th><th className="num">Tutar</th><th>{isIsletme ? 'Kayıt Türü' : 'Hesap Kodu'}</th><th>Durum</th><th className="actcol" style={{ width: 40 }} /></tr></thead>
+            <tbody>
+              {v.dd.map(renderRow)}
+              {v.dd.length === 0 && (
+                <tr><td colSpan={7}><div className="empty">{filtre ? 'Bu süzgece uyan belge yok.' : `Aktarıma hazır ${v.label.toLocaleLowerCase('tr')} belge yok.`}</div></td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
+  /** Aktardıktan sonra: fiş künyesi + satır dökümü. Ajan asenkron yazdığı için iki aşamalı. */
+  const renderSonuc = () => {
+    if (!sevk) return null;
+    const gonderilen = all.filter((d: any) => sevk.ids.includes(String(d.id)));
+    const yazilan = gonderilen.filter((d: any) => d.lucaStatus === 'POSTED').length;
+    const hataliAdet = gonderilen.filter((d: any) => ['FAILED', 'ERROR'].includes(String(d.lucaStatus || ''))).length;
+    const bitti = gonderilen.length > 0 && yazilan === gonderilen.length;
+    const fisNo = String(gonderilen.find((d: any) => d.lucaFisNo)?.lucaFisNo || '');
+    const dokum = fisDokumu(gonderilen);
+    const borcT = dokum.reduce((t, x) => t + x.borc, 0);
+    const alacakT = dokum.reduce((t, x) => t + x.alacak, 0);
+    const label = sevk.yon === 'SATIS' ? 'Satış' : 'Alış';
+    const renk = bitti ? '#15803d' : '#2563eb';
+    const yuzde = gonderilen.length ? Math.round((yazilan / gonderilen.length) * 100) : 0;
+    return (
+      <>
+        <button type="button" className="sn-geri" onClick={() => setSevk(null)}>← Listeye dön</button>
+        <div style={{ ['--sc' as any]: renk }}>
+          <div className="sn-bas">
+            <span className="sn-ik"><Ico html={bitti ? I.checkSm : I.sync} size={19} /></span>
+            <div>
+              <b>{bitti ? `${label} fişi Luca'da oluştu` : `${label} fişi Luca'ya gönderildi`}</b>
+              <span>{gonderilen.length} belge · {periodLabel(period)}{bitti ? '' : ' · ajan yazıyor, fiş numarası birazdan gelecek'}</span>
+            </div>
+          </div>
+          <div className="sn-kunye">
+            <div><small>Fiş numarası</small>{fisNo ? <b className="ys">{fisNo}</b> : <b className="bk">ajan yazınca gelir</b>}</div>
+            <div><small>Borç toplam</small><b>{fmtMoney(borcT)}</b></div>
+            <div><small>Alacak toplam</small><b>{fmtMoney(alacakT)}</b></div>
+            <div><small>Dönem</small><b>{period}</b></div>
+          </div>
+          <div className="sn-govde">
+            {!bitti && (
+              <>
+                <div className="sn-ilerle"><i style={{ width: `${Math.max(6, yuzde)}%` }} /></div>
+                <div className="sn-bilgi">
+                  Luca ajanı <b>{yazilan}</b>/{gonderilen.length} belgeyi yazdı{hataliAdet > 0 ? ` · ${hataliAdet} belge hata aldı` : ''}. Bu ekranı kapatabilirsiniz —
+                  işlem arka planda sürer, biten fiş <b>Arşivim</b>&apos;de fiş numarasıyla görünür.
+                </div>
+              </>
+            )}
+            {bitti && dokum.length > 0 && (
+              <table className="sn-tbl">
+                <thead><tr><th>Hesap</th><th className="num">Borç</th><th className="num">Alacak</th></tr></thead>
+                <tbody>
+                  {dokum.map((r) => (
+                    <tr key={r.kod}>
+                      <td><span className="hes">{r.kod}</span></td>
+                      <td className={`num${r.borc ? '' : ' bos'}`}>{r.borc ? fmtMoney(r.borc) : '–'}</td>
+                      <td className={`num${r.alacak ? '' : ' bos'}`}>{r.alacak ? fmtMoney(r.alacak) : '–'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot><tr><td>Fiş toplamı · {gonderilen.length} belge</td><td className="num">{fmtMoney(borcT)}</td><td className="num">{fmtMoney(alacakT)}</td></tr></tfoot>
+              </table>
+            )}
+          </div>
+          {bitti && (
+            <div className="sn-govde" style={{ borderTop: 0 }}>
+              <div className="sn-uyari">
+                <Ico html={I.info} size={14} />
+                <div><b>Fişi Luca&apos;da kontrol edin.</b> Portal fişi oluşturur; hesap eşleşmesini ve tutarları Luca ekranından teyit etmek sizde.</div>
+              </div>
+            </div>
+          )}
+          <div className="sn-alt">
+            <button type="button" className="btn sm ghost" disabled={indiriliyor === sevk.yon} onClick={() => indirExcel(sevk.yon)}>Fişi Excel indir</button>
+            <div className="sp" />
+            <button type="button" className="btn sm ghost" onClick={() => setSevk(null)}>Listeye dön</button>
+          </div>
+        </div>
+      </>
+    );
+  };
+  const renderSection = (yon: 'ALIS' | 'SATIS') => {
+    const { isSat, ddTum, dd, label, kararBekleyen, elleIslenen, hazir, toplam } = yonVerisi(yon);
     const busy = batchMut.isPending && aktarYon === yon;
     return (
       <div className="card" key={yon}>
@@ -5588,7 +5741,7 @@ function ScreenAktarilanlar({ taxpayerId, period, mode = 'bekleyen', isIsletme =
         ? <>Luca'ya aktarılmış (fişi kesilmiş) faturaların arşivi ({period}). Buradakiler işlenmiş ve Luca'da.</>
         : <>İşlenmiş, Luca'ya aktarım <b>BEKLEYEN</b> faturalar. <b>Alış</b> ve <b>Satış</b> AYRI birer <b>tek toplu fiş</b> olarak aktarılır ({period}). Aktarılınca <b>Arşivim</b>'e geçer.</>}</div>
       {/* SÜZGEÇ ŞERİDİ (2026-09-23): tıklanınca iki tabloyu birden süzer; tekrar tıklayınca süzgeç kalkar. */}
-      {!docsQ.isLoading && docs.length > 0 && (
+      {!docsQ.isLoading && docs.length > 0 && !sevk && (
         <div className="filttiles">
           {suzgecKartlar.map((t) => (
             <button key={t.v || 'tum'} type="button" className={`ftile${filtre === t.v ? ' on' : ''}`} style={{ ['--tc' as any]: t.c }}
@@ -5602,7 +5755,11 @@ function ScreenAktarilanlar({ taxpayerId, period, mode = 'bekleyen', isIsletme =
       )}
       {docsQ.isLoading
         ? <div className="card"><div className="ch"><h3>Yükleniyor…</h3></div></div>
-        : <>{renderSection('ALIS')}{renderSection('SATIS')}</>}
+        : arsiv
+          ? <>{renderSection('ALIS')}{renderSection('SATIS')}</>
+          : sevk
+            ? renderSonuc()
+            : <><div className="ak3-ust">{renderCubuk('ALIS')}{renderCubuk('SATIS')}</div>{renderTekTablo()}</>}
       {/* PLAN16-G: sayfa içi teyit kutusu — sade (accent) ya da Luca'ya gitmiş (amber: fiş no + tarih + not). Ters fiş YOK. */}
       {geriAl && (
         <div className="gh-ov" onMouseDown={() => { if (!reopenMut.isPending) setGeriAl(null); }}>
@@ -9714,5 +9871,83 @@ const CSS = `
 
 /* belge no: tek başına mono duruyordu (Consolas), tablodaki her şey Inter'ken yabancı kalıyordu */
 #fm-root .sq-table .sq-belgeno{font-variant-numeric:tabular-nums;font-size:12px;font-weight:650;color:#475569;letter-spacing:.2px;white-space:nowrap}
+
+/* ===== AKTARIM — yeni düzen (2026-09-24, Muzaffer Bey onayı: aktarim-onizleme.html) =====
+   Eskiden Alış ve Satış için İKİ dev blok + altlarında iki ayrı tablo vardı; kuyruk boşken
+   ekranın yarısı boş tablo iskeletiydi. Artık: yön başına KISA çubuk + TEK sekmeli tablo.
+   Aktardıktan sonra ayrıca FİŞ SONUCU ekranı gelir (fiş no + borç/alacak + satır dökümü);
+   önceden yalnız bir bildirim çıkıyordu, fişin ne olduğu hiçbir yerde görünmüyordu.
+   Arşivim ekranı bu düzenin dışında — eski haliyle çalışır. */
+#fm-root .ak3-ust{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:2px 0 14px}
+@media (max-width:1100px){#fm-root .ak3-ust{grid-template-columns:1fr}}
+#fm-root .ak3{position:relative;display:flex;align-items:center;flex-wrap:wrap;gap:13px;padding:13px 15px 13px 17px;background:#fff;
+  border:1px solid var(--line);border-radius:13px;box-shadow:0 1px 2px rgba(16,24,40,.05),0 10px 24px -20px rgba(16,24,40,.5)}
+#fm-root .ak3::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;border-radius:13px 0 0 13px;background:var(--kc)}
+#fm-root .ak3-yz{min-width:0;flex:1}
+#fm-root .ak3-et{font-size:12.5px;font-weight:800;color:#0e1726;line-height:1.2}
+#fm-root .ak3-et span{color:var(--faint);font-weight:650}
+#fm-root .ak3-tutar{font-size:19px;font-weight:850;letter-spacing:-.5px;color:#0e1726;font-variant-numeric:tabular-nums;margin-top:2px}
+#fm-root .ak3-tutar small{font-size:12px;font-weight:700;color:var(--faint);margin-left:3px}
+#fm-root .ak3-tutar em{font-style:normal;font-size:11.5px;font-weight:700;color:var(--faint);margin-left:8px}
+#fm-root .ak3-tutar.yok{font-size:12.5px;font-weight:650;color:var(--muted);letter-spacing:0}
+#fm-root .ak3 .btn{height:36px;border-radius:10px;white-space:nowrap}
+#fm-root .ak3 .btn.primary{background:linear-gradient(135deg,var(--kc),color-mix(in srgb,var(--kc) 58%,#000));border:0;color:#fff;
+  font-weight:800;box-shadow:0 10px 20px -12px var(--kc)}
+#fm-root .ak3 .btn.primary:hover:not(:disabled){filter:brightness(1.07);color:#fff}
+#fm-root .ak3 .btn.primary:disabled{opacity:.42;box-shadow:none}
+#fm-root .ak3 .btn.ikon{width:36px;padding:0;justify-content:center;color:var(--muted)}
+#fm-root .ak3.bos{box-shadow:none;background:#fcfdfe;border-style:dashed}
+#fm-root .ak3.bos::before{opacity:.3}
+#fm-root .ak3-not{flex:1 1 100%;display:flex;align-items:flex-start;gap:8px;margin:2px 0 0;padding:9px 13px;
+  border-radius:10px;background:#fdf6e9;border:1px solid #f2ddb6;color:#7c4a09;font-size:11.5px;font-weight:650;line-height:1.5}
+#fm-root .ak3-not b{font-weight:850}
+#fm-root .ak3-sekme{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--line2);flex-wrap:wrap}
+#fm-root .ak3-sekme .sk{display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 13px;border-radius:9px;
+  border:1px solid var(--line);background:#fff;font:inherit;font-size:12.5px;font-weight:750;color:var(--muted);cursor:pointer}
+#fm-root .ak3-sekme .sk b{font-variant-numeric:tabular-nums;font-weight:850;color:#0e1726}
+#fm-root .ak3-sekme .sk.on{border-color:var(--accent);color:var(--accent);background:color-mix(in srgb,var(--accent) 7%,#fff);box-shadow:inset 0 0 0 1px var(--accent)}
+#fm-root .ak3-sekme .sk.on b{color:var(--accent)}
+#fm-root .ak3-sekme .sp{flex:1}
+
+/* ---- FİŞ SONUCU ---- */
+#fm-root .sn-geri{display:inline-flex;align-items:center;gap:7px;height:30px;padding:0 11px 0 8px;border-radius:9px;
+  border:1px solid var(--line);background:#fff;font:inherit;font-size:12px;font-weight:750;color:var(--muted);cursor:pointer;margin-bottom:12px}
+#fm-root .sn-geri:hover{background:#f7f9fc;color:var(--text)}
+#fm-root .sn-bas{display:flex;align-items:center;gap:13px;padding:15px 17px;border:1px solid var(--line);border-radius:14px 14px 0 0;
+  border-bottom:0;background:linear-gradient(135deg,color-mix(in srgb,var(--sc) 11%,#fff),#fff)}
+#fm-root .sn-ik{width:40px;height:40px;flex:0 0 40px;border-radius:12px;display:grid;place-items:center;color:#fff;
+  background:linear-gradient(145deg,var(--sc),color-mix(in srgb,var(--sc) 60%,#000));box-shadow:0 9px 20px -10px var(--sc)}
+#fm-root .sn-bas b{display:block;font-size:14.5px;font-weight:850;color:#0e1726;letter-spacing:-.2px}
+#fm-root .sn-bas span{display:block;font-size:12px;color:var(--muted);font-weight:650;margin-top:2px}
+#fm-root .sn-kunye{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid var(--line);border-bottom:0;background:#fff}
+@media (max-width:760px){#fm-root .sn-kunye{grid-template-columns:repeat(2,1fr)}}
+#fm-root .sn-kunye > div{padding:12px 17px;border-right:1px solid var(--line2)}
+#fm-root .sn-kunye > div:last-child{border-right:0}
+#fm-root .sn-kunye small{display:block;font-size:10px;font-weight:850;letter-spacing:.6px;text-transform:uppercase;color:#94a0b2}
+#fm-root .sn-kunye b{display:block;font-size:17px;font-weight:850;color:#0e1726;font-variant-numeric:tabular-nums;margin-top:3px;letter-spacing:-.3px}
+#fm-root .sn-kunye b.ys{color:#15803d}
+#fm-root .sn-kunye b.bk{color:var(--faint);font-size:13px;font-weight:750;letter-spacing:0}
+#fm-root .sn-govde{border:1px solid var(--line);border-top:0;background:#fff}
+#fm-root .sn-ilerle{height:6px;background:#eef2f7;border-radius:999px;overflow:hidden;margin:14px 17px 12px}
+#fm-root .sn-ilerle i{display:block;height:100%;border-radius:999px;transition:width .4s ease;
+  background:linear-gradient(90deg,var(--sc),color-mix(in srgb,var(--sc) 55%,#fff))}
+#fm-root .sn-bilgi{padding:0 17px 15px;font-size:12px;color:var(--muted);font-weight:650;line-height:1.6}
+#fm-root .sn-tbl{width:100%;border-collapse:separate;border-spacing:0}
+#fm-root .sn-tbl th{height:34px;padding:0 13px;text-align:left;background:#fbfcfe;color:#94a0b2;font-size:10px;font-weight:850;
+  letter-spacing:.6px;text-transform:uppercase;border-bottom:1px solid var(--line);white-space:nowrap}
+#fm-root .sn-tbl td{padding:8px 13px;border-bottom:1px solid #f0f3f8;font-size:12.5px}
+#fm-root .sn-tbl tbody tr:hover td{background:#f9fbfd}
+#fm-root .sn-tbl .num{text-align:right;font-variant-numeric:tabular-nums;font-weight:800;color:#0e1726}
+#fm-root .sn-tbl .num.bos{color:#c7d0dc;font-weight:600}
+#fm-root .sn-tbl .hes{font-variant-numeric:tabular-nums;font-weight:850;color:#0e1726}
+#fm-root .sn-tbl tfoot td{padding:10px 13px;background:#fbfcfe;border-top:1px solid var(--line);font-weight:850;
+  font-variant-numeric:tabular-nums;color:#0e1726;font-size:12.5px}
+#fm-root .sn-alt{display:flex;align-items:center;gap:10px;padding:13px 17px;border:1px solid var(--line);border-top:0;
+  border-radius:0 0 14px 14px;background:#fbfcfe;flex-wrap:wrap}
+#fm-root .sn-alt .sp{flex:1}
+#fm-root .sn-alt .btn{height:36px;border-radius:10px}
+#fm-root .sn-uyari{display:flex;align-items:flex-start;gap:9px;font-size:11.5px;color:#7c4a09;font-weight:650;background:#fdf6e9;
+  border:1px solid #f2ddb6;border-radius:10px;padding:9px 12px;margin:13px 17px;line-height:1.5}
+#fm-root .sn-uyari b{font-weight:850}
 /* === /FM YENİ ARAYÜZ — TASLAK 1 === */
 `;
