@@ -9243,13 +9243,15 @@ const CSS = `
 #fm-root .mk-head h3 .mu{font-weight:400;color:var(--faint);font-size:12px}
 #fm-root .mk-twrap{overflow:auto;max-height:calc(100vh - 250px)}
 #fm-root .mk-table{width:100%;border-collapse:separate;border-spacing:0}
-#fm-root .mk-table th{height:34px;padding:0 14px;text-align:left;background:#fbfcfe;color:#94a0b2;font-size:10px;font-weight:850;letter-spacing:.6px;text-transform:uppercase;border-bottom:1px solid var(--line);white-space:nowrap}
-#fm-root .mk-table td{padding:9px 14px;border-bottom:1px solid #f0f3f8;font-size:12.5px;line-height:1.3;vertical-align:middle}
+#fm-root .mk-table th{height:34px;padding:0 10px;text-align:left;background:#fbfcfe;color:#94a0b2;font-size:10px;font-weight:850;letter-spacing:.6px;text-transform:uppercase;border-bottom:1px solid var(--line);white-space:nowrap}
+#fm-root .mk-table td{padding:9px 10px;border-bottom:1px solid #f0f3f8;font-size:12.5px;line-height:1.3;vertical-align:middle}
+#fm-root .mk-table th:first-child,#fm-root .mk-table td:first-child{padding-left:14px}
+#fm-root .mk-table th:last-child,#fm-root .mk-table td:last-child{padding-right:14px}
 #fm-root .mk-tr{cursor:pointer}
 #fm-root .mk-tr:hover td{background:#f9fbfd}
 #fm-root .mk-tr.mk-tanimsiz td:first-child{box-shadow:inset 3px 0 0 #b45309}
 #fm-root .mk-tr.mk-sorunlu td:first-child{box-shadow:inset 3px 0 0 #b91c1c}
-#fm-root .mk-kim b{display:block;font-size:12.5px;font-weight:750;color:#0e1726;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:420px}
+#fm-root .mk-kim b{display:block;font-size:12.5px;font-weight:750;color:#0e1726;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:250px}
 #fm-root .mk-kim small{display:block;font-size:11px;color:var(--faint);font-weight:650;font-variant-numeric:tabular-nums}
 /* durum dili: hap değil — nokta + yazı */
 #fm-root .mk-d{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:750;white-space:nowrap}
@@ -9262,13 +9264,15 @@ const CSS = `
 #fm-root .mk-d.ok{color:#15803d}
 #fm-root .mk-d.uyar{color:#b91c1c}
 /* belge sayıları: hizalı rakam sütunu, boşsa soluk tire */
-#fm-root .mk-table th.mk-n,#fm-root .mk-table td.mk-n{text-align:right}
+#fm-root .mk-table th.mk-n,#fm-root .mk-table td.mk-n{text-align:right;width:76px}
 #fm-root .mk-table td.mk-n{font-variant-numeric:tabular-nums;font-weight:750;color:#0e1726;white-space:nowrap}
 #fm-root .mk-table td.mk-n.bos{color:#c7d0dc;font-weight:600}
 #fm-root .mk-table td.mk-n.kotu{color:#b91c1c}
-#fm-root .mk-th-eylem{width:186px}
+#fm-root .mk-th-eylem{width:158px}
+/* 9 sütun dar ekrana sığmıyordu (1280'de eylem sütunu kesiliyordu): ünvan ve sayı sütunları daralır. */
+@media (max-width:1360px){#fm-root .mk-kim b{max-width:190px}#fm-root .mk-table th.mk-n,#fm-root .mk-table td.mk-n{width:68px}}
 #fm-root .mk-eylem{white-space:nowrap;text-align:right}
-#fm-root .mk-eylem .btn{height:28px;padding:0 10px;font-size:11.5px;border-radius:8px;margin-left:6px;box-shadow:none;opacity:.78;transition:opacity .12s,background .12s,color .12s}
+#fm-root .mk-eylem .btn{height:28px;padding:0 9px;font-size:11.5px;border-radius:8px;margin-left:5px;box-shadow:none;opacity:.78;transition:opacity .12s,background .12s,color .12s}
 #fm-root .mk-tr:hover .mk-eylem .btn{opacity:1}
 #fm-root .mk-tr.mk-tanimsiz .mk-eylem .btn,#fm-root .mk-tr.mk-sorunlu .mk-eylem .btn{opacity:1}
 #fm-root .mk-eylem .btn.mk-ac{opacity:1;background:var(--accent-soft);color:var(--accent);border:1px solid var(--accent-line)}
