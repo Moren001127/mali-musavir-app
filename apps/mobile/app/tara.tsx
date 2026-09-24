@@ -18,6 +18,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
+  BackHandler,
   Image,
   Modal,
   Platform,
@@ -190,10 +191,10 @@ function Marka({ olcu = 26, hazir, altYazi = false }: { olcu?: number; hazir: bo
  * Rozet iş görür: belge ekranında Gider/Gelir'i değiştirir, yön ekranında mükellefe geri döner.
  */
 function Serit({
-  bas, ad, alt, hazir, rozet, nokta, rozetBas, avatarBas,
+  bas, ad, alt, hazir, rozet, nokta, rozetBas, avatarBas, geri,
 }: {
   bas: string; ad: string; alt: string; hazir: boolean;
-  rozet: string; nokta?: string; rozetBas: () => void; avatarBas: () => void;
+  rozet: string; nokta?: string; rozetBas: () => void; avatarBas: () => void; geri?: () => void;
 }) {
   const insets = useSafeAreaInsets();
   return (
@@ -203,6 +204,13 @@ function Serit({
     >
       <View style={s.seritIsik} />
       <View style={s.seritIc}>
+        {/* GERİ (2026-09-25): mükellefe dönmenin görünür yolu yoktu; avatara dokunmak
+            keşfedilebilir değildi (Muzaffer Bey: "geri butonu yok"). */}
+        {geri ? (
+          <Pressable style={s.geri} onPress={geri} hitSlop={10}>
+            <Text style={s.geriT}>‹</Text>
+          </Pressable>
+        ) : null}
         <Pressable style={s.sav} onPress={avatarBas} hitSlop={6}>
           <Text style={s.savT}>{bas}</Text>
         </Pressable>
@@ -258,6 +266,17 @@ export default function TaraEkrani() {
   const [toplamGonderim, setToplamGonderim] = useState(0);
 
   const girisli = status === 'authenticated';
+
+  // TELEFONUN GERİ TUŞU (2026-09-25): belge ekranından yön ekranına, oradan mükellef listesine
+  //   döner; en başta ise uygulamadan çıkar. Eskiden her yerde doğrudan uygulamayı kapatıyordu.
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (yon) { setYon(null); setSonuc(''); return true; }
+      if (secili) { setSecili(null); setBelgeler([]); setSonuc(''); return true; }
+      return false;
+    });
+    return () => sub.remove();
+  }, [secili, yon]);
 
   const mukellefleriYukle = useCallback(async () => {
     setYukleniyor(true); setHata('');
@@ -595,7 +614,7 @@ export default function TaraEkrani() {
       <View style={s.kok}>
         <Serit
           bas={secili.bas} ad={secili.ad} alt={mukellefAlt} hazir={fontHazir}
-          rozet="‹ DEĞİŞTİR" rozetBas={mukellefeDon} avatarBas={mukellefeDon}
+          rozet="‹ DEĞİŞTİR" rozetBas={mukellefeDon} avatarBas={mukellefeDon} geri={mukellefeDon}
         />
         <Text style={s.yonBaslik}>Belge türü</Text>
         <Text style={s.yonAlt}>Gönderilen belgeler bu kuyruğa düşer.</Text>
@@ -620,6 +639,7 @@ export default function TaraEkrani() {
         nokta={yon === 'ALIS' ? '#ff8787' : '#69db7c'}
         rozetBas={() => { setYon(yon === 'ALIS' ? 'SATIS' : 'ALIS'); setSonuc(''); }}
         avatarBas={mukellefeDon}
+        geri={() => { setYon(null); setSonuc(''); }}
       />
 
       {belgeler.length > 0 && (
@@ -737,6 +757,8 @@ const s = StyleSheet.create({
   serit: { paddingHorizontal: 16, paddingBottom: 16, borderBottomLeftRadius: 20, borderBottomRightRadius: 20, overflow: 'hidden' },
   seritIsik: { position: 'absolute', right: -40, top: -90, width: 200, height: 200, borderRadius: 100, backgroundColor: 'rgba(94,234,212,0.15)' },
   seritIc: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  geri: { width: 26, height: 40, alignItems: 'flex-start', justifyContent: 'center', marginRight: -2 },
+  geriT: { color: C.white, fontSize: 30, lineHeight: 32, fontWeight: '300' },
   sav: {
     width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.16)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.28)',
