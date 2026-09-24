@@ -138,6 +138,12 @@ function BeyannamelerIcerik() {
   const isBeyanJobRunning = latestBeyanJob?.status === 'running';
   const isBeyanJobActive = latestBeyanJob?.status === 'running' || latestBeyanJob?.status === 'pending';
 
+  // Son başarılı çekim — iş bittiğinde durum şeridinde tarih/saat olarak durur
+  // (Muzaffer Bey, 2026-09-24: "çekimin en son ne zaman olduğu görünsün").
+  const sonCekimMetni = !isBeyanJobActive && latestBeyanJob?.status === 'done'
+    ? fmtDateTime(latestBeyanJob.createdAt)
+    : '';
+
   // ---- Sunucu sayfalı liste (GET /beyan-kayitlari?page=…) — sözleşme §4 ----
   const sorgu = useMemo<BeyanSayfaParams>(() => ({
     page: sayfa,
@@ -540,7 +546,7 @@ function BeyannamelerIcerik() {
         <div data-beyan-dekor className="pointer-events-none absolute" style={portalStyle({ width: 420, height: 420, right: -80, top: -260, borderRadius: '50%', background: 'radial-gradient(circle, rgba(244,196,81,0.10), transparent 62%)' })} />
 
         <div data-beyan-konsol-ic className="relative px-4 pt-3 sm:px-5">
-          <div className="flex flex-wrap items-center gap-4">
+          <div data-beyan-kafa className="flex flex-wrap items-center gap-4">
             <div className="flex min-w-0 items-center gap-3">
               <div data-beyan-konsol-icon className="grid flex-none place-items-center" style={portalStyle({ width: 38, height: 38, borderRadius: 11, background: 'linear-gradient(150deg, rgba(76,198,245,0.22), rgba(76,198,245,0.05))', border: '1px solid rgba(76,198,245,0.3)' })}>
                 <FileText size={19} style={portalStyle({ color: '#bfe9ff' })} />
@@ -552,10 +558,13 @@ function BeyannamelerIcerik() {
               </div>
             </div>
 
-            <div className="flex-1" />
+          </div>
 
+          {/* EYLEM KARTI (tasarım 1, Muzaffer Bey onayı 2026-09-24): indirme işi tek beyaz kartta —
+              üstte tarih + çek düğmeleri, altında ilerleme, en altta durum şeridi. */}
+          <div data-beyan-eylem-kart className="mt-3">
             <div data-beyan-konsol-eylem className="flex flex-col items-end gap-1.5">
-              <div className="flex flex-wrap items-stretch justify-end gap-2">
+              <div className="flex w-full flex-wrap items-stretch justify-end gap-2">
                 <div data-beyan-tarih className="flex items-center overflow-hidden rounded-[11px]" style={portalStyle({ border: '1px solid rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.03)' })}>
                   <label className="flex flex-col gap-px px-2.5 py-1">
                     <span data-beyan-etiket className="text-[9px] font-bold uppercase tracking-[0.14em]" style={portalStyle({ color: 'rgba(243,245,247,0.4)' })}>Başlangıç</span>
@@ -607,10 +616,13 @@ function BeyannamelerIcerik() {
                   {pullMut.isPending ? <Loader2 size={17} className="animate-spin" /> : <RotateCcw size={17} />}
                 </button>
               </div>
-              
             </div>
-          </div>
 
+          {isBeyanJobActive && (
+            <div data-beyan-ilerleme className="relative h-[3px] overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.05)' })}>
+              <div className="absolute inset-y-0 left-0 transition-all" style={portalStyle({ width: `${Math.max(6, Math.min(100, portalJobProgress(latestBeyanJob).pct ?? (isBeyanJobRunning ? 45 : 12)))}%`, background: 'linear-gradient(90deg, #4cc6f5, #f4c451)' })} />
+            </div>
+          )}
           {/* canlı durum: son iş + runner/şifre */}
           <div data-beyan-durum className="mt-2.5 flex flex-wrap items-center gap-3 py-2" style={portalStyle({ borderTop: '1px solid rgba(255,255,255,0.07)' })}>
             <ConsoleJob
@@ -619,6 +631,11 @@ function BeyannamelerIcerik() {
               cancelPending={cancelJobMut.isPending}
             />
             <div className="ml-auto flex flex-wrap items-center gap-2">
+              {sonCekimMetni && (
+                <span data-beyan-son-cekim className="text-[11.5px]" style={portalStyle({ color: 'rgba(243,245,247,0.42)' })}>
+                  Son çekim {sonCekimMetni}
+                </span>
+              )}
               <span data-beyan-durum-madde className="inline-flex items-center gap-2 text-[12px] font-semibold" style={portalStyle({ color: 'rgba(243,245,247,0.62)' })}>
                 <span data-beyan-nokta={portalSummary?.runner?.enabled ? 'acik' : 'kapali'} className="inline-block h-2 w-2 rounded-full" style={portalStyle({ background: portalSummary?.runner?.enabled ? '#4ade80' : '#fb7185', boxShadow: `0 0 0 3px ${portalSummary?.runner?.enabled ? 'rgba(74,222,128,0.16)' : 'rgba(251,113,133,0.16)'}` })} /> Runner
               </span>
@@ -630,13 +647,9 @@ function BeyannamelerIcerik() {
               </Link>
             </div>
           </div>
-        </div>
 
-        {isBeyanJobActive && (
-          <div data-beyan-ilerleme className="relative mt-1 h-[3px] overflow-hidden" style={portalStyle({ background: 'rgba(255,255,255,0.05)' })}>
-            <div className="absolute inset-y-0 left-0 transition-all" style={portalStyle({ width: `${Math.max(6, Math.min(100, portalJobProgress(latestBeyanJob).pct ?? (isBeyanJobRunning ? 45 : 12)))}%`, background: 'linear-gradient(90deg, #4cc6f5, #f4c451)' })} />
           </div>
-        )}
+        </div>
       </section>
 
       {/* ===================== LİSTE ===================== */}
@@ -728,21 +741,25 @@ function BeyannamelerIcerik() {
           </button>
         </div>
 
-        {/* Toplu işlemler — ÜSTTE, tek sayaç */}
-        <div data-beyan-toplu data-secili={seciliSayi ? 'evet' : 'hayir'} className="flex flex-wrap items-center gap-2 px-4 py-2.5" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.06)', background: seciliSayi ? 'rgba(212,184,118,0.05)' : 'transparent' })}>
-          <span data-beyan-secili-sayi className="mr-1 text-[12.5px] font-semibold tabular-nums" style={portalStyle({ color: seciliSayi ? GOLD : 'rgba(250,250,249,0.45)' })}>
-            {seciliSayi ? `Seçili ${seciliSayi.toLocaleString('tr-TR')} kayıt` : 'Seçili kayıt yok'}
-          </span>
-          <ToolbarButton icon={MessageCircle} label="WhatsApp gönder" tone="whatsapp" disabled={!seciliSayi} onClick={() => gonderimBaslat('WHATSAPP', seciliKayitlar)} />
-          <ToolbarButton icon={Mail} label="E-posta gönder" tone="mail" disabled={!seciliSayi} onClick={() => gonderimBaslat('EMAIL', seciliKayitlar)} />
-          <ToolbarButton icon={Download} label="İndir" tone="default" disabled={!seciliSayi} onClick={downloadSelected} />
-          <ToolbarButton icon={Trash2} label="Sil" tone="danger" disabled={!seciliSayi || bulkDeleteMut.isPending} onClick={() => {
-            const ids = Array.from(selectedIds);
-            if (!ids.length) return toast.warning('Seçili kayıt yok');
-            if (confirm(`${ids.length} kayıt silinsin mi?`)) bulkDeleteMut.mutate(ids);
-          }} />
-          <ToolbarButton icon={IconX} label="Temizle" tone="default" disabled={!seciliSayi} onClick={() => secimiTemizle()} />
-        </div>
+        {/* Toplu işlemler — YALNIZ seçim varken (Muzaffer Bey, 2026-09-24: boşta duran
+            "Seçili kayıt yok" + beş sönük düğme görsel gürültüydü, kaldırıldı). */}
+        {seciliSayi > 0 && (
+          <div data-beyan-toplu data-secili="evet" className="flex flex-wrap items-center gap-2 px-4 py-2.5" style={portalStyle({ borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'rgba(212,184,118,0.05)' })}>
+            <span data-beyan-secili-sayi className="mr-1 text-[12.5px] font-semibold tabular-nums" style={portalStyle({ color: GOLD })}>
+              {seciliSayi.toLocaleString('tr-TR')} kayıt seçildi
+            </span>
+            <ToolbarButton icon={MessageCircle} label="WhatsApp gönder" tone="whatsapp" onClick={() => gonderimBaslat('WHATSAPP', seciliKayitlar)} />
+            <ToolbarButton icon={Mail} label="E-posta gönder" tone="mail" onClick={() => gonderimBaslat('EMAIL', seciliKayitlar)} />
+            <ToolbarButton icon={Download} label="İndir" tone="default" onClick={downloadSelected} />
+            <ToolbarButton icon={Trash2} label="Sil" tone="danger" disabled={bulkDeleteMut.isPending} onClick={() => {
+              const ids = Array.from(selectedIds);
+              if (!ids.length) return toast.warning('Seçili kayıt yok');
+              if (confirm(`${ids.length} kayıt silinsin mi?`)) bulkDeleteMut.mutate(ids);
+            }} />
+            <span data-beyan-toplu-ayrac className="ml-auto" />
+            <ToolbarButton icon={IconX} label="Seçimi bırak" tone="default" onClick={() => secimiTemizle()} />
+          </div>
+        )}
 
         {isLoading ? (
           <div data-beyan-bos className="p-10 text-center text-[13px]" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>

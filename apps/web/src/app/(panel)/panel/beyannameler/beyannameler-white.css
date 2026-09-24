@@ -64,14 +64,27 @@ html[data-theme='D'] [data-beyan-btn='tehlike'] { background: var(--by-kirmizi-s
 html[data-theme='D'] [data-beyan-btn='tehlike']:hover:not(:disabled) { background: var(--by-kirmizi) !important; border-color: var(--by-kirmizi) !important; color: #fff !important; }
 html[data-theme='D'] [data-beyan-btn='tehlike'] svg { color: inherit !important; }
 
-/* Canlı durum şeridi (son iş · runner · şifre) */
-html[data-theme='D'] [data-beyan-page] [data-beyan-durum] {
-  margin-top: 14px !important; padding: 8px 14px !important; background: #fff !important; border: 1px solid var(--by-line) !important; border-radius: 12px; box-shadow: var(--by-shadow-soft);
+/* ── EYLEM KARTI (tasarım 1, 2026-09-24) ─────────────────────────────────────────────────────────────
+   İndirme işi tek beyaz kartta toplanır: üstte tarih + çek düğmeleri, ortada ilerleme, altta durum
+   şeridi. Önceden başlık, düğmeler, iş kutusu ve durum ayrı ayrı yüzüyor, ekran dağınık duruyordu. */
+html[data-theme='D'] [data-beyan-page] [data-beyan-eylem-kart] {
+  background: #fff !important; border: 1px solid var(--by-line); border-radius: 13px; box-shadow: var(--by-shadow-soft); overflow: hidden;
 }
+html[data-theme='D'] [data-beyan-page] [data-beyan-konsol-eylem] { margin-left: 0 !important; width: 100%; padding: 12px 14px; gap: 0 !important; }
+html[data-theme='D'] [data-beyan-page] [data-beyan-konsol-eylem] > div { width: 100%; justify-content: flex-end; }
+/* tarih aralığı sola yapışır, çek düğmeleri sağda kalır */
+html[data-theme='D'] [data-beyan-page] [data-beyan-tarih] { margin-right: auto; }
+
+/* Canlı durum şeridi (son iş · runner · şifre) — artık kartın alt bölümü */
+html[data-theme='D'] [data-beyan-page] [data-beyan-durum] {
+  margin-top: 0 !important; padding: 8px 14px !important; background: var(--by-head) !important;
+  border: 0 !important; border-top: 1px solid var(--by-line-2) !important; border-radius: 0 !important; box-shadow: none !important;
+}
+html[data-theme='D'] [data-beyan-page] [data-beyan-son-cekim] { color: var(--by-faint) !important; }
 html[data-theme='D'] [data-beyan-page] [data-beyan-durum-madde] { color: var(--by-sec) !important; }
 html[data-theme='D'] [data-beyan-page] [data-beyan-nokta='acik'] { background: var(--by-yesil) !important; box-shadow: 0 0 0 3px #d3f9d8 !important; }
 html[data-theme='D'] [data-beyan-page] [data-beyan-nokta='kapali'] { background: var(--by-kirmizi) !important; box-shadow: 0 0 0 3px #ffe3e3 !important; }
-html[data-theme='D'] [data-beyan-page] [data-beyan-ilerleme] { background: var(--by-notr-line) !important; border-radius: 999px; margin-top: 8px !important; }
+html[data-theme='D'] [data-beyan-page] [data-beyan-ilerleme] { background: var(--by-notr-line) !important; border-radius: 0; margin: 0 !important; }
 html[data-theme='D'] [data-beyan-page] [data-beyan-ilerleme] > div { background: linear-gradient(90deg, var(--by-civit), var(--by-civit-2)) !important; }
 html[data-theme='D'] [data-beyan-job] { --by-ring: var(--by-civit); --by-ring-ink: var(--by-civit-ink); background: var(--by-civit-soft) !important; border-color: var(--by-civit-line) !important; }
 html[data-theme='D'] [data-beyan-job='bitti'] { --by-ring: var(--by-yesil); --by-ring-ink: var(--by-yesil-ink); background: var(--by-yesil-soft) !important; border-color: var(--by-yesil-line) !important; }
@@ -94,6 +107,10 @@ html[data-theme='D'] [data-beyan-page] [data-beyan-liste-head] p { color: var(--
 html[data-theme='D'] [data-beyan-page] [data-beyan-liste-head] p b { color: var(--by-ink) !important; }
 
 html[data-theme='D'] [data-beyan-page] [data-beyan-suzgec] { background: var(--by-head) !important; border-color: var(--by-line-2) !important; }
+/* Süzgeç alanları daralabilsin — "Temizle" alt satıra düşmesin */
+html[data-theme='D'] [data-beyan-page] [data-beyan-suzgec] > label,
+html[data-theme='D'] [data-beyan-page] [data-beyan-suzgec] > div { min-width: 112px !important; }
+html[data-theme='D'] [data-beyan-page] [data-beyan-suzgec] input[type='date'] { width: 94px !important; }
 html[data-theme='D'] [data-beyan-page] [data-beyan-kutu] { background: #fff !important; border: 1px solid var(--by-field-line) !important; border-radius: 10px !important; }
 html[data-theme='D'] [data-beyan-page] [data-beyan-kutu]:focus-within { border-color: var(--by-civit) !important; box-shadow: 0 0 0 3px var(--by-ring); }
 html[data-theme='D'] [data-beyan-page] [data-beyan-kutu] input { color: var(--by-ink) !important; color-scheme: light !important; }
@@ -114,7 +131,8 @@ html[data-theme='D'] [data-beyan-secenek='aktif'] { background: var(--by-civit-s
 html[data-theme='D'] [data-beyan-secenek='aktif'] span:last-child { color: var(--by-civit-ink) !important; }
 
 html[data-theme='D'] [data-beyan-page] [data-beyan-toplu] { background: #fff !important; border-color: var(--by-line-2) !important; }
-html[data-theme='D'] [data-beyan-page] [data-beyan-toplu][data-secili='evet'] { background: var(--by-civit-soft) !important; }
+html[data-theme='D'] [data-beyan-page] [data-beyan-toplu][data-secili='evet'] { background: var(--by-civit-soft) !important; border-color: var(--by-civit-line) !important; }
+html[data-theme='D'] [data-beyan-page] [data-beyan-toplu-ayrac] { flex: 1 1 auto; }
 html[data-theme='D'] [data-beyan-page] [data-beyan-secili-sayi] { color: var(--by-faint) !important; }
 html[data-theme='D'] [data-beyan-page] [data-beyan-toplu][data-secili='evet'] [data-beyan-secili-sayi] { color: var(--by-civit-ink) !important; }
 html[data-theme='D'] [data-beyan-tool] { border-radius: 8px !important; font-weight: 600 !important; }
