@@ -7343,6 +7343,48 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     return { row, beyannameOid, tahakkukOid };
   }
 
+  /**
+   * DOM'daki "Sonraki Sayfa" tiklanamadiginda kalan sayfalari GIB'in KENDI liste istegiyle ceker.
+   *
+   * GIB listesi sayfa basina 25 satir gosteriyor; sayfalayici bazen tiklanabilir bir dugme
+   * uretmiyor (ExtJS ikonu / devre disi gorunum). O zaman 25'ten sonrasi kaciriliyordu —
+   * 2026-09-25'te 31 kayidin son 6'si, icinde o gun onaylanan beyannameler vardi.
+   *
+   * Yakalanan POST govdesine grupSayi (sayfa) konur, yanit ayni ayristirici ile okunur.
+   * Yeni satir gelmiyorsa durur; hicbir sey eklenemezse false doner (cagiran bunu nota yazar).
+   */
+  private async collectEBeyannameRowsViaListApi(
+    page: any,
+    token: string,
+    byOid: Map<string, EBeyannameListEntry>,
+    maxRows: number,
+    notes: string[],
+  ): Promise<boolean> {
+    const captured = this.ebeyannameCapturedListReq;
+    if (!captured?.postData || !/POST/i.test(String(captured.method || ''))) return false;
+    let toplamEklenen = 0;
+    for (let grup = 1; grup < 40 && byOid.size < maxRows; grup++) {
+      const body = this.setGrupSayiInPost(captured.postData, grup, token);
+      const raw = await this.fetchEBeyannameListPost(page, captured.url, body);
+      if (!raw) { notes.push(`liste-API sayfa ${grup}: yanit alinamadi`); break; }
+      const parsed = this.parseEBeyannameListResponse(raw);
+      const satirlar = parsed?.rows || [];
+      if (!satirlar.length) {
+        if (parsed?.serverError) notes.push(`liste-API sayfa ${grup}: ${this.compact(parsed.serverError).slice(0, 120)}`);
+        break;
+      }
+      let eklendi = 0;
+      for (const e of satirlar) {
+        if (byOid.size >= maxRows) break;
+        if (e?.beyannameOid && !byOid.has(e.beyannameOid)) { byOid.set(e.beyannameOid, e); eklendi++; }
+      }
+      notes.push(`liste-API sayfa ${grup}: ${satirlar.length} satir (+${eklendi}, toplam ${byOid.size})`);
+      toplamEklenen += eklendi;
+      if (!eklendi) break; // ayni sayfa tekrar geldi → dur
+    }
+    return toplamEklenen > 0;
+  }
+
   /** Yakalanan GIB liste istegini temel alarak verilen sayfa (grupSayi) icin URL kurar. */
   private eBeyannameListUrlFromCapture(capturedUrl: string, token: string, grupSayi: number): string {
     try {
@@ -7390,7 +7432,15 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       if (pag.end <= lastEnd) { notes.push(`liste: sayfa ilerlemedi (${pag.start}-${pag.end}), durduruldu`); break; }
       lastEnd = pag.end;
       const moved = await this.clickEBeyannameNextPage(page, pag);
-      if (!moved) { notes.push(`liste: Sonraki Sayfa tiklanamadi (${pag.start}-${pag.end}/${pag.total})`); break; }
+      if (!moved) {
+        // 2026-09-25 GERCEK VAKA: GIB 31 onayli beyanname dondurdu, DOM'da "Sonraki Sayfa"
+        //   tiklanamadi ve yalniz ilk 25 satir okundu → o gun onaylanan 2 beyanname HIC gorulmedi
+        //   ("indirilecek kayit yok"). DOM takilirsa GIB'in KENDI liste istegiyle devam ediyoruz.
+        notes.push(`liste: Sonraki Sayfa tiklanamadi (${pag.start}-${pag.end}/${pag.total}) -> liste-API ile devam`);
+        const apiEklendi = await this.collectEBeyannameRowsViaListApi(page, token, byOid, maxRows, notes);
+        if (!apiEklendi) notes.push('liste-API sayfalama da sonuc vermedi — yalniz ilk sayfa alindi');
+        break;
+      }
       // Sayfanin AJAX ile yuklenmesini bekle (pagination ilerleyene kadar, ~max 5 sn).
       for (let w = 0; w < 12; w++) { await this.wait(420); const np = await this.readEBeyannamePagination(page); if (np && np.start > pag.start) break; }
     }
