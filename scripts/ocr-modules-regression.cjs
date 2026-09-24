@@ -158,6 +158,24 @@ eq(vendorParser.extractSaticiVkn(vknText, foldTr), '1234567890', 'vendor VKN lab
 const vknBare = 'XYZ ANONIM SIRKETI\n9876543210\nSAYIN MUSTERI';
 eq(vendorParser.extractSaticiVkn(vknBare, foldTr), '9876543210', 'vendor VKN bare');
 eq(vendorParser.extractSaticiUnvan(vknText, foldTr), 'ACME TICARET LTD STI', 'vendor unvan LTD STI');
+// GERCEK bug (OTO ILKER OKC fisi, 2026-09-24): sahis isletmesinde unvan kisa ("OTO ILKER" = 8 harf),
+// eski "en az 12 buyuk harf" kurali onu eleyip ADRES satirini ("K.SINAN MERKEZ MAH." = 15 harf)
+// firma adi sanıyordu. Artik adres satirlari elenir, sirket eki yoksa ilk anlamli satir alinir.
+const okcFisUnvan = `OTO ILKER
+ILKER ONER
+K.SINAN MERKEZ MAH.
+KARANFIL 2 SK. NO:20/A
+BAHCELIEVLER/ISTANBUL
+Y.BOSNA VD 28027698710
+TEL:0212 552 24 44`;
+eq(vendorParser.extractSaticiUnvan(okcFisUnvan, foldTr), 'OTO ILKER', 'vendor unvan sahis isletmesi (adres degil)');
+eq(vendorParser.extractSaticiVkn(okcFisUnvan, foldTr), '28027698710', 'vendor VKN OKC fisi VD satiri');
+const okcLtdUnvan = `OTO CEM OTO YEDEK PARCA
+SAN.TIC.LTD.STI.
+F.CAKMAK MH.HALKALI CD.
+SEFAKOY IS MERKEZI NO:209
+K.CEKMECE VD:6490011354`;
+eq(vendorParser.extractSaticiUnvan(okcLtdUnvan, foldTr), 'OTO CEM OTO YEDEK PARCA', 'vendor unvan OKC ilk satir');
 // GERCEK bug (ARS OTOMOBIL fisi, YORGUN NAKLIYAT 2026-05): VKN vergi dairesi
 // satirinda "IKITELI VD:0800371588" — (1) "VD" etiketi taninmiyordu,
 // (2) "IKITELI" icindeki "TEL" alt-dizisi satiri telefon sanip atlatiyordu.

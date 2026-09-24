@@ -779,12 +779,17 @@ function DocModal() {
     return () => { alive = false; if (created) setTimeout(() => URL.revokeObjectURL(created), 500); };
   }, [rawUrl, isImgMime, doc?.html]);
 
-  const fitToWidth = (w: number) => {
+  const fitToWidth = (w: number, h = 0) => {
     const vw = viewRef.current?.clientWidth || 0;
-    // Sığdır: GENİŞ belgeyi (A4 fatura) panoya KÜÇÜLT; DAR belgeyi (fiş/ÖKC) BÜYÜTME —
-    // en çok doğal boyut (%100). Eskiden dar fiş genişliğe doldurulup %257 gibi saçma
-    // şekilde şişiyordu. Daha büyük istenirse + ile yakınlaştırılır.
-    if (w > 0 && vw > 0) setScale(Math.min(1, Math.max(0.3, +((vw - 6) / w).toFixed(3))));
+    const vh = viewRef.current?.clientHeight || 0;
+    // Sığdır: belge panoya TAMAMEN sığsın — hem genişlik hem YÜKSEKLİK hesaba katılır.
+    // ÖKC fişi dar ama çok uzundur: yalnız genişliğe bakınca %100 açılıp taşıyordu ve
+    // kullanıcı her seferinde elle küçültüyordu (Muzaffer Bey, 2026-09-24). Büyütme yok:
+    // en çok doğal boyut (%100); daha yakını + ile.
+    if (w <= 0 || vw <= 0) return;
+    const enOran = (vw - 6) / w;
+    const boyOran = h > 0 && vh > 0 ? (vh - 6) / h : 1;
+    setScale(Math.min(1, Math.max(0.2, +Math.min(enOran, boyOran).toFixed(3))));
   };
   const onFrameLoad = (e: any) => {
     if (fittedRef.current) return;
@@ -799,7 +804,7 @@ function DocModal() {
       }
       if (!w) w = cd.body.scrollWidth || 0;
       const h = Math.max(cd.body.scrollHeight || 0, cd.documentElement?.scrollHeight || 0);
-      if (w > 0) { fittedRef.current = true; setDim({ w: Math.ceil(w), h: Math.ceil(h) }); fitToWidth(w); }
+      if (w > 0) { fittedRef.current = true; setDim({ w: Math.ceil(w), h: Math.ceil(h) }); fitToWidth(w, h); }
     } catch { /* cross-origin — atla */ }
   };
   const onImgLoad = (e: any) => {
@@ -809,7 +814,7 @@ function DocModal() {
     const h = e.currentTarget.naturalHeight || 0;
     // Resimde de gerçek boyutu sakla → "Sığdır" butonu (fit) resimde de çalışsın.
     if (w > 0) setDim({ w: Math.ceil(w), h: Math.ceil(h) });
-    fitToWidth(w);
+    fitToWidth(w, h);
   };
 
   if (!doc) return null;
@@ -819,7 +824,7 @@ function DocModal() {
   const sizeStyle: any = dim.w ? { width: dim.w, height: dim.h || undefined, maxWidth: 'none', margin: '0 auto' } : {};
   const dec = () => setScale((s) => Math.max(0.3, +(s - 0.2).toFixed(2)));
   const inc = () => setScale((s) => Math.min(4, +(s + 0.2).toFixed(2)));
-  const fit = () => { if (dim.w) fitToWidth(dim.w); else setScale(1); };
+  const fit = () => { if (dim.w) fitToWidth(dim.w, dim.h); else setScale(1); };
 
   return (
     <div className="docov" onClick={() => setDoc(null)}>

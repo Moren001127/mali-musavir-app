@@ -58,15 +58,37 @@ export function extractSaticiUnvan(text: string, foldFn: FoldFn): string | null 
   const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   const stop = lines.findIndex((l) => /SAYIN|ALICI|MUSTERI|MÜŞTERİ/.test(foldFn(l)));
   const topLines = stop >= 0 ? lines.slice(0, stop) : lines.slice(0, 10);
+  // ADRES SATIRI ELEME (2026-09-24, gerçek vaka "OTO İLKER" fişi): şahıs işletmelerinde unvan
+  // kısadır ("OTO İLKER" = 8 harf) ve eski "en az 12 büyük harf" kuralına takılmıyordu; onun
+  // yerine ADRES satırı seçiliyordu ("K.SİNAN MERKEZ MAH." = 15 harf) → portala firma adı diye
+  // adres düşüyordu. Artık adres satırları elenir ve şirket eki yoksa İLK anlamlı satır alınır.
+  const ADRES = /\b(?:MAH|MAHALLE(?:SI)?|CAD|CADDE(?:SI)?|SOK|SOKAK|SK|BULV(?:AR)?|BLV|APT|KAT|DAIRE|SITE(?:SI)?|IS\s+MERKEZI|PLAZA|BLOK|OSB|ORGANIZE|POSTA\s+KODU|PK)\b|\bNO\s*[:.]?\s*\d/;
+  const adayGecerli = (folded: string) => folded.length >= 5
+    && /[A-Z]/.test(folded)
+    && !/\b(?:VKN|TCKN|VERGI|TEL|FAKS|WEB|E-?POSTA|MERSIS|TICARET\s+SICIL|FATURA|ETTN)\b/.test(folded)
+    && !ADRES.test(folded);
+
+  // 1) Şirket eki taşıyan ilk satır — en güvenilir işaret.
+  for (let i = 0; i < topLines.length; i++) {
+    const raw = topLines[i];
+    const folded = foldFn(raw);
+    if (!adayGecerli(folded)) continue;
+    if (/\b(?:LTD|LIMITED|ANONIM|AS|STI|SIRKET|TICARET|SANAYI|TURIZM|HIZMET|INSAAT|LOJISTIK|TASIMACILIK)\b/.test(folded)) {
+      // Ek satırı TEK BAŞINA unvan değildir: ÖKC fişlerinde firma adı iki satıra bölünür
+      // ("OTO CEM OTO YEDEK PARÇA" / "SAN.TİC.LTD.ŞTİ."). Ekleri atınca anlamlı ad kalmıyorsa
+      // asıl unvan bir ÖNCEKİ satırdadır.
+      const ekSiz = folded.replace(/\b(?:LTD|LIMITED|ANONIM|AS|STI|SIRKET|TIC|TICARET|SAN|SANAYI|VE)\b/g, '').replace(/[^A-Z]/g, '');
+      if (ekSiz.length >= 3) return raw.slice(0, 200);
+      const onceki = [...topLines.slice(0, i)].reverse().find((r) => adayGecerli(foldFn(r)));
+      return (onceki || raw).slice(0, 200);
+    }
+  }
+  // 2) Şirket eki yoksa (şahıs işletmesi / ÖKC fişi): adres olmayan İLK anlamlı satır.
+  //    En az 4 harf yeter — "OTO İLKER" gibi kısa unvanlar da yakalanır.
   for (const raw of topLines) {
     const folded = foldFn(raw);
-    if (folded.length < 5) continue;
-    if (/\b(?:VKN|TCKN|VERGI|TEL|FAKS|WEB|E-?POSTA|MERSIS|TICARET\s+SICIL|FATURA|ETTN)\b/.test(folded)) continue;
-    if (!/[A-Z]/.test(folded)) continue;
-    if (/\b(?:LTD|LIMITED|ANONIM|AS|STI|SIRKET|TICARET|SANAYI|TURIZM|HIZMET|INSAAT|LOJISTIK|TASIMACILIK)\b/.test(folded)) {
-      return raw.slice(0, 200);
-    }
-    if (folded.replace(/[^A-Z]/g, '').length >= 12) return raw.slice(0, 200);
+    if (!adayGecerli(folded)) continue;
+    if (folded.replace(/[^A-Z]/g, '').length >= 4) return raw.slice(0, 200);
   }
   return null;
 }
