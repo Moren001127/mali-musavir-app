@@ -30,8 +30,8 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import MaskedView from '@react-native-masked-view/masked-view';
 import { useFonts, KaushanScript_400Regular } from '@expo-google-fonts/kaushan-script';
-import DocumentScanner, { ResponseType } from 'react-native-document-scanner-plugin';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { File } from 'expo-file-system';
@@ -48,6 +48,13 @@ import { getStoredItem, setStoredItem, deleteStoredItem } from '../lib/secure-st
  */
 const CREDS_KEY = 'moren.tara.creds';
 
+/** Belge tarayıcı eklentisi NATIVE — web'de yüklenirken çöker. Yalnız telefonda, ilk kullanımda yüklenir. */
+function belgeTarayici(): any {
+  if (Platform.OS === 'web') return null;
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  return require('react-native-document-scanner-plugin');
+}
+
 /** Portal beyaz teması — apps/mobile/assets/app.html :root ile birebir. */
 const C = {
   bg: '#f5f7fb', surface: '#ffffff', border: '#e6ebf2', line: '#f0f3f8',
@@ -57,6 +64,7 @@ const C = {
   rose: '#e03131', roseBg: '#fff6f6', roseLine: '#ffd3d3',
   sky: '#1864ab', skyBg: '#e7f5ff', skyLine: '#a5d8ff',
   n1: '#0e2a58', n2: '#123a74', n3: '#0d7d73',
+  teal: '#0d7d73', tealBg: '#e6fcf5', tealLine: '#96f2d7',
   white: '#ffffff', black: '#000000',
 };
 const KS = 'KaushanScript_400Regular';
@@ -143,22 +151,72 @@ async function hazirla(uri: string, sira: number): Promise<Belge> {
 }
 
 /* ───────────────────────── MARKA ───────────────────────── */
-function Marka({ buyuk = false, hazir }: { buyuk?: boolean; hazir: boolean }) {
-  // Yazı tipi yüklenmediyse sistem yazısına düş (uygulama fontsuz açılmasın).
+/**
+ * Marka yazısı — beyazdan turkuaza akan GRADYAN DOLGU (Muzaffer Bey'in seçimi, 2026-09-24).
+ * Metne gradyan ancak maske ile verilebilir: yazı maske olur, altındaki gradyan yazının içini
+ * doldurur. Aynı yazı ikinci kez görünmez çizilir; yalnız ölçüyü versin diye.
+ * Yazı tipi yüklenmediyse sistem yazısına düşer (uygulama fontsuz açılmasın).
+ */
+function Marka({ olcu = 26, hazir, altYazi = false }: { olcu?: number; hazir: boolean; altYazi?: boolean }) {
   const aile = hazir ? { fontFamily: KS } : { fontWeight: '700' as const, fontStyle: 'italic' as const };
+  const yaziStil = [aile, { fontSize: olcu, lineHeight: Math.round(olcu * 1.2), color: C.white }];
   return (
-    <View style={{ alignItems: 'center' }}>
-      <Text style={[aile, buyuk ? mk.adBuyuk : mk.ad]}>Moren</Text>
-      <Text style={[aile, buyuk ? mk.altBuyuk : mk.alt]}>Mali Müşavirlik</Text>
+    <View style={{ alignItems: altYazi ? 'center' : 'flex-end' }}>
+      <MaskedView maskElement={<Text style={yaziStil}>Moren</Text>}>
+        <LinearGradient
+          colors={['#ffffff', '#a7f3e6', '#5eead4']} locations={[0.2, 0.62, 1]}
+          start={{ x: 0, y: 0 }} end={{ x: 1, y: 0.7 }}
+        >
+          <Text style={[yaziStil, { opacity: 0 }]}>Moren</Text>
+        </LinearGradient>
+      </MaskedView>
+      {altYazi ? (
+        <Text style={[aile, { fontSize: Math.round(olcu * 0.32), lineHeight: Math.round(olcu * 0.42), color: '#cfe9e6', marginTop: 2 }]}>
+          Mali Müşavirlik
+        </Text>
+      ) : null}
     </View>
   );
 }
-const mk = StyleSheet.create({
-  ad: { fontSize: 24, lineHeight: 28, color: C.n2 },
-  alt: { fontSize: 9, lineHeight: 12, color: C.n3, marginTop: 1 },
-  adBuyuk: { fontSize: 56, lineHeight: 66, color: C.white },
-  altBuyuk: { fontSize: 18, lineHeight: 24, color: '#cfe9e6', marginTop: 4 },
-});
+
+/**
+ * ÜST ŞERİT (tasarım onayı 2026-09-24) — solda MÜKELLEF, sağda MARKA ve hemen ALTINDA rozet.
+ * Önceki düzende marka, uygulama adı ve mükellef adı aynı köşede toplanıp gözü yoruyordu;
+ * "BELGE TARAYICI" rozeti tamamen kalktı (uygulamanın adı zaten uygulamanın kendisi).
+ * Rozet iş görür: belge ekranında Gider/Gelir'i değiştirir, yön ekranında mükellefe geri döner.
+ */
+function Serit({
+  bas, ad, alt, hazir, rozet, nokta, rozetBas, avatarBas,
+}: {
+  bas: string; ad: string; alt: string; hazir: boolean;
+  rozet: string; nokta?: string; rozetBas: () => void; avatarBas: () => void;
+}) {
+  const insets = useSafeAreaInsets();
+  return (
+    <LinearGradient
+      colors={[C.n1, C.n2, C.n3]} start={{ x: 0.05, y: 0 }} end={{ x: 0.95, y: 1 }}
+      style={[s.serit, { paddingTop: insets.top + 12 }]}
+    >
+      <View style={s.seritIsik} />
+      <View style={s.seritIc}>
+        <Pressable style={s.sav} onPress={avatarBas} hitSlop={6}>
+          <Text style={s.savT}>{bas}</Text>
+        </Pressable>
+        <Pressable style={s.kim} onPress={avatarBas} hitSlop={6}>
+          <Text style={s.kimAd} numberOfLines={1}>{ad}</Text>
+          {!!alt && <Text style={s.kimAlt} numberOfLines={1}>{alt}</Text>}
+        </Pressable>
+        <View style={s.sagBlok}>
+          <Marka olcu={25} hazir={hazir} />
+          <Pressable style={s.rozet} onPress={rozetBas} hitSlop={8}>
+            {nokta ? <View style={[s.nokta, { backgroundColor: nokta }]} /> : null}
+            <Text style={s.rozetT}>{rozet}</Text>
+          </Pressable>
+        </View>
+      </View>
+    </LinearGradient>
+  );
+}
 
 /* ───────────────────────── EKRAN ───────────────────────── */
 export default function TaraEkrani() {
@@ -285,10 +343,12 @@ export default function TaraEkrani() {
 
   async function tara() {
     try {
-      const { scannedImages } = await DocumentScanner.scanDocument({
+      const mod = belgeTarayici();
+      if (!mod) { Alert.alert('Bu yol yalnız telefonda', 'Belge tarama kamerası tarayıcıda çalışmaz.'); return; }
+      const { scannedImages } = await mod.default.scanDocument({
         maxNumDocuments: 25,
         croppedImageQuality: 100, // küçültmeyi BİZ yapıyoruz — iki kez kalite kaybı olmasın
-        responseType: ResponseType.ImageFilePath,
+        responseType: mod.ResponseType.ImageFilePath,
       });
       await ekle(scannedImages || []);
     } catch (e: any) { Alert.alert('Tarama açılamadı', String(e?.message || e)); }
@@ -379,8 +439,9 @@ export default function TaraEkrani() {
           start={{ x: 0.1, y: 0 }} end={{ x: 0.95, y: 1 }}
           style={s.hero}
         >
+          <View style={s.heroIsik} />
           <SafeAreaView style={s.heroIn}>
-            <Marka buyuk hazir={fontHazir} />
+            <Marka olcu={50} hazir={fontHazir} altYazi />
             <View style={s.tag}><Text style={s.tagT}>BELGE TARAYICI</Text></View>
           </SafeAreaView>
         </LinearGradient>
@@ -421,161 +482,152 @@ export default function TaraEkrani() {
     );
   }
 
-  /* ─────────────── 1) MÜKELLEF ─────────────── */
+  /* ─────────────── 1) MÜKELLEF ───────────────
+     Bölüm ayrımı YOK (Muzaffer Bey, 2026-09-24: "sık kullanılanlar olmasın, direkt bütün liste").
+     Arama kutusu şeridin içinde durur — gövdenin tamamı listeye kalır. */
   if (!secili) {
     return (
-      <SafeAreaView style={s.kok}>
-        <View style={s.top}>
-          <Marka hazir={fontHazir} />
-          <Pressable style={s.iq} onPress={cikisYap} hitSlop={8}>
-            <Text style={s.iqT}>⇥</Text>
-          </Pressable>
-        </View>
-        <View style={s.sep} />
-
-        <View style={s.pad}>
-          <Text style={s.h1}>Belge Tarayıcı</Text>
-          <Text style={s.h2}>Fiş ve faturaları tarayıp ofise gönderin</Text>
-        </View>
-
-        <View style={s.srch}>
-          <View style={s.mag} />
-          <TextInput
-            style={s.srchI} value={arama} onChangeText={setArama}
-            placeholder="Mükellef ara (ad veya VKN)" placeholderTextColor={C.faint} autoCorrect={false}
-          />
-        </View>
+      <View style={s.kok}>
+        <LinearGradient
+          colors={[C.n1, C.n2, C.n3]} start={{ x: 0.05, y: 0 }} end={{ x: 0.95, y: 1 }}
+          style={[s.mserit, { paddingTop: insets.top + 12 }]}
+        >
+          <View style={s.seritIsik} />
+          <View style={s.mbas}>
+            <View style={s.mbasSol}>
+              <Text style={s.mbasT}>Mükellef seçin</Text>
+              <Text style={s.mbasS}>
+                {mukellefler.length ? `${mukellefler.length} mükellef · A–Z sıralı` : 'Belgeler seçtiğiniz mükellefe gider'}
+              </Text>
+            </View>
+            <View style={s.sagBlok}>
+              <Marka olcu={23} hazir={fontHazir} />
+              <Pressable style={s.rozet} onPress={cikisYap} hitSlop={8}>
+                <Text style={s.rozetT}>ÇIKIŞ</Text>
+              </Pressable>
+            </View>
+          </View>
+          <View style={s.ara}>
+            <View style={s.mag} />
+            <TextInput
+              style={s.araI} value={arama} onChangeText={setArama}
+              placeholder="Ad veya VKN ara…" placeholderTextColor="rgba(255,255,255,0.62)" autoCorrect={false}
+            />
+          </View>
+        </LinearGradient>
 
         {yukleniyor ? (
-          <View style={s.orta}><ActivityIndicator color={C.primary} /><Text style={s.bilgi}>Mükellefler yükleniyor…</Text></View>
+          <View style={s.orta}><ActivityIndicator color={C.teal} /><Text style={s.bilgi}>Mükellefler yükleniyor…</Text></View>
         ) : hata ? (
           <View style={s.orta}>
             <Text style={s.hataY}>{hata}</Text>
             <Pressable style={s.b2} onPress={mukellefleriYukle}><Text style={s.b2T}>Tekrar dene</Text></Pressable>
           </View>
         ) : (
-          <ScrollView contentContainerStyle={s.liste} keyboardShouldPersistTaps="handled">
-            {suzulmus.map((m) => (
-              <Pressable key={m.id} style={s.row} onPress={() => setSecili(m)}>
-                <LinearGradient colors={m.renk} start={{ x: 0.1, y: 0 }} end={{ x: 0.9, y: 1 }} style={s.av}>
-                  <Text style={s.avT}>{m.bas}</Text>
-                </LinearGradient>
-                <View style={s.rowM}>
-                  <Text style={s.rn} numberOfLines={1}>{m.ad}</Text>
-                  <Text style={s.rv}>{m.vkn}{m.defter ? ` · ${m.defter}` : ''}</Text>
-                </View>
-                <Text style={s.chev}>›</Text>
-              </Pressable>
-            ))}
+          <ScrollView contentContainerStyle={[s.mliste, { paddingBottom: 26 + insets.bottom }]} keyboardShouldPersistTaps="handled">
+            {suzulmus.map((m) => {
+              const bilanco = m.defter === 'Bilanço';
+              return (
+                <Pressable key={m.id} style={s.bkart} onPress={() => setSecili(m)}>
+                  <LinearGradient colors={m.renk} start={{ x: 0.1, y: 0 }} end={{ x: 0.9, y: 1 }} style={s.mav}>
+                    <Text style={s.mavT}>{m.bas}</Text>
+                  </LinearGradient>
+                  <View style={s.bkartM}>
+                    <Text style={s.bkAd} numberOfLines={1}>{m.ad}</Text>
+                    <Text style={s.bkVkn}>{m.vkn}</Text>
+                  </View>
+                  {!!m.defter && (
+                    <View style={[s.tur, bilanco ? s.tbil : s.tisl]}>
+                      <Text style={[s.turT, bilanco ? s.turTbil : s.turTisl]}>{m.defter.toLocaleUpperCase('tr-TR')}</Text>
+                    </View>
+                  )}
+                </Pressable>
+              );
+            })}
             {!suzulmus.length && <Text style={s.bilgi}>Eşleşen mükellef yok.</Text>}
           </ScrollView>
         )}
-      </SafeAreaView>
+      </View>
     );
   }
 
-  /* Mükellef kartı — yanlış mükellefe gönderim en pahalı hata, hep üstte durur. */
-  const kart = (
-    <View style={s.card}>
-      <View style={s.cardGlow} />
-      <Pressable onPress={() => { setSecili(null); setYon(null); setBelgeler([]); setSonuc(''); }} hitSlop={10}>
-        <Text style={s.bk}>‹</Text>
-      </Pressable>
-      <LinearGradient colors={[C.n2, C.n3]} start={{ x: 0.1, y: 0 }} end={{ x: 0.9, y: 1 }} style={s.cav}>
-        <Text style={s.cavT}>{secili.bas}</Text>
-      </LinearGradient>
-      <View style={s.cardM}>
-        <Text style={s.ce}>MÜKELLEF</Text>
-        <Text style={s.cn} numberOfLines={1}>{secili.ad}</Text>
-        <Text style={s.cs}>{secili.vkn}{secili.defter ? ` · ${secili.defter}` : ''}</Text>
-      </View>
-    </View>
-  );
+  const mukellefAlt = `${secili.vkn}${secili.defter ? ` · ${secili.defter}` : ''}`;
+  const mukellefeDon = () => { setSecili(null); setYon(null); setBelgeler([]); setSonuc(''); };
 
   /* ─────────────── 2) YÖN ─────────────── */
   if (!yon) {
     return (
-      <SafeAreaView style={s.kok}>
-        {kart}
-        <Text style={s.q}>Belge hangi tarafa işlenecek?</Text>
-        <View style={s.dirs}>
-          <Pressable style={s.dir} onPress={() => setYon('ALIS')}>
-            <LinearGradient colors={['#4dabf7', C.sky]} start={{ x: 0.1, y: 0 }} end={{ x: 0.9, y: 1 }} style={s.dIco}>
-              <Text style={s.dIcoT}>↓</Text>
-            </LinearGradient>
-            <View><Text style={[s.dirT, { color: C.sky }]}>Gider</Text><Text style={s.dirS}>Alış faturası / fiş</Text></View>
-          </Pressable>
-          <Pressable style={s.dir} onPress={() => setYon('SATIS')}>
-            <LinearGradient colors={['#51cf66', C.green]} start={{ x: 0.1, y: 0 }} end={{ x: 0.9, y: 1 }} style={s.dIco}>
-              <Text style={s.dIcoT}>↑</Text>
-            </LinearGradient>
-            <View><Text style={[s.dirT, { color: C.green }]}>Gelir</Text><Text style={s.dirS}>Satış faturası / fiş</Text></View>
-          </Pressable>
-        </View>
-      </SafeAreaView>
+      <View style={s.kok}>
+        <Serit
+          bas={secili.bas} ad={secili.ad} alt={mukellefAlt} hazir={fontHazir}
+          rozet="‹ DEĞİŞTİR" rozetBas={mukellefeDon} avatarBas={mukellefeDon}
+        />
+        <Text style={s.yonBaslik}>Belge türü</Text>
+        <Text style={s.yonAlt}>Gönderilen belgeler bu kuyruğa düşer.</Text>
+        <Pressable style={[s.ykart, s.ygider]} onPress={() => setYon('ALIS')}>
+          <Text style={[s.ykartT, { color: C.rose }]}>Gider (Alış)</Text>
+          <Text style={s.ykartS}>Aldığımız fatura, fiş, gider belgesi</Text>
+        </Pressable>
+        <Pressable style={[s.ykart, s.ygelir]} onPress={() => setYon('SATIS')}>
+          <Text style={[s.ykartT, { color: C.green }]}>Gelir (Satış)</Text>
+          <Text style={s.ykartS}>Kestiğimiz fatura, Z raporu</Text>
+        </Pressable>
+      </View>
     );
   }
 
   /* ─────────────── 3) BELGELER ─────────────── */
-  const yonRenk = yon === 'ALIS' ? C.sky : C.green;
-  const yonBg = yon === 'ALIS' ? C.skyBg : C.greenBg;
-  const yonLine = yon === 'ALIS' ? C.skyLine : C.greenLine;
-
   return (
-    <SafeAreaView style={s.kok}>
-      {kart}
-
-      <View style={s.strip}>
-        <View style={[s.pill, { backgroundColor: yonBg, borderColor: yonLine }]}>
-          <Text style={[s.pillT, { color: yonRenk }]}>{yon === 'ALIS' ? 'Gider · Alış' : 'Gelir · Satış'}</Text>
-        </View>
-        <Pressable onPress={() => { setYon(null); setSonuc(''); }} hitSlop={8}>
-          <Text style={s.chg}>değiştir</Text>
-        </Pressable>
-      </View>
+    <View style={s.kok}>
+      <Serit
+        bas={secili.bas} ad={secili.ad} alt={mukellefAlt} hazir={fontHazir}
+        rozet={yon === 'ALIS' ? 'GİDER' : 'GELİR'}
+        nokta={yon === 'ALIS' ? '#ff8787' : '#69db7c'}
+        rozetBas={() => { setYon(yon === 'ALIS' ? 'SATIS' : 'ALIS'); setSonuc(''); }}
+        avatarBas={mukellefeDon}
+      />
 
       {belgeler.length > 0 && (
-        <>
-          <Pressable style={s.delBar} onPress={seciliSil} disabled={!seciliSayi}>
-            <Text style={[s.delT, !seciliSayi && s.pasifY]}>Seçilenleri Sil</Text>
-          </Pressable>
-          <View style={s.cnt}>
-            <View style={s.cntB}><Text style={s.cntT}>{seciliSayi} / {belgeler.length}</Text></View>
-            <Pressable style={s.all} onPress={tumunuDegistir} hitSlop={8}>
-              {hepsiSecili
-                ? <LinearGradient colors={[C.primary2, C.ink2]} style={s.cbOn}><Text style={s.cbT}>✓</Text></LinearGradient>
-                : <View style={s.cb} />}
-              <Text style={s.allT}>{hepsiSecili ? 'Tüm seçilenleri kaldır' : 'Tümünü seç'}</Text>
+        <View style={s.sayacSatir}>
+          <Text style={s.sayacT}>
+            <Text style={s.sayacKalin}>{belgeler.length} belge</Text> · {seciliSayi} seçili
+          </Text>
+          <View style={s.sayacEylem}>
+            {!!seciliSayi && (
+              <Pressable onPress={seciliSil} hitSlop={8}><Text style={s.silT}>Sil</Text></Pressable>
+            )}
+            <Pressable onPress={tumunuDegistir} hitSlop={8}>
+              <Text style={s.tumT}>{hepsiSecili ? 'Seçimi kaldır' : 'Tümünü seç'}</Text>
             </Pressable>
           </View>
-        </>
+        </View>
       )}
 
       <ScrollView contentContainerStyle={[s.docList, { paddingBottom: 190 + insets.bottom }]}>
         {belgeler.map((b) => (
           <Pressable key={b.anahtar} style={[s.doc, b.secili && s.docOn]} onPress={() => seciliDegistir(b.anahtar)}>
-            {b.secili
-              ? <LinearGradient colors={[C.primary2, C.ink2]} style={s.cbOn}><Text style={s.cbT}>✓</Text></LinearGradient>
-              : <View style={s.cb} />}
             <Image source={{ uri: b.uri }} style={s.thumb} resizeMode="cover" />
             <View style={s.docM}>
               <Text style={s.dn} numberOfLines={1}>{b.ad}</Text>
-              <Text style={s.ds}>
-                {b.oncekiBayt ? <Text style={s.dsEski}>{mb(b.oncekiBayt)}</Text> : null}
-                {b.oncekiBayt ? '  →  ' : ''}
-                <Text style={s.dsYeni}>{mb(b.sonraBayt)}</Text>
-              </Text>
+              <Text style={s.ds}>{mb(b.sonraBayt)}</Text>
+            </View>
+            <View style={[s.tik, b.secili && s.tikOn]}>
+              {b.secili ? <Text style={s.tikT}>✓</Text> : null}
             </View>
           </Pressable>
         ))}
 
         {!belgeler.length && !hazirlaniyor && (
-          <Text style={s.bosluk}>
-            Henüz belge yok.{'\n'}“Belge Tara” ile kamerayı fişe tutun — kenarları kendisi bulur.
-          </Text>
+          <View style={s.bos}>
+            <View style={s.bosIk}><Text style={s.bosIkT}>🧾</Text></View>
+            <Text style={s.bosB}>Henüz belge yok</Text>
+            <Text style={s.bosS}>
+              Fişi düz bir zemine koyun, <Text style={s.bosVurgu}>Belge Tara</Text>'ya basın — kenarları kendisi bulur.
+            </Text>
+          </View>
         )}
         {hazirlaniyor && (
-          <View style={s.orta}><ActivityIndicator color={C.primary} /><Text style={s.bilgi}>Belgeler hazırlanıyor…</Text></View>
+          <View style={s.orta}><ActivityIndicator color={C.teal} /><Text style={s.bilgi}>Belgeler hazırlanıyor…</Text></View>
         )}
         {!!sonuc && <Text style={s.basari}>{sonuc}</Text>}
       </ScrollView>
@@ -589,7 +641,7 @@ export default function TaraEkrani() {
           <Pressable style={s.b2} onPress={dosyaEkle} disabled={hazirlaniyor}><Text style={s.b2T}>Galeri</Text></Pressable>
         </View>
         <Pressable style={[s.b1w, (!seciliSayi || hazirlaniyor) && s.pasif]} onPress={gonder} disabled={!seciliSayi || hazirlaniyor}>
-          <LinearGradient colors={[C.primary2, C.ink2]} start={{ x: 0.1, y: 0 }} end={{ x: 0.9, y: 1 }} style={s.b1}>
+          <LinearGradient colors={[C.n2, C.n3]} start={{ x: 0.1, y: 0 }} end={{ x: 0.9, y: 1 }} style={s.b1}>
             <Text style={s.b1T}>{seciliSayi ? `Gönder (${seciliSayi})` : 'Gönder'}</Text>
           </LinearGradient>
         </Pressable>
@@ -598,7 +650,7 @@ export default function TaraEkrani() {
       <Modal visible={gonderiliyor} transparent animationType="fade">
         <View style={s.veil}>
           <View style={s.vk}>
-            <ActivityIndicator color={C.primary} size="large" />
+            <ActivityIndicator color={C.teal} size="large" />
             <Text style={s.vT}>Belgeleriniz yükleniyor…</Text>
             <Text style={s.vP}>%{ilerleme.toFixed(2).replace('.', ',')}</Text>
             <Text style={s.vAdet}>{basarili + basarisiz} / {toplamGonderim}</Text>
@@ -613,18 +665,19 @@ export default function TaraEkrani() {
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const s = StyleSheet.create({
   kok: { flex: 1, backgroundColor: C.bg },
 
-  /* giriş */
-  hero: { height: 330, justifyContent: 'center', alignItems: 'center' },
+  /* ── giriş ── */
+  hero: { height: 330, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
+  heroIsik: { position: 'absolute', right: -60, top: -70, width: 260, height: 260, borderRadius: 130, backgroundColor: 'rgba(94,234,212,0.16)' },
   heroIn: { alignItems: 'center', justifyContent: 'center', paddingBottom: 46 },
-  tag: { marginTop: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.28)', borderRadius: 999, paddingHorizontal: 15, paddingVertical: 6 },
-  tagT: { fontSize: 10, fontWeight: '800', letterSpacing: 2.2, color: 'rgba(255,255,255,0.68)' },
+  tag: { marginTop: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.32)', borderRadius: 999, paddingHorizontal: 15, paddingVertical: 6 },
+  tagT: { fontSize: 10, fontWeight: '800', letterSpacing: 2.2, color: 'rgba(255,255,255,0.72)' },
   sheet: { flex: 1, backgroundColor: C.white, borderTopLeftRadius: 30, borderTopRightRadius: 30, marginTop: -34 },
   sheetIn: { padding: 24, paddingBottom: 40 },
   shT: { fontSize: 17, fontWeight: '700', color: C.ink, letterSpacing: -0.2 },
@@ -635,125 +688,129 @@ const s = StyleSheet.create({
     paddingHorizontal: 14, paddingVertical: Platform.OS === 'ios' ? 13 : 10, fontSize: 13.5, color: C.text,
   },
   girisHata: { color: C.rose, fontSize: 12.5, marginTop: 12 },
-  btnP: { marginTop: 20, borderRadius: 14, paddingVertical: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: C.ink2 },
+  btnP: { marginTop: 20, borderRadius: 14, paddingVertical: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: C.n2 },
   btnPT: { color: C.white, fontSize: 14.5, fontWeight: '700' },
   gN: { fontSize: 10.5, color: C.faint, marginTop: 14, textAlign: 'center', lineHeight: 15 },
   hatirlaSatir: { flexDirection: 'row', alignItems: 'center', gap: 9, marginTop: 16, paddingVertical: 4 },
   kutucuk: { width: 20, height: 20, borderRadius: 6, borderWidth: 1.5, borderColor: '#cbd5e1', alignItems: 'center', justifyContent: 'center', backgroundColor: C.white },
-  kutucukOn: { backgroundColor: C.primary, borderColor: C.primary },
+  kutucukOn: { backgroundColor: C.teal, borderColor: C.teal },
   kutucukT: { color: C.white, fontSize: 12, fontWeight: '900', lineHeight: 14 },
   hatirlaT: { flex: 1, fontSize: 12.5, color: C.text2 },
 
-  /* üst şerit — marka ORTALI, çıkış sağda sabit */
-  top: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18, paddingTop: 6, paddingBottom: 12 },
-  iq: {
-    position: 'absolute', right: 18, top: 6, width: 32, height: 32, borderRadius: 11,
-    backgroundColor: C.white, borderWidth: 1, borderColor: C.border, alignItems: 'center', justifyContent: 'center',
+  /* ── üst şerit (mükellef + marka + rozet) ── */
+  serit: { paddingHorizontal: 16, paddingBottom: 16, borderBottomLeftRadius: 20, borderBottomRightRadius: 20, overflow: 'hidden' },
+  seritIsik: { position: 'absolute', right: -40, top: -90, width: 200, height: 200, borderRadius: 100, backgroundColor: 'rgba(94,234,212,0.15)' },
+  seritIc: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  sav: {
+    width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.16)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.28)',
   },
-  iqT: { color: C.muted, fontSize: 13 },
-  sep: { height: 1, backgroundColor: C.border, marginHorizontal: 18, marginBottom: 14, opacity: 0.7 },
-
-  pad: { paddingHorizontal: 18 },
-  h1: { fontSize: 21, fontWeight: '800', color: C.ink, letterSpacing: -0.5 },
-  h2: { fontSize: 12.5, color: C.muted, marginTop: 3 },
-
-  srch: {
-    flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 18, marginVertical: 13,
-    backgroundColor: C.white, borderWidth: 1, borderColor: C.border, borderRadius: 14, paddingHorizontal: 14,
+  savT: { color: C.white, fontSize: 13.5, fontWeight: '700' },
+  kim: { flex: 1, minWidth: 0 },
+  kimAd: { color: C.white, fontSize: 14, fontWeight: '700' },
+  kimAlt: { color: 'rgba(255,255,255,0.82)', fontSize: 10.5, marginTop: 2 },
+  sagBlok: { alignItems: 'flex-end', gap: 8 },
+  rozet: {
+    flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 999, paddingHorizontal: 11, paddingVertical: 5,
+    backgroundColor: 'rgba(255,255,255,0.16)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.26)',
   },
-  srchI: { flex: 1, fontSize: 13, color: C.text, paddingVertical: Platform.OS === 'ios' ? 12 : 9 },
-  mag: { width: 13, height: 13, borderWidth: 1.8, borderColor: C.faint, borderRadius: 7 },
+  rozetT: { color: C.white, fontSize: 10, fontWeight: '700', letterSpacing: 0.4 },
+  nokta: { width: 6, height: 6, borderRadius: 3 },
 
-  liste: { paddingHorizontal: 18, paddingBottom: 30, gap: 9 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: C.white, borderWidth: 1, borderColor: C.border, borderRadius: 16, padding: 11 },
-  av: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  avT: { color: C.white, fontSize: 12, fontWeight: '800' },
-  rowM: { flex: 1, minWidth: 0 },
-  rn: { fontSize: 13.5, fontWeight: '600', color: C.text },
-  rv: { fontSize: 11, color: C.muted, marginTop: 2 },
-  chev: { color: '#cbd5e1', fontSize: 16 },
-
-  /* mükellef kartı */
-  card: {
-    flexDirection: 'row', alignItems: 'center', gap: 12, marginHorizontal: 16, marginTop: 6, marginBottom: 14,
-    padding: 14, borderRadius: 19, backgroundColor: C.white, borderWidth: 1, borderColor: C.border, overflow: 'hidden',
+  /* ── mükellef ekranı ── */
+  mserit: { paddingHorizontal: 16, paddingBottom: 18, borderBottomLeftRadius: 20, borderBottomRightRadius: 20, overflow: 'hidden' },
+  mbas: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  mbasSol: { flex: 1, minWidth: 0 },
+  mbasT: { color: C.white, fontSize: 17, fontWeight: '800', letterSpacing: -0.3 },
+  mbasS: { color: 'rgba(255,255,255,0.82)', fontSize: 11, marginTop: 3 },
+  ara: {
+    flexDirection: 'row', alignItems: 'center', gap: 9, marginTop: 13, borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.15)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.24)', paddingHorizontal: 12,
   },
-  cardGlow: { position: 'absolute', right: -40, top: -46, width: 126, height: 126, borderRadius: 63, backgroundColor: 'rgba(18,58,116,0.06)' },
-  bk: { fontSize: 21, color: C.n2 },
-  cav: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  cavT: { color: C.white, fontSize: 14, fontWeight: '800' },
-  cardM: { flex: 1, minWidth: 0 },
-  ce: { fontSize: 9, fontWeight: '800', letterSpacing: 1.3, color: C.faint },
-  cn: { fontSize: 15, fontWeight: '700', color: C.ink, marginTop: 2, letterSpacing: -0.2 },
-  cs: { fontSize: 11, color: C.muted, marginTop: 2 },
-
-  /* yön */
-  q: { fontSize: 12.5, color: C.muted, paddingHorizontal: 20 },
-  dirs: { padding: 16, gap: 14 },
-  dir: {
-    flexDirection: 'row', alignItems: 'center', gap: 15, borderRadius: 20, padding: 20,
-    backgroundColor: C.white, borderWidth: 1, borderColor: C.border,
+  mag: { width: 12, height: 12, borderWidth: 1.6, borderColor: 'rgba(255,255,255,0.7)', borderRadius: 6 },
+  araI: { flex: 1, color: C.white, fontSize: 12.5, paddingVertical: Platform.OS === 'ios' ? 11 : 8 },
+  mliste: { paddingHorizontal: 16, paddingTop: 14, gap: 9 },
+  bkart: {
+    flexDirection: 'row', alignItems: 'center', gap: 11, backgroundColor: C.white, borderRadius: 16, padding: 11,
+    shadowColor: '#0f172a', shadowOpacity: 0.06, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 2,
   },
-  dIco: { width: 50, height: 50, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
-  dIcoT: { color: C.white, fontSize: 22, fontWeight: '700' },
-  dirT: { fontSize: 20, fontWeight: '800', letterSpacing: -0.4 },
-  dirS: { fontSize: 12, color: C.muted, marginTop: 3 },
+  mav: { width: 42, height: 42, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  mavT: { color: C.white, fontSize: 13, fontWeight: '800' },
+  bkartM: { flex: 1, minWidth: 0 },
+  bkAd: { fontSize: 12.5, fontWeight: '700', color: C.ink },
+  bkVkn: { fontSize: 10.5, color: C.faint, marginTop: 3 },
+  tur: { borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4 },
+  tisl: { backgroundColor: '#e6fcf5' },
+  tbil: { backgroundColor: '#fff4e6' },
+  turT: { fontSize: 8.5, fontWeight: '800', letterSpacing: 0.5 },
+  turTisl: { color: '#0b7285' },
+  turTbil: { color: '#b35309' },
 
-  /* liste üstü */
-  strip: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 18, paddingBottom: 11 },
-  pill: { borderRadius: 999, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 5 },
-  pillT: { fontSize: 11, fontWeight: '700' },
-  chg: { fontSize: 11, fontWeight: '600', color: C.ink2 },
-  delBar: { marginHorizontal: 18, marginBottom: 10, paddingVertical: 12, borderRadius: 14, alignItems: 'center', backgroundColor: C.roseBg, borderWidth: 1, borderColor: C.roseLine },
-  delT: { color: C.rose, fontSize: 13, fontWeight: '700' },
-  pasifY: { opacity: 0.4 },
-  cnt: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, paddingBottom: 10 },
-  cntB: { backgroundColor: C.white, borderWidth: 1, borderColor: C.border, borderRadius: 11, paddingHorizontal: 14, paddingVertical: 6 },
-  cntT: { fontSize: 13.5, fontWeight: '800', color: C.ink },
-  all: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  allT: { fontSize: 11.5, color: C.muted },
-  cb: { width: 21, height: 21, borderRadius: 7, borderWidth: 1.6, borderColor: '#d3dbe6', backgroundColor: C.white },
-  cbOn: { width: 21, height: 21, borderRadius: 7, alignItems: 'center', justifyContent: 'center' },
-  cbT: { color: C.white, fontSize: 12, fontWeight: '900' },
+  /* ── yön ── */
+  yonBaslik: { marginTop: 20, marginHorizontal: 16, fontSize: 18, fontWeight: '800', color: C.ink, letterSpacing: -0.3 },
+  yonAlt: { marginHorizontal: 16, fontSize: 12, color: C.muted, marginTop: 3 },
+  ykart: { marginHorizontal: 16, marginTop: 12, borderRadius: 16, padding: 16, borderWidth: 1.5 },
+  ygider: { backgroundColor: C.roseBg, borderColor: C.roseLine },
+  ygelir: { backgroundColor: C.greenBg, borderColor: C.greenLine },
+  ykartT: { fontSize: 15.5, fontWeight: '800' },
+  ykartS: { fontSize: 11.5, color: C.text2, marginTop: 4 },
 
-  /* belgeler */
-  docList: { paddingHorizontal: 18, paddingBottom: 130, gap: 9 },
-  doc: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: C.white, borderWidth: 1, borderColor: C.border, borderRadius: 16, padding: 10 },
-  docOn: { borderColor: C.pline, backgroundColor: '#fbfdff' },
-  thumb: { width: 42, height: 55, borderRadius: 9, backgroundColor: C.line, borderWidth: 1, borderColor: C.line },
+  /* ── belge listesi ── */
+  sayacSatir: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 15, paddingBottom: 9 },
+  sayacT: { fontSize: 11.5, color: C.text2 },
+  sayacKalin: { color: C.ink, fontWeight: '700' },
+  sayacEylem: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  silT: { fontSize: 11.5, fontWeight: '700', color: C.rose },
+  tumT: { fontSize: 11.5, fontWeight: '700', color: C.teal },
+  docList: { paddingHorizontal: 16, gap: 9 },
+  doc: {
+    flexDirection: 'row', alignItems: 'center', gap: 11, backgroundColor: C.white, borderRadius: 14, padding: 9,
+    borderWidth: 2, borderColor: 'transparent',
+    shadowColor: '#0f172a', shadowOpacity: 0.05, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 1,
+  },
+  docOn: { borderColor: C.teal },
+  thumb: { width: 46, height: 54, borderRadius: 9, backgroundColor: C.line },
   docM: { flex: 1, minWidth: 0 },
-  dn: { fontSize: 12, fontWeight: '600', color: C.text },
-  ds: { fontSize: 10.5, color: C.muted, marginTop: 3 },
-  dsEski: { color: C.faint, textDecorationLine: 'line-through' },
-  dsYeni: { color: C.green, fontWeight: '700' },
+  dn: { fontSize: 12, fontWeight: '700', color: C.ink },
+  ds: { fontSize: 10.5, color: C.faint, marginTop: 3 },
+  tik: { width: 20, height: 20, borderRadius: 10, borderWidth: 1.5, borderColor: '#cbd5e1', alignItems: 'center', justifyContent: 'center' },
+  tikOn: { backgroundColor: C.teal, borderColor: C.teal },
+  tikT: { color: C.white, fontSize: 11, fontWeight: '900' },
 
-  /* alt bar */
+  /* boş durum */
+  bos: { alignItems: 'center', justifyContent: 'center', paddingTop: 70, paddingHorizontal: 34, gap: 11 },
+  bosIk: { width: 64, height: 64, borderRadius: 20, backgroundColor: C.white, borderWidth: 1.5, borderColor: '#cbd5e1', borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center' },
+  bosIkT: { fontSize: 25 },
+  bosB: { fontSize: 14, fontWeight: '700', color: C.ink },
+  bosS: { fontSize: 11.5, color: C.faint, textAlign: 'center', lineHeight: 19 },
+  bosVurgu: { color: C.n2, fontWeight: '700' },
+
+  /* ── alt bar ── */
   bar: {
     position: 'absolute', left: 0, right: 0, bottom: 0, gap: 9,
-    paddingHorizontal: 16, paddingTop: 14, paddingBottom: 17, backgroundColor: C.white, borderTopWidth: 1, borderTopColor: C.border,
+    paddingHorizontal: 16, paddingTop: 14, backgroundColor: C.white, borderTopWidth: 1, borderTopColor: C.border,
   },
   barUst: { flexDirection: 'row', gap: 9 },
-  b2: { flex: 1, borderWidth: 1, borderColor: '#dde4ee', borderRadius: 14, paddingVertical: 13, alignItems: 'center', backgroundColor: C.white },
-  b2T: { color: C.text, fontSize: 12, fontWeight: '600' },
-  b1w: { flex: 1.3, borderRadius: 14, overflow: 'hidden' },
-  b1: { paddingVertical: 13, alignItems: 'center', justifyContent: 'center' },
-  b1T: { color: C.white, fontSize: 12, fontWeight: '700' },
+  b2: { flex: 1, borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 13, paddingVertical: 12, alignItems: 'center', backgroundColor: '#f6f8fc' },
+  b2T: { color: C.text, fontSize: 11.5, fontWeight: '600' },
+  b1w: { borderRadius: 14, overflow: 'hidden' },
+  b1: { paddingVertical: 14, alignItems: 'center', justifyContent: 'center' },
+  b1T: { color: C.white, fontSize: 14, fontWeight: '700' },
   pasif: { opacity: 0.45 },
 
-  /* yükleme */
-  veil: { flex: 1, backgroundColor: 'rgba(9,17,31,0.52)', alignItems: 'center', justifyContent: 'center', padding: 28 },
-  vk: { width: '100%', borderRadius: 24, backgroundColor: C.white, padding: 28, alignItems: 'center' },
-  vT: { fontSize: 15.5, fontWeight: '700', color: C.ink, marginTop: 14 },
-  vP: { fontSize: 27, fontWeight: '800', color: C.ink2, marginTop: 8, letterSpacing: -0.8 },
-  vAdet: { fontSize: 11.5, color: C.faint, marginTop: 2 },
-  vS: { flexDirection: 'row', gap: 9, marginTop: 14 },
-  vChip: { borderRadius: 999, borderWidth: 1, paddingHorizontal: 13, paddingVertical: 6 },
-  vChipT: { fontSize: 11.5, fontWeight: '700' },
+  /* ── yükleme ── */
+  veil: { flex: 1, backgroundColor: 'rgba(9,20,40,0.55)', alignItems: 'center', justifyContent: 'center', padding: 28 },
+  vk: { width: '100%', borderRadius: 22, backgroundColor: C.white, padding: 26, alignItems: 'center' },
+  vT: { fontSize: 14.5, fontWeight: '700', color: C.ink, marginTop: 14 },
+  vP: { fontSize: 30, fontWeight: '800', color: C.n2, marginTop: 8, letterSpacing: -1 },
+  vAdet: { fontSize: 11, color: C.muted, marginTop: 2 },
+  vS: { flexDirection: 'row', gap: 7, marginTop: 13 },
+  vChip: { borderRadius: 999, borderWidth: 1, paddingHorizontal: 11, paddingVertical: 5 },
+  vChipT: { fontSize: 10.5, fontWeight: '700' },
 
-  /* ortak */
+  /* ── ortak ── */
   orta: { alignItems: 'center', justifyContent: 'center', gap: 12, padding: 28 },
-  bilgi: { color: C.muted, fontSize: 14, textAlign: 'center' },
-  bosluk: { color: C.muted, fontSize: 13.5, textAlign: 'center', lineHeight: 21, paddingTop: 40 },
+  bilgi: { color: C.muted, fontSize: 13.5, textAlign: 'center' },
   hataY: { color: C.rose, fontSize: 14, textAlign: 'center' },
-  basari: { color: C.green, fontSize: 13.5, fontWeight: '600', marginTop: 10, textAlign: 'center' },
+  basari: { color: C.green, fontSize: 13, fontWeight: '600', marginTop: 12, textAlign: 'center' },
 });
