@@ -103,17 +103,32 @@ function boyut(uri: string): number {
   try { return Number(new File(uri).size) || 0; } catch { return 0; }
 }
 
+/** Ölçü (küçük görüntüyü BÜYÜTMEMEK için) — okunamazsa 0 döner, o zaman yalnız sıkıştırılır. */
+async function olcu(uri: string): Promise<number> {
+  return new Promise((coz) => {
+    try { Image.getSize(uri, (g) => coz(g || 0), () => coz(0)); } catch { coz(0); }
+  });
+}
+
 /**
- * Yüklemeden önce küçült. Fiş fotoğrafları 3-5 MB geliyor; 1600 px genişlik OCR için fazlasıyla
- * yeterli, kalite 0.7 ile dosya ~%80 küçülüyor. Küçültme olmazsa ORİJİNAL gönderilir —
- * belge kaybetmektense büyük göndermek yeğdir.
+ * Yüklemeden önce küçült.
+ * 2026-09-24 (Muzaffer Bey: "fiş numarasını okumamış"): eski ayar 1600 px / kalite 0,7 idi;
+ * fişin KÜÇÜK yazıları (fiş no, saat, VKN) bu ölçekte ve JPEG bozulmasında kayboluyordu.
+ * Yeni ayar 2400 px / 0,9 — dosya ~1,5 MB'a çıkar (yükleme hâlâ hızlı), OCR belirgin kazanır.
+ * Görüntü zaten 2400'den darsa BÜYÜTÜLMEZ (büyütmek detay katmaz, boşuna bayt).
+ * Küçültme başarısız olursa ORİJİNAL gönderilir — belge kaybetmektense büyük göndermek yeğdir.
  */
+const HEDEF_GENISLIK = 2400;
+const JPEG_KALITE = 0.9;
+
 async function hazirla(uri: string, sira: number): Promise<Belge> {
   const oncekiBayt = boyut(uri);
   let sonUri = uri;
   try {
-    const r = await ImageManipulator.manipulateAsync(uri, [{ resize: { width: 1600 } }], {
-      compress: 0.7, format: ImageManipulator.SaveFormat.JPEG,
+    const genislik = await olcu(uri);
+    const islemler = genislik > HEDEF_GENISLIK ? [{ resize: { width: HEDEF_GENISLIK } }] : [];
+    const r = await ImageManipulator.manipulateAsync(uri, islemler, {
+      compress: JPEG_KALITE, format: ImageManipulator.SaveFormat.JPEG,
     });
     if (r?.uri) sonUri = r.uri;
   } catch { /* orijinali gönder */ }
@@ -277,6 +292,21 @@ export default function TaraEkrani() {
       });
       await ekle(scannedImages || []);
     } catch (e: any) { Alert.alert('Tarama açılamadı', String(e?.message || e)); }
+  }
+
+  /**
+   * HAM KAMERA (2026-09-24, Muzaffer Bey: "tarama çok koyu, fiş numarasını okumamış").
+   * "Belge Tara" Android'de ML Kit tarayıcıyı açar; o da belgeyi temizleme filtresinden geçirip
+   * kontrastı sonuna kadar açıyor — düz kağıtta iyi, SOLUK TERMAL FİŞTE küçük yazıları kırıyor.
+   * Bu yol filtreye hiç girmez: ham renkli fotoğraf → OCR en çok bundan okuyor.
+   */
+  async function fotografCek() {
+    try {
+      const izin = await ImagePicker.requestCameraPermissionsAsync();
+      if (!izin.granted) { Alert.alert('İzin gerekli', 'Fiş fotoğrafı çekmek için kamera izni verin.'); return; }
+      const r = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 1, allowsEditing: false, exif: false });
+      if (!r.canceled) await ekle(r.assets.map((a) => a.uri));
+    } catch (e: any) { Alert.alert('Kamera açılamadı', String(e?.message || e)); }
   }
 
   async function dosyaEkle() {
@@ -521,7 +551,7 @@ export default function TaraEkrani() {
         </>
       )}
 
-      <ScrollView contentContainerStyle={[s.docList, { paddingBottom: 130 + insets.bottom }]}>
+      <ScrollView contentContainerStyle={[s.docList, { paddingBottom: 190 + insets.bottom }]}>
         {belgeler.map((b) => (
           <Pressable key={b.anahtar} style={[s.doc, b.secili && s.docOn]} onPress={() => seciliDegistir(b.anahtar)}>
             {b.secili
@@ -550,9 +580,14 @@ export default function TaraEkrani() {
         {!!sonuc && <Text style={s.basari}>{sonuc}</Text>}
       </ScrollView>
 
+      {/* İKİ SATIRLI ALT BAR (2026-09-24): üstte üç ekleme yolu, altta tam genişlik Gönder.
+          "Fotoğraf" = ML Kit'e hiç girmeyen ham kamera (filtre yok) — soluk termal fişte en temiz sonuç. */}
       <View style={[s.bar, { paddingBottom: 17 + insets.bottom }]}>
-        <Pressable style={s.b2} onPress={dosyaEkle} disabled={hazirlaniyor}><Text style={s.b2T}>Dosya Ekle</Text></Pressable>
-        <Pressable style={s.b2} onPress={tara} disabled={hazirlaniyor}><Text style={s.b2T}>Belge Tara</Text></Pressable>
+        <View style={s.barUst}>
+          <Pressable style={s.b2} onPress={fotografCek} disabled={hazirlaniyor}><Text style={s.b2T}>📷 Fotoğraf</Text></Pressable>
+          <Pressable style={s.b2} onPress={tara} disabled={hazirlaniyor}><Text style={s.b2T}>Belge Tara</Text></Pressable>
+          <Pressable style={s.b2} onPress={dosyaEkle} disabled={hazirlaniyor}><Text style={s.b2T}>Galeri</Text></Pressable>
+        </View>
         <Pressable style={[s.b1w, (!seciliSayi || hazirlaniyor) && s.pasif]} onPress={gonder} disabled={!seciliSayi || hazirlaniyor}>
           <LinearGradient colors={[C.primary2, C.ink2]} start={{ x: 0.1, y: 0 }} end={{ x: 0.9, y: 1 }} style={s.b1}>
             <Text style={s.b1T}>{seciliSayi ? `Gönder (${seciliSayi})` : 'Gönder'}</Text>
@@ -694,9 +729,10 @@ const s = StyleSheet.create({
 
   /* alt bar */
   bar: {
-    position: 'absolute', left: 0, right: 0, bottom: 0, flexDirection: 'row', gap: 9,
+    position: 'absolute', left: 0, right: 0, bottom: 0, gap: 9,
     paddingHorizontal: 16, paddingTop: 14, paddingBottom: 17, backgroundColor: C.white, borderTopWidth: 1, borderTopColor: C.border,
   },
+  barUst: { flexDirection: 'row', gap: 9 },
   b2: { flex: 1, borderWidth: 1, borderColor: '#dde4ee', borderRadius: 14, paddingVertical: 13, alignItems: 'center', backgroundColor: C.white },
   b2T: { color: C.text, fontSize: 12, fontWeight: '600' },
   b1w: { flex: 1.3, borderRadius: 14, overflow: 'hidden' },
