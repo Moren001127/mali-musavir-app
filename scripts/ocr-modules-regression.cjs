@@ -215,7 +215,19 @@ const vknVdText = 'ARS OTOMOBIL YEDEK PARÇA\nSAN.VE TIC.LTD.STI\nIKITELI VD:080
 eq(vendorParser.extractSaticiVkn(vknVdText, foldTr), '0800371588', 'vendor VKN "VD:" etiketi (IKITELI TEL-tuzagi)');
 const vknTelText = 'ABC GIDA\nTEL:02126719801\nSAYIN MUSTERI';
 eq(vendorParser.extractSaticiVkn(vknTelText, foldTr), null, 'vendor telefon satiri hala VKN sanilmaz');
-ok('vendor.ts unvan blogu 2026-09-25 (10 assertion)');
+// OKUMA ANI KAPISI (2026-09-25): supheli unvan sessizce kaydedilmesin.
+eq(vendorParser.saticiUnvaniSupheli('K.SINAN MERKEZ MAH.', foldTr), 'adres', 'supheli: adres satiri');
+eq(vendorParser.saticiUnvaniSupheli('LTD.STI.FEVZI CAKMAK MH.', foldTr), 'adres', 'supheli: adres + ek karma');
+eq(vendorParser.saticiUnvaniSupheli('VE GIDA PAZ.SAN.VE TIC.LTD.STI.', foldTr), 'ek-ile-basliyor', 'supheli: ust satir atlanmis');
+eq(vendorParser.saticiUnvaniSupheli('Bakanlar', foldTr), 'tek-kelime', 'supheli: tek kelime slogan/cop');
+eq(vendorParser.saticiUnvaniSupheli('', foldTr), 'bos', 'supheli: bos');
+eq(vendorParser.saticiUnvaniSupheli('AB', foldTr), 'cok-kisa', 'supheli: cok kisa');
+// SAGLAM olanlar yanlis alarm URETMEMELI:
+eq(vendorParser.saticiUnvaniSupheli('OTO ILKER ILKER ONER', foldTr), null, 'saglam: sahis isletmesi');
+eq(vendorParser.saticiUnvaniSupheli('HIDAYETOTO YEDEK PARCA IC VE DIS TICARET A.S.', foldTr), null, 'saglam: tam unvan');
+eq(vendorParser.saticiUnvaniSupheli('ZINGIL AKARYAKIT', foldTr), null, 'saglam: kisa ama iki kelime');
+eq(vendorParser.saticiUnvaniSupheli('TOPCUOGLU LTD.STI.', foldTr), null, 'saglam: ad + ek');
+ok('vendor.ts unvan blogu + supheli kapisi 2026-09-25 (20 assertion)');
 
 // ─── text-classifiers.ts ───
 eq(textClassifiers.isLikelyStandaloneTaxRate('20', foldTr), true, 'classifier rate 20');

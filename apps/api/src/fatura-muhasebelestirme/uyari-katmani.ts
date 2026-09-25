@@ -62,6 +62,8 @@ export const UYARI_KOD = {
   HAFIZA_CELISKI: 'HAFIZA_CELISKI',
   /** Görselden makul tarih okunamadı; Mihsap döneminin ilk günü yer tutucu yazıldı (2026-09-15). */
   TARIH_BELIRSIZ: 'TARIH_BELIRSIZ',
+  /** Firma adı yerine adres satırı / yarım ünvan okunmuş ve cari defterinden düzeltilememiş (2026-09-25). */
+  SATICI_ADI_SUPHELI: 'SATICI_ADI_SUPHELI',
 } as const;
 
 export function seviyeToSiddet(s: UyariSeviye): UyariSiddet {
@@ -168,6 +170,10 @@ export function dogrulamaUyarilari(issues: Array<{ code: string; severity: strin
       case 'RETURN_NEEDS_REVERSAL':
       case 'RETURN_DIRECTION_REVERSED':
         ekle(UYARI_KOD.IADE, sev, 'İade belgesi', msg, 'Ters kayıt sistemce otomatik kurulur; hâlâ görünüyorsa belge onaylı/Luca\'da olabilir — geri alıp yeniden doğrulayın ya da satırları editörde düzeltin.');
+        break;
+      case 'SATICI_ADI_SUPHELI':
+        ekle(UYARI_KOD.SATICI_ADI_SUPHELI, 'uyari', 'Firma adı şüpheli okundu', msg,
+          'Belgenin görselini açıp firma adını karşılaştırın; yanlışsa editörden düzeltin. Doğru ad bir kez girilince aynı VKN\'nin sonraki belgeleri cari defterinden otomatik doğru gelir.');
         break;
       case 'DOCUMENT_CANCELLED':
         ekle(UYARI_KOD.IPTAL, 'engel', 'İptal / taslak belge', msg, 'Belge muhasebeleştirilmez; yanlışsa belge durumunu düzeltin.');

@@ -4879,6 +4879,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       }, documentId);
 
       const duplicateOfId = duplicate?.duplicateOfId || existing.duplicateOfId || null;
+      // OKUMA ANI KAPISI (2026-09-25): ünvanı yazmadan önce denetle; şüpheliyse cari defterinden
+      // düzelt, düzeltilemezse işaretle → belge "Eşleşti ✓" yerine uyarıyla gelir.
+      const unvanKapi = isSale
+        ? { ad: null as string | null, supheli: null as string | null }
+        : await this.saticiUnvaniTazele(tenantId, ocrResult.saticiVkn, ocrResult.satici);
       // K2: güven skoru "doluluk" ölçüyor — yüksek olsa bile İÇERİK şüpheliyse (validationScore
       // düşük ya da OCR sorun bildirdiyse) SUCCESS sayma, insan kontrolüne (NEEDS_REVIEW) düşür.
       const contentOk = (ocrResult.validationScore == null || ocrResult.validationScore >= 0.7) && !(ocrResult.validationIssues?.length);
@@ -4913,13 +4918,18 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             // v2.3: SATIS belgesinde OCR'in okudugu taraf bizim mukellef olur —
             // satici alanlarina yazip mukellefi "satici" gibi gostermeyelim.
             sellerVkn: isSale ? null : (ocrResult.saticiVkn || null),
-            vendorName: isSale ? null : (ocrResult.satici || null),
+            vendorName: isSale ? null : unvanKapi.ad,
             totalAmount: money(ocrResult.totalTutari),
             ocrStatus,
             ocrEngine: ocrResult.engine || null,
             ocrRawText: ocrResult.rawText || null,
             ocrConfidence: ocrResult.confidence ?? null,
-            ocrData: { ...(ocrResult as any), ...(ettn ? { ettn } : {}) },
+            ocrData: {
+              ...(ocrResult as any),
+              ...(ettn ? { ettn } : {}),
+              ...(unvanKapi.ad ? { satici: unvanKapi.ad } : {}),
+              saticiAdiSupheli: unvanKapi.supheli ? { neden: unvanKapi.supheli, okunan: ocrResult.satici || null } : null,
+            },
           },
         });
       });
@@ -7800,6 +7810,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       belgeDurumu: ocrData?.belgeDurumu,
       saglayiciIsareti: ocrData?.saglayiciIsareti?.not ? String(ocrData.saglayiciIsareti.not) : null,
       faaliyetUyumsuz: ocrData?.faaliyetUyumsuz?.not ? String(ocrData.faaliyetUyumsuz.not) : null,
+      saticiAdiSupheli: ocrData?.saticiAdiSupheli?.neden ? ocrData.saticiAdiSupheli : null,
       stopajTutari: this.numFromOcr(ocrData?.stopajTutari) || 0,
       isletme: isIsletmeDoc,
     });
@@ -15461,6 +15472,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     saglayiciIsareti?: string | null;
     /** İçerik mükellefin faaliyetine yabancı (ocrData.faaliyetUyumsuz.not) → ENGEL; kullanıcı elle hesap seçince kalkar (2026-09-15). */
     faaliyetUyumsuz?: string | null;
+    /** Satıcı ünvanı şüpheli okunmuş (ocrData.saticiAdiSupheli.neden: adres|ek-ile-basliyor|tek-kelime|cok-kisa|bos)
+     *  ve cari defterinden de düzeltilememiş → UYARI. Sahip ünvanı düzeltince kalkar (2026-09-25). */
+    saticiAdiSupheli?: { neden?: string; okunan?: string | null } | null;
     /** SMM gelir vergisi stopajı (alışta ödenecek = brüt + KDV − stopaj). */
     stopajTutari?: any;
     /** Faz 2 — demirbaş sahip kararı (ocrData.demirbasKarar.karar): elle_islendi | yine_de_isle | demirbas_degil | null. */
@@ -15647,6 +15661,24 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // ── 3d) ENTEGRATOR_ISARETI — sağlayıcı listesinde metinsiz iptal/itiraz bayrağı (uyarı; sahip karar verir).
     if (opts.saglayiciIsareti) {
       issues.push({ code: 'ENTEGRATOR_ISARETI', severity: 'WARNING', message: opts.saglayiciIsareti });
+    }
+
+    // ── 3f) SATICI_ADI_SUPHELI (2026-09-25) — firma adı olarak adres satırı / yarım ünvan / tek
+    //   kelime çöp okunmuş ve cari defterinden de düzeltilememiş. Bu hata eskiden SESSİZDİ:
+    //   84 belgede firma adı yerine adres yazılıydı ve hepsi "Eşleşti ✓" görünüyordu.
+    if (opts.saticiAdiSupheli?.neden) {
+      const neden = String(opts.saticiAdiSupheli.neden);
+      const okunan = String(opts.saticiAdiSupheli.okunan || '').trim();
+      const aciklama = neden === 'adres' ? 'Firma adı olarak ADRES satırı okunmuş'
+        : neden === 'ek-ile-basliyor' ? 'Ünvanın ilk satırı atlanmış görünüyor (şirket ekiyle başlıyor)'
+        : neden === 'tek-kelime' ? 'Firma adı tek kelime — slogan ya da okuma parçası olabilir'
+        : neden === 'cok-kisa' ? 'Firma adı çok kısa'
+        : 'Firma adı okunamamış';
+      issues.push({
+        code: 'SATICI_ADI_SUPHELI',
+        severity: 'WARNING',
+        message: `${aciklama}${okunan ? `: "${okunan}"` : ''}.`,
+      });
     }
 
     // ── 4) OWNERSHIP_MISMATCH — VKN/TC sahiplik kontrolü
@@ -15979,6 +16011,52 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     }
 
     return { ok: true, dryRun: !!opts.dryRun, scanned, changed, samples };
+  }
+
+  /**
+   * OKUMA ANI KAPISI (2026-09-25) — satıcı ünvanını yazmadan önce denetler, gerekirse
+   * CARİ DEFTERİNDEN düzeltir, düzeltemezse ŞÜPHELİ işaretler (belge uyarıyla gelir).
+   *
+   * NEDEN: ünvan hatası 2026-09-24'te kısmen fark edilip yamalanmıştı ama yama yetersizdi,
+   * eski kayıtlar düzeltilmedi ve sistem HİÇ SES ÇIKARMADI — 84 belgede firma adı yerine adres
+   * yazılıydı, hepsi "Eşleşti ✓" görünüyordu. Sahibi gözüyle görene kadar kimse fark etmedi.
+   *
+   * VKN dayanağı: 10-11 hane, etiketli yazılır ("VD: 0800371588") — ünvandan çok daha güvenilir
+   * okunur. Defterde o VKN'nin sağlam ünvanı varsa OCR'ın bozuk okumasına mahkûm değiliz.
+   *
+   * Karşılıklı öğrenme: okuma sağlam ama defter boş/şüpheliyse defter güncellenir — aynı
+   * satıcının SONRAKİ belgeleri ilk belgeden öğrenilen adı kullanır. UBL kaynaklı (e-Fatura
+   * XML'inden gelen resmî) kayıt EZİLMEZ.
+   */
+  private async saticiUnvaniTazele(
+    tenantId: string, vkn: string | null | undefined, okunanAd: string | null | undefined,
+  ): Promise<{ ad: string | null; supheli: string | null; kaynak: 'okuma' | 'cari-defteri' }> {
+    const okunan = String(okunanAd || '').replace(/\s+/g, ' ').trim() || null;
+    const okunanSupheli = this.ocr.saticiUnvaniSupheliMi(okunan);
+    const no = String(vkn || '').replace(/\D/g, '');
+    if (no.length !== 10 && no.length !== 11) return { ad: okunan, supheli: okunanSupheli, kaynak: 'okuma' };
+
+    const defter = await this.vendorMemory.cariAra(tenantId, no).catch(() => null);
+    const defterAdi = String(defter?.unvan || '').replace(/\s+/g, ' ').trim();
+    const defterSupheli = defterAdi ? this.ocr.saticiUnvaniSupheliMi(defterAdi) : 'bos';
+
+    // 1) Okuma şüpheli, defter sağlam → defterdeki ünvanı kullan.
+    if (okunanSupheli && !defterSupheli) {
+      this.logger.log(`[UNVAN-DEFTER] VKN ${no}: okuma şüpheli (${okunanSupheli}) → cari defterinden "${defterAdi}"`);
+      return { ad: defterAdi, supheli: null, kaynak: 'cari-defteri' };
+    }
+    // 2) Okuma sağlam, defter boş/şüpheli → deftere öğret (UBL kaydı korunur).
+    if (!okunanSupheli && defterSupheli && okunan) {
+      if (!defter) {
+        await this.vendorMemory.cariOgren(tenantId, { kimlikNo: no, unvan: okunan }, 'belge').catch(() => null);
+      } else if (defter.kaynak !== 'ubl') {
+        await (this.prisma as any).vendorMemory.update({
+          where: { tenantId_firmaKimlikNo: { tenantId, firmaKimlikNo: no } },
+          data: { firmaUnvan: okunan },
+        }).catch(() => null);
+      }
+    }
+    return { ad: okunan, supheli: okunanSupheli, kaynak: 'okuma' };
   }
 
   /**
@@ -17565,6 +17643,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         isFixedAsset: faDetForUyari.is,
       });
       const tarihOkunan = this.makulTarih(parseDate(parsed.tarih));
+      // OKUMA ANI KAPISI (2026-09-25) — yükleme yoluyla simetrik: ünvan şüpheliyse cari
+      // defterinden düzeltilir, düzeltilemezse işaretlenir (belge uyarıyla gelir).
+      const unvanKapi = isSale || !counterName
+        ? { ad: counterName || null, supheli: null as string | null }
+        : await this.saticiUnvaniTazele(d.tenantId, aiSaticiVkn || d.sellerVkn, counterName);
       // Mevcut tarih dönem YER TUTUCUSU ise (önceki okuma) makul sayılmaz → daha iyi kaynak (görsel/Mihsap) onu değiştirebilsin.
       const mevcutYerTutucu = (d.ocrData as any)?.tarihKaynak === 'mihsap-donem';
       const mevcutMakul = mevcutYerTutucu ? null : this.makulTarih(d.faturaTarihi ? new Date(d.faturaTarihi) : null);
@@ -17585,10 +17668,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           ...(vknOk(aiSaticiVkn) ? { sellerVkn: aiSaticiVkn } : {}),
           ...(vknOk(aiAliciVkn) ? { buyerVkn: aiAliciVkn } : {}),
           // Karşı taraf adını DOĞRU tarafa yaz (cari eşleştirmesi buna dayanır).
-          ...(counterName ? (isSale ? { customerName: counterName } : { vendorName: counterName }) : {}),
+          ...(counterName ? (isSale ? { customerName: counterName } : { vendorName: unvanKapi.ad || counterName }) : {}),
           status: 'NEEDS_REVIEW',
           ocrEngine: 'max-vision',
-          ocrData: { ...((d.ocrData as any) || {}), matrah, kdvTutari: kdv, kdvOrani: breakdown[0].rate, kdvBreakdown: breakdown.map((b: any) => ({ oran: b.rate, matrah: b.base, tutar: b.amount })), matrahKategori: typeof parsed.kategori === 'string' ? parsed.kategori : undefined, giderTuru: typeof parsed.giderTuru === 'string' ? parsed.giderTuru.slice(0, 40) : undefined, muhasebeNeden: this.cleanBaseNeden(parsed.muhasebeNeden).slice(0, 300) || undefined, aiYorum: this.cleanBaseNeden(parsed.muhasebeNeden).slice(0, 400) || undefined, aiMatrahKodu: (() => {
+          ocrData: { ...((d.ocrData as any) || {}), saticiAdiSupheli: unvanKapi.supheli ? { neden: unvanKapi.supheli, okunan: counterName } : null, matrah, kdvTutari: kdv, kdvOrani: breakdown[0].rate, kdvBreakdown: breakdown.map((b: any) => ({ oran: b.rate, matrah: b.base, tutar: b.amount })), matrahKategori: typeof parsed.kategori === 'string' ? parsed.kategori : undefined, giderTuru: typeof parsed.giderTuru === 'string' ? parsed.giderTuru.slice(0, 40) : undefined, muhasebeNeden: this.cleanBaseNeden(parsed.muhasebeNeden).slice(0, 300) || undefined, aiYorum: this.cleanBaseNeden(parsed.muhasebeNeden).slice(0, 400) || undefined, aiMatrahKodu: (() => {
                 const aiKod = typeof parsed.matrahHesapKodu === 'string' ? String(parsed.matrahHesapKodu).trim() : '';
                 // GÖREV B: öğrenilmiş kod (hızlı yol) aday listesi tavanının dışında kalabilir — plan yaprağı saf modülde doğrulandı.
                 // SATICI HAFIZASI (2026-09-15): hafıza kodu da aday tavanı dışında kalabilir — güncel plan yaprağı + mevzuat saticiHafizasiDene'de doğrulandı.

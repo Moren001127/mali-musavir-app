@@ -13,6 +13,7 @@ import { extractBelgeNo as extractBelgeNoPure, isRandomDbId, isJenerikDosyaAdi }
 import {
   extractSaticiVkn as extractSaticiVknPure,
   extractSaticiUnvan as extractSaticiUnvanPure,
+  saticiUnvaniSupheli as saticiUnvaniSupheliPure,
 } from './ocr/parsers/vendor';
 import {
   isLikelyStandaloneTaxRate as isLikelyStandaloneTaxRatePure,
@@ -1449,6 +1450,14 @@ export class OcrService {
    */
   extractSaticiUnvanFromRawText(rawText: string): string | null {
     return extractSaticiUnvanPure(rawText, (s) => this.foldTurkishAscii(s));
+  }
+
+  /**
+   * Okunan satici unvani SUPHELI mi (adres satiri / ust satiri atlanmis / tek kelime cop)?
+   * Sebebi doner, saglamsa null. Okuma anindaki kapinin olcutu — bkz. saticiUnvaniTazele.
+   */
+  saticiUnvaniSupheliMi(ad: string | null | undefined): string | null {
+    return saticiUnvaniSupheliPure(ad, (s) => this.foldTurkishAscii(s));
   }
 
   /**

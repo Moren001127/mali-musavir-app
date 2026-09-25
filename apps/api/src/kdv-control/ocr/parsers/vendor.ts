@@ -148,3 +148,38 @@ export function extractSaticiUnvan(text: string, foldFn: FoldFn): string | null 
   if (!parcalar.length) return null;
   return parcalar.join(' ').replace(/\s{2,}/g, ' ').trim().slice(0, 200) || null;
 }
+
+/**
+ * Okunan satici unvani SUPHELI mi? Sebebi doner, saglamsa null (2026-09-25).
+ *
+ * NEDEN (gercek olay): unvan hatasi 2026-09-24'te kismen fark edilip yamalandi ama yama
+ * yetersizdi, eski kayitlar duzeltilmedi ve SISTEM HIC SES CIKARMADI — belgeler "Eslesti"
+ * gorunuyordu. 84 belgede firma adi yerine adres yaziliydi ve bunu ancak sahip gozuyle gordu.
+ * Bu fonksiyon okuma anindaki kapinin olcutudur: supheliyse belge uyari ile gelir
+ * (ve mumkunse cari defterinden duzeltilir).
+ */
+export function saticiUnvaniSupheli(ad: string | null | undefined, foldFn: FoldFn): string | null {
+  const t = String(ad || '').replace(/\s+/g, ' ').trim();
+  if (!t) return 'bos';
+  const f = foldFn(t);
+  // ADRES olcutu burada DAR tutulur — blok kesmedeki geniş kalıp yanlış alarm veriyordu
+  // (canlı ölçüm: "ŞOK MARKETLER T.A.Ş." → fold "SOK" = SOKAK sanılıyordu; "TÜRMATSAN ORGANİZE
+  // MATBAACILIK ... ŞİRKETİ" → "ORGANİZE" OSB sanılıyordu). Gerçek hatalarda adres eki SONDADIR
+  // ("K.SİNAN MERKEZ MAH.", "LTD.ŞTİ.FEVZİ ÇAKMAK MH.") ya da kapı numarası vardır.
+  if (/\b(?:MH|MAH|MAHALLE(?:SI)?|CD|CAD|CADDE(?:SI)?|SK|SOK|SOKAK|BLV|BULV(?:AR)?|SIT|SITE(?:SI)?|APT|BLOK)\b\.?\s*$/.test(f)
+      || /\bNO\s*[:.]?\s*\d/.test(f)) {
+    return 'adres';
+  }
+  const harf = f.replace(/[^A-Z]/g, '').length;
+  if (harf < 4) return 'cok-kisa';
+  // Unvan bir SIRKET EKIYLE baslamaz; basliyorsa ust satir atlanmistir
+  // ("VE GIDA PAZ.SAN.VE TIC.LTD.STI.", "LTD.STI.FEVZI CAKMAK MH.").
+  const ilkKelime = (f.split(/[^A-Z0-9]+/).filter(Boolean)[0] || '');
+  if (/^(?:LTD|LIMITED|STI|SIRKETI?|ANONIM|VE|SAN|SANAYI|TIC|TICARET|INS|INSAAT|PAZ|PAZARLAMA)$/.test(ilkKelime)) {
+    return 'ek-ile-basliyor';
+  }
+  // Tek kelime + sirket eki yok: buyuk olasilikla slogan/parca ("Bakanlar", "Hissettirir").
+  const kelimeSayisi = f.split(/[^A-Z0-9]+/).filter(Boolean).length;
+  if (kelimeSayisi < 2 && !GUCLU_EK.test(f)) return 'tek-kelime';
+  return null;
+}
