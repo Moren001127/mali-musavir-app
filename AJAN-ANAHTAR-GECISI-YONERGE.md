@@ -113,10 +113,20 @@ kullandığı anahtar.
 
 Sunucudan okudum, durum şu:
 
-**Yerel ajan TEK yerde çalışıyor: `vps-radore-luca-operator` (Radore VPS).**
-Son 30 günde ping atan 7 cihazın altısı tarayıcı eklentisi (sürüm `1.47.x`) —
-onlar anahtarı portaldan kendiliğinden alıyor, **hiçbir şey yapmanıza gerek yok.**
-Yalnız VPS'teki `local-1.1.8` sürümü elle geçirilmeli.
+**Elle geçirilecek yer: Radore VPS'teki İKİ klasör.** `bilgi/PROJE-BILGI.md`'nin kendi notu:
+*"VPS'te iki ajan klasörü var (`agent` çekim + `agent-operator`) … şifre değişince ÜÇ yer
+güncellenir; agent.js repo ile otomatik senkron DEĞİL."* Aynısı ajan anahtarı için de geçerli.
+
+| Cihaz | Ne | Anahtar nasıl gelir |
+|---|---|---|
+| `vps-radore-luca` | VPS çekim ajanı (`/home/luca/agent`) | **ELLE** — `config.json` |
+| `vps-radore-luca-operator` | VPS Luca operatörü (`/home/luca/agent-operator`) | **ELLE** — `config.json` |
+| `DEV-moxegoee-O514TN` | Muzaffer Bey'in bilgisayarı, tarayıcı eklentisi | kendiliğinden |
+| `DEV-mowmwx8l-RVO003`, `DEV-mtyc13qu-U1I98O`, `moren-5255e7bb` | tarayıcı eklentisi (muhtemelen diğer bilgisayarlar) | kendiliğinden |
+
+> **Sürüm numarasına bakarak karar vermeyin.** `vps-radore-luca` sürümü `1.47.84` görünüyor
+> çünkü sunucudan inen runtime'ın numarasını bildiriyor — tarayıcı eklentisiyle aynı numara.
+> Ayırt eden şey cihazın kendisi: `vps-radore-*` = VPS'te yerel kurulum.
 
 **Muzaffer Bey'in bilgisayarındaki `config.json` (25.09.2026) GEÇİRİLDİ** — ama o makinede
 ajan çalışmıyor, yani etkisi yok; yine de doğru anahtarla duruyor. Eski değer
