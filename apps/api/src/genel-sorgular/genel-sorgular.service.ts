@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { GENEL_SORGU_TURLERI, type GenelSorguTuru } from '@mali-musavir/shared';
-import { enSonSonuclar, guncelSatirlar, type GuncelTur, type HamSonuc } from './guncel-durum';
+import { enSonSonuclar, guncelSatirlar, panoSatirlari, type GuncelTur, type HamSonuc, type PanoYaniti } from './guncel-durum';
 
 export type GenelSorguListeSecenekleri = {
   taxpayerId?: string;
@@ -130,6 +130,43 @@ export class GenelSorgularService {
     const { rows, ozet } = guncelSatirlar(tur as GuncelTur, enSon);
     const total = rows.length;
     return { rows: rows.slice((page - 1) * pageSize, page * pageSize), total, page, pageSize, ozet };
+  }
+
+  /**
+   * GET /genel-sorgular/pano?donem=&page=&pageSize= — MÜKELLEF PANOSU (2026-09-25).
+   * `guncel` tek türü derinlemesine gösterir; pano MÜKELLEF başına tek satır verir: 5 türün en son sonucu
+   * yan yana (borç / haciz / yoklama / POS / e-Arşiv) + uyarı seviyesi. Hiç sonucu olmayan mükellef girmez.
+   * `donem` yalnız POS ve GELEN_EARSIV'i daraltır (diğer türlerde yok sayılır) — `guncel` ile aynı davranış.
+   * Dönem SQL'de süzülemez (borç/haciz/yoklama kayıtlarında donem null'dır, hepsi elenirdi) → süzgeç saf
+   * fonksiyonda uygulanır. pageSize 1-500 (varsayılan 25); sayfalama sonda `slice` ile.
+   */
+  async pano(tenantId: string, secenek: { donem?: string; page?: number; pageSize?: number }): Promise<PanoYaniti> {
+    if (secenek.donem && !DONEM_DESENI.test(secenek.donem)) {
+      throw new BadRequestException('donem YYYY-MM biçiminde olmalı');
+    }
+    const page = Math.max(1, Number(secenek.page) || 1);
+    const pageSize = Math.min(500, Math.max(1, Number(secenek.pageSize) || 25));
+
+    const ham: HamSonuc[] = await (this.prisma as any).genelSorguSonucu.findMany({
+      where: { tenantId, tur: { in: [...GENEL_SORGU_TURLERI] } },
+      orderBy: { sorguTarihi: 'desc' },
+      take: 8000,
+      select: { id: true, taxpayerId: true, taxpayer: { select: TAXPAYER_SELECT }, tur: true, donem: true, sorguTarihi: true, kaynak: true, veri: true },
+    });
+
+    // Tür bazına ayır → her türde mükellef (POS/e-Arşiv'de mükellef+ay) başına EN SON sonucu bırak.
+    const turBazli = {} as Record<GuncelTur, HamSonuc[]>;
+    for (const tur of GENEL_SORGU_TURLERI) turBazli[tur as GuncelTur] = [];
+    for (const r of ham) {
+      const liste = turBazli[r.tur as GuncelTur];
+      if (liste) liste.push(r);
+    }
+    for (const tur of GENEL_SORGU_TURLERI) {
+      turBazli[tur as GuncelTur] = enSonSonuclar(tur as GuncelTur, turBazli[tur as GuncelTur]);
+    }
+
+    const { rows, ozet } = panoSatirlari(turBazli, secenek.donem);
+    return { rows: rows.slice((page - 1) * pageSize, page * pageSize), total: rows.length, page, pageSize, ozet };
   }
 
   /**

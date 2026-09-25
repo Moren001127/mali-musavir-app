@@ -2,20 +2,31 @@
 import './genel-sorgular.css';
 
 import { Suspense, useCallback, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { ScanSearch } from 'lucide-react';
+import { ArrowLeft, ScanSearch } from 'lucide-react';
 import { toast } from 'sonner';
 import { PdfOnizlemeModali, type PdfModalDurumu } from '@/components/portal-automation/belge-ortak';
 import { boyutParamOku, sayfaParamOku, type SayfaBoyutu } from '@/components/ui/Sayfalama';
-import { SORGU_TURLERI, genelSorgularApi, sorguTuruMu, type SorguKosusu, type SorguTuru } from '@/lib/genel-sorgular';
+import { SORGU_TURLERI, genelSorgularApi, sorguMukellefAdi, sorguTuruMu, type SorguKosusu, type SorguTuru } from '@/lib/genel-sorgular';
 import { AracCubugu, type Suzgec } from './_components/AracCubugu';
 import { GuncelTablo } from './_components/GuncelTablo';
+import { MukellefPanosu } from './_components/MukellefPanosu';
 import { TurSekmeleri } from './_components/TurSekmeleri';
 import { tarihKisa } from './_lib/bicim';
 
 /*
- * Genel Sorgulamalar (2026-09-22, sade sürüm — Muzaffer Bey: "manuel sorgu için ufak bir ekran yeter";
+ * 2026-09-25 YENİDEN DÜZEN (Muzaffer Bey: "tüm mükellefler tek tabloda görünmesin, karışık duruyor;
+ * bazı tablolar da taşmış, sığmamış"). Ekran artık İKİ KATMANLI:
+ *   1) MÜKELLEF PANOSU — mükellef ve tür seçili değilken. Her mükellef TEK satır, 5 sorgunun güncel özeti
+ *      yan yana (borç · haciz · yoklama · POS · e-Arşiv). Uyarısı olan mükellef en üstte.
+ *   2) AYRINTI TABLOLARI — pano satırına (ya da bir sorgu hücresine) tıklayınca, veya üstteki tür
+ *      sekmesinden. Mükellef seçiliyken künye şeridi + "Mükellef Panosu" dönüş düğmesi çıkar.
+ * Taşma: sayfa 1280 → 1560px; tablolardan "Son sorgu" sütunu kalktı (kart başlığında zaten yazıyor),
+ * sütun genişlikleri gerçek en-az toplamına çekildi (bkz. GuncelTablo EN_AZ_GENISLIK).
+ *
+ * Önceki tur (2026-09-22, sade sürüm — Muzaffer Bey: "manuel sorgu için ufak bir ekran yeter";
  * akşam: "görsel olarak yeniden tasarla, profesyonel görüntü olsun").
  *   Başlık + gece sorgusu durum çipi · araç çubuğu (mükellef · dönem · Sorgula · durum satırı) · tür sekmeleri
  *   (Tümü + 5 tür, kayıt sayılı) · tür başına GÜNCEL DURUM tablosu (koşu geçmişi değil: borç mükellef başına,
@@ -72,12 +83,15 @@ function GenelSorgularIcerik() {
       if (s.tur) q.set('tur', s.tur); else q.delete('tur');
       if (s.donem) q.set('donem', s.donem); else q.delete('donem');
       SORGU_TURLERI.forEach((t) => q.delete(`s_${t}`)); // süzgeç değişince 1. sayfa
+      q.delete('s_PANO');
     });
   const sayfaYaz = (t: SorguTuru, n: number) => adresYaz((q) => { if (n > 1) q.set(`s_${t}`, String(n)); else q.delete(`s_${t}`); });
+  const panoSayfaYaz = (n: number) => adresYaz((q) => { if (n > 1) q.set('s_PANO', String(n)); else q.delete('s_PANO'); });
   const boyutYaz = (b: SayfaBoyutu) =>
     adresYaz((q) => {
       if (b !== VARSAYILAN_BOYUT) q.set('boyut', String(b)); else q.delete('boyut');
       SORGU_TURLERI.forEach((t) => q.delete(`s_${t}`));
+      q.delete('s_PANO');
     });
 
   // ---- Veri ----
@@ -87,6 +101,8 @@ function GenelSorgularIcerik() {
   const gece = useMemo(() => geceOzeti(sonKosular), [sonKosular]);
 
   const gosterilenTurler = suzgec.tur ? [suzgec.tur] : [...SORGU_TURLERI];
+  /** Ne mükellef ne tür seçiliyse ekranın ana görünümü MÜKELLEF PANOSU'dur (tür tabloları değil). */
+  const panoGorunsun = !suzgec.mukellefId && !suzgec.tur;
 
   // Yoklama tutanağı PDF'i — sayfa içi pencere (e-Tebligat kalıbı).
   const [pdf, setPdf] = useState<PdfModalDurumu>(null);
@@ -101,8 +117,10 @@ function GenelSorgularIcerik() {
     }
   };
 
+  const seciliMukellef = useMemo(() => mukellefler.find((m) => m.id === suzgec.mukellefId) || null, [mukellefler, suzgec.mukellefId]);
+
   return (
-    <div className="gs mx-auto w-full max-w-[1280px]" data-gs-kok>
+    <div className="gs mx-auto w-full max-w-[1560px]" data-gs-kok>
       <div className="gs-baslik">
         <span className="gs-baslik-simge"><ScanSearch size={18} /></span>
         <div className="min-w-0">
@@ -117,23 +135,53 @@ function GenelSorgularIcerik() {
 
       <AracCubugu suzgec={suzgec} onSuzgec={suzgecYaz} mukellefler={mukellefler} />
 
-      <TurSekmeleri secili={suzgec.tur} onSec={(t) => suzgecYaz({ ...suzgec, tur: t })} suzgec={{ taxpayerId: suzgec.mukellefId || undefined, donem: suzgec.donem || undefined }} />
+      {/* Mükellef seçiliyken: panoya dönüş + kimin ekranında olduğumuzu söyleyen künye şeridi */}
+      {suzgec.mukellefId && (
+        <div className="gs-kunye">
+          <button type="button" className="gs-geri" onClick={() => suzgecYaz({ ...suzgec, mukellefId: '', tur: null })}>
+            <ArrowLeft size={14} strokeWidth={2.2} aria-hidden />
+            Mükellef Panosu
+          </button>
+          <span className="gs-kunye-ad">{sorguMukellefAdi(seciliMukellef) || 'Seçili mükellef'}</span>
+          {seciliMukellef?.taxNumber && <span className="gs-kunye-vkn gs-sayi">{seciliMukellef.taxNumber}</span>}
+          <Link href={`/panel/mukellefler/${suzgec.mukellefId}`} className="gs-baglanti gs-kunye-kart">Mükellef kartı</Link>
+        </div>
+      )}
 
-      <div className="gs-gruplar">
-        {gosterilenTurler.map((t) => (
-          <GuncelTablo
-            key={t}
-            tur={t}
-            suzgec={{ taxpayerId: suzgec.mukellefId || undefined, donem: suzgec.donem || undefined }}
-            sayfa={sayfaOku(t)}
-            sayfaBoyutu={boyut}
-            onSayfa={(n) => sayfaYaz(t, n)}
-            onSayfaBoyutu={boyutYaz}
-            vurgu={VURGU}
-            onTutanak={tutanakAc}
-          />
-        ))}
-      </div>
+      <TurSekmeleri
+        secili={suzgec.tur}
+        onSec={(t) => suzgecYaz({ ...suzgec, tur: t })}
+        suzgec={{ taxpayerId: suzgec.mukellefId || undefined, donem: suzgec.donem || undefined }}
+        ilkSekme={suzgec.mukellefId ? 'Tümü' : 'Mükellef Panosu'}
+      />
+
+      {panoGorunsun ? (
+        <MukellefPanosu
+          donem={suzgec.donem}
+          sayfa={sayfaParamOku(searchParams.get('s_PANO'))}
+          sayfaBoyutu={boyut}
+          onSayfa={panoSayfaYaz}
+          onSayfaBoyutu={boyutYaz}
+          onAc={(id, tur) => suzgecYaz({ ...suzgec, mukellefId: id, tur: tur ?? null })}
+          vurgu={VURGU}
+        />
+      ) : (
+        <div className="gs-gruplar">
+          {gosterilenTurler.map((t) => (
+            <GuncelTablo
+              key={t}
+              tur={t}
+              suzgec={{ taxpayerId: suzgec.mukellefId || undefined, donem: suzgec.donem || undefined }}
+              sayfa={sayfaOku(t)}
+              sayfaBoyutu={boyut}
+              onSayfa={(n) => sayfaYaz(t, n)}
+              onSayfaBoyutu={boyutYaz}
+              vurgu={VURGU}
+              onTutanak={tutanakAc}
+            />
+          ))}
+        </div>
+      )}
 
       <PdfOnizlemeModali modal={pdf} onClose={() => setPdf(null)} />
     </div>

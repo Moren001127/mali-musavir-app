@@ -1,5 +1,6 @@
 // Genel Sorgulamalar — ÖNCELİKLİ sahte veri eklentisi (2026-09-22). Yerleşik /genel-sorgular uçlarını ezer.
-//   GET  /genel-sorgular · GET /genel-sorgular/ozet · POST /portal-automation/dvd-sorgu · GET /portal-automation/jobs
+//   GET  /genel-sorgular · GET /genel-sorgular/ozet · GET /genel-sorgular/guncel · GET /genel-sorgular/pano (mükellef panosu)
+//   POST /portal-automation/dvd-sorgu · GET /portal-automation/jobs
 //   GET  /portal-automation/credentials · GET /taxpayers · GET /portal-automation/documents/:id/view · GET /sahte/tutanak.pdf
 // Veri şekilleri: packages/shared/src/constants/genel-sorgu-veri.ts (canlı keşif değerleri: EDELER YEMEK, SEDA İŞ GÜVENLİĞİ).
 // Elle sorgu bellekte KUYRUĞA alınır ve zamanla ilerler (kuyrukta → çalışıyor → tamamlandı); bitince sonuç satırı eklenir.
@@ -27,7 +28,7 @@ const MUKELLEFLER = [
 const mukellef = (id) => MUKELLEFLER.find((m) => m.id === id) || null;
 const ozet = (id) => { const m = mukellef(id); return m ? { id: m.id, companyName: m.companyName, firstName: m.firstName, lastName: m.lastName, taxNumber: m.taxNumber } : null; };
 /** DVD (GIB_IVD) şifresi tanımlı mükellefler */
-const SIFRELI = new Set(['gs1', 'gs2', 'm1', 'm4', 'm5', 'm7']);
+const SIFRELI = new Set(['gs1', 'gs2', 'm1', 'm2', 'm3', 'm4', 'm5', 'm7']);
 
 // ── Vergi borcu — EDELER: 14 kalem, toplam 384.303,91 / vadesi geçmiş 379.614,21 ──────────
 function kalem(vergiKodu, vergiTuru, donem, vade, asil, gz, gecmis = true, vd = 'BÜYÜKÇEKMECE', vdKodu = '034204') {
@@ -68,6 +69,9 @@ function vergiBorcuVerisi(kalemler, hesaplamaZamani) {
   };
 }
 
+/** m2 Erdoğan Balçık borcu — EDELER'in muhtasar (0003) kalemlerinden türetildi; tamamı vadesi geçmiş. */
+const BALCIK_KALEMLER = EDELER_KALEMLER.filter((k) => k.vergiKodu === '0003');
+
 // ── e-Haciz — SEDA: 3 banka bildirisi (2 tatbik edilmiş) ──────────────────────────
 const TATBIK = 'HACİZ TATBİK EDİLMİŞTİR';
 const VARLIK_YOK = 'HACİZ TATBİK EDİLECEK VARLIK BULUNAMAMIŞTIR';
@@ -79,6 +83,9 @@ const SEDA_HACIZ = {
     { kapsam: 'BANKA', bildiriNo: '2026081112034294013', tutar: 16887.67, durum: VARLIK_YOK, vergiDairesiKodu: '034294', vergiDairesi: 'AVCILAR', borclar: [{ vergiTuru: '0033 KURUM GEÇİCİ', vergiDonem: '2025/10-2025/12' }], hesaplar: [] },
   ],
 };
+
+/** m3 Ayşegül Kaya haczi — SEDA'nın tatbik EDİLMEMİŞ bildirisinden türetildi (bildiri var, tatbik yok → uyarı 1). */
+const KAYA_HACIZ = { bildiriSayisi: 1, tatbikEdilenSayisi: 0, toplamTutar: SEDA_HACIZ.bildiriler[2].tutar, bildiriler: [SEDA_HACIZ.bildiriler[2]] };
 
 // ── Yoklama / Denetim — SEDA: 4 yoklama (2025) ────────────────────────────────────
 const SEDA_YOKLAMA = {
@@ -180,6 +187,10 @@ const FAM_EARSIV_08 = {
   ],
 };
 FAM_EARSIV_08.faturaSayisi = 4; FAM_EARSIV_08.toplamOdenecek = p2(FAM_EARSIV_08.faturalar.reduce((s, f) => s + f.odenecekTutar, 0));
+/** m3 Ayşegül Kaya Eylül e-Arşivi — EDELER Eylül listesinin son 4 faturasından türetildi. */
+const KAYA_EARSIV_09 = { ...EDELER_EARSIV_09, faturalar: EDELER_EARSIV_09.faturalar.slice(-4) };
+KAYA_EARSIV_09.faturaSayisi = KAYA_EARSIV_09.faturalar.length;
+KAYA_EARSIV_09.toplamOdenecek = p2(KAYA_EARSIV_09.faturalar.reduce((s, f) => s + f.odenecekTutar, 0));
 
 // ── Sonuç satırları (bellekte; elle sorgu bitince eklenir) ───────────────────────
 let sira = 1000;
@@ -203,6 +214,12 @@ const SONUCLAR = [
   sonuc('gs1', 'GELEN_EARSIV', '2026-09', bugun(3, 44), `Eylül 2026: ${EDELER_EARSIV_09.faturaSayisi} fatura, ${EDELER_EARSIV_09.toplamOdenecek.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺`, EDELER_EARSIV_09, 'nightly', false),
   sonuc('gs1', 'GELEN_EARSIV', '2026-08', gunOnce(21, 3, 17), `Ağustos 2026: ${EDELER_EARSIV_08.faturaSayisi} fatura, ${EDELER_EARSIV_08.toplamOdenecek.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺`, EDELER_EARSIV_08, 'nightly', true),
   sonuc('m5', 'GELEN_EARSIV', '2026-08', gunOnce(21, 3, 29), 'Ağustos 2026: 4 fatura (1 pencere hatalı)', FAM_EARSIV_08, 'nightly', false),
+  // Panoda uyarı seviyelerinin hepsi görünsün diye 3 mükellef daha (hepsi mevcut veriden türetildi)
+  sonuc('m1', 'VERGI_BORCU', null, bugun(3, 37), 'Borç yok', vergiBorcuVerisi([], bugun(3, 37)), 'nightly', false),
+  sonuc('m2', 'VERGI_BORCU', null, bugun(3, 15), `${BALCIK_KALEMLER.length} kalem muhtasar borcu; tamamı vadesi geçmiş`, vergiBorcuVerisi(BALCIK_KALEMLER, bugun(3, 15)), 'nightly', true),
+  sonuc('m2', 'YOKLAMA_DENETIM', null, bugun(3, 16), 'Yoklama / denetim kaydı yok', { yoklamaSayisi: 0, denetimSayisi: 0, sonYoklamaTarihi: null, yoklamalar: [], denetimler: [] }, 'nightly', false),
+  sonuc('m3', 'E_HACIZ', null, bugun(3, 12), '1 banka bildirisi; tatbik edilmemiş', KAYA_HACIZ, 'nightly', false),
+  sonuc('m3', 'GELEN_EARSIV', '2026-09', bugun(3, 13), `Eylül 2026: ${KAYA_EARSIV_09.faturaSayisi} fatura`, KAYA_EARSIV_09, 'nightly', false),
 ];
 const sirala = () => SONUCLAR.sort((a, b) => (a.sorguTarihi < b.sorguTarihi ? 1 : -1));
 sirala();
@@ -250,6 +267,8 @@ const ISLER = [
   geceIsi('m5', ['vergiBorcu', 'pos', 'gelenEArsiv'], 24, 5),
   geceIsi('m1', ['vergiBorcu', 'pos'], 36, 4, 'done', null, [{ sorgu: 'pos', hata: 'GİB POS servisi yanıt vermedi' }]),
   geceIsi('m4', ['vergiBorcu'], 41, 1, 'failed', 'Dijital Vergi Dairesi girişi başarısız: şifre hatalı'),
+  geceIsi('m2', ['vergiBorcu', 'yoklama'], 14, 3),
+  geceIsi('m3', ['eHaciz', 'gelenEArsiv'], 11, 3),
 ];
 /** Elle işleri zamanla ilerlet: 3 sn kuyrukta → adım adım çalışıyor → tamamlandı (sonuç satırı eklenir). */
 function isleriIlerlet() {
@@ -335,6 +354,77 @@ function uclar(yol, yontem, q, govde, jsonGonder, res) {
     const page = Math.max(1, Number(q.page) || 1); const pageSize = Math.min(5000, Math.max(1, Number(q.pageSize) || 50));
     const z = enSon.map((r) => r.sorguTarihi).sort();
     return jsonGonder(res, 200, { rows: rows.slice((page - 1) * pageSize, page * pageSize), total: rows.length, page, pageSize, ozet: { mukellef: new Set(enSon.map((r) => r.taxpayerId)).size, bos, enEskiSorgu: z[0] || null, enYeniSorgu: z[z.length - 1] || null } });
+  }
+  // MÜKELLEF PANOSU — gerçek çözümleyicinin (apps/api/src/genel-sorgular/guncel-durum.ts → panoSatirlari) sahte kopyası:
+  // mükellef başına TEK satır, 5 türün en son sonucu yan yana + uyarı seviyesi. Sonucu olmayan mükellef listeye girmez.
+  if (yontem === 'GET' && yol === '/genel-sorgular/pano') {
+    const n = (v) => Number(v) || 0;
+    const donemSuzgec = q.donem ? String(q.donem) : '';
+    // Tür başına en son sonuçlar (POS / e-Arşiv'de mükellef + AY başına)
+    const enSon = {};
+    for (const tur of ['VERGI_BORCU', 'E_HACIZ', 'YOKLAMA_DENETIM', 'POS', 'GELEN_EARSIV']) {
+      const ayBazli = tur === 'POS' || tur === 'GELEN_EARSIV';
+      const gorulen = new Set();
+      enSon[tur] = sirala().filter((r) => r.tur === tur).filter((r) => {
+        const k = ayBazli ? `${r.taxpayerId}::${r.donem || ''}` : r.taxpayerId;
+        if (gorulen.has(k)) return false; gorulen.add(k); return true;
+      });
+    }
+    const satirlar = new Map();
+    const al = (r) => {
+      if (!satirlar.has(r.taxpayerId)) satirlar.set(r.taxpayerId, { taxpayerId: r.taxpayerId, taxpayer: r.taxpayer, sonSorgu: null, sorgulanmayan: 5, borc: null, haciz: null, yoklama: null, pos: null, earsiv: null, uyari: 0 });
+      return satirlar.get(r.taxpayerId);
+    };
+    for (const r of enSon.VERGI_BORCU) { const v = r.veri || {}; al(r).borc = { toplam: n(v.toplam), vadesiGecmis: n(v.vadesiGecmis), vadesiGelmemis: n(v.vadesiGelmemis), kalemSayisi: (v.kalemler || []).length, sorguTarihi: r.sorguTarihi }; }
+    for (const r of enSon.E_HACIZ) { const l = r.veri?.bildiriler || []; al(r).haciz = { bildiri: l.length, tatbik: l.filter((b) => /TATB[İI]K ED[İI]LM[İI][ŞS]T[İI]R$/i.test(b.durum || '')).length, tutar: p2(l.reduce((t, b) => t + n(b.tutar), 0)), sorguTarihi: r.sorguTarihi }; }
+    for (const r of enSon.YOKLAMA_DENETIM) { const y = r.veri?.yoklamalar || [], d = r.veri?.denetimler || []; const t = [...y, ...d].map((x) => String(x.tarih || '')).filter(Boolean).sort(); al(r).yoklama = { tutanak: y.length + d.length, sonTarih: t[t.length - 1] || null, sorguTarihi: r.sorguTarihi }; }
+    // POS / e-Arşiv: dönem süzgeci varsa o ay; yoksa mükellefin EN SON ayı (aylar TOPLANMAZ)
+    const ayaGoreSec = (rows) => {
+      const secim = new Map();
+      for (const r of rows) {
+        const ay = r.donem || '';
+        if (donemSuzgec && ay !== donemSuzgec) continue;
+        const onceki = secim.get(r.taxpayerId);
+        if (!onceki) { secim.set(r.taxpayerId, [r]); continue; }
+        const secilenAy = onceki[0].donem || '';
+        if (donemSuzgec || ay === secilenAy) onceki.push(r);
+        else if (ay > secilenAy) secim.set(r.taxpayerId, [r]);
+      }
+      return secim;
+    };
+    for (const secilen of ayaGoreSec(enSon.POS).values()) {
+      let satir = 0, tutar = 0, enYeni = '';
+      for (const r of secilen) { const l = r.veri?.satirlar || []; satir += l.length; tutar += l.reduce((t, s) => t + n(s.tutar), 0); if (r.sorguTarihi > enYeni) enYeni = r.sorguTarihi; }
+      al(secilen[0]).pos = { tutar: p2(tutar), satir, donem: secilen[0].donem || null, sorguTarihi: enYeni };
+    }
+    for (const secilen of ayaGoreSec(enSon.GELEN_EARSIV).values()) {
+      let fatura = 0, tutar = 0, enYeni = '';
+      for (const r of secilen) { const l = r.veri?.faturalar || []; fatura += l.length; tutar += l.reduce((t, f) => t + n(f.odenecekTutar), 0); if (r.sorguTarihi > enYeni) enYeni = r.sorguTarihi; }
+      al(secilen[0]).earsiv = { fatura, tutar: p2(tutar), donem: secilen[0].donem || null, sorguTarihi: enYeni };
+    }
+    const ad = (t) => String(t?.companyName || [t?.firstName, t?.lastName].filter(Boolean).join(' ') || t?.taxNumber || '').trim();
+    const rows = [...satirlar.values()];
+    for (const s of rows) {
+      const dolu = [s.borc, s.haciz, s.yoklama, s.pos, s.earsiv].filter(Boolean);
+      s.sorgulanmayan = 5 - dolu.length;
+      s.sonSorgu = dolu.map((d) => d.sorguTarihi).sort().pop() || null;
+      s.uyari = (s.borc?.vadesiGecmis || 0) > 0 || (s.haciz?.tatbik || 0) > 0 ? 2 : (s.borc?.toplam || 0) > 0 || (s.haciz?.bildiri || 0) > 0 ? 1 : 0;
+    }
+    rows.sort((a, b) => b.uyari - a.uyari || (b.borc?.vadesiGecmis || 0) - (a.borc?.vadesiGecmis || 0) || (b.borc?.toplam || 0) - (a.borc?.toplam || 0) || ad(a.taxpayer).localeCompare(ad(b.taxpayer), 'tr-TR'));
+    const page = Math.max(1, Number(q.page) || 1);
+    const pageSize = Math.min(500, Math.max(1, Number(q.pageSize) || 25));
+    const z = rows.map((r) => r.sonSorgu).filter(Boolean).sort();
+    return jsonGonder(res, 200, {
+      rows: rows.slice((page - 1) * pageSize, page * pageSize), total: rows.length, page, pageSize,
+      ozet: {
+        mukellef: rows.length,
+        borclu: rows.filter((r) => (r.borc?.toplam || 0) > 0).length,
+        hacizli: rows.filter((r) => (r.haciz?.bildiri || 0) > 0).length,
+        toplamBorc: p2(rows.reduce((t, r) => t + (r.borc?.toplam || 0), 0)),
+        vadesiGecmis: p2(rows.reduce((t, r) => t + (r.borc?.vadesiGecmis || 0), 0)),
+        enYeniSorgu: z[z.length - 1] || null,
+      },
+    });
   }
   if (yontem === 'GET' && yol === '/genel-sorgular') {
     const page = Math.max(1, Number(q.page) || 1);

@@ -1,9 +1,9 @@
-// Genel Sorgulamalar (profesyonel görünüm sürümü) görüntüleri — sahte çift KENDİ portlarında:
+// Genel Sorgulamalar (2026-09-25 mükellef panosu sürümü) görüntüleri — sahte çift KENDİ portlarında:
 //   SAHTE_API_PORT=3022 SAHTE_WEB_PORT=3023 node apps/web/scripts/dev-sahte-kart.cjs
 //   node apps/web/scripts/onizleme/genel-sorgular-goruntule.cjs [cikisKlasoru]
 // Sahte veri: scripts/mock/oncelik/genel-sorgular.cjs. Çıktılar _previews/genel-sorgular/:
-//   01-tam (Tümü) · 02-ust (başlık + araç çubuğu + sekmeler) · 03-tablo-detay · 04-mukellef-suzgec · 05-sorgu-suruyor
-//   06-tek-tur-haciz · 07-earsiv-eksik (vurgu rengi karar: deniz yeşili — varyant döngüsü kaldırıldı)
+//   01-tam (MÜKELLEF PANOSU) · 02-ust (başlık + araç çubuğu + sekmeler) · 03-tablo-detay (pano satırına tıklanmış:
+//   künye şeridi + mükellefin tabloları) · 04-mukellef-suzgec · 05-sorgu-suruyor · 06-tek-tur-haciz · 07-earsiv-eksik
 const path = require('path');
 const fs = require('fs');
 const { chromium } = require(path.join(__dirname, '..', '..', '..', '..', 'node_modules', '.pnpm', 'playwright@1.60.0', 'node_modules', 'playwright'));
@@ -29,7 +29,7 @@ async function ustKesit(pg, dosya, yukseklik) {
     }
   });
   await pg.waitForTimeout(250);
-  await pg.screenshot({ path: dosya, fullPage: true, clip: { x: 0, y: 0, width: 1500, height: yukseklik } });
+  await pg.screenshot({ path: dosya, fullPage: true, clip: { x: 0, y: 0, width: 1760, height: yukseklik } });
   await pg.evaluate(() => {
     for (const { el, style } of window.__ustKesitEski || []) {
       if (style === null) el.removeAttribute('style'); else el.setAttribute('style', style);
@@ -51,7 +51,7 @@ async function sayfayaGit(pg, adres) {
 
 (async () => {
   const b = await chromium.launch();
-  const pg = await b.newPage({ viewport: { width: 1500, height: 1000 }, deviceScaleFactor: 2 });
+  const pg = await b.newPage({ viewport: { width: 1760, height: 1000 }, deviceScaleFactor: 2 });
   await pg.route(/\/api\/v1\/portal-automation\/dvd-sorgu$/, async (route) => {
     const u = new URL(route.request().url());
     u.pathname = u.pathname.replace('/portal-automation/dvd-sorgu', '/sahte/genel-sorgular/dvd-sorgu');
@@ -66,15 +66,18 @@ async function sayfayaGit(pg, adres) {
   await pg.locator('button[type=submit]').click();
   await pg.waitForURL(/\/panel/, { timeout: 90000 });
 
+  // 01/02 — MÜKELLEF PANOSU (mükellef ve tür seçili değilken ana görünüm)
   await sayfayaGit(pg, `${KOK}/panel/genel-sorgular`);
-  await pg.locator('.gs-grup').first().waitFor({ state: 'visible', timeout: 30000 });
+  await pg.locator('[data-gs-pano]').waitFor({ state: 'visible', timeout: 30000 });
   await tamSayfa(pg, path.join(CIKIS, '01-tam.png'));
   await ustKesit(pg, path.join(CIKIS, '02-ust.png'), 420);
 
-  // İlk tablo satırını aç
-  await pg.locator('.gs-satir').first().click();
-  await pg.waitForTimeout(600);
-  await pg.locator('.gs-grup').first().screenshot({ path: path.join(CIKIS, '03-tablo-detay.png') });
+  // 03 — pano satırına tıkla: o mükellefin künye şeridi + ayrıntı tabloları
+  await pg.locator('[data-gs-pano] .gs-satir').first().locator('.gs-pano-ad').click();
+  await pg.locator('.gs-kunye').waitFor({ state: 'visible', timeout: 30000 });
+  await pg.locator('.gs-grup').first().waitFor({ state: 'visible', timeout: 30000 });
+  await pg.waitForTimeout(1200);
+  await ustKesit(pg, path.join(CIKIS, '03-tablo-detay.png'), 1000);
 
   // Mükellef süzgeci + Sorgula sürüyor
   await sayfayaGit(pg, `${KOK}/panel/genel-sorgular?mukellef=gs1`);
@@ -90,6 +93,8 @@ async function sayfayaGit(pg, adres) {
   await ustKesit(pg, path.join(CIKIS, '06-tek-tur-haciz.png'), 1000);
   await sayfayaGit(pg, `${KOK}/panel/genel-sorgular?tur=GELEN_EARSIV`);
   await pg.locator('.gs-grup').first().waitFor({ state: 'visible', timeout: 30000 });
+  // En geniş tablo — taşma denetimi (sütunlar 2026-09-25'te daraltıldı)
+  await ustKesit(pg, path.join(CIKIS, '08-tek-tur-earsiv.png'), 1000);
   await pg.locator('.gs-sekme', { hasText: 'Görseli eksik' }).click();
   await pg.waitForTimeout(1500);
   await ustKesit(pg, path.join(CIKIS, '07-earsiv-eksik.png'), 1000);

@@ -1,6 +1,7 @@
-/* Genel Sorgulamalar — beyaz tema (D) modül CSS. 2026-09-22 profesyonel görünüm sürümü.
+/* Genel Sorgulamalar — beyaz tema (D) modül CSS. 2026-09-25 mükellef panosu sürümü.
    Düzen: başlık (+ gece sorgusu durum çipi) · araç çubuğu (mükellef · dönem · Sorgula · durum satırı) ·
-   tür sekmeleri (Tümü + 5 tür, kayıt sayılı) · tür başına beyaz kart + kenarlıklı gerçek tablo.
+   tür sekmeleri (Mükellef Panosu + 5 tür, kayıt sayılı) · ANA GÖRÜNÜM mükellef panosu (mükellef başına tek
+   satır, 5 sorgunun özeti yan yana), mükellef ya da tür seçilince tür başına kart + kenarlıklı gerçek tablo.
    Kurulum kartı / koşu listesi / sayaç yığını yok (Muzaffer Bey: "ufak bir ekran yeter").
    Kurallar: bilgi/BEYAZ-TEMA-TASARIM-DILI.md §1–3; renk TEK AİLE (vurgu), yeşil=tamam, kehribar=uyarı,
    kırmızı=hata/vadesi geçmiş; simge yazının YANINDA (yerine değil).
@@ -185,6 +186,17 @@ html[data-theme='D'] .gs :is(button, a, input, select):focus-visible { outline: 
 .gs-eksik-ozet b.gs-kirmizi { color: var(--gs-red-ink); }
 .gs-eksik-not { color: var(--gs-faint); }
 
+/* ── Künye şeridi (mükellef seçiliyken): panoya dön + kimin ekranındayız ──────────────────────────── */
+.gs-kunye { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 9px 14px; margin-bottom: 14px; border: 1px solid var(--gs-line); border-radius: 12px; background: var(--gs-card); box-shadow: var(--gs-shadow); }
+.gs .gs-geri {
+  display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 13px 0 10px; border: 1px solid var(--gs-input-line); border-radius: 9px;
+  background: #fff; font: inherit; font-size: 12.5px; font-weight: 600; color: var(--gs-ink-2); cursor: pointer; white-space: nowrap; transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.gs .gs-geri:hover { background: var(--gs-vurgu-yumusak); border-color: var(--gs-vurgu-kenar); color: var(--gs-vurgu-yazi); }
+.gs-kunye-ad { font-size: 14.5px; font-weight: 700; letter-spacing: -0.01em; color: #0f172a; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gs-kunye-vkn { font-size: 12.5px; color: var(--gs-muted); font-variant-numeric: tabular-nums; }
+.gs .gs-kunye-kart { margin-left: auto; }
+
 /* ── Tür kartı: beyaz başlık satırı (ad · özet · sağda Excel) + kenarlıklı gerçek tablo ────────────── */
 .gs-gruplar { display: flex; flex-direction: column; gap: 16px; }
 .gs-grup { border: 1px solid var(--gs-line); border-radius: 14px; overflow: hidden; background: var(--gs-card); box-shadow: var(--gs-shadow); }
@@ -254,6 +266,44 @@ html[data-theme='D'] [data-panel-main] .gs table.gs-alt-tablo :is(th, td).sag { 
 .gs-bos { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding: 15px 18px; font-size: 12.5px; color: var(--gs-muted); }
 .gs-bos b { font-weight: 600; color: var(--gs-ink-2); }
 .gs-hata { margin: 14px 18px; padding: 12px 14px; border: 1px solid var(--gs-red-line); border-radius: 10px; background: var(--gs-red-bg); font-size: 13px; color: var(--gs-red-ink); }
+
+/* ── MÜKELLEF PANOSU (2026-09-25) ────────────────────────────────────────────────
+   Her mükellef TEK satır; 5 sorgunun özeti yan yana. Satır 58px (hücre iki satırlı: ana değer + not).
+   Renk kuralı: şiddet yalnız İKİ yerde — satır başı nokta ve o hücrenin ana değeri (kırmızı). Kehribar
+   yalnız noktada; "borç var ama vadesi gelmemiş" hücresi nötr koyu kalır ki tablo gökkuşağına dönmesin. */
+html[data-theme='D'] [data-panel-main] .gs table.gs-pano-tablo tbody td { height: 58px; padding: 8px 12px; }
+.gs-pano-tablo td.gs-pano-kim { white-space: nowrap; }
+.gs-pano-kim > .gs-nokta { display: inline-block; vertical-align: middle; margin-right: 10px; }
+.gs-pano-kim > .gs-nokta:not([data-ton]) { background: var(--gs-zero); }
+.gs-pano-ad { display: inline-flex; flex-direction: column; gap: 2px; vertical-align: middle; min-width: 0; max-width: calc(100% - 22px); }
+.gs-pano-ad > b { font-size: 13.5px; font-weight: 650; color: var(--gs-ink); line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gs-pano-ad > small { font-size: 11.5px; color: var(--gs-muted); line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gs-pano-ad .gs-ayrac { margin: 0 5px; }
+.gs .gs-pano-tablo tbody tr:hover .gs-pano-ad > b { color: var(--gs-vurgu-yazi); }
+.gs-pano-ok { color: var(--gs-zero); }
+.gs .gs-pano-tablo tbody tr:hover .gs-pano-ok { color: var(--gs-vurgu); }
+
+/* Sorgu hücresi: üstte ana değer, altında not; tıklanınca doğrudan o türün tablosu açılır */
+.gs .gs-oge {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; min-width: 0;
+  padding: 5px 8px; margin: -5px -8px; border: 0; border-radius: 8px; background: none;
+  font: inherit; color: inherit; text-align: left; cursor: pointer; transition: background 0.12s;
+}
+.gs .gs-oge[data-sag='true'] { align-items: flex-end; text-align: right; }
+.gs button.gs-oge:hover { background: var(--gs-vurgu-yumusak); }
+/* Hiç çalışmamış sorgu düz yazıdır (span): tıklanmaz, imleç değişmez */
+.gs span.gs-oge { cursor: default; }
+.gs-oge-ana { max-width: 100%; font-size: 13.5px; font-weight: 650; line-height: 1.25; color: var(--gs-ink); font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gs-oge-not { max-width: 100%; font-size: 11.5px; line-height: 1.25; color: var(--gs-muted); font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gs .gs-oge[data-ton='hata'] .gs-oge-ana { color: var(--gs-red-ink); }
+.gs .gs-oge[data-ton='sakin'] .gs-oge-ana { font-weight: 500; color: var(--gs-muted); }
+.gs .gs-oge[data-ton='bos'] .gs-oge-ana { font-weight: 500; color: var(--gs-zero); }
+
+/* Yatay kaydırma çubuğu ince ve görünür olsun (tablolar dar pencerede kaydırılıyor) */
+.gs-tablo-sar { scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; }
+.gs-tablo-sar::-webkit-scrollbar { height: 9px; }
+.gs-tablo-sar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 999px; }
+.gs-tablo-sar::-webkit-scrollbar-track { background: var(--gs-wash); }
 
 /* Sayfalama şeridi (ortak bileşen) — yalnız çerçeve/renk paydası */
 .gs-sayfalama { border-top: 1px solid var(--gs-line); background: var(--gs-wash); }

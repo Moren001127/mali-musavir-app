@@ -9,9 +9,20 @@ import { TurIkonu } from './TurIkonu';
  * Tür sekmeleri: Tümü + 5 sorgu türü. Her sekmede süzgece uyan GÜNCEL kayıt sayısı (kurşuni rozet):
  * Vergi Borcu → mükellef · E-Haciz → bildiri · Yoklama / Denetim → tutanak · POS → satır · Gelen e-Arşiv → fatura.
  * Sayılar tabloların kullandığı uçtan (pageSize=1) gelir; araç çubuğundaki Sorgula bitince aynı anahtarla yenilenir.
- * Tümü = türlerin alt alta tabloları; tek tür seçilince yalnız o tablo (adres çubuğu ?tur=).
+ * İlk sekme (2026-09-25): mükellef seçili DEĞİLKEN "Mükellef Panosu" (mükellef başına tek satır özet),
+ * mükellef seçiliyken "Tümü" (o mükellefin türleri alt alta). Tek tür seçilince yalnız o tablo (?tur=).
  */
-export function TurSekmeleri({ secili, onSec, suzgec }: { secili: SorguTuru | null; onSec: (t: SorguTuru | null) => void; suzgec: { taxpayerId?: string; donem?: string } }) {
+export function TurSekmeleri({
+  secili,
+  onSec,
+  suzgec,
+  ilkSekme = 'Tümü',
+}: {
+  secili: SorguTuru | null;
+  onSec: (t: SorguTuru | null) => void;
+  suzgec: { taxpayerId?: string; donem?: string };
+  ilkSekme?: string;
+}) {
   const sayilar = useQueries({
     queries: SORGU_TURLERI.map((t) => {
       const ayBazli = t === 'POS' || t === 'GELEN_EARSIV';
@@ -26,9 +37,9 @@ export function TurSekmeleri({ secili, onSec, suzgec }: { secili: SorguTuru | nu
 
   return (
     <div className="gs-turler" role="tablist" aria-label="Sorgu türü">
-      <button type="button" role="tab" className="gs-tur" aria-selected={secili === null} onClick={() => onSec(null)} title="Bütün türler alt alta">
+      <button type="button" role="tab" className="gs-tur" aria-selected={secili === null} onClick={() => onSec(null)} title={ilkSekme === 'Tümü' ? 'Bütün türler alt alta' : 'Mükellef başına tek satır özet'}>
         <TurIkonu tur="TUMU" />
-        Tümü
+        {ilkSekme}
       </button>
       {SORGU_TURLERI.map((t, i) => {
         const n = sayilar[i].data?.total ?? null;

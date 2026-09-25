@@ -16,14 +16,18 @@ import { TurIkonu } from './TurIkonu';
  * Satırlar sorgu koşusu DEĞİL, mükellefin güncel durumu:
  *   Vergi Borcu → mükellef başına 1 satır (ayrıntıda kalemler) · e-Haciz → bildiri başına · Yoklama/Denetim → tutanak
  *   başına · POS → ay + banka başına · Gelen e-Arşiv → fatura başına (+ "Görseli eksik faturalar" sekmesi).
- * "Son sorgu" sütunu verinin ne zaman çekildiğini söyler. Kenarlıklı düz tablo; durum kelimeyle.
+ * Kenarlıklı düz tablo; durum kelimeyle.
  * 2026-09-22 profesyonel görünüm: VKN/TCKN ayrı sütun (satırlar tek satır, 42px), kart başlığı beyaz (ad · özet ·
  * son sorgu · sağda Excel), boş durum tek sakin satır.
+ * 2026-09-25 TAŞMA DÜZELTMESİ (Muzaffer Bey: "bazı tablolar taşmış, sığmamış"): satır başına "Son sorgu"
+ * sütunu KALKTI — aynı bilgi kart başlığında ("son sorgu …"), mükellef bazında da Mükellef Panosu'nda var;
+ * satırda tekrar edip 142px yiyordu. Kalan sütunlar gerçek en-az genişliğe çekildi ve EN_AZ_GENISLIK artık
+ * sütun toplamına EŞİT (eskiden toplamın altındaydı: table-layout:fixed'de sütunlar birbirini eziyordu).
  */
 
-/** Tablo en az genişliği — sütunlar daralıp satır kırılmasın (1500px pencerede kart içi ~1250px; sığmazsa yatay kaydırma). */
-const EN_AZ_GENISLIK: Record<SorguTuru, number> = { VERGI_BORCU: 1000, E_HACIZ: 1246, YOKLAMA_DENETIM: 1242, POS: 1000, GELEN_EARSIV: 1244 };
-const AYRINTI_GENISLIK = 88;
+/** Tablo en az genişliği = sabit sütunlar + esnek sütunun tabanı. Sayfa 1560px; altına inince yatay kaydırma. */
+const EN_AZ_GENISLIK: Record<SorguTuru, number> = { VERGI_BORCU: 1020, E_HACIZ: 1202, YOKLAMA_DENETIM: 1202, POS: 1042, GELEN_EARSIV: 1270 };
+const AYRINTI_GENISLIK = 84;
 
 const BOS_BASLIK = 'Henüz sorgu çalıştırılmadı';
 const BOS_ACIKLAMA = "Yukarıdan mükellef seçip Sorgula'ya basın ya da gece sorgusunu bekleyin.";
@@ -32,66 +36,61 @@ type Sutun = { baslik: string; genislik?: number; sag?: boolean; tekSatir?: bool
 
 const MUKELLEF: Sutun = {
   baslik: 'Mükellef',
-  genislik: 210,
+  genislik: 250,
   tekSatir: true,
   hucre: (s) => (
-    <Link href={`/panel/mukellefler/${s.taxpayerId}`} className="gs-mukellef" title={sorguMukellefAdi(s.taxpayer) || s.taxpayerId} onClick={(e) => e.stopPropagation()}>{sorguMukellefAdi(s.taxpayer) || s.taxpayerId}</Link>
+    <Link href={`/panel/mukellefler/${s.taxpayerId}`} className="gs-mukellef" title={`${sorguMukellefAdi(s.taxpayer) || s.taxpayerId} — son sorgu ${tarihSaat(s.sorguTarihi)}`} onClick={(e) => e.stopPropagation()}>{sorguMukellefAdi(s.taxpayer) || s.taxpayerId}</Link>
   ),
 };
-const VKN: Sutun = { baslik: 'VKN / TCKN', genislik: 116, hucre: (s) => (s.taxpayer?.taxNumber ? <span className="gs-vkn">{s.taxpayer.taxNumber}</span> : <span className="gs-sifir">—</span>) };
-const SON_SORGU: Sutun = { baslik: 'Son sorgu', genislik: 142, tekSatir: true, hucre: (s) => <span className="gs-sayi gs-soluk">{tarihSaat(s.sorguTarihi)}</span> };
-const DONEM: Sutun = { baslik: 'Dönem', genislik: 118, tekSatir: true, hucre: (s) => <span>{donemEtiketi(s.donem) || '—'}</span> };
+const VKN: Sutun = { baslik: 'VKN / TCKN', genislik: 124, hucre: (s) => (s.taxpayer?.taxNumber ? <span className="gs-vkn">{s.taxpayer.taxNumber}</span> : <span className="gs-sifir">—</span>) };
+const DONEM: Sutun = { baslik: 'Dönem', genislik: 112, tekSatir: true, hucre: (s) => <span>{donemEtiketi(s.donem) || '—'}</span> };
 const para = (n: number, kirmizi = false) => <span className={n === 0 ? 'gs-sifir' : kirmizi ? 'gs-kirmizi' : ''}>{tutar(n)}</span>;
 
 const SUTUNLAR: Record<SorguTuru, Sutun[]> = {
   VERGI_BORCU: [
-    MUKELLEF,
+    { ...MUKELLEF, genislik: 270 },
     VKN,
-    { baslik: 'Vadesi geçmiş (₺)', genislik: 148, sag: true, hucre: (s) => para(s.vadesiGecmis, s.vadesiGecmis > 0) },
-    { baslik: 'Vadesi gelmemiş (₺)', genislik: 160, sag: true, hucre: (s) => para(s.vadesiGelmemis) },
-    { baslik: 'Toplam borç (₺)', genislik: 140, sag: true, hucre: (s) => <b>{tutar(s.toplam)}</b> },
-    { baslik: 'Kalem', genislik: 68, sag: true, hucre: (s) => adet(s.kalemSayisi) },
-    SON_SORGU,
+    { baslik: 'Vadesi geçmiş (₺)', genislik: 152, sag: true, hucre: (s) => para(s.vadesiGecmis, s.vadesiGecmis > 0) },
+    { baslik: 'Vadesi gelmemiş (₺)', genislik: 162, sag: true, hucre: (s) => para(s.vadesiGelmemis) },
+    { baslik: 'Toplam borç (₺)', genislik: 152, sag: true, hucre: (s) => <b>{tutar(s.toplam)}</b> },
+    { baslik: 'Kalem', genislik: 76, sag: true, hucre: (s) => adet(s.kalemSayisi) },
   ],
   E_HACIZ: [
     MUKELLEF,
     VKN,
-    { baslik: 'Kapsam', genislik: 82, hucre: (s) => (s.kapsam === 'ARAC' ? 'Araç' : 'Banka') },
-    { baslik: 'Bildiri no', genislik: 186, tekSatir: true, hucre: (s) => <span className="gs-sayi" title={s.bildiriNo}>{s.bildiriNo}</span> },
-    { baslik: 'Vergi dairesi', genislik: 124, tekSatir: true, hucre: (s) => <span title={s.vergiDairesi || undefined}>{s.vergiDairesi || s.vergiDairesiKodu || '—'}</span> },
-    { baslik: 'Tutar (₺)', genislik: 118, sag: true, hucre: (s) => <b>{tutar(s.tutar)}</b> },
-    { baslik: 'Durum', genislik: 180, tekSatir: true, hucre: (s) => <span className={s.tatbikEdildi ? 'gs-kirmizi' : 'gs-soluk'} title={durumYazisi(s.durum)}>{durumYazisi(s.durum)}</span> },
-    SON_SORGU,
+    { baslik: 'Kapsam', genislik: 84, hucre: (s) => (s.kapsam === 'ARAC' ? 'Araç' : 'Banka') },
+    { baslik: 'Bildiri no', genislik: 178, tekSatir: true, hucre: (s) => <span className="gs-sayi" title={s.bildiriNo}>{s.bildiriNo}</span> },
+    { baslik: 'Vergi dairesi', genislik: 150, tekSatir: true, hucre: (s) => <span title={s.vergiDairesi || undefined}>{s.vergiDairesi || s.vergiDairesiKodu || '—'}</span> },
+    { baslik: 'Tutar (₺)', genislik: 132, sag: true, hucre: (s) => <b>{tutar(s.tutar)}</b> },
+    { baslik: 'Durum', tekSatir: true, hucre: (s) => <span className={s.tatbikEdildi ? 'gs-kirmizi' : 'gs-soluk'} title={durumYazisi(s.durum)}>{durumYazisi(s.durum)}</span> },
   ],
   YOKLAMA_DENETIM: [
     MUKELLEF,
     VKN,
-    { baslik: 'Kayıt', genislik: 84, hucre: (s) => (s.kayit === 'DENETIM' ? 'Denetim' : 'Yoklama') },
-    { baslik: 'Vergi dairesi', genislik: 140, tekSatir: true, hucre: (s) => <span title={s.vergiDairesi || undefined}>{s.vergiDairesi || '—'}</span> },
-    { baslik: 'Kod', genislik: 160, tekSatir: true, hucre: (s) => <span className="gs-sayi" title={s.kod}>{s.kod || '—'}</span> },
+    { baslik: 'Kayıt', genislik: 86, hucre: (s) => (s.kayit === 'DENETIM' ? 'Denetim' : 'Yoklama') },
+    { baslik: 'Vergi dairesi', genislik: 150, tekSatir: true, hucre: (s) => <span title={s.vergiDairesi || undefined}>{s.vergiDairesi || '—'}</span> },
+    { baslik: 'Kod', genislik: 152, tekSatir: true, hucre: (s) => <span className="gs-sayi" title={s.kod}>{s.kod || '—'}</span> },
     { baslik: 'Türü', tekSatir: true, hucre: (s) => <span title={s.turu}>{s.turu || '—'}</span> },
-    { baslik: 'Tarih', genislik: 142, tekSatir: true, hucre: (s) => <span className="gs-sayi">{tarihSaat(s.tarih) || '—'}</span> },
-    SON_SORGU,
+    { baslik: 'Tarih', genislik: 126, tekSatir: true, hucre: (s) => <span className="gs-sayi">{tarihSaat(s.tarih) || '—'}</span> },
   ],
   POS: [
     MUKELLEF,
     VKN,
     DONEM,
     { baslik: 'Banka / kuruluş', tekSatir: true, hucre: (s) => <span title={s.unvan}>{`${s.unvan || '—'}${s.kaynak === 'ODEME_KURULUSU' ? ' (ödeme kuruluşu)' : ''}`}</span> },
-    { baslik: 'Üye işyeri no', genislik: 140, hucre: (s) => <span className="gs-sayi gs-soluk">{s.uyeIsyeriNo || '—'}</span> },
-    { baslik: 'Tutar (₺)', genislik: 130, sag: true, hucre: (s) => <b>{tutar(s.tutar)}</b> },
-    SON_SORGU,
+    { baslik: 'Üye işyeri no', genislik: 136, hucre: (s) => <span className="gs-sayi gs-soluk">{s.uyeIsyeriNo || '—'}</span> },
+    { baslik: 'Tutar (₺)', genislik: 140, sag: true, hucre: (s) => <b>{tutar(s.tutar)}</b> },
   ],
   GELEN_EARSIV: [
-    { ...MUKELLEF, genislik: 200 },
+    MUKELLEF,
     VKN,
-    DONEM,
-    { baslik: 'Tarih', genislik: 104, tekSatir: true, hucre: (s) => <span className="gs-sayi">{tarihKisa(s.duzenlenmeTarihi) || '—'}</span> },
+    // Dönem sütunu yok: fatura tarihi zaten dönemi söylüyor, satıcı ünvanına yer açıyor (2026-09-25 taşma düzeltmesi).
+    { baslik: 'Fatura tarihi', genislik: 118, tekSatir: true, hucre: (s) => <span className="gs-sayi">{tarihKisa(s.duzenlenmeTarihi) || '—'}</span> },
     { baslik: 'Fatura no', genislik: 168, tekSatir: true, hucre: (s) => <span className="gs-sayi" title={s.faturaNo}>{s.faturaNo}</span> },
-    { baslik: 'Satıcı', tekSatir: true, hucre: (s) => <span title={s.saticiUnvan}>{s.saticiUnvan || '—'}</span> },
-    { baslik: 'Satıcı VKN', genislik: 112, hucre: (s) => <span className="gs-sayi gs-soluk">{s.saticiVkn || '—'}</span> },
-    { baslik: 'Tutar (₺)', genislik: 108, sag: true, hucre: (s) => tutar(s.toplamTutar) },
-    { baslik: 'Ödenecek (₺)', genislik: 118, sag: true, hucre: (s) => <b>{tutar(s.odenecekTutar)}</b> },
+    { baslik: 'Satıcı', tekSatir: true, hucre: (s) => <span title={`${s.saticiUnvan || '—'}${s.saticiVkn ? ` · VKN ${s.saticiVkn}` : ''}`}>{s.saticiUnvan || '—'}</span> },
+    { baslik: 'Satıcı VKN', genislik: 124, hucre: (s) => <span className="gs-sayi gs-soluk">{s.saticiVkn || '—'}</span> },
+    { baslik: 'Tutar (₺)', genislik: 118, sag: true, hucre: (s) => tutar(s.toplamTutar) },
+    { baslik: 'Ödenecek (₺)', genislik: 128, sag: true, hucre: (s) => <b>{tutar(s.odenecekTutar)}</b> },
   ],
 };
 
