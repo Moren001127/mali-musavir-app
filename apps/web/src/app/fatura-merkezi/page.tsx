@@ -1166,9 +1166,11 @@ export default function FaturaMerkeziPage() {
     queryKey: ['fm2', 'summary', taxpayerId, period],
     queryFn: () =>
       api
+        // 2026-09-25 denetim bulgusu 12: hata YUTULMUYOR. Eskiden catch(() => ({})) ile sessizce boş
+        //   dönüyordu → sol menü rozetleri kayboluyor, ekran "bekleyen iş yok" izlenimi veriyordu;
+        //   oysa API cevap vermemişti. Artık isError görünür, rozet yerine "—" gösterilir.
         .get('/fatura-muhasebelestirme/summary', { params: { taxpayerId: taxpayerId || undefined, period } })
-        .then((r) => r.data || {})
-        .catch(() => ({})),
+        .then((r) => r.data || {}),
   });
   const sum: any = summaryQ.data || {};
   // Gelen Faturalar dönemsiz olduğu için Alış/Satış rozetleri de dönemsiz sayılır (liste ile rozet aynı sayıyı desin).
@@ -1177,11 +1179,16 @@ export default function FaturaMerkeziPage() {
     queryFn: () =>
       api
         .get('/fatura-muhasebelestirme/summary', { params: { taxpayerId: taxpayerId || undefined, ...(taxpayerId ? {} : { period }) } })
-        .then((r) => r.data || {})
-        .catch(() => ({})),
+        .then((r) => r.data || {}), // bulgu 12: hata yutulmuyor
   });
   const sumTum: any = summaryTumQ.data || {};
-  const badge = (n: any) => (Number(n) > 0 ? <span className="ct">{Number(n)}</span> : null);
+  // 2026-09-25 bulgu 12: özet alınamadıysa rozet SIFIR gösterilmez — "—" ile bilinmediği söylenir.
+  //   Eskiden hata yutulduğu için rozetler sessizce kayboluyordu ve ekran "bugün bekleyen iş yok"
+  //   izlenimi veriyordu; müşavir işi görmeden ekranı kapatabilirdi.
+  const ozetHata = summaryQ.isError || summaryTumQ.isError;
+  const badge = (n: any) => (ozetHata
+    ? <span className="ct ct-yok" title="Sayı alınamadı (bağlantı/sunucu hatası) — 'iş yok' demek değil">—</span>
+    : Number(n) > 0 ? <span className="ct">{Number(n)}</span> : null);
 
   const go = (s: string) => setScreen(s);
   // Kullanıcı kararı (2026-09-12): mükellef e-Fatura mükellefiyse e-Fatura Sorgu açık, GİB e-Arşiv Sorgu kilitli; değilse tersi.
@@ -1253,21 +1260,41 @@ export default function FaturaMerkeziPage() {
             <div className="crumb" dangerouslySetInnerHTML={{ __html: TITLES[screen] || '' }} />
             <div className="sp" />
             <div className="ctxbar">
+              {/* 2026-09-25 denetim bulgusu 8 — UYGULANMAYAN SEÇİCİ GÖSTERİLMİYOR.
+                  Genel Bakış ofis genelini gösteriyor (satırlar 14 mükellefin tamamı) ama üstteki
+                  mükellef seçicisi orada da duruyordu; seçili mükellefi hiç almadığı için kullanıcı
+                  1.181 / 542 / 637 rakamlarını seçili mükellefin sanıyordu. Artık o ekranda seçici
+                  yerine "Tüm mükellefler" yazısı var; kapsam açıkça söyleniyor.
+                  Belge Akışı'nda ise seçim GERÇEKTEN uygulanıyor (ScreenAkis artık prop'u kullanıyor). */}
               <div className="ctxpick">
                 <span className="ctxpick-l">Mükellef</span>
-                <FmSelect
-                  value={taxpayerId}
-                  onChange={setTaxpayerId}
-                  options={[{ v: '', l: 'Tüm mükellefler' }, ...taxpayers.map((t) => ({ v: t.id, l: taxpayerLabel(t) }))]}
-                  search
-                  searchPlaceholder="Mükellef ara…"
-                  emptyLabel="Tüm mükellefler"
-                  minWidth={210}
-                  icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg>}
-                />
+                {screen === 'genel' ? (
+                  <span className="mu" style={{ fontSize: 13, fontWeight: 600, padding: '6px 2px' }}
+                    title="Genel Bakış ofis genelini gösterir: tablodaki satırlar bütün mükellefleri kapsar, tek mükellefe süzülmez.">
+                    Tüm mükellefler
+                  </span>
+                ) : (
+                  <FmSelect
+                    value={taxpayerId}
+                    onChange={setTaxpayerId}
+                    options={[{ v: '', l: 'Tüm mükellefler' }, ...taxpayers.map((t) => ({ v: t.id, l: taxpayerLabel(t) }))]}
+                    search
+                    searchPlaceholder="Mükellef ara…"
+                    emptyLabel="Tüm mükellefler"
+                    minWidth={210}
+                    icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg>}
+                  />
+                )}
               </div>
-              {/* Gelen Faturalar (bekleyen alış/satış) DÖNEMSİZ — Mihsap Gelen Belgeler gibi; seçici burada gösterilmez. */}
-              {!((screen === 'faturalar' || screen === 'satis') && taxpayerId) ? (
+              {/* Gelen Faturalar (bekleyen alış/satış) DÖNEMSİZ — Mihsap Gelen Belgeler gibi; seçici burada gösterilmez.
+                  Bulgu 8: Belge Akışı da üst dönemi kullanmıyor (kendi zaman süzgeci var: son 30 gün vb.)
+                  → orada da seçici yerine hangi süzgecin geçerli olduğu yazılıyor. */}
+              {screen === 'akis' ? (
+                <div className="ctxpick" title="Belge Akışı kendi zaman süzgecini kullanır (araç çubuğundaki Son 30 gün / 90 gün seçimi). Üstteki dönem bu ekranda uygulanmaz.">
+                  <span className="ctxpick-l">Dönem</span>
+                  <span className="mu" style={{ fontSize: 13, fontWeight: 600, padding: '6px 2px' }}>Ekrandaki zaman süzgeci</span>
+                </div>
+              ) : !((screen === 'faturalar' || screen === 'satis') && taxpayerId) ? (
                 <div className="ctxpick">
                   <span className="ctxpick-l">Dönem</span>
                   <FmPeriod value={period} onChange={setPeriod} />
@@ -6425,9 +6452,10 @@ function ScreenKdv({ taxpayerId, period }: { taxpayerId: string; period: string 
   const repQ = useQuery({
     queryKey: ['fm2', 'kdv-report', taxpayerId, period],
     queryFn: () =>
+      // 2026-09-25 bulgu 12: hata YUTULMUYOR. Eskiden catch(() => null) ile boş rapor çiziliyordu;
+      //   yanındaki Teyit kutusu hata verirken ana rapor "veri yok" gibi görünüyordu (çelişkili ekran).
       api.get('/fatura-muhasebelestirme/kdv-client-report', { params: { taxpayerId, period } })
-        .then((r) => r.data)
-        .catch(() => null),
+        .then((r) => r.data),
     enabled: !!taxpayerId,
   });
   const rep: any = repQ.data;
@@ -6511,11 +6539,26 @@ function ScreenKdv({ taxpayerId, period }: { taxpayerId: string; period: string 
     const oran = (rep.vatByRate || []).map((v: any) => `<tr><td>${v.side === 'SATIS' ? 'Satış' : 'Alış'}</td><td class="n">${v.rate == null ? 'Diğer' : '%' + v.rate}</td><td class="n">${p(v.base)}</td><td class="n">${p(v.vat)}</td></tr>`).join('');
     const notlar = (rep.assessment || []).map((s: string) => `<li>${s}</li>`).join('');
     const dv = rep.devreden;
-    const sonuc = dv
-      ? (Number(rep.totals?.payableVat) > 0
-        ? `Ödenecek KDV (tahmini): <b>${p(rep.totals.payableVat)} ₺</b>`
-        : `Sonraki Döneme Devreden KDV (tahmini): <b>${p(rep.totals?.carryForwardVat)} ₺</b> (ödeme çıkmıyor)`)
-      : 'Devreden KDV: önceki dönem beyanname kaydı bulunamadığından hesaba katılmadı.';
+    // 2026-09-25 bulgu 9: MÜKELLEFE GİDEN ÇIKTIDA DA aynı kapı. Ekran kartıyla birebir aynı koşul;
+    //   kaynaklar tutmuyor ya da belge kapsamı eksikken "ödeme çıkmıyor" yazmak eksik beyana yol açar.
+    const pdfFark = Number(teyit?.uyariSayisi) || 0;
+    const pdfOnaysiz = Number(teyit?.faturaMerkezi?.kaynak?.onaysiz ?? rep?.kaynak?.onaysiz ?? 0) || 0;
+    const pdfHesapYok = Number(rep?.hesapAtanmamis?.count) || 0;
+    const pdfSatisEksik = Number(rep.totals?.calculatedVat) === 0 && Number(rep.totals?.deductibleVat) > 0;
+    const pdfKesinlesmedi = pdfFark > 0 || pdfOnaysiz > 0 || pdfHesapYok > 0 || pdfSatisEksik;
+    const pdfNedenler = [
+      pdfFark > 0 ? `${pdfFark} kaynak farkı` : '',
+      pdfOnaysiz > 0 ? `${pdfOnaysiz} onaysız belge` : '',
+      pdfHesapYok > 0 ? `${pdfHesapYok} belgede hesap kodu yok` : '',
+      pdfSatisEksik ? 'satış belgesi görünmüyor' : '',
+    ].filter(Boolean).join(' · ');
+    const sonuc = pdfKesinlesmedi
+      ? `<b>Sonuç kesinleşmedi</b> — ${pdfNedenler}. Bu rapor TASLAKTIR; eksikler giderilmeden beyan tutarı olarak kullanılmamalıdır.`
+      : dv
+        ? (Number(rep.totals?.payableVat) > 0
+          ? `Ödenecek KDV (tahmini): <b>${p(rep.totals.payableVat)} ₺</b>`
+          : `Sonraki Döneme Devreden KDV (tahmini): <b>${p(rep.totals?.carryForwardVat)} ₺</b> (ödeme çıkmıyor)`)
+        : 'Devreden KDV: önceki dönem beyanname kaydı bulunamadığından hesaba katılmadı.';
     const w = window.open('', '_blank', 'width=920,height=720');
     if (!w) { toast.error('Açılır pencere engellendi — tarayıcı iznini kontrol et'); return; }
     w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>KDV Raporu — ${rep.taxpayer?.name || ''} ${rep.periodLabel || ''}</title><style>
@@ -6580,6 +6623,15 @@ function ScreenKdv({ taxpayerId, period }: { taxpayerId: string; period: string 
 
       {repQ.isLoading ? (
         <div className="card"><div className="empty">Yükleniyor…</div></div>
+      ) : repQ.isError ? (
+        /* 2026-09-25 bulgu 12: HATA ile "veri yok" AYRI. Eskiden hata yutulup rapor boş çiziliyordu →
+           kullanıcı "bu dönemde KDV yok" sanıyordu. Artık hata söylenir ve tekrar denenebilir. */
+        <div className="card">
+          <div className="yuklenemedi" style={{ margin: '10px 16px 14px' }}>
+            <span><Ico html={I.info} size={14} /> KDV raporu alınamadı (bağlantı/sunucu hatası) — &quot;bu dönemde KDV yok&quot; demek DEĞİL.</span>
+            <button className="btn sm" onClick={() => repQ.refetch()}><Ico html={I.sync} size={12} /> Tekrar dene</button>
+          </div>
+        </div>
       ) : !rep ? (
         <div className="card"><div className="empty">Bu dönem için veri bulunamadı.</div></div>
       ) : (
@@ -6596,13 +6648,53 @@ function ScreenKdv({ taxpayerId, period }: { taxpayerId: string; period: string 
               <div className="kv">{rep?.devreden ? fmtMoney(rep.devreden.tutar) : '—'}</div>
               <div className="ka">{rep?.devreden ? 'beyannameden okundu ✓' : 'beyanname kaydı yok'}</div>
             </div>
-            {rep?.devreden && Number(t.payableVat) > 0 ? (
-              <div className="kdvst kdvst-ode"><div className="kl">Ödenecek KDV (tahmini)</div><div className="kv">{fmtMoney(t.payableVat)}</div><div className="ka">fark − devreden · beyanla netleşir</div></div>
-            ) : (
-              <div className="kdvst kdvst-son"><div className="kl">Sonraki Döneme Devreden (tahmini)</div><div className="kv">{rep?.devreden ? fmtMoney(t.carryForwardVat) : '—'}</div><div className="ka">{rep?.devreden ? 'ödeme çıkmıyor' : 'devreden bilinmeden hesaplanamaz'}</div></div>
-            )}
+            {/* 2026-09-25 denetim bulgusu 9 — SONUÇ KARTI ARTIK KAPILI.
+                Eskiden tek koşul vardı: devreden var mı + ödenecek > 0 mı. Kaynak uyuşmazlığı, onaysız
+                belge sayısı ve hesap atanmamış belge sayısı karara HİÇ girmiyordu. Satış KDV'si 0 olunca
+                sonuç otomatik YEŞİL kutuya düşüp "ödeme çıkmıyor" diyordu — ekran aynı anda 6 fark ve
+                8 onaysız belge bildirirken. Bu ifade eksik beyana ve cezaya yol açabilir; aynı cümle
+                mükellefe giden PDF çıktısına da düşüyor. Artık sonuç ancak kaynaklar tutarlı ve belge
+                kapsamı tamken kesin gösterilir. */}
+            {(() => {
+              const farkSayisi = Number(teyit?.uyariSayisi) || 0;
+              const onaysiz = Number(teyit?.faturaMerkezi?.kaynak?.onaysiz ?? rep?.kaynak?.onaysiz ?? 0) || 0;
+              const hesapYok = Number(rep?.hesapAtanmamis?.count) || 0;
+              // Satış KDV'si 0 ama alış var → satış belgeleri bu döneme hiç girmemiş olabilir.
+              const satisEksik = Number(t.calculatedVat) === 0 && Number(t.deductibleVat) > 0;
+              const kesinlesmedi = farkSayisi > 0 || onaysiz > 0 || hesapYok > 0 || satisEksik;
+              const nedenler = [
+                farkSayisi > 0 ? `${farkSayisi} kaynak farkı` : '',
+                onaysiz > 0 ? `${onaysiz} onaysız belge` : '',
+                hesapYok > 0 ? `${hesapYok} belgede hesap yok` : '',
+                satisEksik ? 'satış belgesi görünmüyor' : '',
+              ].filter(Boolean).join(' · ');
+              if (kesinlesmedi) {
+                return (
+                  <div className="kdvst kdvst-belirsiz" title={`Sonuç kesinleştirilemiyor: ${nedenler}. Aşağıdaki Teyit panelinden farkları inceleyin.`}>
+                    <div className="kl">Sonuç kesinleşmedi</div>
+                    <div className="kv">—</div>
+                    <div className="ka">{nedenler}</div>
+                  </div>
+                );
+              }
+              return rep?.devreden && Number(t.payableVat) > 0 ? (
+                <div className="kdvst kdvst-ode"><div className="kl">Ödenecek KDV (tahmini)</div><div className="kv">{fmtMoney(t.payableVat)}</div><div className="ka">fark − devreden · beyanla netleşir</div></div>
+              ) : (
+                <div className="kdvst kdvst-son"><div className="kl">Sonraki Döneme Devreden (tahmini)</div><div className="kv">{rep?.devreden ? fmtMoney(t.carryForwardVat) : '—'}</div><div className="ka">{rep?.devreden ? 'ödeme çıkmıyor' : 'devreden bilinmeden hesaplanamaz'}</div></div>
+              );
+            })()}
             <div className="kdvst kdvst-bel"><div className="kl">Belge</div><div className="kv">{rep?.quality?.invoiceCount ?? '—'}</div><div className="ka">{rep?.quality?.sourceCounts?.sales ?? 0} satış · {rep?.quality?.sourceCounts?.purchase ?? 0} alış</div></div>
           </div>
+          {/* 2026-09-25 bulgu 9: sunucu "N onaysız (bekleyen) belge toplamlara dahil" gibi notlar üretip
+              report.notlar'a yazıyor (service.ts) ama bu notlar ekranda HİÇ çizilmiyordu — üretilip
+              atılıyordu. Karar kartının hemen altına kondu; kapsam uyarısı sonucun yanında görünsün. */}
+          {Array.isArray(rep?.notlar) && rep.notlar.length > 0 && (
+            <div className="kdvnotlar">
+              {rep.notlar.map((n: any, i: number) => (
+                <div className="kdvnot" key={i}><Ico html={I.info} size={13} /> <span>{String(n)}</span></div>
+              ))}
+            </div>
+          )}
 
           {/* PLAN16-D — Teyit paneli: aynı dönem dört kaynak; FM esas, farklar kırmızı, drilldown belge listesi. */}
           {teyitQ.isError ? (
@@ -7420,11 +7512,16 @@ function akOkunabilir(r: any): boolean {
 }
 
 // Üst çubuktaki taxpayerId prop'u bu ekranda BİLEREK kullanılmaz (karar 2026-09-12): ekran ofis geneli; mükellef yerel süzgeç.
-function ScreenAkis({ taxpayers, onOpenMuhasebe }: { taxpayerId: string; taxpayers: any[]; onOpenMuhasebe: (id: string, taxpayerId?: string, donem?: string) => void }) {
+function ScreenAkis({ taxpayerId, taxpayers, onOpenMuhasebe }: { taxpayerId: string; taxpayers: any[]; onOpenMuhasebe: (id: string, taxpayerId?: string, donem?: string) => void }) {
   const qc = useQueryClient();
   const [sekme, setSekme] = useState<AkSekme>('tumu');
-  // Mükellef süzgeci YEREL ve isteğe bağlı: araç çubuğundaki seçici ya da "akış durmuş" listesinden tıklama doldurur; üst çubuğu değiştirmez.
-  const [tp, setTp] = useState('');
+  // 2026-09-25 denetim bulgusu 8: ÜST MÜKELLEF SEÇİMİ ARTIK UYGULANIYOR. Prop veriliyordu ama
+  //   fonksiyon imzasında destructure EDİLMEDİĞİ için gövdede erişilemiyordu (tipte vardı, değer yoktu)
+  //   → üstteki seçici bu ekranda tamamen ölüydü, değiştirmek hiçbir şeyi değiştirmiyordu ve derleyici
+  //   de uyarmıyordu. Yerel süzgeç korunuyor (araç çubuğundan ya da "akış durmuş" listesinden
+  //   değiştirilebilir); üst seçim başlangıç değeri olur ve değiştikçe buraya yansır.
+  const [tp, setTp] = useState(taxpayerId || '');
+  useEffect(() => { setTp(taxpayerId || ''); }, [taxpayerId]);
   const [yon, setYon] = useState<'' | 'ALIS' | 'SATIS'>('');
   const [durum, setDurum] = useState('');
   const [zaman, setZaman] = useState<AkZaman>('30');
@@ -7727,31 +7824,51 @@ function ScreenAkis({ taxpayers, onOpenMuhasebe }: { taxpayerId: string; taxpaye
 function ScreenGenel({ taxpayers, period, onOpen }: { taxpayers: any[]; period: string; onOpen: (id: string) => void }) {
   const sumQ = useQuery({
     queryKey: ['fm2', 'per-taxpayer', period],
+    // 2026-09-25 denetim bulgusu 12: hata YUTULMUYOR. Eskiden catch(() => []) ile boş liste dönüyordu
+    //   → Genel Bakış bütün sayıları SIFIR gösteriyor, ekran "ofiste iş yok" izlenimi veriyordu.
     queryFn: () =>
       api
         .get('/fatura-muhasebelestirme/per-taxpayer-summary', { params: { period } })
-        .then((r) => (Array.isArray(r.data) ? r.data : []))
-        .catch(() => []),
+        .then((r) => (Array.isArray(r.data) ? r.data : [])),
   });
   const rows: any[] = sumQ.data || [];
-  const pendingOf = (r: any) => Number(r.pendingAlis || 0) + Number(r.pendingSatis || 0);
+  // 2026-09-25 denetim bulgusu 7 — TOPLAM ARTIK TEKİL BELGE SAYISI.
+  //   ESKİ HÂL: toplam = bekleyen + aktarılmış + sorunlu. "Sorunlu" durumdan bağımsız sayıldığı için
+  //   onay bekleyen + doğrulaması bozuk bir belge toplamda İKİ kez sayılıyordu. Onaylı ama henüz
+  //   aktarılmamış belgeler (sol menüdeki "Aktarım" rozetinin tam kendisi) toplamda HİÇ yoktu;
+  //   banka belgeleri ve "Luca'da elle işlendi" belgeleri de yoktu. Yüzde halkası aynı bozuk paydadan
+  //   geldiği için işlenme oranı OLDUĞUNDAN YÜKSEK çıkıyordu.
+  //   YENİ HÂL: sunucu birbirini dışlayan üç aşama döndürüyor (bekleyen / onayliBekleyen / aktarilmis)
+  //   ve tekilToplam = üçünün toplamı. "sorunlu" toplama KATILMAZ, üste binen bir etikettir.
+  //   Eski alanlar hâlâ geliyor (mobil ve gösterge kartı onları okuyor) → eski sunucuyla da çalışsın
+  //   diye yedek hesap korunuyor.
+  const pendingOf = (r: any) => (r.bekleyen != null
+    ? Number(r.bekleyen || 0)
+    : Number(r.pendingAlis || 0) + Number(r.pendingSatis || 0) + Number(r.pendingBanka || 0));
   const tot = rows.reduce(
     (a, r) => ({
       pending: a.pending + pendingOf(r),
-      posted: a.posted + Number(r.postedToLuca || 0),
-      issue: a.issue + Number(r.hasIssue || 0),
+      // Aktarım kuyruğu: onaylı ama arşivde değil. Eski sunucuda alan yok → onaylı eksi aktarılmış.
+      kuyruk: a.kuyruk + (r.onayliBekleyen != null
+        ? Number(r.onayliBekleyen || 0)
+        : Math.max(0, (Number(r.approvedAlis || 0) + Number(r.approvedSatis || 0) + Number(r.approvedBanka || 0)) - Number(r.postedToLuca || 0))),
+      posted: a.posted + Number(r.aktarilmis ?? r.postedToLuca ?? 0),
+      issue: a.issue + Number(r.sorunlu ?? r.hasIssue ?? 0),
+      tekil: a.tekil + Number(r.tekilToplam || 0),
     }),
-    { pending: 0, posted: 0, issue: 0 },
+    { pending: 0, kuyruk: 0, posted: 0, issue: 0, tekil: 0 },
   );
   // ── Grafik verileri ──
-  const donutTotal = tot.pending + tot.posted + tot.issue;
-  const alisTot = rows.reduce((a, r) => a + Number(r.pendingAlis || 0), 0);
-  const satisTot = rows.reduce((a, r) => a + Number(r.pendingSatis || 0), 0);
+  // Sunucu tekilToplam veriyorsa onu kullan; vermiyorsa (eski sürüm) ayrık üç kümeyi topla.
+  const donutTotal = tot.tekil > 0 ? tot.tekil : tot.pending + tot.kuyruk + tot.posted;
+  const alisTot = rows.reduce((a, r) => a + Number(r.bekleyenAlis ?? r.pendingAlis ?? 0), 0);
+  const satisTot = rows.reduce((a, r) => a + Number(r.bekleyenSatis ?? r.pendingSatis ?? 0), 0);
   const completionPct = donutTotal > 0 ? Math.round((tot.posted / donutTotal) * 100) : 0;
   // ── Belge yükü dağılımı — EN ÇOK BEKLEYEN MÜKELLEFLER (yatay bar; ad+sayı okunur, tıklanınca aç) ──
   const tpById = new Map<string, any>((taxpayers || []).map((t: any) => [t.id, t]));
   const loadAll = rows
-    .map((r: any) => ({ id: r.taxpayerId as string, name: taxpayerLabel(tpById.get(r.taxpayerId) || {}), alis: Number(r.pendingAlis || 0), satis: Number(r.pendingSatis || 0), pending: pendingOf(r), issue: Number(r.hasIssue || 0) }))
+    // Bulgu 7: yeni ayrık alanlar varsa onlar (banka dahil), yoksa eski alanlar (geriye dönük).
+    .map((r: any) => ({ id: r.taxpayerId as string, name: taxpayerLabel(tpById.get(r.taxpayerId) || {}), alis: Number(r.bekleyenAlis ?? r.pendingAlis ?? 0), satis: Number(r.bekleyenSatis ?? r.pendingSatis ?? 0), pending: pendingOf(r), issue: Number(r.sorunlu ?? r.hasIssue ?? 0) }))
     .filter((x) => x.pending > 0)
     .sort((a, b) => b.pending - a.pending);
   const loadCount = loadAll.length;
@@ -7774,7 +7891,14 @@ function ScreenGenel({ taxpayers, period, onOpen }: { taxpayers: any[]; period: 
   return (
     <section className="screen">
       <div className="h2">Genel Bakış</div>
-      <div className="sub">{period} dönemi — belge durumu, dağılım ve dikkat gerektiren mükellefler.</div>
+      <div className="sub">{period} dönemi — belge durumu, dağılım ve dikkat gerektiren mükellefler. <b>Bütün mükellefler</b> kapsanır.</div>
+      {/* 2026-09-25 bulgu 12: hata ile "veri yok" AYRI. Eskiden hata yutulup bütün sayılar 0 görünüyordu. */}
+      {sumQ.isError && (
+        <div className="yuklenemedi">
+          <span><Ico html={I.info} size={14} /> Özet alınamadı (bağlantı/sunucu hatası) — aşağıdaki sayılar <b>eksik ya da sıfır</b> görünür, &quot;iş yok&quot; demek DEĞİL.</span>
+          <button className="btn sm" onClick={() => sumQ.refetch()}><Ico html={I.sync} size={12} /> Tekrar dene</button>
+        </div>
+      )}
       {/* ── RENKLİ ÖZET KUTUCUKLARI ── */}
       <div className="ovtiles">
         <div className="ovtile t-indigo">
@@ -7797,10 +7921,18 @@ function ScreenGenel({ taxpayers, period, onOpen }: { taxpayers: any[]; period: 
           <div className="ovtnum">{satisTot}</div>
           <div className="ovtl">Bekleyen Satış</div>
         </div>
-        <div className="ovtile t-red">
+        {/* Bulgu 7: AKTARIM KUYRUĞU kutusu eklendi. Onaylı ama henüz Luca'ya gitmemiş belgeler hiçbir
+            kutuda görünmüyordu (oysa sol menüdeki "Aktarım" rozeti tam onları sayıyor) — iş yükünün
+            bu parçası ekranda kayıptı. */}
+        <div className="ovtile t-violet">
+          <div className="ovtic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 2 11 13" /><path d="M22 2 15 22l-4-9-9-4 20-7z" /></svg></div>
+          <div className="ovtnum">{tot.kuyruk}</div>
+          <div className="ovtl">Aktarım Kuyruğunda</div>
+        </div>
+        <div className="ovtile t-red" title="Doğrulaması bozuk/eksik belgeler. Bu sayı TOPLAMA EKLENMEZ — belge başka bir aşamada da sayılıyor, buradaki yalnız üstüne binen bir işarettir.">
           <div className="ovtic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg></div>
           <div className="ovtnum">{tot.issue}</div>
-          <div className="ovtl">Sorunlu</div>
+          <div className="ovtl">Sorunlu <span className="ovtl-not">(toplama girmez)</span></div>
         </div>
         <div className="ovtile t-green">
           <div className="ovtic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></svg></div>
@@ -7848,8 +7980,10 @@ function ScreenGenel({ taxpayers, period, onOpen }: { taxpayers: any[]; period: 
               <div className="ovringc"><span className="ovringpct">%{completionPct}</span><span className="ovringcl">işlendi</span></div>
             </div>
             <div className="ovringleg">
+              {/* Bulgu 7: halka artık AYRIK aşamaları gösteriyor (bekleyen / kuyruk / aktarıldı).
+                  "Sorunlu" buradan çıkarıldı — toplama girmeyen bir etiket, aşama değil. */}
               <div className="ovrl"><i className="ovd db" /><span>Bekleyen</span><b>{tot.pending}</b></div>
-              <div className="ovrl"><i className="ovd dr" /><span>Sorunlu</span><b>{tot.issue}</b></div>
+              <div className="ovrl"><i className="ovd dv" /><span>Aktarım kuyruğu</span><b>{tot.kuyruk}</b></div>
               <div className="ovrl"><i className="ovd dg" /><span>Aktarıldı</span><b>{tot.posted}</b></div>
             </div>
           </div>
@@ -7895,6 +8029,8 @@ const CSS = `
 #fm-root .nitem.on > span:first-child{color:#fff;background:var(--accent);border-color:var(--accent);box-shadow:0 7px 16px -11px var(--accent)}
 #fm-root .nitem.on{background:var(--accent-soft);color:var(--accent);box-shadow:inset 3px 0 0 var(--accent),0 8px 18px -18px rgba(91,91,214,.55)}
 #fm-root .nitem .ct{margin-left:auto;font-size:10.5px;font-weight:700;background:#eef1f5;color:var(--muted);border-radius:999px;padding:1px 7px}
+/* Bulgu 12: sayı alınamadı — sıfır göstermek yerine bilinmiyor işareti (amber). */
+#fm-root .nitem .ct.ct-yok{background:#fdf2e0;color:#b45309;cursor:help}
 #fm-root .nitem.on .ct{background:#fff;color:var(--accent)}
 #fm-root .nsub{display:flex;align-items:center;gap:10px;padding:7px 11px 7px 38px;border-radius:8px;color:var(--muted);font-size:12.5px;font-weight:600;cursor:pointer}
 #fm-root .nsub:hover{background:#f7f8fb;color:var(--text)}
@@ -7972,6 +8108,9 @@ const CSS = `
 #fm-root .ovtile.t-blue{background:linear-gradient(135deg,#1971c2,#339af0);--tsh:rgba(25,113,194,.5)}
 #fm-root .ovtile.t-teal{background:linear-gradient(135deg,#0ca678,#20c997);--tsh:rgba(12,166,120,.5)}
 #fm-root .ovtile.t-red{background:linear-gradient(135deg,#e03131,#ff6b6b);--tsh:rgba(224,49,49,.5)}
+/* Bulgu 7: aktarim kuyrugu kutusu + 'toplama girmez' notu. */
+#fm-root .ovtile.t-violet{background:linear-gradient(135deg,#7c3aed,#a78bfa);--tsh:rgba(124,58,237,.5)}
+#fm-root .ovtl-not{display:block;font-size:9.5px;font-weight:600;opacity:.85;letter-spacing:.2px}
 #fm-root .ovtile.t-green{background:linear-gradient(135deg,#2f9e44,#51cf66);--tsh:rgba(47,158,68,.5)}
 #fm-root .ovcharts{display:grid;grid-template-columns:1.7fr 1fr;gap:16px;margin-bottom:16px}
 #fm-root .ovcharts .card{margin-bottom:0}
@@ -7997,6 +8136,8 @@ const CSS = `
 #fm-root .ovd.db{background:#f59f00}
 #fm-root .ovd.dr{background:#e03131}
 #fm-root .ovd.dg{background:#2f9e44}
+/* Bulgu 7: aktarim kuyrugu (mor) — ayrik asama; sorunlu artik halkada yok. */
+#fm-root .ovd.dv{background:#7c3aed}
 #fm-root .ovbarcard{margin-bottom:16px}
 #fm-root .ovbars{display:flex;flex-direction:column;gap:10px;padding:16px 18px}
 #fm-root .ovbar{display:grid;grid-template-columns:minmax(90px,160px) 1fr 34px;align-items:center;gap:11px;cursor:pointer}
@@ -9087,6 +9228,11 @@ const CSS = `
 #fm-root .kdvst-frk{--ks:#475569;--kb:#c2cedb;--kv:#334155;background:linear-gradient(135deg,#e5ebf2,#f8fafc 60%)}
 #fm-root .kdvst-dev{--ks:#0d6b66;--kb:#a3d4cf;--kv:#0b5f5a;background:linear-gradient(135deg,#d3ecea,#f0faf9 60%)}
 #fm-root .kdvst-son{--ks:#15803d;--kb:#a5dcba;--kv:#15803d;background:linear-gradient(135deg,#d4f1de,#f0fbf4 60%)}
+/* Bulgu 9: sonuç kesinleşmediğinde YEŞİL değil amber — ekran "sorun yok" demesin. */
+#fm-root .kdvst-belirsiz{--ks:#b45309;--kb:#f3d6a6;--kv:#b45309;background:linear-gradient(135deg,#fdf2e0,#fffaf2 60%)}
+/* Bulgu 9: sunucunun ürettiği kapsam notları (onaysız belge dahil vb.) — kartların hemen altında. */
+#fm-root .kdvnotlar{display:flex;flex-direction:column;gap:5px;margin:8px 16px 0}
+#fm-root .kdvnot{display:flex;align-items:flex-start;gap:6px;padding:7px 10px;background:#fdf2e0;border:1px solid #f3d6a6;border-radius:8px;font-size:12px;color:#8a5a12;line-height:1.45}
 #fm-root .kdvst-ode{--ks:#b02a37;--kb:#e8b3b8;--kv:#b02a37;background:linear-gradient(135deg,#f9dcdf,#fdf2f3 60%)}
 #fm-root .kdvst-bel{--ks:#5b6b7c;--kb:#c6cfd8;--kv:#42505f;background:linear-gradient(135deg,#e6ebf0,#f7f9fa 60%)}
 /* Katlanır tevkifat başlığı: tıklanır + ok (açıkken yukarı döner). */

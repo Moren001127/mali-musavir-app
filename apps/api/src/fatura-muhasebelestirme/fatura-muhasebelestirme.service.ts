@@ -1552,8 +1552,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
 
     const docs = await (this.prisma as any).invoiceAccountingDocument.findMany({
       where,
-      // v2.2: validationStatus select'i raw query ile yaparız, Prisma client tanımıyor olabilir
-      select: { status: true, lucaStatus: true, ocrStatus: true, taxpayerId: true, ocrData: true, invoiceKind: true },
+      // BULGU 7: validationStatus DB KOLONUNDAN isteniyor (eski not bayattı — kolon şemada var,
+      //   client tanıyor). Yalnız ocrData'dan okunurken invalidCount neredeyse hep 0 çıkıyordu.
+      select: { status: true, lucaStatus: true, ocrStatus: true, taxpayerId: true, validationStatus: true, ocrData: true, invoiceKind: true },
     });
 
     // v2.2: Mukellef bağlantısı + validation durumu ayrı sayılır
@@ -1578,8 +1579,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       if (d.ocrStatus === 'IN_PROGRESS' || d.ocrStatus === 'PENDING') ocrInProgress++;
 
       if (!hasTaxpayer) orphanCount++;
-      // ocrData içindeki validationStatus'a düş — ana kolon henüz yok olabilir
-      const vStatus = (d as any).ocrData?.validationStatus;
+      // BULGU 7 — doğrulama durumu: önce DB kolonu, yoksa ocrData (eski belgeler).
+      //   Yeniden doğrulama SADECE kolonu yazıyor; ocrData'ya bakan eski okuma ölüydü.
+      const vStatus = String((d as any).validationStatus || (d as any).ocrData?.validationStatus || '').toUpperCase();
       if (vStatus === 'INVALID' || vStatus === 'INCOMPLETE') invalidCount++;
     }
 
@@ -2655,13 +2657,19 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
 
     const docs = await (this.prisma as any).invoiceAccountingDocument.findMany({
       where,
-      // v2.2: validationStatus yerine ocrData içinden okuyoruz — Prisma client tanımıyor olabilir
+      // BULGU 7: validationStatus artık DB KOLONUNDAN isteniyor. Eski not ("Prisma client
+      //   tanımıyor olabilir") bayattı — kolon şemada var (schema.prisma InvoiceAccountingDocument,
+      //   @@index([tenantId, validationStatus]) dahil) ve üretilen client tanıyor. Yalnız
+      //   ocrData'dan okundukça "sorunlu" sayacı ÖLÜYDÜ: Mihsap belgelerinde
+      //   ocrData.validationStatus hiç set edilmiyor ve yeniden doğrulama SADECE kolonu yazıyor.
+      //   Kodun diğer yerleriyle aynı kalıp kullanılır: d.validationStatus || d.ocrData?.validationStatus
       select: {
         taxpayerId: true,
         status: true,
         invoiceKind: true,
         documentType: true,
         lucaStatus: true,
+        validationStatus: true,
         ocrData: true,
       },
     });
@@ -2671,14 +2679,31 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       if (!d.taxpayerId) continue;
       const entry = byTaxpayer.get(d.taxpayerId) || {
         taxpayerId: d.taxpayerId,
+        // ── ESKİ SAYAÇLAR (geriye dönük uyum; ön yüz + mobil hâlâ okuyor) ──
+        // DİKKAT: bunlar birbirini dışlamaz — aynı belge hem pendingAlis hem postedToLuca'ya
+        // girebilir. Toplam almak için AŞAĞIDAKİ ayrık sayaçları kullan.
         pendingAlis: 0,
         pendingSatis: 0,
         pendingBanka: 0,
         approvedAlis: 0,
         approvedSatis: 0,
         approvedBanka: 0,
-        postedToLuca: 0,
-        hasIssue: 0,            // v2.1: validation hatası olan belge sayısı
+        postedToLuca: 0,        // yalnız POSTED (MANUAL_DONE hariç) — eski davranış korunuyor
+        hasIssue: 0,            // = sorunlu (eski ad; artık DB kolonundan okunuyor)
+        // ── BULGU 7: AYRIK (birbirini dışlayan) AŞAMA SAYAÇLARI ──
+        // Üç kova ön yüzdeki (apps/web .../fatura-merkezi/page.tsx) üç ekranla BİREBİR aynı:
+        //   aktarilmis     = isArchived        → "Arşivim"
+        //   onayliBekleyen = isWaitingTransfer → "Aktarım"
+        //   bekleyen       = ikisinin de DIŞI  → "Gelen Faturalar" (gelen kutusu)
+        // Bir belge yalnız BİR kovaya girer → bekleyen + onayliBekleyen + aktarilmis = tekilToplam.
+        bekleyen: 0,            // gelen kutusu: aktarım hattına hiç girmemiş (reddedilen/hatalı da burada)
+        bekleyenAlis: 0,        // gelen kutusunun yön kırılımı (üçü toplanınca = bekleyen)
+        bekleyenSatis: 0,
+        bekleyenBanka: 0,
+        onayliBekleyen: 0,      // onaylı/kuyrukta ama Luca'ya gitmemiş → aktarım kuyruğu
+        aktarilmis: 0,          // POSTED veya MANUAL_DONE (Luca'da elle işlendi) → arşiv
+        tekilToplam: 0,         // gerçek TEKİL belge sayısı (her belge bir kez)
+        sorunlu: 0,             // doğrulama INVALID/INCOMPLETE — ÜSTE BİNEN etiket, toplama KATILMAZ
       };
       const isBank = (d.documentType || '').toUpperCase().includes('BANKA');
       const isAlis = String(d.invoiceKind || '').toUpperCase().startsWith('ALI');
@@ -2699,8 +2724,31 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       }
 
       if (d.lucaStatus === 'POSTED') entry.postedToLuca++;
-      const vStatus = (d as any).ocrData?.validationStatus;
-      if (vStatus === 'INVALID' || vStatus === 'INCOMPLETE') entry.hasIssue++;
+
+      // BULGU 7 — AŞAMA: ön yüzdeki isArchived / isWaitingTransfer ile birebir aynı tanım.
+      const lucaStatus = String(d.lucaStatus || '').toUpperCase();
+      const arsivde = lucaStatus === 'POSTED' || lucaStatus === 'MANUAL_DONE';
+      const aktarimKuyrugunda = !arsivde
+        && (approved || lucaStatus === 'QUEUED' || lucaStatus === 'POSTING' || lucaStatus === 'FAILED');
+      if (arsivde) {
+        entry.aktarilmis++;
+      } else if (aktarimKuyrugunda) {
+        entry.onayliBekleyen++;
+      } else {
+        entry.bekleyen++;
+        if (isBank) entry.bekleyenBanka++;
+        else if (isAlis) entry.bekleyenAlis++;
+        else entry.bekleyenSatis++;
+      }
+      // Tekil toplam belge başına BİR artar → üç kovanın toplamına eşit olması garanti.
+      entry.tekilToplam++;
+
+      // BULGU 7 — doğrulama durumu: önce DB kolonu, yoksa ocrData (eski belgeler).
+      const vStatus = String((d as any).validationStatus || (d as any).ocrData?.validationStatus || '').toUpperCase();
+      if (vStatus === 'INVALID' || vStatus === 'INCOMPLETE') {
+        entry.sorunlu++;
+        entry.hasIssue++;       // eski ad aynı değeri taşır (ön yüz/mobil kırılmasın)
+      }
       byTaxpayer.set(d.taxpayerId, entry);
     }
 
