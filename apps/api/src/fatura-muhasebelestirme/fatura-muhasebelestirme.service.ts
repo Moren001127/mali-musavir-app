@@ -6158,7 +6158,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
               },
             };
             if (existing) {
-              await (this.prisma as any).eFaturaInbox.update({ where: { id: existing.id }, data });
+              // BOŞLA EZME YOK (2026-09-26): yeniden çekimde okunamayan alan (null) mevcut DOĞRU değeri silmesin.
+              //   Canlı: Mikro'nun UBL olmayan biçimi tarih/unvan boş verdi → PT02026000106113'ün
+              //   "PARAŞÜT YAZILIM, 31.08.2026" bilgisi silindi. Dolu gelen değer yine günceller.
+              const guncelle: Record<string, any> = { ...data };
+              for (const alan of ['ettn', 'senderVkn', 'senderTitle', 'receiverVkn', 'faturaNo', 'faturaDate', 'matrah', 'kdv', 'toplam']) {
+                if (guncelle[alan] == null) delete guncelle[alan];
+              }
+              await (this.prisma as any).eFaturaInbox.update({ where: { id: existing.id }, data: guncelle });
               // Tür kararı değiştiyse (e-Fatura sanılan belge e-Arşiv çıktı) aktarılmış FM belgesinin türü de düzelsin
               //   (KE42026000000001 — Zeki Özkaynak; e-SMM'ye dokunulmaz).
               if (existing.documentId && (docType === 'E_ARSIV' || docType === 'E_FATURA')) {
@@ -13124,7 +13131,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
    *   SARMALAYICI ELEMAN OLMADAN doğrudan Body altında durur ve her biri kendi
    *   xmlns="http://tempuri.org/" bildirimini taşır. (Servisin kendi örnek zarfından birebir.)
    * Akış: login → sessionId → getInvoiceFromDate | getEArchiveFromDate → her belge için
-   *   getInvoiceData (binaryData = base64, zip olabilir) → UBL XML.
+   *   downloadUBLTR (binaryData = base64, zip olabilir) → UBL XML.
+   *   (getInvoiceData KULLANILMAZ: Mikro'nun kendi "MikroDocument" biçimini verir, UBL değil.)
    * YÖN: itemPosition = Incoming (ALIŞ/gelen) | Submitted (SATIŞ/giden).
    */
   private async fetchMikroInvoices(
@@ -13218,45 +13226,81 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         searchCriteria;
       const listResp = await this.soapPost(endpoint, method, listBody, { trProxy: true });
 
-      // Liste yanıtı InvoiceDataInfo dizisi; belge kimliği <Id>. UBL XML listede YOK → getInvoiceData.
-      const ids = (listResp.match(/<InvoiceDataInfo\b[\s\S]*?<\/InvoiceDataInfo>/gi) || [])
-        .map((blok) => this.tagText(blok, 'Id') || '')
-        .map((s) => String(s).trim())
-        .filter(Boolean);
+      // Liste yanıtı InvoiceDataInfo dizisi; belge kimliği <Id>, belge tarihi DocumentHeader/<DocumentDate>.
+      //   UBL XML listede YOK → her belge ayrıca indirilir.
+      const satirlar = (listResp.match(/<InvoiceDataInfo\b[\s\S]*?<\/InvoiceDataInfo>/gi) || [])
+        .map((blok) => ({
+          id: String(this.tagText(blok, 'Id') || '').trim(),
+          belgeTarihi: String(this.tagText(blok, 'DocumentDate') || '').slice(0, 10),
+        }))
+        .filter((s) => s.id);
 
       const ublIssueYmd = (x: string) => {
-        const m = x.match(/<cbc:IssueDate>\s*([0-9]{4}-[0-9]{2}-[0-9]{2})/i) || x.match(/<IssueDate>\s*([0-9]{4}-[0-9]{2}-[0-9]{2})/i);
+        const m = x.match(/<cbc:IssueDate>\s*([0-9]{4}-[0-9]{2}-[0-9]{2})/i);
         return m ? m[1] : '';
       };
+      // ÖN SÜZGEÇ: sorgu penceresi bugüne kadar geniş → dönem dışı faturayı İNDİRMEDEN ele (130 satırın ~yarısı).
+      //   Ölçüm 2026-09-26 WASH CLEAN: 45/45 faturada liste tarihi = UBL IssueDate. Yine de saat dilimi
+      //   ihtimaline karşı 1 gün pay bırakılır; kesin süzgeç indirilen UBL'nin kendi tarihidir.
+      const gunEkle = (iso: string, gun: number) => {
+        const t = new Date(`${String(iso).slice(0, 10)}T12:00:00Z`);
+        if (Number.isNaN(t.getTime())) return iso;
+        t.setUTCDate(t.getUTCDate() + gun);
+        return t.toISOString().slice(0, 10);
+      };
+      const payliBas = gunEkle(faturaStart, -1);
+      const payliSon = gunEkle(faturaEnd, 1);
 
       const payloads: ProviderInvoicePayload[] = [];
       const seen = new Set<string>();
-      for (const id of ids) {
+      let indirmeHatasi = 0;
+      let ilkHata = '';
+      for (const { id, belgeTarihi } of satirlar) {
         if (payloads.length >= opts.limit) break;
         if (seen.has(id)) continue;
         seen.add(id);
+        if (/^\d{4}-\d{2}-\d{2}$/.test(belgeTarihi) && (belgeTarihi < payliBas || belgeTarihi > payliSon)) continue;
         let xml: string | null = null;
         try {
-          const dataBody =
+          // ⚠️ TUZAK (2026-09-26): getInvoiceData UBL DEĞİL, Mikro'nun kendi "MikroDocument" sarmalayıcısını
+          //   döndürüyor (cbc: önekleri yok, satıcı bloğu yok) → okuyucu tarih/unvan bulamıyor, satırlar boş
+          //   düşüyordu. downloadUBLTR (DownloadWithEnvelope=false) GİB'e giden asıl UBL-TR'yi verir
+          //   (zip içinde {Id}.xml). Gelen, giden e-Fatura ve e-Arşiv'de denendi.
+          const dwBody =
             `<sessionId${ns}>${this.xmlEscape(sessionId)}</sessionId>` +
-            `<invoiceData${ns}>` +
-            `<InvoiceHeaderDataInfo>` +
+            `<dwDataInfo${ns}>` +
             `<Id>${this.xmlEscape(id)}</Id>` +
+            `<DownloadWithEnvelope>false</DownloadWithEnvelope>` +
+            `<DataType>Invoice</DataType>` +
             `<ItemPosition>${itemPosition}</ItemPosition>` +
-            `</InvoiceHeaderDataInfo>` +
-            `</invoiceData>`;
-          const dataResp = await this.soapPost(endpoint, 'getInvoiceData', dataBody, { trProxy: true });
+            `</dwDataInfo>`;
+          const dataResp = await this.soapPost(endpoint, 'downloadUBLTR', dwBody, { trProxy: true });
           const b64 = this.tagText(dataResp, 'binaryData');
           // binaryData zip ya da düz XML olabilir — eLogo'daki çözücü ikisini de kaldırır.
           if (b64) xml = await this.elogoUnzipXml(Buffer.from(b64, 'base64'));
+          if (!xml) throw new Error('boş belge döndü');
         } catch (e: any) {
-          this.logger.warn(`Mikro getInvoiceData ${id} hata: ${e?.message}`);
+          indirmeHatasi++;
+          if (!ilkHata) ilkHata = String(e?.message || e);
+          this.logger.warn(`Mikro downloadUBLTR ${id} hata: ${e?.message}`);
+          continue;
         }
-        if (!xml || !xml.includes('<')) continue;
+        // Yalnız gerçek UBL kaydedilir: başka biçim (ör. MikroDocument) okunamaz ve mevcut satırı boşla ezer.
         const iss = ublIssueYmd(xml);
-        if (iss && (iss < faturaStart || iss > faturaEnd)) continue; // sorgu penceresi geniş → döneme süz
+        if (!iss) {
+          indirmeHatasi++;
+          if (!ilkHata) ilkHata = 'UBL biçiminde olmayan belge döndü';
+          this.logger.warn(`Mikro ${id}: UBL biçiminde değil (${xml.slice(0, 80).replace(/\s+/g, ' ')}) — kaydedilmedi`);
+          continue;
+        }
+        if (iss < faturaStart || iss > faturaEnd) continue; // sorgu penceresi geniş → döneme süz
         payloads.push({ externalId: `mikro:${id}`, originalName: `${id}.xml`, xml });
       }
+      // SESSİZ KAYIP YASAK: hiçbir belge inmediyse "0 fatura" deme, sebebi göster.
+      if (!payloads.length && indirmeHatasi) {
+        throw new Error(`Mikro listede fatura var ama ${indirmeHatasi} belge indirilemedi: ${ilkHata}`);
+      }
+      if (indirmeHatasi) this.logger.warn(`[MIKRO] ${indirmeHatasi} belge indirilemedi (${opts.period.donem}) — ilk hata: ${ilkHata}`);
       return payloads;
     } catch (err: any) {
       // Oturum düştüyse önbelleği temizle → sonraki çekim yeniden giriş yapsın.
