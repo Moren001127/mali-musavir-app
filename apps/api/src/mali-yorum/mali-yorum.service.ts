@@ -42,7 +42,53 @@ export class MaliYorumService {
     const row = await (this.prisma as any).maliYorum.findUnique({
       where: { tenantId_kaynak_kaynakId: { tenantId, kaynak: k, kaynakId } },
     });
-    return row || null;
+    if (!row) return null;
+    // 2026-09-25 (portal denetimi bulgu 26) — BAYAT YORUM ARTIK İŞARETLİ.
+    //   Önbellek kaynağın DEĞİŞİP DEĞİŞMEDİĞİNE bakmıyordu. İHÖ'de kaynak kimliği
+    //   `taxpayerId:yil` olduğu için YIL BOYUNCA sabit: Ocak'ta üretilen yorum Aralık'ta
+    //   hâlâ gösteriliyor, üstelik "güncel" gibi. Mükellef karışması YOK (anahtar kaynak
+    //   kimliğini taşıyor) — sorun bayatlık. Kaynağın son değişikliği yorumdan yeniyse
+    //   `bayat: true` dönüyor; ekran "yeniden üret" önerebilsin.
+    const kaynakSonDegisim = await this.kaynakSonDegisimZamani(tenantId, k, kaynakId).catch(() => null);
+    const bayat = !!(kaynakSonDegisim && new Date(kaynakSonDegisim).getTime() > new Date(row.updatedAt).getTime());
+    return { ...row, bayat, kaynakSonDegisim };
+  }
+
+  /**
+   * Yorumun dayandığı kaydın son değişiklik zamanı (bulgu 26). Bulunamazsa null —
+   * o zaman bayatlık iddia edilmez (yanlış "eski" damgası vurmaktansa sessiz kal).
+   */
+  private async kaynakSonDegisimZamani(
+    tenantId: string,
+    kaynak: MaliYorumKaynak,
+    kaynakId: string,
+  ): Promise<Date | null> {
+    const db = this.prisma as any;
+    if (kaynak === 'MIZAN') {
+      const r = await db.mizan.findFirst({ where: { id: kaynakId, tenantId }, select: { updatedAt: true } });
+      return r?.updatedAt ?? null;
+    }
+    if (kaynak === 'BILANCO') {
+      const r = await db.bilanco.findFirst({ where: { id: kaynakId, tenantId }, select: { updatedAt: true } });
+      return r?.updatedAt ?? null;
+    }
+    if (kaynak === 'GELIR_TABLOSU') {
+      const r = await db.gelirTablosu.findFirst({ where: { id: kaynakId, tenantId }, select: { updatedAt: true } });
+      return r?.updatedAt ?? null;
+    }
+    if (kaynak === 'IHO') {
+      // kaynakId = "taxpayerId:yil" — yılın DÖRT çeyreğinden en son değişeni esas.
+      const [taxpayerId, yilStr] = String(kaynakId).split(':');
+      const yil = Number(yilStr);
+      if (!taxpayerId || !yil) return null;
+      const r = await db.isletmeHesapOzeti.findFirst({
+        where: { tenantId, taxpayerId, yil },
+        orderBy: { updatedAt: 'desc' },
+        select: { updatedAt: true },
+      });
+      return r?.updatedAt ?? null;
+    }
+    return null;
   }
 
   /**
@@ -199,7 +245,17 @@ export class MaliYorumService {
           `1=sınıf, 10=grup, 100=ana hesap; üst kod alt kırılımların TOPLAMIDIR — çift sayma). ` +
           `Biçim: kod · ad · Borç bakiye / Alacak bakiye:`,
       );
-      for (const h of ana.slice(0, 250)) {
+      // 2026-09-25 (bulgu 26): üstteki satır "bakiyesi olan N hesap" diyor ama yalnız
+      // 250'si gönderiliyordu — AI'a olmayan veriyi varmış gibi anlatıyorduk. Artık
+      // kesilme AÇIKÇA söyleniyor ve sınır yükseltildi.
+      const HESAP_SINIRI = 600;
+      if (ana.length > HESAP_SINIRI) {
+        L.push(
+          `(DİKKAT: ${ana.length} hesabın yalnız ilk ${HESAP_SINIRI} tanesi aşağıda; ` +
+            `kalan ${ana.length - HESAP_SINIRI} hesap bu listede YOK — genel yargıda bunu hesaba kat.)`,
+        );
+      }
+      for (const h of ana.slice(0, HESAP_SINIRI)) {
         L.push(
           `${h.hesapKodu} · ${h.hesapAdi} · ${this.tl(h.borcBakiye)} / ${this.tl(h.alacakBakiye)}`,
         );

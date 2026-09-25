@@ -11,6 +11,9 @@ export type MaliYorum = {
   model: string;
   createdAt: string;
   updatedAt: string;
+  /** 2026-09-25 (denetim bulgusu 26): kaynak kayıt bu yorumdan SONRA değişti mi? */
+  bayat?: boolean;
+  kaynakSonDegisim?: string | null;
 };
 
 export const maliYorumApi = {

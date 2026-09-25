@@ -182,14 +182,19 @@ export interface GenelBakisRow {
   mukellefId: string;
   ad: string;
   faturaAdet: number;
-  hesaplananKdv: number;
-  indirilecekKdv: number;
-  devredenKdv: number;
-  odenecekKdv: number;
-  sonrakiAyaDevreden: number;
+  // 2026-09-25 (denetim bulgusu 20): hata hâlinde SIFIR değil NULL — "KDV yok" ile
+  // "hesaplanamadı" birbirine karışmasın, toplamlarda da sayılmasın.
+  hesaplananKdv: number | null;
+  indirilecekKdv: number | null;
+  devredenKdv: number | null;
+  odenecekKdv: number | null;
+  sonrakiAyaDevreden: number | null;
   veriGuveniPuan: number;
   veriGuveniSeviye: 'kesin' | 'kontrol_gerekli' | 'eksik';
-  durum: 'hazir' | 'eksik' | 'bos';
+  /** hazir = veri tam VE güven kesin · eksik = OCR/kontrol gerekli · bos = fatura yok · hata = hesaplanamadı */
+  durum: 'hazir' | 'eksik' | 'bos' | 'hata';
+  /** yalnız durum='hata' iken dolu */
+  hataMesaji?: string;
   kdv1Var: boolean;
   kdv1Verildi: boolean;
   kdv2Var: boolean;            // KDV2 mükellefiyeti açık VEYA tevkifatlı alış var
@@ -205,6 +210,8 @@ export interface GenelBakis {
     mukellefAdet: number;
     hazirAdet: number;
     dikkatAdet: number;
+    /** Hesaplanamayan (durum="hata") satır sayısı — toplamlara katılmaz (denetim bulgusu 20). */
+    hataAdet: number;
     toplamOdenecek: number;
     toplamDevreden: number;
     kdv2Adet: number;

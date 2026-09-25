@@ -931,11 +931,15 @@ function StatCard({ icon: Icon, label, value, accent, sub, active, onClick, ton 
   );
 }
 
-function DurumBadge({ durum }: { durum: 'hazir' | 'eksik' | 'bos' }) {
+// 2026-09-25 (denetim bulgusu 20): 'hata' durumu eklendi. Eskiden hesaplanamayan mükellef
+// SIFIRLARLA ve "Veri yok" rozetiyle dönüyordu — ekranda "bu mükellefte KDV yok" gibi
+// görünüyor, listenin toplamları da sessizce eksik çıkıyordu.
+function DurumBadge({ durum }: { durum: 'hazir' | 'eksik' | 'bos' | 'hata' }) {
   const map = {
     hazir: { l: 'Hazır', c: STAT_GREEN, b: 'rgba(95,207,142,0.13)' },
     eksik: { l: 'Kontrol gerekli', c: STAT_AMBER, b: 'rgba(240,183,85,0.13)' },
     bos: { l: 'Veri yok', c: 'rgba(250,250,249,0.4)', b: 'rgba(255,255,255,0.04)' },
+    hata: { l: 'Hesaplanamadı', c: STAT_RED, b: 'rgba(230,110,110,0.15)' },
   }[durum];
   return <span data-kdvb-durum={durum} className="inline-flex items-center rounded-md px-2 py-1 text-[10.5px] font-bold" style={portalStyle({ background: map.b, color: map.c })}>{map.l}</span>;
 }

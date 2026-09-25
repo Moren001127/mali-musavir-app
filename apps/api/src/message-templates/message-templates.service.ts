@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { claudeTextViaMax, MAX_MODEL_DEFAULT } from '../common/max-inference';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
@@ -108,6 +108,7 @@ const OFFICE = process.env.MOREN_OFFICE_NAME || 'MOREN MALİ MÜŞAVİRLİK';
 
 @Injectable()
 export class MessageTemplatesService {
+  private readonly logger = new Logger(MessageTemplatesService.name);
   constructor(
     private readonly prisma: PrismaService,
     private readonly whatsapp: WhatsAppService,
@@ -186,8 +187,17 @@ export class MessageTemplatesService {
     const updates = ids
       .filter((id) => ownedIds.has(id))
       .map((id, i) => this.model.update({ where: { id }, data: { sirano: i } }));
-    await this.prisma.$transaction(updates).catch(() => null);
-    return { ok: true };
+    // 2026-09-25 (portal denetimi bulgu 40) — HATA ARTIK YUTULMUYOR.
+    //   Eskiden `.catch(() => null)` vardı ve ne olursa olsun `{ ok: true }` dönüyordu:
+    //   sıra kaydedilmese de ekran "kaydedildi" diyor, kullanıcı sayfayı yenileyince
+    //   eski sırayı görüp nedenini anlamıyordu.
+    try {
+      await this.prisma.$transaction(updates);
+    } catch (e: any) {
+      this.logger.warn(`Şablon sırası kaydedilemedi (${ids.length} kayıt): ${e?.message || e}`);
+      throw new BadRequestException('Şablon sırası kaydedilemedi. Sayfayı yenileyip tekrar deneyin.');
+    }
+    return { ok: true, sirali: updates.length };
   }
 
   /** Kullanım sayacını artır (test + ileride gerçek gönderimler de çağırabilir). */

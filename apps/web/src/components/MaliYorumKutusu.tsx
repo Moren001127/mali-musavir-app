@@ -176,6 +176,11 @@ export function MaliYorumKutusu({
             {zaman && (
               <div data-mali-yorum-meta style={portalStyle({ marginTop: 14, fontSize: 11.5, color: 'rgba(245,239,227,0.4)' })}>
                 {zaman} · {yorum.model}
+                {yorum.bayat && (
+                  <span style={portalStyle({ color: '#fbbf24', marginLeft: 8 })}>
+                    · Bu değerlendirmeden sonra veriler değişti — yeniden üretmeniz önerilir
+                  </span>
+                )}
               </div>
             )}
           </>

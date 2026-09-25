@@ -24,7 +24,9 @@ export default function MukellefProfil() {
   function submit(e: React.FormEvent) {
     e.preventDefault();
     setMsg(null);
-    if (yeni.length < 6) return setMsg({ tip: 'err', text: 'Yeni şifre en az 6 karakter olmalı.' });
+    // 2026-09-25 (denetim bulgusu 49): sunucu en az 8 istiyor (taxpayer-portal.service.ts:131).
+    // Ekran 6 diyordu; mükellef 7 karakter girip sunucudan hata alıyor, sebebini anlamıyordu.
+    if (yeni.length < 8) return setMsg({ tip: 'err', text: 'Yeni şifre en az 8 karakter olmalı.' });
     if (yeni !== yeni2) return setMsg({ tip: 'err', text: 'Yeni şifreler eşleşmiyor.' });
     sifreMut.mutate();
   }

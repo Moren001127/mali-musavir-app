@@ -336,7 +336,12 @@ export default function Yapilandirma7582Page() {
         <div style={portalStyle({ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: 12 })}>
           <div>
             <label style={portalStyle(etiket)}>Mükellef</label>
-            <select style={portalStyle(input)} value={taxpayerId} onChange={(e) => { setTaxpayerId(e.target.value); setLikidite(null); setLucaJobId(null); }}>
+            {/* 2026-09-25 (denetim bulgusu 25): mükellef değişince DÖRT durumun dördü de
+                temizleniyor. Eskiden yalnız likidite ve lucaJobId siliniyor, `sonuc` ve `plan`
+                EKRANDA KALIYORDU — yeni seçilen mükellefin ekranında ÖNCEKİ mükellefin
+                yapılandırma planı görünüyordu. Doğrusu aynı dosyada `mukellefeGec` (satır ~130)
+                içinde zaten vardı. */}
+            <select style={portalStyle(input)} value={taxpayerId} onChange={(e) => { setTaxpayerId(e.target.value); setLikidite(null); setLucaJobId(null); setSonuc(null); setPlan(null); }}>
               <option value="">— seçin —</option>
               {(mukellefler.data || []).map((m: any) => (
                 <option key={m.id} value={m.id}>{m.companyName || `${m.firstName || ''} ${m.lastName || ''}`.trim()}</option>

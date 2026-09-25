@@ -278,21 +278,48 @@ export class DocumentsService {
   }
 
   /**
+   * Eski sürümün dosya türü — 2026-09-25 (portal denetimi bulgu 36).
+   *
+   * `DocumentVersion` şemasında `mimeType` ve özgün dosya adı YOK; indirmede hep GÜNCEL
+   * belgenin türü kullanılıyordu. Sonuç: v1 JPG iken v2 PDF olarak değiştirilmişse, v1
+   * `application/pdf` Content-Type'ıyla iniyor/önizleniyor ve tarayıcı bozuk gösteriyordu.
+   * Şema değişmeden yapılabilecek en doğru şey: sürümün KENDİ nesne anahtarındaki
+   * uzantıdan türü çıkarmak. Uzantı yoksa güncel belgenin türüne düşülür (eski davranış).
+   */
+  private surumMimeTuru(s3Key: string, varsayilan?: string | null): string {
+    const uzanti = String(s3Key || '').split('?')[0].match(/\.([a-z0-9]{1,8})$/i)?.[1]?.toLowerCase();
+    const tablo: Record<string, string> = {
+      pdf: 'application/pdf',
+      jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif',
+      webp: 'image/webp', bmp: 'image/bmp', tif: 'image/tiff', tiff: 'image/tiff',
+      xml: 'application/xml', txt: 'text/plain', csv: 'text/csv', html: 'text/html',
+      zip: 'application/zip',
+      doc: 'application/msword',
+      docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      xls: 'application/vnd.ms-excel',
+      xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    };
+    return (uzanti && tablo[uzanti]) || varsayilan || 'application/octet-stream';
+  }
+
+  /**
    * İndirme presigned URL'i
    */
   async getDownloadUrl(id: string, tenantId: string, versionNo?: number) {
     const doc = await this.findOne(id, tenantId);
 
     let s3Key = doc.s3Key;
+    let mimeType = doc.mimeType || 'application/octet-stream';
     if (versionNo) {
       const version = doc.versions.find((v) => v.versionNo === versionNo);
       if (!version) throw new NotFoundException('Versiyon bulunamadı');
       s3Key = version.s3Key;
+      mimeType = this.surumMimeTuru(version.s3Key, doc.mimeType);
     }
 
-    const filename = this.documentFilename({ ...doc, s3Key });
+    const filename = this.documentFilename({ ...doc, s3Key, mimeType });
     const url = await this.storage.getPresignedDownloadUrl(s3Key, filename);
-    return { url, filename, mimeType: doc.mimeType || 'application/octet-stream', expiresInSeconds: 3600 };
+    return { url, filename, mimeType, expiresInSeconds: 3600 };
   }
 
   /**
@@ -302,14 +329,16 @@ export class DocumentsService {
     const doc = await this.findOne(id, tenantId);
 
     let s3Key = doc.s3Key;
+    let mimeType = doc.mimeType || 'application/octet-stream';
     if (versionNo) {
       const version = doc.versions.find((v) => v.versionNo === versionNo);
       if (!version) throw new NotFoundException('Versiyon bulunamadı');
       s3Key = version.s3Key;
+      // Bulgu 36: önizlemede Content-Type yanlışsa tarayıcı belgeyi bozuk gösterir.
+      mimeType = this.surumMimeTuru(version.s3Key, doc.mimeType);
     }
 
-    const filename = this.documentFilename({ ...doc, s3Key });
-    const mimeType = doc.mimeType || 'application/octet-stream';
+    const filename = this.documentFilename({ ...doc, s3Key, mimeType });
     const url = await this.storage.getPresignedInlineUrl(s3Key, filename, mimeType);
     return { url, filename, mimeType, expiresInSeconds: 3600 };
   }

@@ -593,7 +593,12 @@ export class BeyannameTakipService {
     if (!tp) throw new NotFoundException('Mükellef bulunamadı');
 
     const updateData: any = { ...data };
+    // 2026-09-25 (portal denetimi bulgu 49): durum geri alınınca `onayTarihi` TEMİZLENİYOR.
+    //   Eskiden yalnız 'onaylandi'da yazılıyor, geri alınınca eski damga duruyordu:
+    //   beyanname "beklemede" görünürken üstünde onay tarihi kalıyor, raporlar da o tarihi
+    //   "verildi" diye okuyordu.
     if (data.durum === 'onaylandi') updateData.onayTarihi = new Date();
+    else if (data.durum !== undefined) updateData.onayTarihi = null;
 
     return (this.prisma as any).beyanDurumu.upsert({
       where: { tenantId_taxpayerId_beyanTipi_donem: { tenantId, taxpayerId, beyanTipi, donem } },

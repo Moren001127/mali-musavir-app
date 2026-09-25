@@ -403,16 +403,56 @@ export class TaxpayerPortalService {
     };
   }
 
+  /**
+   * Mükellefin kendi "Dosyalar" belgeleri.
+   *
+   * 2026-09-25 (portal denetimi bulgu 35) — SESSİZ KIRPMA KALDIRILDI.
+   *   Eskiden EN YENİ 300 belge çekilip SONRA bellekte "elle yüklenen" süzgeci
+   *   uygulanıyordu. Otomatik inen belgeler (SGK/GİB/portal) o 300'ü doldurunca
+   *   mükellefin kendi dosyaları hiç görünmüyordu — hata da uyarı da yoktu.
+   *   Canlı ölçüm (25.09.2026): en çok belgesi olan 8 mükellefte 3.000–5.000 belge var
+   *   ve HEPSİ otomatik. Yani bugün gizlenen belge yok ama bu mükelleflerden biri dosya
+   *   yüklerse, birkaç gün içinde gelen otomatik belgeler onu 300'ün dışına itiyordu.
+   *   Çözüm: elle yüklenen belge sayısı yeterli olana kadar SAYFA SAYFA oku.
+   */
   async getEvraklar(taxpayerId: string) {
-    const docs = await this.prisma.document.findMany({
-      where: { taxpayerId, isDeleted: false },
-      orderBy: { createdAt: 'desc' },
-      take: 300,
-      select: { id: true, title: true, category: true, notes: true, sizeBytes: true, mimeType: true, createdAt: true, updatedAt: true, expiresAt: true, s3Key: true, tags: { select: { tag: true } } },
-    });
-    // SADECE müşavirin "Dosyalar" sekmesinden elle yüklediği belgeler — SGK/GİB/portal
-    // otomatik indirilen belgeler buraya GELMEZ (ofis isManualMukellefDocument ile aynı kural).
-    const isManual = (d: any) => {
+    const HEDEF = 300;          // kullanıcıya gösterilecek en fazla elle-yüklenen belge
+    const SAYFA = 500;          // her turda okunacak ham belge
+    const EN_FAZLA_TUR = 20;    // güvenlik freni (en çok 10.000 ham belge taranır)
+    const docs: any[] = [];
+    let atla = 0;
+    let tarananHam = 0;
+    let tukendi = false;
+    for (let tur = 0; tur < EN_FAZLA_TUR; tur++) {
+      const parca = await this.prisma.document.findMany({
+        where: { taxpayerId, isDeleted: false },
+        orderBy: { createdAt: 'desc' },
+        skip: atla,
+        take: SAYFA,
+        select: { id: true, title: true, category: true, notes: true, sizeBytes: true, mimeType: true, createdAt: true, updatedAt: true, expiresAt: true, s3Key: true, tags: { select: { tag: true } } },
+      });
+      tarananHam += parca.length;
+      docs.push(...parca);
+      atla += SAYFA;
+      if (parca.length < SAYFA) { tukendi = true; break; }
+      // Bu turda toplanan elle-yüklenenler hedefe ulaştıysa dur.
+      if (docs.filter((d) => this.elleYuklenenBelgeMi(d)).length >= HEDEF) break;
+    }
+    if (!tukendi) {
+      this.logger.warn(`[MUKELLEF-EVRAK] ${taxpayerId}: ${tarananHam} ham belge tarandı, liste eksik olabilir.`);
+    }
+    return docs.filter((d) => this.elleYuklenenBelgeMi(d)).slice(0, HEDEF).map((d) => ({
+      id: d.id, title: d.title, category: d.category, notes: d.notes ?? null,
+      sizeBytes: d.sizeBytes ?? null, mimeType: d.mimeType ?? null,
+      createdAt: d.createdAt, updatedAt: d.updatedAt, expiresAt: d.expiresAt,
+      goruntulenebilir: !!d.s3Key,
+    }));
+  }
+
+  /** SADECE müşavirin "Dosyalar" sekmesinden elle yüklediği belgeler — SGK/GİB/portal
+   *  otomatik indirilen belgeler buraya GELMEZ (ofis isManualMukellefDocument ile aynı kural). */
+  private elleYuklenenBelgeMi(d: any): boolean {
+    {
       const title = String(d.title || '').toLocaleUpperCase('tr-TR');
       const notes = String(d.notes || '').toLocaleUpperCase('tr-TR');
       const category = String(d.category || '').toLocaleUpperCase('tr-TR');
@@ -426,13 +466,7 @@ export class TaxpayerPortalService {
       if (combined.includes('PORTALDAN OTOMATIK') || combined.includes('PORTALDAN OTOMATİK')) return false;
       if (combined.includes('PORTAL-AUTOMATION') || combined.includes('OTOMATIK') || combined.includes('OTOMATİK')) return false;
       return true;
-    };
-    return docs.filter(isManual).map((d) => ({
-      id: d.id, title: d.title, category: d.category, notes: d.notes ?? null,
-      sizeBytes: d.sizeBytes ?? null, mimeType: d.mimeType ?? null,
-      createdAt: d.createdAt, updatedAt: d.updatedAt, expiresAt: d.expiresAt,
-      goruntulenebilir: !!d.s3Key,
-    }));
+    }
   }
 
   /** İşlenen faturalar (Mihsap) — liste + aylık/tür toplama (grafik için). */
@@ -695,10 +729,16 @@ export class TaxpayerPortalService {
     if (tur === 'tebligat' || tur === 'sgk') {
       const doc = await (this.prisma as any).portalDocument.findFirst({ where: { id, taxpayerId, tenantId } });
       if (!doc || !doc.storageKey) throw new NotFoundException('Belge bulunamadı');
+      // 2026-09-25 (portal denetimi bulgu 32) — "OKUNDU" DAMGASI ARTIK BAĞLANTIDAN SONRA.
+      //   Eskiden `viewedAt` presigned bağlantı ÜRETİLMEDEN ÖNCE yazılıyordu: depo erişilemez
+      //   olduğunda mükellef belgeyi hiç görmediği hâlde tebligat "okundu" işaretleniyor,
+      //   ofisin "okunmamış e-Tebligat" sayacı da onu bir daha göstermiyordu. e-Tebligat'ta
+      //   okunma anı hukuken anlamlı — bağlantı gerçekten üretilmeden damga atılmamalı.
+      const url = await inline(doc.storageKey, doc.title || 'belge', doc.mimeType || undefined);
       if (!doc.viewedAt) {
         await (this.prisma as any).portalDocument.update({ where: { id: doc.id }, data: { viewedAt: new Date() } }).catch(() => null);
       }
-      return { url: await inline(doc.storageKey, doc.title || 'belge', doc.mimeType || undefined) };
+      return { url };
     }
     if (tur === 'fatura') {
       const f = await (this.prisma as any).mihsapInvoice.findFirst({ where: { id, mukellefId: taxpayerId, tenantId } });

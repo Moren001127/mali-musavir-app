@@ -2320,6 +2320,18 @@ export class ButceService {
       else toplamGider += tutar;
     }
 
+    // 2026-09-25 (portal denetimi bulgu 22) — MÜŞTERİ TAHSİLATI DA KAPASİTEYE GİRİYOR.
+    //   Ekranda gösterilen GELİR cari tahsilatı içeriyordu (`islemler()` sanal satır üretir),
+    //   ama ödeme kapasitesi yalnız `butceIslem` satırlarından hesaplanıyordu. Bu ofiste
+    //   gelirin büyük kısmı müşteri tahsilatı olduğu için ekran "120.000 ₺ gelir" derken
+    //   "her ay 0 ₺ ayırabilirsiniz" diyebiliyordu. Aynı gelir tanımı iki yerde de kullanılmalı.
+    const tahsilatHaritasi = await this.cariTahsilatDonemHaritasi(k, donemler).catch(() => new Map<string, number>());
+    for (const [d, tutar] of tahsilatHaritasi) {
+      if (!donemler.includes(d) || tutar <= 0) continue;
+      dolu.add(d);
+      toplamGelir += tutar;
+    }
+
     const aySayisi = Math.max(dolu.size, 1);
     return {
       aySayisi,

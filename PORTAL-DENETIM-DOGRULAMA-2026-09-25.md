@@ -830,9 +830,90 @@ yok, elde yalnız `evraklarIslendiAt` var. Şemanın kendi notu da durumu söyl�
 **Sınama:** `scripts/gorunurluk-regression.cjs` (21 kontrol, zincirde). Her düzeltme tek tek
 kapsanıyor — mutasyonda sırasıyla 2, 1, 1, 1, 2, 4, 2 kontrol düşüyor.
 
-**BU GRUPTA HENÜZ ELE ALINMAYANLAR:** 35 ve 48 (sessiz kırpma: `take` sınırları, bellekte
-süzme), 32 (okundu bilgisi ofis geneli tek alan), 36 (belge sürümünde `mimeType` yok),
-37 (denetim günlüğü `resourceId`/`oldData`/`newData` yazmıyor), 40, 49, 25, 26, 20, 22.
+**BU GRUPTA ELE ALINANLAR AŞAĞIDA.**
+
+---
+
+### KALAN GRUP — UYGULANANLAR (2026-09-25)
+
+**35 — sessiz kırpma kalktı (en kritik yeri).** `taxpayer-portal.service.ts` `getEvraklar`
+EN YENİ 300 belgeyi çekip SONRA bellekte "elle yüklenen" süzgecini uyguluyordu; otomatik
+inen belgeler o 300'ü doldurunca **mükellefin kendi dosyaları hiç görünmüyordu**. Artık
+elle-yüklenen sayısı yeterli olana kadar sayfa sayfa okunuyor (500'lük turlar, en çok 20 tur);
+tükenmeden durulursa kayda uyarı düşüyor.
+**Canlı ölçüm:** En çok belgesi olan 8 mükellefte 3.000–5.000 belge var ve **hepsi otomatik** —
+yani bugün gizlenen belge yok. Ama bu mükelleflerden biri dosya yüklerse, gelen otomatik
+belgeler onu birkaç gün içinde 300'ün dışına itiyordu.
+*(Diğer `take` sınırları — documents:250 take 100, tasks:464 take 500, office-chat:115 take 80 —
+bu turda ELE ALINMADI; onlarda süzme bellekte değil, kırpma doğrudan listenin kendisinde.)*
+
+**48 — tavan kalktı, seçim veritabanına indi.** `genel-sorgular` "mükellef başına en son"
+seçimini 4.000 satır çekip BELLEKTE yapıyordu. Artık Postgres `DISTINCT ON` ile her mükellef
+(+ay bazlıysa dönem) için yalnız en son satır okunuyor. `DISTINCT ON` çalışmazsa eski yola
+düşülüyor ama tavan 20.000'e çıkarıldı ve tavana değilirse kayda uyarı düşüyor.
+**Önce/sonra canlı karşılaştırma:** sonuç birebir aynı (POS 4, GELEN_EARSIV 196, E_HACIZ 19) —
+4.000 tavanına bugün ulaşılmıyor. Düzeltme ileriye dönük.
+
+**32 — "okundu" damgası artık bağlantıdan SONRA.** `viewedAt` presigned bağlantı üretilmeden
+önce yazılıyordu: depo erişilemezken mükellef belgeyi görmediği hâlde tebligat "okundu"
+işaretleniyor, ofisin okunmamış sayacı onu bir daha göstermiyordu. e-Tebligat'ta okunma anı
+hukuken anlamlı.
+*(32'nin ikinci yarısı — ofis geneli bildirimde kullanıcı bazlı okundu tablosu — ŞEMA
+DEĞİŞİKLİĞİ ister; UYGULANMADI.)*
+
+**36 — eski sürüm kendi türüyle iniyor.** `DocumentVersion`'da `mimeType` yok; indirme/önizleme
+hep GÜNCEL belgenin türünü kullanıyordu (JPG olan v1, `application/pdf` ile). Sürümün kendi
+nesne anahtarındaki uzantıdan tür çıkarılıyor; uzantı yoksa eski davranışa düşülüyor.
+*(Kalıcı çözüm `DocumentVersion.mimeType` kolonu — migration + eski satırlar için geri dolum ister.)*
+
+**37 — denetim günlüğü artık "neyi" de yazıyor.** Interceptor yeniden yazıldı:
+`resourceId` yoldan/yanıttan çözülüyor · `action` yol ekiyle zenginleşiyor (`POST /x/:id/iptal`
+artık `CREATE_IPTAL`, eskiden düz `CREATE`) · istek gövdesi `newData`'ya yazılıyor ·
+`userAgent` yazılıyor · **başarısız denemeler de iz bırakıyor** (hata mesajı + durum kodu) ·
+günlük yazılamazsa sessizce yutulmuyor, `[DENETIM-GUNLUGU]` kaydı düşüyor.
+**Gizlilik:** gövde olduğu gibi saklanmaz — parola/jeton/anahtar/base64 benzeri alanlar `***`
+ile maskelenir, uzun metinler kırpılır, gövde 4.000 karakterle sınırlıdır. Okuma (GET)
+istekleri günlüğe girmemeye devam ediyor.
+
+**40 — "kaydedildi" yalanı kalktı.** Şablon sırası `$transaction(...).catch(() => null)` ile
+yutuluyor, her hâlükârda `{ ok: true }` dönüyordu. Artık hata kullanıcıya bildiriliyor.
+
+**49 — iki uçuş.** Mükellef profilinde şifre en az **8** karakter (sunucuyla aynı; ekran 6
+diyordu, mükellef 7 girip sunucudan hata alıyor ve sebebini anlamıyordu). Beyanname durumu
+geri alınınca `onayTarihi` **temizleniyor** — eskiden "beklemede" görünen kaydın üstünde eski
+onay tarihi kalıyor, raporlar onu "verildi" diye okuyordu.
+
+**25 — mükellef değişince dört durumun dördü de temizleniyor.** Eskiden `sonuc` ve `plan`
+ekranda kalıyor, yeni seçilen mükellefin ekranında ÖNCEKİ mükellefin yapılandırma planı
+görünüyordu. Doğrusu aynı dosyada `mukellefeGec` içinde zaten vardı.
+
+**26 — bayat yorum işaretli + AI'a dürüst metin.** Yorum önbelleği kaynağın değişip
+değişmediğine bakmıyordu; İHÖ'de anahtar `taxpayerId:yil` olduğu için Ocak'ta üretilen yorum
+Aralık'ta hâlâ "güncel" gibi görünüyordu. Artık kaynağın son değişikliği yorumdan yeniyse
+`bayat: true` dönüyor ve ekranda *"Bu değerlendirmeden sonra veriler değişti"* uyarısı çıkıyor.
+Ayrıca prompt "bakiyesi olan N hesap" deyip yalnız 250'sini gönderiyordu — sınır 600'e çıkarıldı
+ve kesilme AI'a açıkça bildiriliyor.
+
+**20 — hata "veri yok" diye gizlenmiyor + veri güveni karara giriyor.** KDV genel bakışta
+hata hâlinde satır SIFIRLARLA ve `durum: 'bos'` ile dönüyordu: ekranda "bu mükellefte KDV yok"
+gibi görünüyor, listenin toplamları sessizce eksik çıkıyordu. Artık `durum: 'hata'`, tutarlar
+`null`, sebep satırda, toplamlarda sayılmıyor ve `hataAdet` ayrıca bildiriliyor. Ekrana
+"Hesaplanamadı" rozeti eklendi. Ayrıca `veriGuveni` hesaplanıp KULLANILMIYORDU — artık yalnız
+güveni "kesin" olan mükellef "Hazır" görünüyor.
+
+**22 — ödeme kapasitesi ekrandaki gelirle aynı tanımı kullanıyor.** Gösterilen gelir cari
+tahsilatı içeriyordu, kapasite hesabı içermiyordu; bu ofiste gelirin büyük kısmı müşteri
+tahsilatı olduğu için ekran "120.000 ₺ gelir" derken "her ay 0 ₺ ayırabilirsiniz" diyebiliyordu.
+`aylikOrtalamaAkis` artık `cariTahsilatDonemHaritasi`'nı da topluyor.
+
+**Sınama:** `scripts/sessiz-kayip-regression.cjs` (33 kontrol, zincirde). Mutasyonda sırasıyla
+35→2, 32→1, 36→1, 40→2, 49→1, 20→1, 37→4 kontrol düşüyor. 25 ve 22 için ayrı davranış testi
+YOK (25 saf ekran durumu; 22 sahip PIN'i arkasında bütçe hesabı) — yalnız tip kontrolünden geçti.
+
+**HÂLÂ AÇIK:** 32'nin kullanıcı bazlı okundu tablosu · 36'nın kalıcı `mimeType` kolonu ·
+46'nın aşama başına zaman damgası · 35'in diğer `take` sınırları. Dördü de ŞEMA/MİMARİ
+değişikliği ister ve ayrı bir tur olarak planlanmalı.
+
 
 
 ---

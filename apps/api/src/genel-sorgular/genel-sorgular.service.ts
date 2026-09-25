@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { GENEL_SORGU_TURLERI, type GenelSorguTuru } from '@mali-musavir/shared';
 import { enSonSonuclar, guncelSatirlar, type GuncelTur, type HamSonuc } from './guncel-durum';
@@ -25,6 +25,7 @@ const DONEM_DESENI = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 @Injectable()
 export class GenelSorgularService {
+  private readonly logger = new Logger(GenelSorgularService.name);
   constructor(private readonly prisma: PrismaService) {}
 
   private turDogrula(tur: string | undefined): GenelSorguTuru | undefined {
@@ -120,13 +121,50 @@ export class GenelSorgularService {
     const where: any = { tenantId, tur };
     if (secenek.taxpayerId) where.taxpayerId = secenek.taxpayerId;
     if (ayBazli && secenek.donem) where.donem = secenek.donem;
-    const ham: HamSonuc[] = await (this.prisma as any).genelSorguSonucu.findMany({
-      where,
-      orderBy: { sorguTarihi: 'desc' },
-      take: 4000,
-      select: { id: true, taxpayerId: true, taxpayer: { select: TAXPAYER_SELECT }, tur: true, donem: true, sorguTarihi: true, kaynak: true, veri: true },
-    });
-    const enSon = enSonSonuclar(tur as GuncelTur, ham);
+    // 2026-09-25 (portal denetimi bulgu 48) — TAVAN KALKTI, SEÇİM VERİTABANINDA.
+    //   Eskiden EN YENİ 4.000 satır çekilip "mükellef başına en son" seçimi BELLEKTE
+    //   yapılıyordu. Sık sorgulanan mükellefler tavanı doldurunca seyrek sorgulananın
+    //   güncel durumu listede HİÇ çıkmıyordu — hata da uyarı da yoktu.
+    //   Postgres `DISTINCT ON` ile her mükellef (+ay bazlıysa dönem) için yalnız EN SON
+    //   satır okunuyor: hem doğru hem daha az veri.
+    const kosullar: string[] = ['"tenantId" = $1', '"tur" = $2'];
+    const parametreler: any[] = [tenantId, tur];
+    if (secenek.taxpayerId) { parametreler.push(secenek.taxpayerId); kosullar.push(`"taxpayerId" = $${parametreler.length}`); }
+    if (ayBazli && secenek.donem) { parametreler.push(secenek.donem); kosullar.push(`"donem" = $${parametreler.length}`); }
+    const grupAnahtari = ayBazli ? `"taxpayerId", COALESCE("donem", '')` : '"taxpayerId"';
+    let enSon: HamSonuc[] = [];
+    try {
+      const sql = `
+        SELECT DISTINCT ON (${grupAnahtari}) "id", "taxpayerId", "tur", "donem", "sorguTarihi", "kaynak", "veri"
+        FROM genel_sorgu_sonuclari
+        WHERE ${kosullar.join(' AND ')}
+        ORDER BY ${grupAnahtari}, "sorguTarihi" DESC`;
+      const satirlar: any[] = await (this.prisma as any).$queryRawUnsafe(sql, ...parametreler);
+      // Mükellef bilgisi ayrı çözülüyor (DISTINCT ON ile join karmaşıklaşmasın).
+      const mukellefIdler = Array.from(new Set(satirlar.map((r) => r.taxpayerId).filter(Boolean)));
+      const mukellefler: any[] = mukellefIdler.length
+        ? await (this.prisma as any).taxpayer.findMany({ where: { id: { in: mukellefIdler } }, select: TAXPAYER_SELECT })
+        : [];
+      const mukellefHarita = new Map(mukellefler.map((t: any) => [t.id, t]));
+      enSon = satirlar
+        .map((r) => ({ ...r, taxpayer: mukellefHarita.get(r.taxpayerId) || null }))
+        .sort((a, b) => new Date(b.sorguTarihi).getTime() - new Date(a.sorguTarihi).getTime());
+    } catch (e: any) {
+      // DISTINCT ON desteklenmiyorsa (başka veritabanı/test ortamı) eski yola düş —
+      // ama tavanı yükselt ve kesilme olursa kayda yaz, sessiz kalmasın.
+      this.logger.warn(`Güncel durum DISTINCT ON çalışmadı, eski yola düşülüyor: ${e?.message || e}`);
+      const TAVAN = 20000;
+      const ham: HamSonuc[] = await (this.prisma as any).genelSorguSonucu.findMany({
+        where,
+        orderBy: { sorguTarihi: 'desc' },
+        take: TAVAN,
+        select: { id: true, taxpayerId: true, taxpayer: { select: TAXPAYER_SELECT }, tur: true, donem: true, sorguTarihi: true, kaynak: true, veri: true },
+      });
+      if (ham.length === TAVAN) {
+        this.logger.warn(`[GUNCEL-DURUM] ${tur}: ${TAVAN} satır tavanına ulaşıldı — seyrek sorgulanan mükellefler eksik olabilir.`);
+      }
+      enSon = enSonSonuclar(tur as GuncelTur, ham);
+    }
     const { rows, ozet } = guncelSatirlar(tur as GuncelTur, enSon);
     const total = rows.length;
     return { rows: rows.slice((page - 1) * pageSize, page * pageSize), total, page, pageSize, ozet };

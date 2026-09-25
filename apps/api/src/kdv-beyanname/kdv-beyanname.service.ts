@@ -567,9 +567,15 @@ export class KdvBeyannameService {
             const tevkifatliAdet = k1 ? k1.alis.tevkifatli.adet : 0;
             const tevkifatliKdv = k1 ? k1.alis.tevkifatli.kdv : 0;
             const bosMu = !k1 || (realAdet === 0 && hesaplanan === 0 && indirilecek === 0);
+            // 2026-09-25 (portal denetimi bulgu 20) — VERİ GÜVENİ ARTIK KARARA GİRİYOR.
+            //   `veriGuveni.seviye` hesaplanıyor ama `durum` kararında KULLANILMIYORDU:
+            //   kaynakları arasında fark olan ("kontrol_gerekli") mükellef listede "Hazır"
+            //   görünüyor, beyanname o hâliyle veriliyordu. Artık yalnız güveni "kesin"
+            //   olanlar "hazir"; kontrol gerektiren ya da eksik olanlar "eksik".
+            const guven = k1?.veriGuveni?.seviye ?? 'eksik';
             const durum: 'hazir' | 'eksik' | 'bos' = bosMu
               ? 'bos'
-              : k1!.kaliteRapor.tahminFaturaOrani > 0.5
+              : k1!.kaliteRapor.tahminFaturaOrani > 0.5 || guven !== 'kesin'
                 ? 'eksik'
                 : 'hazir';
             return {
@@ -592,19 +598,25 @@ export class KdvBeyannameService {
               kdv2Verildi: kdv2VerildiMi(m.id, d.kdv2),
             };
           } catch (e: any) {
+            // 2026-09-25 (portal denetimi bulgu 20) — HATA ARTIK "BOŞ" DİYE GİZLENMİYOR.
+            //   Eskiden hata hâlinde satır SIFIRLARLA ve `durum: 'bos'` ile dönüyordu:
+            //   ekranda "bu mükellefte KDV yok" gibi görünüyor, listenin toplamları da
+            //   eksik çıkıyordu. Hiçbir hata işareti yoktu. Artık satır `durum: 'hata'`
+            //   ile dönüyor ve sebebi taşıyor; toplamlarda sayılmıyor.
             this.logger.warn(`genelBakis mükellef ${m.id}: ${e?.message}`);
             return {
               mukellefId: m.id,
               ad: this.formatMukellefAd(m),
               faturaAdet: 0,
-              hesaplananKdv: 0,
-              indirilecekKdv: 0,
-              devredenKdv: 0,
-              odenecekKdv: 0,
-              sonrakiAyaDevreden: 0,
+              hesaplananKdv: null,
+              indirilecekKdv: null,
+              devredenKdv: null,
+              odenecekKdv: null,
+              sonrakiAyaDevreden: null,
               veriGuveniPuan: 0,
               veriGuveniSeviye: 'eksik',
-              durum: 'bos',
+              durum: 'hata',
+              hataMesaji: String(e?.message || 'bilinmeyen hata').slice(0, 300),
               kdv1Var: !!cfg.kdv1Period,
               kdv1Verildi: kdv1VerildiMi(m.id, d.kdv1),
               kdv2Var: false,
@@ -630,8 +642,11 @@ export class KdvBeyannameService {
         mukellefAdet: satirlar.length,
         hazirAdet: satirlar.filter((r) => r.durum === 'hazir').length,
         dikkatAdet: satirlar.filter((r) => r.durum !== 'hazir').length,
-        toplamOdenecek: round2(satirlar.reduce((s, r) => s + r.odenecekKdv, 0)),
-        toplamDevreden: round2(satirlar.reduce((s, r) => s + r.sonrakiAyaDevreden, 0)),
+        // Hesaplanamayan satırlar (durum='hata') toplamlara KATILMIYOR; kaç tanesi
+        // hesaplanamadığı ayrıca bildiriliyor ki toplam sessizce eksik kalmasın (bulgu 20).
+        hataAdet: satirlar.filter((r) => r.durum === 'hata').length,
+        toplamOdenecek: round2(satirlar.reduce((s, r) => s + (r.odenecekKdv ?? 0), 0)),
+        toplamDevreden: round2(satirlar.reduce((s, r) => s + (r.sonrakiAyaDevreden ?? 0), 0)),
         kdv2Adet: kdv2Satir.length,
         kdv1VerilmeyenAdet: satirlar.filter((r) => r.kdv1Var && !r.kdv1Verildi).length,
         kdv2VerilmeyenAdet: kdv2Satir.filter((r) => !r.kdv2Verildi).length,
