@@ -495,13 +495,13 @@ html[data-theme='D'] body [data-panel-main] .financial-report-readable [data-amo
 /* ── İNCE DOKUNUŞLAR — "tatlı hafif renklendirmeler" (Muzaffer Bey, 2026-09-25) ────────────────────
    Renk süs için değil, yön bulmak için: her mali tablo kartının üstünde kendi rengiyle ince bir
    şerit, ara toplamların solunda ton çizgisi, sonuç satırında çivit vurgu. Zeminler beyaz kalır. */
-html[data-theme='D'] body [data-panel-main] .financial-report-readable :is([data-mizan-report], [data-gelir-report], [data-bilanco-report], [data-isletme-report] [data-report-section]) {
+html[data-theme='D'] body [data-panel-main] .financial-report-readable :is([data-mizan-report], [data-gelir-report], [data-bilanco-report]) {
   border-top: 3px solid var(--mt-modul-renk, var(--mt-primary)) !important;
 }
 html[data-theme='D'] body [data-panel-main] [data-mizan-report] { --mt-modul-renk: #4263eb; }      /* Mizan · çivit */
 html[data-theme='D'] body [data-panel-main] [data-gelir-report] { --mt-modul-renk: #0ca678; }      /* Gelir Tablosu · deniz yeşili */
 html[data-theme='D'] body [data-panel-main] [data-bilanco-report] { --mt-modul-renk: #7048e8; }    /* Bilanço · mor */
-html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-section] { --mt-modul-renk: #1971c2; } /* İHÖ · mavi */
+/* İHÖ blok şeridi KALDIRILDI (2026-09-25): sayfada üç blok alt alta; üç renkli şerit çerçeve gibi duruyordu. */
 
 /* Ara toplamın solunda ton çizgisi — göz kademeyi kenardan da okur */
 html[data-theme='D'] body [data-panel-main] .financial-report-readable [data-report-row='group'] > td:first-child {
