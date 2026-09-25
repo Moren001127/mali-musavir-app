@@ -19,7 +19,7 @@ html[data-theme='D'] .financial-report-readable > div.rounded-lg.p-3.text-sm but
   border-radius: 8px !important;
 }
 html[data-theme='D'] .financial-report-readable > div.rounded-lg.p-3.text-sm div.font-mono.space-y-0\.5 {
-  background: #f8fafc !important;
+  background: #f9f8f6 !important;
   border: 1px solid var(--mt-line) !important;
   border-radius: 10px !important;
   color: var(--mt-ink-2) !important;
@@ -50,7 +50,7 @@ html[data-theme='D'] .financial-report-readable > div.rounded-xl.border.p-4 butt
 }
 /* "şu an kontrol edilen" ve "yeni kriter" iç kutuları */
 html[data-theme='D'] .financial-report-readable > div.rounded-xl.border.p-4 div.rounded-xl.border.p-3\.5 {
-  background: #f8fafc !important;
+  background: #f9f8f6 !important;
   border: 1px solid var(--mt-line) !important;
   border-radius: 12px !important;
 }
@@ -115,10 +115,10 @@ html[data-theme='D'] .financial-report-readable > div.rounded-xl.border.p-4 div.
   background: var(--mt-primary-soft) !important;
   color: var(--mt-primary-text) !important;
 }
-html[data-theme='D'] .financial-report-readable > div.rounded-xl.border.p-4 div.rounded-lg.px-3.py-2\.5.flex.items-start button.p-1\.5:has(> svg.lucide-plus) { background: #f1f5f9 !important; color: var(--mt-muted) !important; }
+html[data-theme='D'] .financial-report-readable > div.rounded-xl.border.p-4 div.rounded-lg.px-3.py-2\.5.flex.items-start button.p-1\.5:has(> svg.lucide-plus) { background: #f3f1ed !important; color: var(--mt-muted) !important; }
 html[data-theme='D'] .financial-report-readable > div.rounded-xl.border.p-4 div.rounded-lg.px-3.py-3.text-\[12px\] {
-  background: #f8fafc !important;
-  border: 1px dashed #dbe2ea !important;
+  background: #f9f8f6 !important;
+  border: 1px dashed #d5d2cd !important;
   color: var(--mt-muted) !important;
 }
 
@@ -146,7 +146,7 @@ html[data-theme='D'] [data-mizan-report] {
   box-shadow: var(--mt-shadow) !important;
 }
 html[data-theme='D'] [data-mizan-band] {
-  background: #f8fafc !important;
+  background: #f9f8f6 !important;
   border-bottom: 1px solid var(--mt-line) !important;
 }
 html[data-theme='D'] [data-mizan-band] > div:first-child { color: #0f172a !important; letter-spacing: 0.12em !important; }
@@ -163,7 +163,7 @@ html[data-theme='D'] body [data-panel-main] [data-mizan-report] thead th {
   border-bottom: 1px solid var(--mt-line-strong) !important;
 }
 html[data-theme='D'] [data-mizan-report] tbody tr { background: #fff !important; }
-html[data-theme='D'] [data-mizan-report] tbody tr[data-mizan-group='true'] { background: #f8fafc !important; }
+html[data-theme='D'] [data-mizan-report] tbody tr[data-mizan-group='true'] { background: #f9f8f6 !important; }
 html[data-theme='D'] body [data-panel-main] [data-mizan-report] tbody td {
   border-right-color: var(--mt-line-soft) !important;
   border-bottom: 1px solid var(--mt-line-soft) !important;
@@ -175,13 +175,13 @@ html[data-theme='D'] [data-mizan-report] tbody tr:not([data-mizan-group='true'])
 html[data-theme='D'] [data-mizan-report] tbody td[style*='copper-wash'] { background: var(--mt-primary-soft) !important; outline-color: var(--mt-primary) !important; }
 html[data-theme='D'] [data-mizan-report] tbody td:hover { background: var(--mt-hover); }
 html[data-theme='D'] [data-mizan-report] tfoot td {
-  background: #f1f5f9 !important;
+  background: #f3f1ed !important;
   color: #0f172a !important;
   border-top: 2px solid var(--mt-line-strong) !important;
   border-right-color: var(--mt-line) !important;
 }
 html[data-theme='D'] [data-mizan-report] > div:last-child {
-  background: #f8fafc !important;
+  background: #f9f8f6 !important;
   border-top: 1px solid var(--mt-line) !important;
   color: var(--mt-muted) !important;
 }
@@ -298,3 +298,23 @@ html[data-theme='D'] body [data-panel-main] [data-mizan-report] :is(thead th, tb
 /* Grup satırlarının üstü kalın çizgi: bölüm başlangıcı okunsun */
 html[data-theme='D'] body [data-panel-main] [data-mizan-report] tbody tr[data-mizan-seviye='0'] td { border-top: 2px solid var(--mt-line-strong) !important; }
 html[data-theme='D'] body [data-panel-main] [data-mizan-report] tbody tr[data-mizan-seviye='1'] td { border-top: 1px solid var(--mt-line) !important; }
+
+/* ── 7. TAM IZGARA (2026-09-25) ───────────────────────────────────────────────────────────────────
+   Gelir Tablosu ve İşletme Hesap Özeti'ne uygulanan kural Mizan'a da geldi: her hücrenin dört
+   kenarı AYNI — 1px #d5d2cd. Kalın/ince karışıklığı yok.
+   FARK: Mizan'da hesap ağacının DÖRT KADEMESİ zeminden okunur (grup · ana hesap · hesap · kırılım),
+   o yüzden buradaki satır zeminleri KALIYOR — yalnız tonları nötre çekildi. */
+html[data-theme='D'] body [data-panel-main] [data-mizan-report] table { border-collapse: collapse !important; }
+html[data-theme='D'] body [data-panel-main] [data-mizan-report] table :is(thead th, tbody td, tfoot td) {
+  border: 1px solid #d5d2cd !important;
+}
+html[data-theme='D'] body [data-panel-main] [data-mizan-report] tbody tr:is([data-mizan-seviye='0'], [data-mizan-seviye='1']) td {
+  border: 1px solid #d5d2cd !important;
+}
+html[data-theme='D'] body [data-panel-main] [data-mizan-report] { border: 1px solid #d5d2cd !important; }
+/* Hesap ağacı kademeleri — nötr tonlarda, hiyerarşi korunur */
+html[data-theme='D'] body [data-panel-main] [data-mizan-report] tbody tr[data-mizan-seviye='0'] { background: #ebe8e3 !important; }
+html[data-theme='D'] body [data-panel-main] [data-mizan-report] tbody tr[data-mizan-seviye='1'] { background: #f6f4f1 !important; }
+html[data-theme='D'] body [data-panel-main] [data-mizan-report] tbody tr[data-mizan-seviye='2'] { background: #fff !important; }
+html[data-theme='D'] body [data-panel-main] [data-mizan-report] tbody tr:is([data-mizan-seviye='3'], [data-mizan-seviye='4'], [data-mizan-seviye='5'], [data-mizan-seviye='6']) { background: #fff !important; }
+html[data-theme='D'] body [data-panel-main] [data-mizan-report] tfoot td { background: #ebe8e3 !important; }

@@ -10,14 +10,14 @@ html[data-theme='D'] [data-bilanco-report] {
 }
 /* sütun başlığı (AKTİF · PASİF + toplam) */
 html[data-theme='D'] [data-bilanco-report] [data-bilanco-band]:has(h4) {
-  background: #f1f5f9 !important;
+  background: #f3f1ed !important;
   border-bottom: 1px solid var(--mt-line-strong) !important;
 }
 html[data-theme='D'] [data-bilanco-report] [data-bilanco-band] h4 { color: #0f172a !important; font-size: 15px !important; letter-spacing: 0.02em !important; }
 html[data-theme='D'] [data-bilanco-report] [data-bilanco-band]:has(h4) span { color: #0f172a !important; }
 /* grup şeridi (I — DÖNEN VARLIKLAR · tutar) */
 html[data-theme='D'] [data-bilanco-report] [data-bilanco-band]:not(:has(h4)) {
-  background: #f8fafc !important;
+  background: #faf9f7 !important;
   color: var(--mt-ink-2) !important;
   border-top: 1px solid var(--mt-line) !important;
   border-bottom: 1px solid var(--mt-line-soft) !important;
@@ -57,9 +57,9 @@ html[data-theme='D'] .financial-report-readable [data-mali-manual] > div:first-c
   border-radius: 999px !important;
   padding: 2px 8px !important;
   font-size: 10.5px !important;
-  background: #f1f5f9 !important;
+  background: #f3f1ed !important;
   color: var(--mt-ink-2) !important;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #e4e2df;
 }
 html[data-theme='D'] .financial-report-readable [data-mali-manual] > div:first-child > span.rounded:has(svg) { background: #ebfbee !important; color: #2b8a3e !important; border-color: #c6efd0; }
 html[data-theme='D'] .financial-report-readable [data-mali-manual] label > span { color: var(--mt-muted) !important; font-size: 10.5px !important; }
@@ -107,11 +107,11 @@ html[data-theme='D'] [data-bilanco-ratios] div.rounded-xl.p-4 div.font-mono.mt-1
    Liste dümdüzdü: grup şeridi, ana kalem ve alt hesap neredeyse aynı ağırlıktaydı; satır ayraçları
    en açık tonla çizildiği için ekranda tablo değil, alt alta yazılar görünüyordu. */
 html[data-theme='D'] body [data-panel-main] [data-bilanco-report] [data-bilanco-band]:not(:has(h4)) {
-  background: #eaeff6 !important; color: #0f172a !important; font-weight: 750 !important;
+  background: #efedea !important; color: #0f172a !important; font-weight: 750 !important;
   border-top: 2px solid var(--mt-line-strong) !important; border-bottom: 1px solid var(--mt-line) !important;
 }
 html[data-theme='D'] body [data-panel-main] [data-bilanco-report] [data-bilanco-row] {
-  border-bottom: 1px solid var(--mt-line) !important; background: #f8fafc !important;
+  border-bottom: 1px solid var(--mt-line) !important; background: #faf9f7 !important;
 }
 html[data-theme='D'] body [data-panel-main] [data-bilanco-report] [data-bilanco-row] > div:first-child { color: #16233a !important; font-weight: 680 !important; }
 html[data-theme='D'] body [data-panel-main] [data-bilanco-report] div.pl-10,
@@ -123,21 +123,21 @@ html[data-theme='D'] body [data-panel-main] [data-bilanco-report] :is(div.pl-10,
 html[data-theme='D'] body [data-panel-main] [data-bilanco-report] > div > div + div { border-left: 1px solid var(--mt-line) !important; }
 /* Sütun başlığı (AKTİF / PASİF + toplam) daha güçlü */
 html[data-theme='D'] body [data-panel-main] [data-bilanco-report] [data-bilanco-band]:has(h4) {
-  background: #e7edf5 !important; border-bottom: 2px solid var(--mt-line-strong) !important;
+  background: #f3f1ed !important; border-bottom: 2px solid var(--mt-line-strong) !important;
 }
 
 /* ── 2. Finansal oran kartları: durum kartın kendisinden okunsun ──────────────────────────────────
    Dokuz kartın hepsi beyazdı; "✗ Kritik kaldıraç" ile "✓ Güçlü" ancak alttaki küçük yazı
    okununca ayrılıyordu. Artık sol kenar şeridi ve zemin durumu taşıyor. */
 html[data-theme='D'] body [data-panel-main] [data-bilanco-ratios] [data-bilanco-oran] {
-  border-left: 3px solid #cbd5e1 !important; padding-left: 13px !important;
+  border-left: 3px solid #cfccc7 !important; padding-left: 13px !important;
 }
 html[data-theme='D'] body [data-panel-main] [data-bilanco-ratios] [data-bilanco-oran='iyi'] { border-left-color: #2f9e44 !important; }
 html[data-theme='D'] body [data-panel-main] [data-bilanco-ratios] [data-bilanco-oran='sinir'] { border-left-color: #f08c00 !important; background: #fffdf8 !important; }
 html[data-theme='D'] body [data-panel-main] [data-bilanco-ratios] [data-bilanco-oran='kotu'] { border-left-color: #e03131 !important; background: #fffafa !important; border-color: #ffc9c9 !important; }
 /* "ideal …" bilgisi kapsül rozete dönsün */
 html[data-theme='D'] body [data-panel-main] [data-bilanco-ratios] [data-bilanco-oran] > div:first-child > span.font-mono {
-  background: #f1f5f9 !important; color: var(--mt-ink-2) !important; border: 1px solid #e2e8f0;
+  background: #f3f1ed !important; color: var(--mt-ink-2) !important; border: 1px solid #e4e2df;
   border-radius: 999px !important; padding: 2px 8px !important; font-size: 10px !important;
 }
 /* Değer ve durum yazısı */
@@ -147,3 +147,29 @@ html[data-theme='D'] body [data-panel-main] [data-bilanco-ratios] [data-bilanco-
 html[data-theme='D'] body [data-panel-main] [data-bilanco-ratios] div.uppercase.tracking-\[\.2em\] {
   color: #0f172a !important; font-weight: 750 !important; font-size: 11.5px !important;
 }
+
+/* ── 3. TAM IZGARA + ZEMİNSİZ SATIRLAR (2026-09-25) ──────────────────────────────────────────────
+   Gelir Tablosu ve İşletme Hesap Özeti'ne uygulanan iki kural Bilanço'ya da geldi:
+   (a) satır arka planlarında ayırt edici renk YOK — kademe kalın yazı ve çizgiyle okunur,
+   (b) bütün ayraçlar aynı: 1px #d5d2cd.
+   Aktif/Pasif listesi tablo değil, div satırlarından kurulu; kurallar ona göre yazıldı.
+   Grup şeridi (I — DÖNEN VARLIKLAR) bir BAŞLIK sayılır, nötr zeminini korur. */
+html[data-theme='D'] body [data-panel-main] [data-bilanco-report] { border: 1px solid #d5d2cd !important; }
+/* Sütun başlığı (AKTİF / PASİF) ve grup şeridi: başlık oldukları için zemin kalır (nötr) */
+html[data-theme='D'] body [data-panel-main] [data-bilanco-report] [data-bilanco-band]:has(h4) {
+  background: #ebe8e3 !important; border-bottom: 1px solid #d5d2cd !important;
+}
+html[data-theme='D'] body [data-panel-main] [data-bilanco-report] [data-bilanco-band]:not(:has(h4)) {
+  background: #f6f4f1 !important; border-top: 1px solid #d5d2cd !important; border-bottom: 1px solid #d5d2cd !important;
+}
+/* Kalem satırları: ZEMİN YOK — ana kalem kalın yazıyla ayrışır */
+html[data-theme='D'] body [data-panel-main] [data-bilanco-report] [data-bilanco-row] {
+  background: #fff !important; border-bottom: 1px solid #d5d2cd !important;
+}
+html[data-theme='D'] body [data-panel-main] [data-bilanco-report] [data-bilanco-row] > div:first-child { font-weight: 700 !important; color: #16233a !important; }
+html[data-theme='D'] body [data-panel-main] [data-bilanco-report] :is(div.pl-10, button.w-full.text-left.pl-10) {
+  background: #fff !important; border-bottom: 1px solid #d5d2cd !important;
+}
+html[data-theme='D'] body [data-panel-main] [data-bilanco-report] :is(div.pl-10, button.w-full.text-left.pl-10):hover { background: #fff !important; }
+/* Aktif ile Pasif sütunu arasındaki ayraç da aynı ton */
+html[data-theme='D'] body [data-panel-main] [data-bilanco-report] > div > div + div { border-left: 1px solid #d5d2cd !important; }
