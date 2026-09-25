@@ -49,18 +49,36 @@ export function useLucaAgent() {
 
   const onlineDevices = localDevices.filter((d) => !d.stale);
 
-  // KULLANICI VİZYONU (2026-08-10): "bilgisayarlarda ajan olmayacak; her şey VPS'te; hangi
-  //   bilgisayardan portala girersem gireyim Luca'dan çek/aktar çalışsın." → İş yönlendirmesi
-  //   elle seçime BAĞLI OLMAMALI. VARSAYILAN: online VPS/headless (sunucu) ajanı otomatik seç.
-  //   Böylece kullanıcı hiç seçim yapmasa da işler VPS'e gider. (Elle seçim yapılmışsa yine ona saygı
-  //   duyulur — geriye uyumlu.)
-  const vpsOrHeadless = onlineDevices.find((d) =>
-    /vps|headless|runner|radore/i.test(`${d.deviceId} ${d.workerName || ''}`),
-  );
+  // KULLANICI VİZYONU (2026-08-10, 2026-09-25'te yeniden teyit): "bilgisayarlarda ajan olmayacak;
+  //   her şey sunucuda; hangi bilgisayardan portala girersem gireyim Luca'dan çek/aktar çalışsın."
+  //   → İş yönlendirmesi elle seçime BAĞLI OLMAMALI.
+  //
+  // 2026-09-25 DÜZELTME — bu kural yazılmıştı ama seçim kalıbı hatalıydı:
+  //   /vps|headless|runner|radore/ deseni OPERATÖR cihazını da yakalıyordu
+  //   ("vps-radore-luca-operator"). Operatör ajanı ayrı bir iş türü ("operator") sayılır;
+  //   veri çekme işleri ("local-node") ona teslim EDİLEMEZ. Ekran operatörü seçince iş
+  //   "kimsenin alamayacağı" hâle geliyor ve 24 saat sırada bekleyip sessizce iptal
+  //   ediliyordu. Canlı ölçüm (2026-09-25): hedefi böyle kurulan 207 işin tamamı hiç
+  //   başlamadan ölmüş; sunucu veri ajanına gidenler %79-96 başarılı.
+  //   Çözüm: veri ajanı seçiminde "-operator" ile bitenler ELENİR.
+  const isOperator = (d: LucaAgentInfo) => /-operator$/i.test(d.deviceId);
+  // Bilgisayara kurulu ajan (Chrome uzantısı, DEV-*) artık iş almaz — sahip kararı.
+  const isBilgisayar = (d: LucaAgentInfo) => /^DEV-/i.test(d.deviceId);
+  const sunucuVeriAjani = (d: LucaAgentInfo) =>
+    /vps|headless|runner|radore|cekme/i.test(`${d.deviceId} ${d.workerName || ''}`)
+    && !isOperator(d) && !isBilgisayar(d);
+
+  const sunucuAdaylari = onlineDevices.filter(sunucuVeriAjani);
+  // Elle seçime yalnız o cihaz uygun bir SUNUCU veri ajanıysa saygı duyulur; kullanıcının
+  // eski tarayıcısında kalmış bir bilgisayar/operatör seçimi işi öldürmesin.
+  const elleSecilen = sunucuAdaylari.find((d) => d.deviceId === preferredId);
   const activeDevice =
-    onlineDevices.find((d) => d.deviceId === preferredId) ??
-    vpsOrHeadless ??
-    (onlineDevices.length === 1 ? onlineDevices[0] : null);
+    elleSecilen ??
+    sunucuAdaylari[0] ??
+    // Hiç sunucu ajanı yoksa: tek bir uygun cihaz varsa ona düş (acil durum), yoksa null.
+    (onlineDevices.filter((d) => !isOperator(d) && !isBilgisayar(d)).length === 1
+      ? onlineDevices.filter((d) => !isOperator(d) && !isBilgisayar(d))[0]
+      : null);
 
   function setPreferred(deviceId: string | null) {
     if (deviceId) localStorage.setItem(LS_KEY, deviceId);

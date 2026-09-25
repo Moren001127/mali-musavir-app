@@ -252,6 +252,27 @@ export class LucaService {
       /^(EARSIV|EFATURA|MIZAN|KDV_MIZAN|ACCOUNT_PLAN|IHO_FETCH|EDEFTER_FIS_LISTESI|KDV_191|KDV_391|ISLETME_GELIR|ISLETME_GIDER)/.test(params.tip || '')
         ? 'local-node'
         : null;
+
+    // ── UYUM KAPISI (2026-09-25) — iş "kimsenin alamayacağı" hâlde doğmasın.
+    // İki bağımsız yönlendirme alanı var ve birbirini doğrulamıyordu:
+    //   targetDeviceId (hangi cihaz) ve preferredAgent (hangi ajan türü).
+    // Ekran operatör cihazını seçip (vps-radore-luca-OPERATOR) iş local-node isterse,
+    // affinity süzgeci işi operatöre göstermez, başka cihaz da çivili işi alamaz →
+    // iş 24 saat sırada bekler, sessizce iptal olur.
+    // CANLI ÖLÇÜM (2026-09-25): hedefi böyle kurulan 207 işin TAMAMI hiç başlamadan ölmüş.
+    // Kural: ikisi çelişiyorsa ÇİVİYİ DÜŞÜR — işi uygun ajan serbestçe alsın.
+    let hedefCihaz = params.targetDeviceId || null;
+    const istenenTur = params.preferredAgent ?? defaultAffinity;
+    if (hedefCihaz && istenenTur) {
+      const cihazTuru = this.agentKindForDeviceId(hedefCihaz);
+      if (cihazTuru && cihazTuru !== istenenTur) {
+        this.logger.warn(
+          `[YONLENDIRME] ${params.tip}: cihaz ${hedefCihaz} (${cihazTuru}) ile istenen ajan türü `
+          + `${istenenTur} çelişiyor → cihaz çivisi düşürüldü, işi uygun ajan alacak`,
+        );
+        hedefCihaz = null;
+      }
+    }
     // Beyanname yaklaşırken priority artırma — şimdilik manuel parametre ile.
     return (this.prisma as any).lucaFetchJob.create({
       data: {
@@ -262,8 +283,8 @@ export class LucaService {
         tip: params.tip,
         status: 'pending',
         createdBy: params.createdBy || null,
-        targetDeviceId: params.targetDeviceId || null,
-        preferredAgent: params.preferredAgent ?? defaultAffinity,
+        targetDeviceId: hedefCihaz,
+        preferredAgent: istenenTur,
         priority: params.priority ?? 0,
         // mukellefAdi'yı errorMsg'in başına meta olarak ekleyelim (yeni column eklemeden)
         // Format: "[META] mukellefAdi=ABC FIRMA"
@@ -781,9 +802,45 @@ export class LucaService {
    *      kullanıcı körlemesine beklemesin (ajan + klasik Luca ekranı açık mı?).
    *      Pending iş otomatik SİLİNMEZ (ajan o an kapalıysa kaybolmasın).
    */
+  /**
+   * ÖLÜ CİHAZ ÇİVİSİNİ DÜŞÜR (2026-09-25) — bir işe cihaz çivilendiğinde o cihaz kapanırsa
+   * iş kimseye gitmiyordu; çivi yalnız tek bir yerde temizleniyordu ve cihazın ayakta olup
+   * olmadığına hiç bakılmıyordu. Sahip kararı: "hangi bilgisayardan girersem gireyim çalışsın"
+   * → çivili cihaz 5 dakikadır ping atmıyorsa iş SERBEST bırakılır, uygun ajan alır.
+   */
+  private async oluCihazCivisiniDusur() {
+    const civili = await (this.prisma as any).lucaFetchJob.findMany({
+      where: { status: 'pending', targetDeviceId: { not: null } },
+      select: { id: true, targetDeviceId: true },
+      take: 200,
+    });
+    if (!civili.length) return;
+    // Çevrimiçi ajanların cihaz kimlikleri — kolon yok, agentStatus.meta.deviceId'de duruyor.
+    const canliSinir = new Date(Date.now() - 5 * 60 * 1000);
+    const canliKayitlar = await (this.prisma as any).agentStatus.findMany({
+      where: { agent: 'luca', lastPing: { gte: canliSinir } },
+      select: { meta: true },
+    }).catch(() => [] as any[]);
+    const canli = new Set<string>(
+      canliKayitlar.map((s: any) => (s?.meta as any)?.deviceId).filter(Boolean).map(String),
+    );
+    if (!canli.size) return;  // hiç ajan çevrimiçi değilse çiviyi düşürmenin faydası yok
+    const olu = civili.filter((j: any) => !canli.has(String(j.targetDeviceId)));
+    if (!olu.length) return;
+    await (this.prisma as any).lucaFetchJob.updateMany({
+      where: { id: { in: olu.map((j: any) => j.id) }, status: 'pending' },
+      data: { targetDeviceId: null },
+    }).catch(() => null);
+    this.logger.warn(`[YONLENDIRME] ${olu.length} bekleyen işin çivili cihazı çevrimdışı → çivi düşürüldü, uygun ajan alacak`);
+    for (const j of olu.slice(0, 20)) {
+      await this.appendJobLog(j.id, `Seçili bilgisayar/sunucu çevrimdışı (${j.targetDeviceId}) — iş serbest bırakıldı, çevrimiçi ajan alacak`).catch(() => {});
+    }
+  }
+
   async reapStaleJobs() {
-    await this.requeueNoProgressJobs().catch(() => {});
-    await this.cleanupStuckRunning().catch(() => {});
+    await this.requeueNoProgressJobs().catch((e: any) => this.logger.warn(`requeueNoProgressJobs: ${e?.message || e}`));
+    await this.cleanupStuckRunning().catch((e: any) => this.logger.warn(`cleanupStuckRunning: ${e?.message || e}`));
+    await this.oluCihazCivisiniDusur().catch((e: any) => this.logger.warn(`oluCihazCivisiniDusur: ${e?.message || e}`));
     // İşi bitmiş (iptal/başarısız/tamam/silinmiş) ama "Aktarılıyor"da unutulmuş belgeler — takılı-iş temizliği ve
     //   bayat-iş iptali belgeye dokunmaz; burada dakikada bir toparlanır (2026-09-23, DOĞAN ÖZKAN olayı).
     await this.postingBelgeleriSerbestBirak().catch(() => {});
@@ -1181,11 +1238,18 @@ export class LucaService {
       .slice(-60)
       .join('\n')
       .slice(-12000);
-    const nextRetryCount = isTechnicalRecovery ? Number(job.retryCount || 0) + 1 : 0;
-    const shouldFailTransient = isTechnicalRecovery && nextRetryCount >= 3;
-    const retryDelayMs = isTechnicalRecovery
-      ? Math.min(5 * 60 * 1000, 30 * 1000 * nextRetryCount)
-      : 0;
+    // SONSUZ DÖNGÜ DÜZELTMESİ (2026-09-25) — sayaç ARTIK HİÇ SIFIRLANMIYOR.
+    // Eskiden gerekçe teknik kalıba uymazsa `retryCount = 0` yazılıyordu. Ajanın takılma
+    // bekçileri tam da bu kalıba UYMAYAN gerekçeler gönderiyor (AGENT_STALL_WATCHDOG_4MIN,
+    // AGENT_FREEZE_WATCHDOG, AGENT_SELF_HEAL_TIMEOUT_10MIN — agent.js:2528, 2570). Sonuç:
+    // iş 4 dakikada bir sıraya geri dönüyor, sayaç her turda sıfırlanıyor, "3 denemede dur"
+    // emniyetlerinin ÜÇÜ DE devre dışı kalıyor; iş ne bitiyor ne başarısız oluyor, bildirim
+    // de çıkmıyor. Kullanıcı sonsuza kadar "0 çalışıyor, 1 sırada" görüyor.
+    // (Ajan günlüğünde 44 kez `exit code=7` kaydı bu döngünün izi.)
+    const nextRetryCount = Number(job.retryCount || 0) + 1;
+    const shouldFailTransient = nextRetryCount >= 3;
+    // Teknik olmayan (bekçi kaynaklı) tekrarda da bekleme koy — art arda kapmayı önler.
+    const retryDelayMs = Math.min(5 * 60 * 1000, 30 * 1000 * nextRetryCount);
     const updated = await (this.prisma as any).lucaFetchJob.update({
       where: { id: jobId },
       data: shouldFailTransient
@@ -1195,7 +1259,7 @@ export class LucaService {
             finishedAt: new Date(),
             retryCount: nextRetryCount,
             nextRetryAt: null,
-            errorMsg: `${sanitizedLog ? `${sanitizedLog}\n` : ''}[AUTO] Luca klasik ekran 3 kez toparlanamadı; diğer işler bloklanmasın diye kapatıldı`.slice(-12000),
+            errorMsg: `${sanitizedLog ? `${sanitizedLog}\n` : ''}[AUTO] İş 3 kez yeniden denendi ama ilerlemedi (son sebep: ${recoveryReason || 'belirtilmedi'}); diğer işler bloklanmasın diye kapatıldı`.slice(-12000),
           }
         : {
             status: 'pending',
