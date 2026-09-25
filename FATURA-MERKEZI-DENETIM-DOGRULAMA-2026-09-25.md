@@ -659,3 +659,68 @@ Denetçinin listesinde yok, doğrulama sırasında çıktı: `update()` (`servic
 12. Dört metin-arayan sınama davranış sınamasına çevrilsin; her düzeltme için kabul sınaması yazılsın: aynı belgeyi iki kez gönderme, kısmen örtüşen iki eşzamanlı iş, aynı numaralı iki satıcı, aynı ETTN'li iki mükellef, sınırdan fazla eski dönem belgesi, yetkisiz kullanıcı, bağlantı hatası, tek sorunlu belgenin toplamda bir sayılması, kısmi aktarımda başarı verilmemesi.
 
 Canlıya alma ayrı onay gerektirir.
+
+---
+
+# UYGULAMA DURUMU (25 Eylül 2026, aynı gün tamamlandı)
+
+Beş faz canlıya alındı: `aeb14fb` → `6a12720`. Her fazın sonunda ayrı onay alındı.
+
+| # | Bulgu | Durum | Commit |
+|---|---|---|---|
+| 11 | Liste açmak kod siliyor | ✅ Çözüldü | aeb14fb |
+| 14(a) | Aktarım sessizce "başarılı" | ✅ Çözüldü | aeb14fb |
+| 1 | Aktarılmış belge yeniden kuyruğa | ✅ Çözüldü | 28d4ba1 |
+| 13 | Tek belge denemesi ortak işi bozuyor | ✅ Çözüldü | 28d4ba1 |
+| 2 | Kısmi kapmada bayat içerik | ✅ Çözüldü | 28d4ba1 |
+| — | `update()` açığı (listede yoktu) | ✅ Çözüldü | 28d4ba1 |
+| 4 | Aynı numaralı faturalar karışması | ✅ Çözüldü | 3bdf1ed |
+| 5 | ETTN/yön karışması | ✅ Çözüldü | 3bdf1ed |
+| 15 | Dönem kuralı tutarsızlığı | ✅ Çözüldü | 3bdf1ed |
+| 6 | Sınırdan sonra dönem süzmesi | ✅ Çözüldü | 3bdf1ed |
+| 10 | Liste kayıt sınırı | ✅ Çözüldü | 3bdf1ed |
+| — | Mihsap'ta mükerrer kontrolü yok (listede yoktu) | ✅ Çözüldü | b37160f |
+| 3 | Rol/yetki | ✅ Çözüldü | 0316d5e |
+| 7 | Sayaç çift sayma + ölü sayaç | ✅ Çözüldü | d510714 |
+| 8 | Ölü üst seçiciler | ✅ Çözüldü | d510714 |
+| 9 | KDV "ödeme çıkmıyor" | ✅ Çözüldü | d510714 |
+| 12 | Hata boş sonuç gibi | ✅ Çözüldü | d510714 |
+| 14(b) | Hesap açma işine bağlı değil | ⏳ Yapılmadı | — |
+
+## Canlı teşhis sonuçları (salt okuma, sahip onayıyla)
+
+2.578 belge üzerinde ölçüldü:
+
+- **Bulgu 4 gerçek:** aynı mükellefte aynı belge numarası 3–5 ayrı satıcıda var ("202" beş satıcıda).
+- **Bulgu 5 uyuyordu:** aynı ETTN birden çok mükellefte **0 kayıt**. Kusur duruyordu, zarar oluşmamıştı.
+- **Bulgu 11'in en kötü senaryosu gerçekleşmemiş:** `kaynak='KULLANICI'` olup kodu silinmiş satır **0**.
+- **Mükerrer işareti sistemde 0** — tespit pratikte hiç iz bırakmamış; kökü Mihsap yolunda kontrolün
+  hiç çağrılmaması olarak bulundu ve kapatıldı.
+- **Sorunlu belge sayısı:** gerçek **77**, ekran **2** gösteriyordu (ölü sayaç).
+- **Tekillik kısıtı EKLENMEDİ.** 47 çakışan grubun **46'sı meşru** (ÖKC fiş numarası satıcı bazlı
+  tekrar ediyor; tarih ve tutar farklı). Kısıt bu kayıtları reddederdi. Sahip kararı: veritabanı kısıtı
+  yerine mükerrer işaretini güçlendirmek — kısıt P2002 ile belgeyi hiç kaydetmeyip yeni bir sessiz
+  kayıp yolu açabilirdi.
+
+## Test güvencesi
+
+Denetim raporunun "122 sınama geçti, güvence sayma" uyarısı **haklıydı ve tahmin edilenden kötüydü**:
+dört betik metin arıyordu **ve zincirde üç test kırık duruyordu** (kimse fark etmiyordu, çünkü
+`test:regression` commit'te koşmuyor).
+
+- 4 metin-arayan betik davranış sınamasına çevrildi; **13 mutasyon deneyi, 13'ü kırmızı döndü.**
+- Bu oturumda 8 yeni davranış sınaması yazıldı ve zincire alındı (34 → 42 betik).
+- 4 bayat test düzeltildi (üçü önceden kırıktı, biri Faz 0 maskesinden kırılmıştı — gerçek kullanıcı
+  etkisi yok, gerekçesi commit'te).
+- **`pnpm test:regression` 42 betik, EXIT=0** — bu oturumda ilk kez tam yeşil.
+
+## Kalan açık işler
+
+1. **Bulgu 14(b):** hesap planı gönderimi başarısız olsa bile fatura işi kuruluyor; `ACCOUNT_PLAN_PUSH`
+   önceliği fiş işinden düşük (ajan tarafı sıralaması çoğu zaman kurtarıyor).
+2. Şema hız indeksi: `(tenantId, taxpayerId, invoiceKind, sellerVkn, belgeNo)` — doğruluk etkilenmiyor.
+3. `shouldRewriteAccounting` bloğu kimlik kapısına alınmadı (düzeltilebilir veri; geri alınamaz zarar kapalı).
+4. Sonsuz sayfalama (`useInfiniteQuery`) yapılmadı — süzgeç sunucuya taşındığı ve kırpılma bildirildiği için acil değil.
+5. Arayüzdeki tutar çözümleyici (`mNum`) paylaşılan dosyaya taşınmalı; test şu an onu kaynaktan çıkarıp derliyor (kırılgan).
+6. Kilitli modül baseline'ı bayat (5 dosya) — sahip "şimdilik dokunma" dedi.
+7. `EY42026000192714` mükerrer çifti canlıda duruyor (ikisi de onaysız, Luca'ya gitmemiş).
