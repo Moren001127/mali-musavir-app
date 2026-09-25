@@ -7,12 +7,12 @@
   },
   "modules": {
     "apps/web/src/app/(panel)/panel/mizan/page.tsx": {
-      "sha256": "50a0dbc6aa065d1fb8135c660cb5de13f73fa30a3fa173195842beed628ea4d8",
+      "sha256": "1426e018071bce28ee17334e18a2bcc41efdb7841d21791e8c4eefc357c09a57",
       "reason": "Mizan modulu — tam otomasyon, dokunma",
       "lockedBy": "muzaffer"
     },
     "apps/web/src/app/(panel)/panel/kdv-kontrol/page.tsx": {
-      "sha256": "5c48b00e204c18991143fbc3e23bf9cec7c99c436b3b5bd511190c2d79463518",
+      "sha256": "0bfce346b99bfc224a32c850a89401c57ba84c2ddfeb029421603bdec63251ec",
       "reason": "KDV Kontrol modulu — tam otomasyon, dokunma",
       "lockedBy": "muzaffer"
     },
@@ -32,7 +32,7 @@
       "lockedBy": "muzaffer"
     },
     "apps/api/src/kdv-control/kdv-control.service.ts": {
-      "sha256": "0b6186fc420c9529d2e973c859ea70a2e36b920b4e03a97c79f73e5c3a199ddb",
+      "sha256": "ba15fff89d989dd53878878f7e9f73fdcce8834924124a46f9f2721cf47316e7",
       "reason": "KDV Kontrol service — Luca queueing + reconciliation + icerik denetimi HEP-AI (kural fallback kaldirildi, kullanici onayi 2026-06-24)",
       "lockedBy": "muzaffer"
     },
@@ -47,7 +47,7 @@
       "lockedBy": "muzaffer"
     },
     "apps/api/src/earsiv/earsiv.controller.ts": {
-      "sha256": "f8e3ed10b39f6df26a2b6ea12204c4f741efb9621d447b9a78c0066e0efbef0c",
+      "sha256": "315e7ba01c8f71990b19ef0c3d6c3f33bcd4f39f46dc551daab687446111cb40",
       "reason": "E-Arsiv controller — Mihsap upload endpoint",
       "lockedBy": "muzaffer"
     },
