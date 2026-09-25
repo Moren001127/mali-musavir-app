@@ -233,9 +233,16 @@ export class IsletmeHesapOzetiService {
         donemBasiStok = Number(ilkCeyrek.donemBasiStok || 0);
       }
       // Önceki dönemlerde hesaplanan geçici vergilerin toplamı
+      // 2026-09-25 denetim bulgusu 11 — YARIM KALMIŞ YAMA DÜZELTİLDİ.
+      //   v1.36.65'te reduce `odenecekGecVergi`ye çevrilmiş ama `select` eski alanda
+      //   (`hesaplananGecVergi`) bırakılmıştı. Prisma yalnız seçilen alanı döndürdüğü için
+      //   `x.odenecekGecVergi` HER ZAMAN undefined oluyor, `Number(undefined || 0)` = 0 →
+      //   bu yolda önceki dönem devri DAİMA SIFIR çıkıyordu. Sonuç: Q2'de ödenecek geçici vergi
+      //   iki katı hesaplanıyor ve bu tutar mükellefe WhatsApp ile gönderiliyordu
+      //   ("Önceki Dönem Ödenen: 0,00 ₺"). Doğrusu satır 468 civarında zaten vardı.
       const oncekiDonemler = await (this.prisma as any).isletmeHesapOzeti.findMany({
         where: { tenantId, taxpayerId, yil, donem: { lt: donem } },
-        select: { hesaplananGecVergi: true },
+        select: { donem: true, odenecekGecVergi: true },
       });
       // v1.36.65: kümülatif odenecekGecVergi (gerçekten ödenen). Önceden hesaplananGecVergi
       // kullanılıyordu — yanlış çünkü hesaplanan vergiden önceki ödenenler düşülmüyordu.
@@ -243,6 +250,15 @@ export class IsletmeHesapOzetiService {
         (acc: number, x: any) => acc + Number(x.odenecekGecVergi || 0),
         0,
       );
+      // Kapsam uyarısı: 1. çeyrek değilsek önceki çeyrek kaydı OLMALI. Yoksa devir sıfır kalır ve
+      //   vergi olduğundan yüksek çıkar — sessiz geçmesin.
+      if (Number(donem) > 1 && oncekiDonemler.length < Number(donem) - 1) {
+        this.logger?.warn?.(
+          `[IHO-DEVIR] ${taxpayerId} ${yil}/Q${donem}: önceki çeyrek kaydı eksik `
+          + `(${oncekiDonemler.length}/${Number(donem) - 1}) → önceki dönem devri ${oncekiOdenenGecVergi} ile hesaplandı. `
+          + 'Mükellefe bildirim göndermeden önce çeyrekleri tamamlayın.',
+        );
+      }
     }
 
     return (this.prisma as any).isletmeHesapOzeti.create({
