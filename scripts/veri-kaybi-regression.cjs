@@ -223,6 +223,61 @@ function sahteTablo(satirlar) {
       'baş/son boşluk anahtarı bozmuyor');
   }
 
+  console.log('\n7) BULGU 10a — kilitli mizan artık Excel yolundan da silinemiyor');
+  {
+    const { MizanService } = require(path.join(ROOT, 'apps/api/src/mizan/mizan.service.ts'));
+
+    const kur = (kilitliVarMi) => {
+      const izler = { silmeler: [], olusturma: 0 };
+      const prisma = {
+        mizan: {
+          findFirst: async (a) => (a?.where?.locked === true && kilitliVarMi
+            ? { id: 'eski', lockedAt: new Date('2026-08-15T10:00:00Z') }
+            : null),
+          deleteMany: async (a) => { izler.silmeler.push(a.where); return { count: 1 }; },
+          create: async (a) => { izler.olusturma++; return { id: 'yeni', ...a.data }; },
+          update: async () => ({}),
+        },
+        mizanHesap: { createMany: async () => ({ count: 0 }) },
+        mizanAnomali: { createMany: async () => ({ count: 0 }) },
+        taxpayer: { findFirst: async () => ({ id: 'tp1', companyName: 'TEST' }) },
+      };
+      const svc = new MizanService(prisma, { parse: () => [] }, {}, {});
+      svc.logger = { warn() {}, log() {}, error() {}, debug() {} };
+      svc.parser = { parse: () => [{ hesapKodu: '100', hesapAdi: 'KASA', borc: 1, alacak: 0 }] };
+      return { svc, izler };
+    };
+
+    // (a) kilitli mizan varsa: hata ver, HİÇBİR ŞEY silme
+    {
+      const { svc, izler } = kur(true);
+      let hata = null;
+      try {
+        await svc.importFromExcel({ tenantId: 't1', taxpayerId: 'tp1', donem: '2026-Q2', donemTipi: 'GECICI_Q2', buffer: Buffer.from('x') });
+      } catch (e) { hata = e; }
+      ok(!!hata, 'kilitli dönemde hata fırlatıldı');
+      ok(hata && /kesin kayıtlı/i.test(hata.message || ''), `mesaj kullanıcıya ne yapacağını söylüyor: "${hata && String(hata.message).slice(0, 70)}"`);
+      ok(izler.silmeler.length === 0, `HİÇ silme yapılmadı (gelen: ${izler.silmeler.length}) — eski kodda 58 kesin kayıtlı mizan buradan silinebiliyordu`);
+      ok(izler.olusturma === 0, 'yerine boş kayıt da yazılmadı');
+    }
+
+    // (b) kilit yoksa eski davranış aynen sürüyor
+    {
+      const { svc, izler } = kur(false);
+      await svc.importFromExcel({ tenantId: 't1', taxpayerId: 'tp1', donem: '2026-Q2', donemTipi: 'GECICI_Q2', buffer: Buffer.from('x') });
+      ok(izler.silmeler.length === 1, 'kilitsiz dönemde eski mizan yine siliniyor (işlev bozulmadı)');
+      ok(izler.olusturma === 1, 'yeni mizan oluşturuldu');
+    }
+
+    // (c) replaceExisting:false ise kilit kontrolü de silme de yok (e-Defter eşlik eden yol)
+    {
+      const { svc, izler } = kur(true);
+      await svc.importFromExcel({ tenantId: 't1', taxpayerId: 'tp1', donem: '2026-Q2', donemTipi: 'GECICI_Q2', buffer: Buffer.from('x'), replaceExisting: false });
+      ok(izler.silmeler.length === 0 && izler.olusturma === 1,
+        'replaceExisting:false yolunda kilit engel değil, silme de yok (e-Defter eşlik eden mizan)');
+    }
+  }
+
   if (failed) { console.error(`\nveri-kaybi-regression: ${failed} BAŞARISIZ`); process.exit(1); }
   console.log('\nveri-kaybi-regression ok');
 })().catch((e) => { console.error(`beklenmeyen hata: ${(e && e.stack) || e}`); process.exit(1); });

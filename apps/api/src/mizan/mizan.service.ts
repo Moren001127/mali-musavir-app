@@ -396,8 +396,32 @@ export class MizanService {
     );
 
     try {
-      // Önce eski mizanları sil — aynı dönem için tek mizan kalsın
       if (params.replaceExisting !== false) {
+        // 2026-09-25 (portal denetimi bulgu 10a) — KİLİT KONTROLÜ.
+        //   `importFromLuca` (bu dosyada, ~satır 302) kilidi kontrol ediyordu; BU yol ETMİYORDU.
+        //   Oysa `POST /mizan/upload` ve tarayıcı eklentisinin NORMAL mizan yolu
+        //   (`luca.controller.ts:876`) buradan geçiyor. Yani "kesin kayıtlı" bir mizan
+        //   uyarısız silinebiliyordu. Canlı ölçüm (25.09.2026): 203 mizanın 58'i kilitli,
+        //   toplam 35.266 hesap satırı; `rawExcelKey` hiçbir yol tarafından doldurulmadığı
+        //   için silinen mizan GERİ GETİRİLEMİYOR.
+        const kilitli = await (this.prisma as any).mizan.findFirst({
+          where: {
+            tenantId: params.tenantId,
+            taxpayerId: params.taxpayerId,
+            donem: params.donem,
+            donemTipi: params.donemTipi || 'AYLIK',
+            locked: true,
+          },
+          select: { id: true, lockedAt: true },
+        });
+        if (kilitli) {
+          throw new BadRequestException(
+            `Bu dönem için kesin kayıtlı mizan var${kilitli.lockedAt ? ` (${new Date(kilitli.lockedAt).toLocaleString('tr-TR')})` : ''}. ` +
+              'Üzerine yazmak için önce kilidi açın.',
+          );
+        }
+
+        // Eski mizanları sil — aynı dönem için tek mizan kalsın
         const deleted = await (this.prisma as any).mizan.deleteMany({
           where: {
             tenantId: params.tenantId,
