@@ -341,7 +341,9 @@ export class EarsivController {
     });
 
     if (jobId) {
-      await this.luca.markJobDone(jobId, result.inserted + result.duplicate).catch(() => {});
+      // 2026-09-25: tenantId geçiliyor — bu uçta job'ın ofise ait olduğu ayrıca doğrulanmıyordu,
+      // yani A ofisinin ajanı B ofisinin jobId'sini "tamamlandı" işaretleyebiliyordu (Faz A deseni).
+      await this.luca.markJobDone(jobId, result.inserted + result.duplicate, { tenantId }).catch(() => {});
     }
     return { ok: true, ...result };
   }

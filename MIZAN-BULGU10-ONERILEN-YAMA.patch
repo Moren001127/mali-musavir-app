@@ -1,0 +1,46 @@
+--- a/apps/api/src/mizan/mizan.service.ts   (BULGU 10 ÖNERİLEN YAMA — UYGULANMADI)
++++ b/apps/api/src/mizan/mizan.service.ts
+
+@@ importFromExcel — 10a: KİLİT KONTROLÜ EKLENİYOR
+     try {
+-      // Önce eski mizanları sil — aynı dönem için tek mizan kalsın
+       if (params.replaceExisting !== false) {
++        // 10a (denetim 2026-09-25): importFromLuca kilidi kontrol ediyordu, bu yol ETMİYORDU.
++        // POST /mizan/upload ve tarayıcı eklentisinin normal mizan yolu buradan geçiyor;
++        // "kesin kayıtlı" 58 mizan uyarısız silinebiliyordu.
++        const kilitli = await (this.prisma as any).mizan.findFirst({
++          where: {
++            tenantId: params.tenantId, taxpayerId: params.taxpayerId,
++            donem: params.donem, donemTipi: params.donemTipi || 'AYLIK', locked: true,
++          },
++          select: { id: true, lockedAt: true },
++        });
++        if (kilitli) {
++          throw new BadRequestException(
++            `Bu dönem için kesin kayıtlı mizan var (${kilitli.lockedAt ? new Date(kilitli.lockedAt).toLocaleString('tr-TR') : ''}). ` +
++            `Üzerine yazmak için önce kilidi açın.`,
++          );
++        }
++        // Eski mizanları sil — aynı dönem için tek mizan kalsın
+         const deleted = await (this.prisma as any).mizan.deleteMany({ ... });
+
+@@ importFromLuca — 10b: SİLME ÇEKİMDEN SONRAYA
+     if (existing?.locked) { throw ... }   // (bu kontrol zaten vardı, doğru)
+-    if (existing) {
+-      await (this.prisma as any).mizan.delete({ where: { id: existing.id } });
+-    }
+-
++    // 10b: eski mizan ARTIK burada silinmiyor. Luca çekimi patlarsa (oturum düşmesi,
++    // captcha, ajan meşgul) eski mizan gidiyor ve yerine boş PENDING kabuk kalıyordu.
+     const mizan = await (this.prisma as any).mizan.create({ ... status: 'PENDING' });
+
+     try {
+       const buffer = await this.lucaAutoScraper.fetchMizanExcel({ ... });
+       const rows = this.parser.parse(buffer);
++      // Çekim ve ayrıştırma bittiyse eski mizanı ŞİMDİ sil (tek işlemde).
++      if (existing) {
++        await (this.prisma as any).$transaction([
++          (this.prisma as any).mizan.delete({ where: { id: existing.id } }),
++          ...hesapYazmalari,
++        ]);
++      }

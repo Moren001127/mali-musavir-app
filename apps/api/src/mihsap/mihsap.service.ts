@@ -609,7 +609,7 @@ export class MihsapService implements OnModuleInit {
     item: MihsapInvoiceSummary,
     donem: string,
     kaynak?: 'arsiv' | 'bekleyen',
-  ): Promise<{ stored: boolean; skipped?: boolean; reason?: string }> {
+  ): Promise<{ stored: boolean; skipped?: boolean; reason?: string; mihsapId?: string }> {
     // Daha önce kaydedilmiş mi? mihsapId unique
     const mihsapInternalId =
       item.id ??
@@ -651,7 +651,7 @@ export class MihsapService implements OnModuleInit {
           data: { ...duzelt, raw: rawKayit },
         }).catch(() => null);
       }
-      return { stored: false, skipped: true, reason: 'already-stored' };
+      return { stored: false, skipped: true, reason: 'already-stored', mihsapId: String(mihsapInternalId) };
     }
 
     // S3 upload atlanıyor — MIHSAP CDN (invoice.mihsap.com) auth gerektirmez,
@@ -709,7 +709,7 @@ export class MihsapService implements OnModuleInit {
     });
 
     // mihsapFileLink varsa fatura görüntülenebilir — "stored" olarak say
-    return { stored: !!(storageKey || item.fileLink || item.fileDownloadLink) };
+    return { stored: !!(storageKey || item.fileLink || item.fileDownloadLink), mihsapId: String(mihsapInternalId) };
   }
 
   /** Mihsap tarih alanlarından MAKUL takvim günü (UTC gece yarısı) — 2000..gelecek yıl dışı / bozuk → null.
@@ -737,12 +737,31 @@ export class MihsapService implements OnModuleInit {
     return null;
   }
 
-  /** Belirli bir dönemin tüm MIHSAP fatura kayıtlarını siler (yeniden çekme öncesi) */
-  async clearPeriod(tenantId: string, mukellefId: string, donem: string) {
+  /**
+   * Dönemin MIHSAP fatura kayıtlarını siler.
+   *
+   * 2026-09-25 (portal denetimi bulgu 38) — İKİ SÜZGEÇ EKLENDİ:
+   *   `faturaTuru`: "alış yenile" dendiğinde SATIŞ kayıtları da siliniyordu, geri çekim
+   *     yalnız alış yaptığı için satışlar kayboluyordu.
+   *   `kaynak`: arşiv yenilemesi "bekleyen" (Fatura İşleme Merkezi) kayıtlarını da siliyordu;
+   *     o kayıtların çoğunda `mihsapFileLink` boş, Drive'da da yoklar → geri gelmiyorlardı.
+   *   `koruId`: bu çekimde GÖRÜLEN kayıtlar korunur; yalnız Mihsap'ta artık olmayan
+   *     (iptal/silinmiş) eski satırlar temizlenir.
+   */
+  async clearPeriod(
+    tenantId: string,
+    mukellefId: string,
+    donem: string,
+    opts?: { faturaTuru?: 'ALIS' | 'SATIS' | null; kaynak?: string | null; koruId?: string[] },
+  ) {
+    const where: any = { tenantId, mukellefId, donem };
+    // TEVKIFATLI_ALIS de bir alış türü — "alış" süzgeci onu da kapsamalı.
+    if (opts?.faturaTuru === 'ALIS') where.faturaTuru = { not: 'SATIS' };
+    else if (opts?.faturaTuru === 'SATIS') where.faturaTuru = 'SATIS';
+    if (opts?.kaynak) where.kaynak = opts.kaynak;
+    if (opts?.koruId?.length) where.mihsapId = { notIn: opts.koruId };
     // DB'den sil (S3 kullanılmıyor — dosyalar MIHSAP CDN'inde)
-    const { count } = await (this.prisma as any).mihsapInvoice.deleteMany({
-      where: { tenantId, mukellefId, donem },
-    });
+    const { count } = await (this.prisma as any).mihsapInvoice.deleteMany({ where });
     return { deleted: count };
   }
 
@@ -758,9 +777,15 @@ export class MihsapService implements OnModuleInit {
     forceRefresh?: boolean; // true: önce mevcut kayıtları sil, sonra çek
     kaynak?: 'arsiv' | 'bekleyen';
   }) {
-    if (params.forceRefresh) {
-      await this.clearPeriod(params.tenantId, params.mukellefId, params.donem);
-    }
+    // 2026-09-25 (portal denetimi bulgu 38) — SİLME ARTIK ÇEKİMDEN SONRA.
+    //   Eskiden burada, uzak çağrıdan ÖNCE `clearPeriod` çalışıyordu: Mihsap oturumu/token
+    //   düşmüşse dönem boşalıyor, geri gelen hiçbir şey olmuyordu. Üstelik ön yüz bu hatayı
+    //   "Mihsap oturumu tazelenince otomatik tamamlanacak" diye yumuşatıyor, kullanıcı veri
+    //   gittiğini anlamıyordu. Toplu kip bunu BÜTÜN mükelleflere uyguluyordu.
+    //   Yeni düzen: önce çek → başarılıysa, bu çekimde GÖRÜLMEYEN eski satırları sil.
+    //   `mihsapId` zaten @unique ve downloadAndStore var olan kaydı tazeliyor; silmenin tek
+    //   meşru işi Mihsap'ta artık bulunmayan (iptal edilmiş) satırları temizlemek.
+    const gorulenIdler: string[] = [];
     const job = await (this.prisma as any).mihsapFetchJob.create({
       data: {
         tenantId: params.tenantId,
@@ -800,6 +825,7 @@ export class MihsapService implements OnModuleInit {
             ),
           );
           fetched += results.filter((r) => r.stored || r.skipped).length;
+          for (const r of results) if (r.mihsapId) gorulenIdler.push(r.mihsapId);
           await (this.prisma as any).mihsapFetchJob.update({
             where: { id: job.id },
             data: { totalCount: total, fetchedCount: fetched },
@@ -809,6 +835,28 @@ export class MihsapService implements OnModuleInit {
     } catch (e: any) {
       errorMsg = e?.message || 'bilinmeyen hata';
       this.logger.error('fetchAndStoreInvoices failed', e);
+    }
+
+    // Yenileme temizliği — YALNIZ çekim sorunsuz bittiyse ve gerçekten bir şey geldiyse.
+    // Çekim patladıysa (token/oturum) hiçbir şey silinmez: bulgu 38'in özü buydu.
+    let silinen = 0;
+    if (params.forceRefresh && !errorMsg && gorulenIdler.length > 0) {
+      const { deleted } = await this.clearPeriod(params.tenantId, params.mukellefId, params.donem, {
+        faturaTuru: params.faturaTuru || null,
+        kaynak: params.kaynak || 'arsiv',
+        koruId: gorulenIdler,
+      });
+      silinen = deleted;
+      if (deleted > 0) {
+        this.logger.log(
+          `[MIHSAP-YENILE] ${params.donem} · ${params.mukellefId}: Mihsap'ta artık bulunmayan ${deleted} kayıt silindi ` +
+            `(tür: ${params.faturaTuru || 'hepsi'}, kaynak: ${params.kaynak || 'arsiv'}, korunan: ${gorulenIdler.length}).`,
+        );
+      }
+    } else if (params.forceRefresh && errorMsg) {
+      this.logger.warn(
+        `[MIHSAP-YENILE] ${params.donem} · ${params.mukellefId}: çekim başarısız (${errorMsg}) — HİÇBİR KAYIT SİLİNMEDİ.`,
+      );
     }
 
     await (this.prisma as any).mihsapFetchJob.update({
@@ -905,7 +953,7 @@ export class MihsapService implements OnModuleInit {
       throw new BadRequestException(errorMsg);
     }
 
-    return { jobId: job.id, total, fetched, errorMsg };
+    return { jobId: job.id, total, fetched, errorMsg, silinen };
   }
 
   // ==================== FM ARŞİVİM → İŞLENEN FATURALAR (2026-09-15) ====================

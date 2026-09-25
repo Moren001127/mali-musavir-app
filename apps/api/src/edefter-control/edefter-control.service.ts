@@ -586,6 +586,20 @@ export class EDefterControlService {
       rawData: r.rawData || null,
     }));
 
+    // 2026-09-25 (portal denetimi bulgu 39) — KULLANICI KARARLARI KORUNUYOR.
+    //   Yeniden analiz bulguları silip yeniden üretiyor; "çözüldü / yok sayıldı" işaretleri,
+    //   1000 karaktere kadar kullanıcı notu, kimin ne zaman kapattığı bilgisi gidiyordu.
+    //   Bunlar tekrar üretilemeyen insan emeği. Kalıcı eşleşme anahtarıyla geri yazılıyor.
+    //   (Denetim raporunun "mizan gelince kendiliğinden siliniyor" iddiası GEÇERSİZ:
+    //    luca.controller.ts:905-921 işaretli bulgu varsa otomatik tazelemeyi zaten atlıyor.
+    //    Kalan gerçek risk elle basılan "Yeniden Analiz" düğmesi — kapatılan bu.)
+    const eskiKararlar = await (this.prisma as any).eDefterFinding.findMany({
+      where: { sessionId: session.id, status: { not: 'OPEN' } },
+      select: { severity: true, category: true, message: true, voucherKey: true, rowIndex: true, hesapKodu: true, status: true, detail: true },
+    });
+    const kararHaritasi = new Map<string, any>();
+    for (const k of eskiKararlar) kararHaritasi.set(this.bulguAnahtari(k), k);
+
     await (this.prisma as any).$transaction(async (tx: any) => {
       await tx.eDefterFinding.deleteMany({ where: { sessionId: session.id } });
       await tx.eDefterVoucherLine.deleteMany({ where: { sessionId: session.id } });
@@ -619,9 +633,63 @@ export class EDefterControlService {
           kontrolOzeti: kontrolOzeti as any,
         },
       });
+
+      // Eski kararları yeni bulgulara geri yaz (aynı işlem içinde — yarım kalmasın).
+      if (kararHaritasi.size) {
+        const yeniler = await tx.eDefterFinding.findMany({
+          where: { sessionId: session.id },
+          select: { id: true, severity: true, category: true, message: true, voucherKey: true, rowIndex: true, hesapKodu: true, detail: true },
+        });
+        let geriYazilan = 0;
+        for (const y of yeniler) {
+          const eski = kararHaritasi.get(this.bulguAnahtari(y));
+          if (!eski) continue;
+          const eskiDetay = eski.detail && typeof eski.detail === 'object' && !Array.isArray(eski.detail) ? eski.detail : {};
+          const yeniDetay = y.detail && typeof y.detail === 'object' && !Array.isArray(y.detail) ? y.detail : {};
+          await tx.eDefterFinding.update({
+            where: { id: y.id },
+            data: {
+              status: eski.status,
+              // Yeni analiz verisi korunur, üstüne kullanıcının kararı yazılır.
+              detail: {
+                ...yeniDetay,
+                ...(eskiDetay.note != null ? { note: eskiDetay.note } : {}),
+                ...(eskiDetay.resolvedAt != null ? { resolvedAt: eskiDetay.resolvedAt } : {}),
+                ...(eskiDetay.resolvedBy != null ? { resolvedBy: eskiDetay.resolvedBy } : {}),
+                yenidenAnalizdeKorundu: true,
+              },
+            },
+          });
+          geriYazilan++;
+        }
+        const kayip = kararHaritasi.size - geriYazilan;
+        this.logger.log(
+          `[EDEFTER-YENIDEN-ANALIZ] ${session.id}: ${geriYazilan}/${kararHaritasi.size} kullanıcı kararı geri yazıldı` +
+            (kayip > 0 ? `; ${kayip} bulgu yeni analizde ARTIK YOK (kural/mizan değişmiş olabilir).` : '.'),
+        );
+      }
     });
 
     return this.getSession(session.id, tenantId);
+  }
+
+  /**
+   * Bulgu kimliği — yeniden analizde aynı bulguyu bulmak için (denetim bulgusu 39).
+   * `id` her analizde değiştiği için içerikten türetilir. `message` de dahil: aynı hesapta
+   * farklı tutarla çıkan iki uyarı ayrı bulgudur, kararları birbirine geçmemeli.
+   */
+  private bulguAnahtari(f: {
+    severity?: string | null; category?: string | null; message?: string | null;
+    voucherKey?: string | null; rowIndex?: number | null; hesapKodu?: string | null;
+  }): string {
+    return [
+      String(f.severity || ''),
+      String(f.category || ''),
+      String(f.voucherKey || ''),
+      f.rowIndex == null ? '' : String(f.rowIndex),
+      String(f.hesapKodu || ''),
+      String(f.message || '').trim(),
+    ].join('|');
   }
 
   async exportFindingsAsExcel(sessionId: string, tenantId: string): Promise<Buffer> {

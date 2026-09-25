@@ -307,40 +307,58 @@ export class IsletmeHesapOzetiService {
           },
         },
       });
-    let ceyrekler = await fetchAll();
+    const ceyrekler = await fetchAll();
 
-    // Geçmiş yıl zararı BACKFILL (2026-08-06): zarar yıllıktır — en erken >0 girilen
-    // dönemin değeri, 0 kalmış KİLİTSİZ sonraki dönemlere otomatik yazılır.
-    // Eski kayıtlar (yayılım eklenmeden önce girilmiş) veya kaynak dönemi kilitli
-    // olanlar da bu sayede yıl görünümü açılırken tamamlanır.
-    const kaynak = ceyrekler.find((c: any) => Number(c.gecmisYilZarari) > 0);
-    if (kaynak) {
-      const hedefler = ceyrekler.filter(
-        (c: any) => c.donem > kaynak.donem && !c.locked && Number(c.gecmisYilZarari) === 0,
-      );
-      if (hedefler.length > 0) {
-        for (const h of hedefler) {
-          try {
-            await this.updateManuel({
-              tenantId,
-              id: h.id,
-              gecmisYilZarari: Number(kaynak.gecmisYilZarari),
-            });
-          } catch {
-            // kilit yarışı vb. — atla, görünüm bozulmasın
-          }
-        }
-        ceyrekler = await fetchAll();
-      }
-    }
+    // Geçmiş yıl zararı yayılımı — 2026-09-25 (portal denetimi bulgu 21a) ARTIK YALNIZ BELLEKTE.
+    //
+    //   ESKİ HÂL: burada `updateManuel` çağrılıyordu; o da geçici vergiyi yeniden hesaplayıp
+    //   KAYDEDİYORDU. Yani `GET /yil/...` ve `GET /export/...` — yani ekranı açmak ya da
+    //   Excel'e aktarmak — mükellefin VERGİ TUTARINI değiştiriyordu. Okuma ucu kalıcı yazma
+    //   yapmamalı; Fatura Merkezi'nde aynı desen `aeb14fb` ile kapatılmıştı.
+    //
+    //   Kalıcı yayılım ZATEN VAR: `updateManuel` (bkz. "Kullanıcı isteği 2026-08-06") kullanıcı
+    //   zararı kaydettiğinde sonraki kilitsiz çeyreklere yazıyor. Buradaki iş yalnız o yayılım
+    //   eklenmeden ÖNCE girilmiş eski kayıtların DOĞRU GÖRÜNMESİ — onu da yazmadan yapıyoruz.
+    //   Kullanıcı herhangi bir çeyreği kaydederse değer kalıcı olarak da yerine oturur.
+    const zararKaynagi = ceyrekler.find((c: any) => Number(c.gecmisYilZarari) > 0);
+    const gorunum = !zararKaynagi
+      ? ceyrekler
+      : ceyrekler.map((c: any) =>
+          c.donem > zararKaynagi.donem && !c.locked && Number(c.gecmisYilZarari) === 0
+            ? this.zararYayilmisGorunum(c, Number(zararKaynagi.gecmisYilZarari))
+            : c,
+        );
 
     const map: Record<number, any> = {};
-    for (const c of ceyrekler) map[c.donem] = c;
+    for (const c of gorunum) map[c.donem] = c;
 
     return {
       yil,
-      taxpayer: ceyrekler[0]?.taxpayer || null,
+      taxpayer: gorunum[0]?.taxpayer || null,
       ceyrekler: [1, 2, 3, 4].map((d) => map[d] || null),
+    };
+  }
+
+  /**
+   * Geçmiş yıl zararı yayılmış KOPYA — veritabanına DOKUNMAZ (bulgu 21a).
+   * Yalnız zarara bağlı türetilmiş alanlar yeniden hesaplanır; `donemKari` değişmez.
+   * Formül `updateManuel` ile birebir aynı.
+   */
+  private zararYayilmisGorunum(kayit: any, gecmisYilZarari: number) {
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    const donemKari = Number(kayit.donemKari) || 0;
+    const oncekiOdenen = Number(kayit.oncekiOdenenGecVergi) || 0;
+    const gecVergiMatrahi = Math.max(0, r2(donemKari - gecmisYilZarari));
+    const hesaplananGecVergi = r2(gecVergiMatrahi * 0.15);
+    const odenecekGecVergi = Math.max(0, r2(hesaplananGecVergi - oncekiOdenen));
+    return {
+      ...kayit,
+      gecmisYilZarari,
+      gecVergiMatrahi,
+      hesaplananGecVergi,
+      odenecekGecVergi,
+      // Ekran/Excel bu değerin kaydedilmediğini bilsin.
+      zararYayilmisGorunum: true,
     };
   }
 

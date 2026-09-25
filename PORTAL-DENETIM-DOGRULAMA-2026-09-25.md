@@ -343,6 +343,13 @@ tamamen kayıp. DB üstverisi hiçbir durumda geri gelmez.
 **Çözüm:** Silmeyi çekim başarıyla bittikten sonraya al, tek `$transaction`. `clearPeriod`'a `faturaTuru`
 ve `kaynak` ekle. Daha güvenlisi: hiç silme — `mihsapId` zaten `@unique`, `upsert` üzerine yazar.
 
+**UYGULANDI (2026-09-25):** Silme artık çekimden SONRA ve yalnız çekim sorunsuz bittiyse.
+`clearPeriod`'a üç süzgeç eklendi: `faturaTuru` (TEVKIFATLI_ALIS da alış sayılır), `kaynak`,
+ve `koruId` — bu çekimde görülen `mihsapId`'ler korunur, yalnız Mihsap'ta artık bulunmayan
+eski satırlar temizlenir. Çekim patlarsa kayıt silinmez, kayda `[MIHSAP-YENILE] ... HİÇBİR
+KAYIT SİLİNMEDİ` düşer. Süzgeçsiz çağrı eski davranışı koruyor (başka çağıran kırılmasın).
+
+
 ## 10. Mizan: kilitli mizan uyarısız siliniyor — **DOĞRULANDI (rapordaki ifade kısmen yanlış)**
 
 - **10a:** `mizan.service.ts:398-411` `importFromExcel` **kilit kontrolü yapmıyor**. `deleteMizan` (1329),
@@ -357,6 +364,14 @@ ve `kaynak` ekle. Daha güvenlisi: hiç silme — `mihsapId` zaten `@unique`, `u
 
 **Etki:** `Mizan` silinince `MizanHesap` + `MizanAnomali` cascade gidiyor (300-2000 satır).
 `rawExcelKey` alanı şemada var ama `importFromExcel` **doldurmuyor** — orijinal Excel bile saklanmıyor.
+
+**CANLI ÖLÇÜM (2026-09-25):** 203 mizanın **58'i kilitli** ("kesin kayıtlı"), toplam 35.266 hesap satırı.
+En yeni kilitliler 2026-Q1/Q2 geçici vergi dönemleri, 50–365 hesap arası. `rawExcelKey` alanı şemada
+var ama HİÇBİR yol doldurmuyor — orijinal Excel saklanmıyor, silinen mizan geri getirilemez.
+
+**DURUM: UYGULANMADI — Mizan KİLİTLİ MODÜL.** Önerilen yama `MIZAN-BULGU10-ONERILEN-YAMA.patch`
+dosyasında; onay bekliyor.
+
 
 ## 21. Okuma işlemleri kalıcı değişiklik yapıyor — **DOĞRULANDI (iki kardeş)**
 
@@ -373,6 +388,18 @@ Fatura Merkezi'nde `aeb14fb` ile kapatılan desenin aynısı, iki yerde daha:
 yazma isteniyorsa ayrı bir POST ucu olsun. 21b'de onarımı listeden çıkar, planlı işe taşı; silme yerine
 işaretle.
 
+**UYGULANDI (2026-09-25):**
+- **21a** — `getYil()` artık YAZMIYOR. Zarar yayılımı bellekte yapılıyor (`zararYayilmisGorunum`);
+  türetilen alanlar `updateManuel` ile birebir aynı formülle yeniden hesaplanıyor, kayıt
+  `zararYayilmisGorunum: true` ile işaretleniyor. Kalıcı yayılım zaten `updateManuel` içinde
+  vardı (2026-08-06) — kullanıcı herhangi bir çeyreği kaydedince değer yerine oturuyor.
+  Kilitli çeyreğe hiç dokunulmuyor.
+- **21b** — `list()` artık onarım tetiklemiyor. Onarım iki yoldan çalışıyor: gece 03:20 planlı iş
+  (`gecelikMukerrerOnarimi`, `GECICI_VERGI_ONARIM=off` ile kapatılır) ve
+  `POST /beyan-kayitlari/gecici-vergi-onarim` (yönetici+personel). İkisi de kaç satır silindiğini
+  döndürüyor ve `[GECICI-ONARIM]` kaydı düşüyor — eskiden sessizdi.
+
+
 ## 39. e-Defter yeniden analizi kullanıcı kararlarını siliyor — **DOĞRULANDI**
 
 `edefter-control.service.ts:600-620` `reanalyzeSession` tüm `eDefterFinding` kayıtlarını silip yeniden
@@ -387,6 +414,19 @@ işaretle.
 
 **Çözüm:** Bulgulara kalıcı eşleşme anahtarı (`hash(category+voucherKey+rowIndex+hesapKodu+message)`),
 yeniden analizde karar+notu geri yaz.
+
+**RAPORUN DÜZELTMESİ (2026-09-25):** *"Mizan sonradan gelince sistem kendiliğinden yeniden analiz
+çalıştırıyor — kullanıcı hiçbir şey yapmadan tüm kararları silinebiliyor"* iddiası **GEÇERSİZ**.
+`luca.controller.ts:905-921` tam bunun için yazılmış: `status != 'OPEN'` bulgu sayılıyor, varsa
+otomatik tazeleme YAPILMIYOR ve iş günlüğüne *"işaretler silinmesin diye ... YAPILMADI"* yazılıyor.
+Gerçek risk yalnız elle basılan **"Yeniden Analiz"** düğmesiydi.
+
+**UYGULANDI (2026-09-25):** Kalıcı eşleşme anahtarı (`bulguAnahtari` = ağırlık|kategori|fiş|satır|
+hesap|mesaj) ile `status`, `note`, `resolvedAt`, `resolvedBy` yeniden analizden sonra geri yazılıyor
+(aynı `$transaction` içinde, yarım kalmasın). Geri yazılamayan karar sayısı `[EDEFTER-YENIDEN-ANALIZ]`
+kaydına düşüyor (o bulgu yeni analizde artık çıkmıyor demektir). `message` anahtara dahil: aynı
+hesapta farklı tutarla çıkan iki uyarı ayrı bulgudur, kararları birbirine geçmez.
+
 
 ## 24. Fiş arşivi: yeni çıktı eski geçmişi siliyor — **DOĞRULANDI**
 

@@ -1,5 +1,6 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
+import { Cron } from '@nestjs/schedule';
 import { randomUUID } from 'crypto';
 import * as AdmZip from 'adm-zip';
 import * as iconv from 'iconv-lite';
@@ -108,11 +109,6 @@ type SafeImportGroup = {
 @Injectable()
 export class BeyanKayitlariService {
   private readonly logger = new Logger(BeyanKayitlariService.name);
-  /** Geçici vergi tekrar-kayıt onarımı son çalışma zamanı (tenant başına). Liste HER çekildiğinde
-   *  değil, en fazla bu aralıkta bir çalışsın — sayfa iş sırasında 3-5 sn'de bir poll ediyor ve
-   *  bu onarım yazma-ağırlıklı ($transaction); her poll'de çalışınca DB'yi döverek donmayı besliyordu. */
-  private readonly lastTempRepairAt = new Map<string, number>();
-  private static readonly TEMP_REPAIR_THROTTLE_MS = 5 * 60 * 1000;
 
   constructor(
     private prisma: PrismaService,
@@ -205,7 +201,17 @@ export class BeyanKayitlariService {
       + (/^20\d{2}-Q[1-4]$/i.test(row.donem) ? 1 : 0);
   }
 
-  private async repairTemporaryTaxDuplicates(tenantId: string) {
+  /**
+   * Geçici vergi mükerrer kaydı onarımı — 2026-09-25 (bulgu 21b) OKUMA YOLUNDAN ÇIKARILDI.
+   *
+   * Bu iş satır SİLER (beyan_kayitlari + beyan_durumu). Eskiden `list()` içinde ateşle-unut
+   * çağrılıyordu: ekranı açmak sessizce kayıt siliyordu, kullanıcıya bildirim de gitmiyordu.
+   * Artık iki yerden çalışır:
+   *   • her gece 03:20 (İstanbul) planlı iş — `gecelikMukerrerOnarimi()`
+   *   • `POST /beyan-kayitlari/gecici-vergi-onarim` — kullanıcı bilerek tetikler
+   * Çağıran, kaç satırın silindiğini görür.
+   */
+  async repairTemporaryTaxDuplicates(tenantId: string) {
     const rows = await (this.prisma as any).beyanKaydi.findMany({
       where: { tenantId, beyanTipi: { in: ['GECICI_VERGI', 'GGECICI', 'KGECICI'] } },
       select: {
@@ -237,6 +243,9 @@ export class BeyanKayitlariService {
       groups.get(groupKey)!.push({ ...row, canonical: key });
     }
 
+    let silinenKayit = 0;
+    let silinenDurum = 0;
+    let birlestirilenGrup = 0;
     for (const groupRows of groups.values()) {
       if (groupRows.length < 2 && groupRows[0]?.beyanTipi === groupRows[0]?.canonical.beyanTipi && groupRows[0]?.donem === groupRows[0]?.canonical.donem) continue;
       const canonical = groupRows[0].canonical;
@@ -264,7 +273,10 @@ export class BeyanKayitlariService {
           });
 
           const duplicateIds = groupRows.filter((row) => row.id !== target.id).map((row) => row.id);
-          if (duplicateIds.length) await tx.beyanKaydi.deleteMany({ where: { id: { in: duplicateIds } } });
+          if (duplicateIds.length) {
+            await tx.beyanKaydi.deleteMany({ where: { id: { in: duplicateIds } } });
+            silinenKayit += duplicateIds.length;
+          }
 
           const sourceKeys = [
             { beyanTipi: canonical.beyanTipi, donem: canonical.donem },
@@ -288,12 +300,40 @@ export class BeyanKayitlariService {
               },
             });
             const statusDuplicateIds = statuses.filter((row: any) => row.id !== statusTarget.id).map((row: any) => row.id);
-            if (statusDuplicateIds.length) await tx.beyanDurumu.deleteMany({ where: { id: { in: statusDuplicateIds } } });
+            if (statusDuplicateIds.length) {
+              await tx.beyanDurumu.deleteMany({ where: { id: { in: statusDuplicateIds } } });
+              silinenDurum += statusDuplicateIds.length;
+            }
           }
         });
+        birlestirilenGrup++;
       } catch (err: any) {
         this.logger.warn(`Gecici vergi mukerrer onarimi atlandi: ${err?.message || err}`);
       }
+    }
+
+    if (silinenKayit || silinenDurum) {
+      this.logger.log(
+        `[GECICI-ONARIM] ${tenantId}: ${birlestirilenGrup} grup birlestirildi; ` +
+          `${silinenKayit} beyan kaydi + ${silinenDurum} beyan durumu silindi.`,
+      );
+    }
+    return { birlestirilenGrup, silinenKayit, silinenDurum };
+  }
+
+  /**
+   * Gecelik mukerrer onarimi (03:20 Istanbul) — bulgu 21b: bu is ARTIK liste okumasindan
+   * degil buradan calisir. Silme yapan bir isin kullanici ekran actiginda tetiklenmesi
+   * yanlisti; planli ve gorulebilir olmali.
+   */
+  @Cron('0 20 3 * * *', { timeZone: 'Europe/Istanbul' })
+  async gecelikMukerrerOnarimi() {
+    if (String(process.env.GECICI_VERGI_ONARIM || '').toLowerCase() === 'off') return;
+    const tenants = await (this.prisma as any).tenant.findMany({ select: { id: true } }).catch(() => []);
+    for (const t of tenants) {
+      await this.repairTemporaryTaxDuplicates(t.id).catch((err: any) => {
+        this.logger.warn(`Gecelik gecici vergi onarimi calismadi (${t.id}): ${err?.message || err}`);
+      });
     }
   }
 
@@ -1001,17 +1041,11 @@ export class BeyanKayitlariService {
       belge?: string; iletim?: string; sirala?: string;
     } = {},
   ) {
-    // Onarım ARTIK liste yanıtını BLOKLAMIYOR ve her çağrıda çalışmıyor: tenant başına en fazla
-    // 5 dk'da bir, arka planda (await'siz). Liste anında döner; donmayı besleyen poll-başı yük gider.
-    const nowMs = Date.now();
-    const lastRepair = this.lastTempRepairAt.get(tenantId) || 0;
-    if (nowMs - lastRepair > BeyanKayitlariService.TEMP_REPAIR_THROTTLE_MS) {
-      this.lastTempRepairAt.set(tenantId, nowMs);
-      void this.repairTemporaryTaxDuplicates(tenantId).catch((err) => {
-        this.logger.warn(`Gecici vergi liste onarimi calismadi: ${err?.message || err}`);
-      });
-    }
-
+    // 2026-09-25 (portal denetimi bulgu 21b) — LİSTEYİ AÇMAK ARTIK KAYIT SİLMİYOR.
+    //   Burada `repairTemporaryTaxDuplicates` ateşle-unut çağrılıyordu; o da beyan_kayitlari ve
+    //   beyan_durumu satırlarını birleştirip FAZLALARI SİLİYORDU. Kullanıcıya bildirim yok,
+    //   denetim günlüğüne de girmiyor (GET kaydedilmiyor) — yani ekranı açmak sessizce veri
+    //   siliyordu. Onarım artık günlük planlı işte (`gecelikMukerrerOnarimi`) ve elle tetiklenen uçta.
     if (opts.page != null) return this.listSayfali(tenantId, opts);
 
     const where: any = { tenantId };

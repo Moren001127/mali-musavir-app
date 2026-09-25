@@ -5,6 +5,7 @@ import {
 import { FilesInterceptor, FileInterceptor } from '@nestjs/platform-express';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
 import { BeyanKayitlariService } from './beyan-kayitlari.service';
 import type { Response } from 'express';
 
@@ -61,6 +62,17 @@ export class BeyanKayitlariController {
   @Post('gonder')
   gonder(@Req() req: any, @Body() body: { ids?: unknown; channel?: unknown }) {
     return this.svc.gonder(req.user.tenantId, body || {});
+  }
+
+  /**
+   * Geçici vergi mükerrer kayıt onarımı — 2026-09-25 (denetim bulgusu 21b).
+   * Bu iş SATIR SİLER; eskiden liste okunurken sessizce tetikleniyordu. Artık ya gece
+   * planlı işte ya da buradan, kullanıcı bilerek çalıştırdığında. Kaç satır silindiği döner.
+   */
+  @Post('gecici-vergi-onarim')
+  @Roles('ADMIN', 'STAFF')
+  geciciVergiOnarim(@Req() req: any) {
+    return this.svc.repairTemporaryTaxDuplicates(req.user.tenantId);
   }
 
   @Delete('bulk')
