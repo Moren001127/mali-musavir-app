@@ -234,7 +234,7 @@ html[data-theme='D'] body [data-panel-main] [data-gelir-stok] tbody tr:not([styl
    Yatay ayraç en açık tonla çiziliyordu; dikey çizgiler görünüp yataylar kaybolunca tablo
    sütunlara bölünmüş ama satırlara bölünmemiş gibi duruyordu. */
 html[data-theme='D'] body [data-panel-main] :is([data-gelir-report], [data-gelir-vergi], [data-gelir-stok]) tbody td {
-  border-bottom: 1px solid #e6ebf1 !important;
+  border-bottom: 1px solid #dde4ec !important;
 }
 html[data-theme='D'] body [data-panel-main] :is([data-gelir-report], [data-gelir-vergi], [data-gelir-stok]) :is(td, th) + :is(td, th) {
   border-left: 1px solid #dbe2ea !important;
@@ -242,3 +242,13 @@ html[data-theme='D'] body [data-panel-main] :is([data-gelir-report], [data-gelir
 html[data-theme='D'] body [data-panel-main] :is([data-gelir-vergi], [data-gelir-stok]) thead th { border-bottom: 2px solid #cfd8e3 !important; }
 /* Geçici vergi ve stok tablolarının kart kenarı da görünür olsun */
 html[data-theme='D'] body [data-panel-main] :is([data-gelir-vergi], [data-gelir-stok]) { border-color: #dbe2ea !important; }
+
+/* ── 9. "KALEM · TUTAR · TUTAR · TUTAR · TUTAR" satırı kaldırıldı (2026-09-25) ────────────────────
+   Muzaffer Bey: "baştaki kalem tutar tutar tutar başlıklarını sil". Dönem başlıkları zaten bir üst
+   satırda; "TUTAR" dört kez tekrar edip yer kaplamaktan başka bir şey yapmıyordu. Sütun sınırları
+   ızgaradan okunuyor. Mizan'ın başlık satırı DOKUNULMADI — orada sütunlar farklı (Borç/Alacak/Bakiye). */
+html[data-theme='D'] body [data-panel-main] :is([data-gelir-report], [data-gelir-vergi], [data-gelir-stok]) thead tr:last-child { display: none !important; }
+/* Başlık bloğunun alt kenarı artık dönem satırında bitiyor */
+html[data-theme='D'] body [data-panel-main] :is([data-gelir-report], [data-gelir-vergi], [data-gelir-stok]) thead tr:nth-last-child(2) th {
+  border-bottom: 2px solid #cfd8e3 !important;
+}
