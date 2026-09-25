@@ -16,6 +16,8 @@ import {
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { OwnerOnlyGuard } from '../auth/guards/owner-only.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
 import { AnyFilesInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { FaturaMuhasebelestirmeService } from './fatura-muhasebelestirme.service';
@@ -38,7 +40,7 @@ const documentUploadInterceptor = () =>
 import { TEVKIFAT_KURALLARI } from './tevkifat-kurallari';
 
 @Controller('fatura-muhasebelestirme')
-@UseGuards(AuthGuard('jwt'))
+@UseGuards(AuthGuard('jwt'), RolesGuard)
 export class FaturaMuhasebelestirmeController {
   constructor(
     private readonly service: FaturaMuhasebelestirmeService,
@@ -119,6 +121,7 @@ export class FaturaMuhasebelestirmeController {
     return this.service.listIntegrations(req.user.tenantId, { taxpayerId: taxpayerId || null });
   }
 
+  @Roles('ADMIN', 'STAFF')
   @Post('integrations')
   saveIntegration(@Req() req: any, @Body() body: any) {
     return this.service.saveIntegration(
@@ -128,6 +131,7 @@ export class FaturaMuhasebelestirmeController {
     );
   }
 
+  @Roles('ADMIN', 'STAFF')
   @Post('integrations/fetch')
   async fetchIntegrations(@Req() req: any, @Body() body: any) {
     const result = await this.service.fetchConfiguredIntegrations(
@@ -143,12 +147,14 @@ export class FaturaMuhasebelestirmeController {
   }
 
   /** Talimat ver/kaldır — her gece otomatik fetch. */
+  @Roles('ADMIN', 'STAFF')
   @Post('integrations/talimat')
   setTalimat(@Req() req: any, @Body() body: any) {
     return this.service.setIntegrationTalimat(req.user.tenantId, body || {});
   }
 
   /** Mukellef için bir entegratör kaydını sil. */
+  @Roles('ADMIN', 'STAFF')
   @Delete('integrations')
   deleteIntegration(
     @Req() req: any,
@@ -213,6 +219,7 @@ export class FaturaMuhasebelestirmeController {
 
   /** KDV Raporu → mükellefe WhatsApp bilgilendirme. dryRun=true mesaj önizlemesi döner (göndermez);
    *  gerçek gönderim kullanıcı modalda onaylayınca dryRun'suz ikinci çağrıyla yapılır. */
+  @Roles('ADMIN', 'STAFF')
   @Post('kdv-raporu/whatsapp')
   kdvRaporuWhatsapp(
     @Req() req: any,
@@ -232,6 +239,7 @@ export class FaturaMuhasebelestirmeController {
     return this.service.perTaxpayerSummary(req.user.tenantId, { period });
   }
 
+  @Roles('ADMIN', 'STAFF')
   @Post('documents/upload')
   @UseInterceptors(documentUploadInterceptor())
   upload(
@@ -270,6 +278,7 @@ export class FaturaMuhasebelestirmeController {
     });
   }
 
+  @Roles('ADMIN', 'STAFF')
   @Post('account-plan/refresh')
   refreshAccountPlan(
     @Req() req: any,
@@ -283,6 +292,7 @@ export class FaturaMuhasebelestirmeController {
   }
 
   /** Toplu hesap planı yenileme — tüm mükellefler veya verilen liste için. */
+  @Roles('ADMIN', 'STAFF')
   @Post('account-plan/refresh-all')
   refreshAccountPlanAll(
     @Req() req: any,
@@ -296,6 +306,7 @@ export class FaturaMuhasebelestirmeController {
   }
 
   /** Yeni hesap aç — sonra Luca'ya gönderilebilir. */
+  @Roles('ADMIN', 'STAFF')
   @Post('account-plan')
   createAccount(
     @Req() req: any,
@@ -311,6 +322,7 @@ export class FaturaMuhasebelestirmeController {
   }
 
   /** Sadece yerelde açılmış (Luca'ya gönderilmemiş) hesapları Luca'ya yükler. */
+  @Roles('ADMIN', 'STAFF')
   @Post('account-plan/push-to-luca')
   pushAccountPlanToLuca(
     @Req() req: any,
@@ -323,6 +335,7 @@ export class FaturaMuhasebelestirmeController {
   }
 
   /** Elle eşleştirme kuralı: satıcı VKN → hesap kodu (öğrenilir + bekleyen belgelere uygulanır). */
+  @Roles('ADMIN', 'STAFF')
   @Post('vendor-rule')
   setVendorRule(
     @Req() req: any,
@@ -332,12 +345,14 @@ export class FaturaMuhasebelestirmeController {
   }
 
   /** Öğrenilmiş eşleştirme kuralını sil. */
+  @Roles('ADMIN', 'STAFF')
   @Delete('vendor-rule/:decisionId')
   deleteVendorRule(@Req() req: any, @Param('decisionId') decisionId: string) {
     return this.service.deleteVendorRule(req.user.tenantId, decisionId);
   }
 
   /** Matrah/KDV çıkmamış belgelere KDV oranı verip fiş satırlarını üret (toplam → matrah+KDV). */
+  @Roles('ADMIN', 'STAFF')
   @Post('documents/set-kdv-rate')
   setDocumentsKdvRate(
     @Req() req: any,
@@ -347,18 +362,21 @@ export class FaturaMuhasebelestirmeController {
   }
 
   /** Belgeyi Max-vision (Max aboneliği) ile oku → KDV kırılımı + fiş üret. Tek belge (frontend sırayla çağırır). */
+  @Roles('ADMIN', 'STAFF')
   @Post('documents/ai-read')
   aiReadDocument(@Req() req: any, @Body() body: { documentId?: string }) {
     return this.service.aiReadDocument(req.user.tenantId, String(body?.documentId || ''));
   }
 
   /** Seçili belgeleri SUNUCU kuyruğunda AI ile oku (sayfa değişince durmaz). Hemen döner. */
+  @Roles('ADMIN', 'STAFF')
   @Post('documents/ai-read-batch')
   aiReadBatch(@Req() req: any, @Body() body: { documentIds?: string[] }) {
     return this.service.aiReadBatch(req.user.tenantId, Array.isArray(body?.documentIds) ? body.documentIds : []);
   }
 
   /** Okumayı DURDUR: bekleyen belgeleri kuyruktan çıkar + PENDING/IN_PROGRESS → CANCELLED (şerit durur). */
+  @Roles('ADMIN', 'STAFF')
   @Post('documents/ai-read-cancel')
   aiReadCancel(@Req() req: any, @Body() body: { taxpayerId?: string }) {
     return this.service.cancelOcr(req.user.tenantId, body?.taxpayerId);
@@ -378,6 +396,7 @@ export class FaturaMuhasebelestirmeController {
 
   /** Hızlı düzeltme: belgeleri tekrar okumadan hesap kodlarını plana göre yeniden eşleştir
    *  (yanlış carileri temizler). */
+  @Roles('ADMIN', 'STAFF')
   @Post('documents/reapply-codes')
   reapplyCodes(@Req() req: any, @Body() body: { taxpayerId?: string; documentIds?: string[] }) {
     return this.service.reapplyAccountCodes(
@@ -387,6 +406,7 @@ export class FaturaMuhasebelestirmeController {
     );
   }
 
+  @Roles('ADMIN', 'STAFF')
   @Post('documents/from-earsiv/:faturaId')
   fromEarsiv(@Req() req: any, @Param('faturaId') faturaId: string) {
     return this.service.ensureFromEarsivFatura(req.user.tenantId, faturaId);
@@ -397,6 +417,7 @@ export class FaturaMuhasebelestirmeController {
    * belge-no bos kalmis. Kayitli HAM METINDEN (ocrData.rawText) yeniden turetir —
    * Azure'a GITMEZ. dryRun=true ise DB'ye yazmaz, sadece ne degisecegini doner.
    */
+  @Roles('ADMIN', 'STAFF')
   @Post('documents/reparse-okc')
   reparseOkc(
     @Req() req: any,
@@ -436,6 +457,7 @@ export class FaturaMuhasebelestirmeController {
     });
   }
 
+  @Roles('ADMIN', 'STAFF')
   @Post('documents/backfill-earsiv')
   backfillEarsiv(
     @Req() req: any,
@@ -451,6 +473,7 @@ export class FaturaMuhasebelestirmeController {
     });
   }
 
+  @Roles('ADMIN', 'STAFF')
   @Post('import-from-mihsap')
   importFromMihsap(
     @Req() req: any,
@@ -468,6 +491,7 @@ export class FaturaMuhasebelestirmeController {
   }
 
   // v2.2: taxpayerId boş olan belgeleri (sellerVkn/buyerVkn üzerinden) mevcut mukelleflere bağla
+  @Roles('ADMIN', 'STAFF')
   @Post('documents/match-orphans')
   matchOrphans(
     @Req() req: any,
@@ -476,6 +500,7 @@ export class FaturaMuhasebelestirmeController {
     return this.service.matchOrphansToTaxpayers(req.user.tenantId, { period: body?.period });
   }
 
+  @Roles('ADMIN', 'STAFF')
   @Post('documents/duplicate-check')
   duplicateCheck(@Req() req: any, @Body() body: any) {
     return this.service.duplicateCheck(req.user.tenantId, body || {});
@@ -511,6 +536,7 @@ export class FaturaMuhasebelestirmeController {
   }
 
   /** Alıcı tipi (kurum türü): { taraf: 'mukellef'|'cari', taxpayerId?, vkn?, unvan?, kurumTuru: kamu|banka|belediye|universite|kit|belirlenmis_diger|diger|kdv_mukellefi_degil|null, documentId? } */
+  @Roles('ADMIN', 'STAFF')
   @Post('alici-tipi')
   aliciTipi(@Req() req: any, @Body() body: any) {
     return this.service.setAliciTipi(req.user.tenantId, body || {}, req.user?.userId || req.user?.sub);
@@ -546,11 +572,13 @@ export class FaturaMuhasebelestirmeController {
     return this.service.fileUrl(req.user.tenantId, id);
   }
 
+  @Roles('ADMIN', 'STAFF')
   @Patch('documents/:id')
   update(@Req() req: any, @Param('id') id: string, @Body() body: any) {
     return this.service.update(req.user.tenantId, id, body, req.user?.userId || req.user?.sub);
   }
 
+  @Roles('ADMIN', 'STAFF')
   @Post('documents/:id/approve')
   approve(@Req() req: any, @Param('id') id: string, @Body() body: any) {
     // body.force=true → AI denetçi "yanlis" dese de bilinçli onay (varsayılan engelli).
@@ -560,6 +588,7 @@ export class FaturaMuhasebelestirmeController {
   /** Toplu onay — tek HTTP çağrısı (belge-başına 50 ayrı istek yerine). En fazla 200 id.
    *  Denetimsiz belgeler atlanır + denetim arka planda tetiklenir; denetçi "yanlis" dedikleri atlanır.
    *  Body: { ids: string[]; force?: boolean } → { approved, skipped: [{id, belgeNo?, reason}] } */
+  @Roles('ADMIN', 'STAFF')
   @Post('documents/approve-batch')
   approveBatch(@Req() req: any, @Body() body: { ids: string[]; force?: boolean }) {
     return this.service.approveBatch(req.user.tenantId, body?.ids || [], req.user?.userId || req.user?.sub, body?.force === true);
@@ -568,12 +597,14 @@ export class FaturaMuhasebelestirmeController {
   /** Faz 2 — DEMİRBAŞ KARARI: { karar: 'elle_islendi' | 'yine_de_isle' | 'demirbas_degil', not? }
    *  elle_islendi → APPROVED + lucaStatus MANUAL_DONE (Luca'ya gitmez); yine_de_isle → 25x / 679-689 taslağı
    *  (işletme: Sabit Kıymet Alışı); demirbas_degil → uyarı kalkar + VendorMemory notu. */
+  @Roles('ADMIN', 'STAFF')
   @Post('documents/:id/demirbas-karari')
   demirbasKarari(@Req() req: any, @Param('id') id: string, @Body() body: { karar?: string; not?: string }) {
     return this.service.demirbasKarari(req.user.tenantId, id, body || {}, req.user?.userId || req.user?.sub);
   }
 
   /** Faz 2 — uyarı tek-tık eylemi (sunucu tarafı): { eylem: 'oneriyi-uygula' } */
+  @Roles('ADMIN', 'STAFF')
   @Post('documents/:id/uyari-eylem')
   uyariEylem(@Req() req: any, @Param('id') id: string, @Body() body: { eylem?: string }) {
     return this.service.uyariEylem(req.user.tenantId, id, body || {}, req.user?.userId || req.user?.sub);
@@ -582,6 +613,7 @@ export class FaturaMuhasebelestirmeController {
   /** A.2 — MÜKERRER KARARI: { karar: 'mukerrer_degil' | 'mukerrer', not? } → ocrData.mukerrerKarar;
    *  mukerrer_degil → revalidate mükerrer aramaz, MUKERRER uyarısı + duplicateOfId kalkar.
    *  PLAN/16 §C: aynı karar MUKERRER_GORSEL / MUKERRER_FIS şüphesini de kapatır ('mukerrer' teyidi → ENGEL). */
+  @Roles('ADMIN', 'STAFF')
   @Post('documents/:id/mukerrer-karari')
   mukerrerKarari(@Req() req: any, @Param('id') id: string, @Body() body: { karar?: string; not?: string }) {
     return this.service.mukerrerKarari(req.user.tenantId, id, body || {}, req.user?.userId || req.user?.sub);
@@ -593,12 +625,14 @@ export class FaturaMuhasebelestirmeController {
    *   POSTED: onay!==true → 409 { teyitGerekli:true, mesaj, lucaFisNo } (UI teyit kutusu); onay===true → geri alınır,
    *   ocrData.lucaElleDuzeltilecek yazılır, belge bir daha Luca'ya otomatik gitmez.
    */
+  @Roles('ADMIN', 'STAFF')
   @Post('documents/:id/reopen')
   reopen(@Req() req: any, @Param('id') id: string, @Body() body?: { onay?: boolean; not?: string }) {
     return this.service.reopen(req.user.tenantId, id, req.user?.userId || req.user?.sub, { onay: body?.onay === true, not: body?.not });
   }
 
   /** PLAN/16 §G — "Luca'da elle düzelttim": lucaElleDuzeltilecek işaretini kapatır ({ not? }); belge arşivde normal görünür. */
+  @Roles('ADMIN', 'STAFF')
   @Post('documents/:id/luca-elle-duzeltildi')
   lucaElleDuzeltildi(@Req() req: any, @Param('id') id: string, @Body() body?: { not?: string }) {
     return this.service.lucaElleDuzeltildi(req.user.tenantId, id, body || {}, req.user?.userId || req.user?.sub);
@@ -619,12 +653,14 @@ export class FaturaMuhasebelestirmeController {
   }
 
   /** Zengin AI muhasebe yorumu (Faaliyet + Yorum) — belge açılınca lazy çağrılır, cache'lenir. */
+  @Roles('ADMIN', 'STAFF')
   @Post('documents/:id/muhasebe-yorum')
   muhasebeYorum(@Req() req: any, @Param('id') id: string, @Body() body: any) {
     return this.service.generateRichMuhasebeNeden(req.user.tenantId, id, body?.force === true);
   }
 
   // v1.38: Luca aktarimi basarisiz olursa veya kullanici manuel tekrarlamak isterse
+  @Roles('ADMIN', 'STAFF')
   @Post('documents/:id/retry-luca')
   retryLuca(@Req() req: any, @Param('id') id: string) {
     return this.service.retryLucaPost(req.user.tenantId, id, req.user?.userId || req.user?.sub);
@@ -634,6 +670,7 @@ export class FaturaMuhasebelestirmeController {
   // Luca'ya aktar (BATCH_EXCEL job). Frontend Sahne 5'teki "Luca'ya Aktar"
   // butonu bunu cagirir.
   // Body: { taxpayerId: string; period?: "YYYY-MM"; documentIds?: string[] }
+  @Roles('ADMIN', 'STAFF')
   @Post('batch-post-to-luca')
   batchPostToLuca(@Req() req: any, @Body() body: any) {
     return this.service.batchPostToLuca(req.user.tenantId, body, req.user?.userId || req.user?.sub);
@@ -666,12 +703,14 @@ export class FaturaMuhasebelestirmeController {
     }
   }
 
+  @Roles('ADMIN', 'STAFF')
   @Delete('documents/:id')
   remove(@Req() req: any, @Param('id') id: string) {
     return this.service.remove(req.user.tenantId, id, req.user?.userId || req.user?.sub);
   }
 
   /** İçerik tabanlı hesap kodu / gider türü önerisi */
+  @Roles('ADMIN', 'STAFF')
   @Post('icerik-eslestir')
   icerikEslestir(@Req() req: any, @Body() body: any) {
     return this.icerikEslestirme.eslestir({
@@ -700,6 +739,7 @@ export class FaturaMuhasebelestirmeController {
   }
 
   /** Manuel tetikleme: entegratörden hemen çek */
+  @Roles('ADMIN', 'STAFF')
   @Post('efatura-sync')
   async efaturaSync(@Req() req: any, @Body() body: any) {
     const direction: 'IN' | 'OUT' = body?.direction === 'OUT' ? 'OUT' : 'IN';
@@ -729,6 +769,7 @@ export class FaturaMuhasebelestirmeController {
 
   /** DIŞARIDAN BELGE ALIMI: ajan/ofis tarayıcısı entegratörden indirdiği UBL'leri buraya bırakır
    *  (Mikro e-Portal girişi sunucu IP'sinden engelli). Belgeler normal çekim yolundan kaydedilir. */
+  @Roles('ADMIN', 'STAFF')
   @Post('efatura-inbox/ingest')
   async efaturaInboxIngest(@Req() req: any, @Body() body: any) {
     return this.service.ingestProviderInvoices(req.user.tenantId, req.user?.userId || req.user?.sub, body);
@@ -740,6 +781,7 @@ export class FaturaMuhasebelestirmeController {
     return this.service.getEfaturaSyncStatus(req.user.tenantId, q?.taxpayerId, q?.channel || q?.direction || 'IN');
   }
 
+  @Roles('ADMIN', 'STAFF')
   @Post('efatura-inbox/import')
   async efaturaInboxImport(@Req() req: any, @Body() body: any) {
     const direction = body?.direction === 'OUT' ? 'OUT' : 'IN';
