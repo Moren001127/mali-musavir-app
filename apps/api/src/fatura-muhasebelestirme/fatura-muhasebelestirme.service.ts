@@ -5109,6 +5109,36 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const contentOk = (ocr.validationScore == null || ocr.validationScore >= 0.7) && !(ocr.validationIssues?.length);
       const ocrStatus = (ocr.confidence ?? 0) >= 0.7 && contentOk ? 'SUCCESS' : 'NEEDS_REVIEW';
 
+      // MÜKERRER KONTROLÜ (2026-09-25, denetim bulgusu 4 devamı — canlı kanıtla eklendi):
+      //   Mihsap belgeleri bu AYRI işleyiciye geliyor (processUploadedDocumentOcr değil) ve burada
+      //   findDuplicate HİÇ çağrılmıyordu → Mihsap'tan gelen belge mükerrer kontrolünden geçmiyordu.
+      //   Canlı kanıt: EY42026000192714 aynı mükellefte, aynı satıcıda, aynı günde iki kez duruyor
+      //   (biri e-Arşiv'den 774,32 ₺, biri Mihsap'tan 774,63 ₺) ve hiçbirinde mükerrer işareti yok.
+      //   Sistemde mükerrer işaretli belge sayısı 0'dı. Kontrol OCR'DAN SONRA yapılır, çünkü Mihsap
+      //   belgesi sellerVkn=null oluşturulur; VKN'yi okuma yazar ve findDuplicate VKN'siz çalışmaz.
+      //   BELGE REDDEDİLMEZ: yalnız işaretlenir (sahibin kararı — kısıt yerine işaret).
+      const okunanVkn = String(ocr.saticiVkn || '').replace(/\D/g, '');
+      const mukerrer = await this.findDuplicate(tenantId, {
+        taxpayerId: existing.taxpayerId || null,
+        belgeNo: existing.belgeNo || ocr.belgeNo || null,
+        sellerVkn: okunanVkn.length >= 10 ? okunanVkn : null,
+        totalAmount: totalNum ?? null,
+        imageHash: (ocr as any).imageHash || null,
+        faturaTarihi: existing.faturaTarihi || parseDate(ocr.date || null) || null,
+        saat: (ocr as any).saat || null,
+        rawText: ocr.rawText || null,
+        invoiceKind,
+      }, documentId).catch((e: any) => {
+        this.logger.warn(`Mihsap mükerrer kontrolü yapılamadı (${documentId}): ${e?.message || e}`);
+        return null;
+      });
+      if (mukerrer?.duplicateOfId) {
+        this.logger.warn(
+          `[MUKERRER] Mihsap belgesi ${documentId} · ${existing.belgeNo || ocr.belgeNo || '?'}: `
+          + `${mukerrer.duplicateReason} (mevcut: ${mukerrer.duplicateOfId}, seviye: ${mukerrer.duplicateSeverity})`,
+        );
+      }
+
       await (this.prisma as any).$transaction(async (tx: any) => {
         await tx.invoiceAccountingLine.deleteMany({ where: { documentId } });
         if (lines.length) {
@@ -5129,6 +5159,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             // OCR satici VKN'sini (gercek) yaz → sahiplik/yon kontrolu ve satici-bazli
             // ogrenme dogru VKN'ye dayansin. Azure yalniz saticiyi verir; alici AI-oku'da gelir.
             ...((() => { const sv = String(ocr.saticiVkn || '').replace(/\D/g, ''); return sv.length === 10 || sv.length === 11 ? { sellerVkn: sv } : {}; })()),
+            // Mükerrer işareti (bulgu 4 devamı): belge reddedilmez, inceleme kuyruğunda görünür.
+            ...(mukerrer?.duplicateOfId
+              ? {
+                duplicateOfId: mukerrer.duplicateOfId,
+                duplicateReason: mukerrer.duplicateReason || null,
+                duplicateSeverity: mukerrer.duplicateSeverity || null,
+              }
+              : {}),
             status: 'NEEDS_REVIEW',
             ocrStatus,
             ocrEngine: ocr.engine || null,
