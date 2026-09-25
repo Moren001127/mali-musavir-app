@@ -42,7 +42,14 @@ const KATEGORI_ADI: Record<string, string> = {
   DIGER: 'Diğer',
 };
 const KATEGORILER = ['FATURA', 'SOZLESME', 'BEYANNAME', 'EVRAK', 'DIGER'] as const;
-const SAYFA_BOYUTU = 24;
+/**
+ * Sunucu sözleşmesi yalnız 25/50/100 kabul ediyor (`sayfaBoyutuNormalize`); başka bir
+ * değer sessizce 50'ye çekiliyor. Burada 24 yazılıydı: istek 24 gidiyor, sunucu 50 satır
+ * dönüyor, ekran ise sayfa sayısını 24'e göre hesaplıyordu — son sayfa BOŞ çıkıyordu
+ * (canlı doğrulama: 90.215 belgede "sayfa 3759 → 0 satır"). Geçerli bir değer kullanılır
+ * ve sayfa hesabı HER ZAMAN sunucunun döndürdüğü `pageSize` ile yapılır.
+ */
+const SAYFA_BOYUTU = 25;
 
 function getIcon(type?: string) {
   const t = (type || '').toLowerCase();
@@ -112,9 +119,11 @@ export default function EvraklarPage() {
 
   const documents = liste?.rows ?? [];
   const toplam = ozet?.toplam ?? 0;
-  const sonSayfa = Math.max(1, Math.ceil(toplam / SAYFA_BOYUTU));
-  const ilkSira = toplam === 0 ? 0 : (sayfa - 1) * SAYFA_BOYUTU + 1;
-  const sonSira = Math.min(sayfa * SAYFA_BOYUTU, toplam);
+  // Sayfa hesabı SUNUCUNUN döndürdüğü boyutla — istenen değer normalize edilmiş olabilir.
+  const boyut = liste?.pageSize || SAYFA_BOYUTU;
+  const sonSayfa = Math.max(1, Math.ceil(toplam / boyut));
+  const ilkSira = toplam === 0 ? 0 : (sayfa - 1) * boyut + 1;
+  const sonSira = Math.min(sayfa * boyut, toplam);
 
   const toggleType = (t: string) => {
     setSayfa(1);
