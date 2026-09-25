@@ -278,19 +278,19 @@ model Taxpayer {
 // veri = ham sonuç (JSON), ozet = ekranda tek satırlık özet.
 // ============================================================
 model GenelSorguSonucu {
-  id                  String   @id @default(cuid())
-  tenantId            String
-  taxpayerId          String
-  tur                 String // VERGI_BORCU | E_HACIZ | YOKLAMA_DENETIM | POS | GELEN_EARSIV
-  donem               String? // "YYYY-MM" (dönemli sorgularda)
-  sorguTarihi         DateTime @default(now())
-  ozet                String?
-  veri                Json // ham sorgu sonucu
-  kaynak              String   @default("manual") // manual | nightly
-  jobId               String? // PortalAutomationJob.id (varsa)
-  whatsappGonderildiMi Boolean @default(false)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  id                   String   @id @default(cuid())
+  tenantId             String
+  taxpayerId           String
+  tur                  String // VERGI_BORCU | E_HACIZ | YOKLAMA_DENETIM | POS | GELEN_EARSIV
+  donem                String? // "YYYY-MM" (dönemli sorgularda)
+  sorguTarihi          DateTime @default(now())
+  ozet                 String?
+  veri                 Json // ham sorgu sonucu
+  kaynak               String   @default("manual") // manual | nightly
+  jobId                String? // PortalAutomationJob.id (varsa)
+  whatsappGonderildiMi Boolean  @default(false)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   taxpayer Taxpayer @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
 
@@ -411,7 +411,7 @@ model TaxpayerBeyanConfig {
   sgkBildirgeEnabled Boolean @default(false)
 
   // E-Defter (bilanço usulü mükellefler için)
-  eDefterPeriod String? // "AYLIK" | "UCAYLIK" | null (e-defter mükellefi değilse)
+  eDefterPeriod    String? // "AYLIK" | "UCAYLIK" | null (e-defter mükellefi değilse)
   // e-Defter mükellefiyetinin başladığı ay "YYYY-MM" (Hattat "Başlangıç"); öncesindeki dönemler takibe düşmez (2026-09-22)
   eDefterBaslangic String?
 
@@ -1345,42 +1345,64 @@ enum MatchStatus {
 // MÜKELLEF AYLIK DURUM TAKİBİ
 // ============================================================
 model TaxpayerMonthlyStatus {
-  id                    String  @id @default(cuid())
-  taxpayerId            String
-  tenantId              String
-  year                  Int
-  month                 Int // 1-12
-  evraklarGeldi         Boolean @default(false)
-  yuklendi              Boolean @default(false) // evrak geldi → sisteme yüklendi (fiş görselleri, portal faturaları); işlemden önce
-  evraklarIslendi       Boolean @default(false)
+  id                String    @id @default(cuid())
+  taxpayerId        String
+  tenantId          String
+  year              Int
+  month             Int // 1-12
+  evraklarGeldi     Boolean   @default(false)
+  yuklendi          Boolean   @default(false) // evrak geldi → sisteme yüklendi (fiş görselleri, portal faturaları); işlemden önce
+  evraklarIslendi   Boolean   @default(false)
   /// "İşlendi" işaretinin KONULDUĞU an (2026-09-22). Ekip KDV kontrol rutini bu damgadan sonra
   /// EKIP_ISLENDI_BEKLEME_DK (varsayılan 5) dakika bekler — evrak Drive'a indirilip yedeklenirken
   /// kontrol başlamasın. updatedAt kullanılamaz: başka alan güncellenince tazelenir.
-  evraklarIslendiAt     DateTime?
-  kontrolEdildi         Boolean @default(false)
-  beyannameVerildi      Boolean @default(false)
-  kdvKontrolEdildi      Boolean @default(false)
-  indirilecekKdvKontrol Boolean @default(false)
-  hesaplananKdvKontrol  Boolean @default(false)
-  eArsivKontrol         Boolean @default(false)
-  notes                 String? @db.Text
+  evraklarIslendiAt DateTime?
+  kontrolEdildi     Boolean   @default(false)
+  beyannameVerildi  Boolean   @default(false)
+
+  // ---- AŞAMA DAMGALARI (2026-09-25, portal denetimi bulgu 46b) ----
+  // Elde yalnız `evraklarIslendiAt` vardı; diğer aşamaların bekleme süresi genel
+  // `updatedAt`'ten ölçülüyordu. Şemanın kendi notu bunun yanlış olduğunu söylüyor:
+  // başka bir alan güncellenince tazelendiği için 208 gündür evrak bekleyen bir
+  // mükellefte biri herhangi bir kutuyu işaretleyince GECİKME SIFIRLANIYORDU.
+  //
+  // Yazma kuralı (`asama-damgalari.ts`): bayrak false→true olunca damga yazılır,
+  // true→false olunca NULL'a çekilir. Geri alınan durumda eski damga kalırsa
+  // raporlar onu gerçek sanar (bulgu 49'daki `onayTarihi` dersi).
+  //
+  // GERİ DOLUM YAPILMADI: geçmiş geçişlerin ne zaman olduğu hiçbir yerde tutulmuyor.
+  // Eski satırlarda null kalır ve bugünkü `updatedAt` yedeği kullanılmaya devam eder.
+  // Uydurma tarih yazılmaz — yanlış gecikme, hiç gecikme göstermemekten kötüdür.
+  /// "Evrak geldi" işaretinin KONULDUĞU an
+  evraklarGeldiAt       DateTime?
+  /// "Yüklendi" işaretinin KONULDUĞU an
+  yuklendiAt            DateTime?
+  /// "Kontrol edildi" işaretinin KONULDUĞU an
+  kontrolEdildiAt       DateTime?
+  /// "Beyanname verildi" işaretinin KONULDUĞU an
+  beyannameVerildiAt    DateTime?
+  kdvKontrolEdildi      Boolean   @default(false)
+  indirilecekKdvKontrol Boolean   @default(false)
+  hesaplananKdvKontrol  Boolean   @default(false)
+  eArsivKontrol         Boolean   @default(false)
+  notes                 String?   @db.Text
 
   // ---- EVRAK MESAJ DAMGALARI (2026-08-18) ----
   // Damgalar DÖNEM bazında. Önceden Taxpayer.lastReminderSentAt tek alanda
   // tutuluyordu; ay değişince eski dönemin takibi düşüyor ve aynı damga farklı
   // dönemleri kilitliyordu.
   /// Bu dönem için son evrak TALEP hatırlatması (2 günde bir kuralı buradan)
-  evrakTalepSonGonderimAt   DateTime?
+  evrakTalepSonGonderimAt     DateTime?
   /// Bu dönem için kaç hatırlatma gitti (izleme)
-  evrakTalepGonderimSayisi  Int       @default(0)
+  evrakTalepGonderimSayisi    Int       @default(0)
   /// "Evrak geldi" mesaji kuyrukta — bekleme suresi dolunca gonderilir
-  evrakGeldiMesajBekliyor   Boolean   @default(false)
+  evrakGeldiMesajBekliyor     Boolean   @default(false)
   /// Kuyruga alindigi an. Bekleme suresi (yanlis isareti fark etme payi)
   /// bu andan itibaren sayilir. updatedAt kullanilamaz: baska bir alan
   /// guncellenince sifirlanir ve mesaj surekli ertelenirdi.
-  evrakGeldiMesajKuyrukAt   DateTime?
+  evrakGeldiMesajKuyrukAt     DateTime?
   /// "Evrak geldi" onayı gönderildi — dolu ise TEKRAR gönderilmez
-  evrakGeldiMesajGonderimAt DateTime?
+  evrakGeldiMesajGonderimAt   DateTime?
   /// 2026-09-14: başarısız deneme sayısı + son deneme anı — 2 dk'lık tarama her turda tekrar deniyordu
   /// (UMUT BALÇIK: 5 günde 972 başarısız deneme). Artık geri çekilme: 15 dk, 30 dk, 1 sa, 2 sa, 4 sa…; 20 denemede vazgeçilir.
   evrakGeldiMesajDenemeSayisi Int       @default(0)
@@ -3272,14 +3294,14 @@ model Task {
   notifySound   Boolean @default(false)
 
   // Gorevler & Notlar yeniden tasarimi (2026-09-14, migration 20260914_gorevler_yeni_alanlar)
-  kaynak         String  @default("MANUEL") // MANUEL | WHATSAPP | BANKA | EKIP | AI | TAKVIM — kaydi kim acti
-  tur            String  @default("GOREV") // GOREV | NOT — not: vadesiz, sabitlenebilir
-  pinned         Boolean @default(false) // sabitlenmis not/gorev (liste basinda)
-  ekipIsId       String? // "Ekibe ver" ile acilan Koordinator kosusu (agent_commands.id)
-  notifyWhatsapp Boolean @default(true) // hatirlatma varsayilani: WhatsApp (motor Faz 2)
-  notifyPush     Boolean @default(true) // hatirlatma varsayilani: telefon push (motor Faz 2)
+  kaynak          String   @default("MANUEL") // MANUEL | WHATSAPP | BANKA | EKIP | AI | TAKVIM — kaydi kim acti
+  tur             String   @default("GOREV") // GOREV | NOT — not: vadesiz, sabitlenebilir
+  pinned          Boolean  @default(false) // sabitlenmis not/gorev (liste basinda)
+  ekipIsId        String? // "Ekibe ver" ile acilan Koordinator kosusu (agent_commands.id)
+  notifyWhatsapp  Boolean  @default(true) // hatirlatma varsayilani: WhatsApp (motor Faz 2)
+  notifyPush      Boolean  @default(true) // hatirlatma varsayilani: telefon push (motor Faz 2)
   hatirlatUserIds String[] @default([]) // 2026-09-14 ofis personeline de hatırlat — portal kullanıcı id'leri (portal + push + WhatsApp)
-  taxCalendarId  String? // vergi takviminden (tax_calendar.id) uretilen gorev
+  taxCalendarId   String? // vergi takviminden (tax_calendar.id) uretilen gorev
 
   // Durum
   status        TaskStatus @default(OPEN)
@@ -3719,29 +3741,29 @@ model MaliYorum {
 // ===== AKILLI BILDIRIM (belge dagitim motoru) =====
 
 model SmartDispatchSetting {
-  id                  String   @id @default(cuid())
+  id                  String    @id @default(cuid())
   tenantId            String
   kategori            String // VERGI | SGK | ETEBLIGAT
-  whatsapp            Boolean  @default(true)
-  email               Boolean  @default(true)
-  sendHour            Int      @default(9)
-  manualInstant       Boolean  @default(true) // elle cekilen de ayni formatla aninda iletilsin
-  enabled             Boolean  @default(false) // guvenli baslangic: kapali
-  testMode            Boolean  @default(true) // acikken gonderimler test alicisina gider
+  whatsapp            Boolean   @default(true)
+  email               Boolean   @default(true)
+  sendHour            Int       @default(9)
+  manualInstant       Boolean   @default(true) // elle cekilen de ayni formatla aninda iletilsin
+  enabled             Boolean   @default(false) // guvenli baslangic: kapali
+  testMode            Boolean   @default(true) // acikken gonderimler test alicisina gider
   testPhone           String?
   testEmail           String?
   senderName          String? // mesajlardaki "Gönderen" adı (boşsa varsayılan ofis adı)
   reportEmail         String? // günlük iletim raporunun gideceği müşavir e-postası
-  excludedTaxpayerIds String[] @default([])
+  excludedTaxpayerIds String[]  @default([])
   // ODEME_LISTESI satırı (aylık ödeme cetveli otomatik gönderimi, 2026-09-14):
   //   sendDay = ayın günü (1-28), sendHour = saat; onayGerekli = true → sahibe "cetvel hazır" bildirimi, gönderim elle
   //   lastRunAt/lastRunResult = koşu izi ({ month, sonuc, gonderilen }) — aynı ay ikinci kez koşulmaz
   sendDay             Int?
-  onayGerekli         Boolean  @default(true)
+  onayGerekli         Boolean   @default(true)
   lastRunAt           DateTime?
   lastRunResult       Json?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   @@unique([tenantId, kategori])
   @@map("smart_dispatch_settings")
@@ -4189,26 +4211,26 @@ model EkipRutin {
 /// EkipKuyrukService (@Interval 15 sn) kiracı başına tek kuyruğu, tek koşu kilidiyle (kiracıda süren başka ekip koşusu yokken)
 /// öğe öğe işler; Max kotası dolunca durum 'kota_bekliyor' olur, sıfırlanınca kendiliğinden sürer.
 model EkipKuyruk {
-  id         String    @id @default(cuid())
-  tenantId   String
-  ad         String
-  ajanId     String
-  sablon     String    @db.Text
-  dryRun     Boolean   @default(true)
+  id        String    @id @default(cuid())
+  tenantId  String
+  ad        String
+  ajanId    String
+  sablon    String    @db.Text
+  dryRun    Boolean   @default(true)
   /// rutin | toplu
-  kaynak     String
-  rutinId    String?
+  kaynak    String
+  rutinId   String?
   /// bekliyor | suruyor | durduruldu | bitti | kota_bekliyor
-  durum      String    @default("bekliyor")
+  durum     String    @default("bekliyor")
   /// [{taxpayerId, ad, donem?, durum:'bekliyor'|'suruyor'|'bitti'|'hata'|'atlandi', isId?, hata?, bitisAt?}]
-  ogeler     Json
+  ogeler    Json
   /// Şu an koşan öğenin iş dosyası (agent_commands.id)
-  aktifIsId  String?
+  aktifIsId String?
   /// Kuyruğu açan kullanıcı (rutinde null)
-  olusturan  String?
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
-  bitisAt    DateTime?
+  olusturan String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  bitisAt   DateTime?
 
   @@index([tenantId, durum])
   @@index([tenantId, rutinId, createdAt])

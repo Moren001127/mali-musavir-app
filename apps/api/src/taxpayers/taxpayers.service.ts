@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { asamaDamgalari, damgaVeyaYedek } from './asama-damgalari';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -904,21 +905,26 @@ export class TaxpayersService {
       //   yanlış olduğunu söylüyor: "updatedAt kullanılamaz: başka alan güncellenince
       //   tazelenir". Sonuç: 208 gündür evrak bekleyen mükellefte biri herhangi bir kutuyu
       //   işaretleyince gecikme SIFIRLANIYORDU.
-      //   Elde tek aşama damgası var (`evraklarIslendiAt`); diğerleri için şema değişikliği
-      //   gerekir. Şimdilik:
+      //   2026-09-25 bulgu 46b ile aşama damgaları BEŞE çıktı; artık her aşama KENDİ
+      //   damgasından ölçülüyor. Damgası olmayan ESKİ satırlarda (geri dolum yapılamadı)
+      //   `updatedAt` yedeğine düşülür — eski davranış, ama yalnız o satırlarda.
       //     EVRAK_BEKLIYOR → hiçbir şey olmadı; ölçü DÖNEMİN BAŞINDAN (ya da mükellefiyet
       //       başlangıcından). `updatedAt` burada tamamen ilgisiz.
-      //     ISLENMEYI/KONTROL → "işlendi" damgası varsa ondan.
-      //     diğerleri → `updatedAt` (eski davranış; doğru damga şemada yok).
+      //     YUKLEME_BEKLIYOR  → evrak geldi damgasından (o andan beri yüklenmeyi bekliyor)
+      //     ISLENMEYI_BEKLIYOR→ yüklendi damgasından
+      //     KONTROL_BEKLIYOR  → işlendi damgasından
+      //     BEYANNAME_BEKLIYOR→ kontrol edildi damgasından
       const bekleyenBaslangic: Date = (() => {
+        const yedek = new Date(s.updatedAt);
         if (stage === 'EVRAK_BEKLIYOR') {
           const mukellefiyetBas = taxpayer.startDate ? new Date(taxpayer.startDate) : null;
           return mukellefiyetBas && mukellefiyetBas > firstDay ? mukellefiyetBas : firstDay;
         }
-        if ((stage === 'ISLENMEYI_BEKLIYOR' || stage === 'KONTROL_BEKLIYOR') && s.evraklarIslendiAt) {
-          return new Date(s.evraklarIslendiAt);
-        }
-        return new Date(s.updatedAt);
+        if (stage === 'YUKLEME_BEKLIYOR') return damgaVeyaYedek((s as any).evraklarGeldiAt, yedek);
+        if (stage === 'ISLENMEYI_BEKLIYOR') return damgaVeyaYedek((s as any).yuklendiAt, yedek);
+        if (stage === 'KONTROL_BEKLIYOR') return damgaVeyaYedek(s.evraklarIslendiAt, yedek);
+        if (stage === 'BEYANNAME_BEKLIYOR') return damgaVeyaYedek((s as any).kontrolEdildiAt, yedek);
+        return yedek;
       })();
       const bekleyenGun = Math.max(
         0,
@@ -1174,13 +1180,13 @@ export class TaxpayersService {
       where: { taxpayerId_year_month: { taxpayerId, year, month } },
     });
 
-    // "İŞLENDİ" DAMGASI (2026-09-22): işaret KONULDUĞU an yazılır, kaldırılınca silinir. Ekip KDV kontrol
-    //   rutini bu damgadan sonra birkaç dakika bekler (evrak Drive'a indirilip yedeklenirken kontrol
-    //   başlamasın — Muzaffer Bey). updatedAt kullanılamaz: başka alan güncellenince tazelenir.
-    const damga: { evraklarIslendiAt?: Date | null } = {};
-    if (typeof cleanData.evraklarIslendi === 'boolean' && cleanData.evraklarIslendi !== existing?.evraklarIslendi) {
-      damga.evraklarIslendiAt = cleanData.evraklarIslendi ? new Date() : null;
-    }
+    // AŞAMA DAMGALARI (2026-09-22 "işlendi" + 2026-09-25 bulgu 46b ile BEŞE çıktı):
+    //   işaret KONULDUĞU an yazılır, kaldırılınca null'a çekilir, değişmediyse dokunulmaz.
+    //   Ekip KDV kontrol rutini `evraklarIslendiAt` damgasından sonra birkaç dakika bekler
+    //   (evrak Drive'a indirilip yedeklenirken kontrol başlamasın — Muzaffer Bey).
+    //   updatedAt kullanılamaz: satırdaki başka bir alan güncellenince tazelenir.
+    //   Kural tek yerde: `asama-damgalari.ts`.
+    const damga = asamaDamgalari(existing, cleanData);
 
     const result = await this.prisma.taxpayerMonthlyStatus.upsert({
       where: { taxpayerId_year_month: { taxpayerId, year, month } },
