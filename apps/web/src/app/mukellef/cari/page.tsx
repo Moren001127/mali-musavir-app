@@ -29,13 +29,43 @@ function Metric({ label, value, text, tone = 'neutral', suffix }: { label: strin
 const TIP_ETIKET: Record<string, string> = { TAHAKKUK: 'Tahakkuk', TAHSILAT: 'Tahsilat', IADE: 'İade', DUZELTME: 'Düzeltme' };
 
 export default function MukellefCari() {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['portal-cari'],
     queryFn: () => taxpayerApi.get('/portal/cari').then((r) => r.data),
   });
   const { data: me } = useQuery({ queryKey: ['portal-me'], queryFn: () => taxpayerApi.get('/portal/me').then((r) => r.data) });
 
   if (isLoading) return (<div><PageTitle ust="Ofis" baslik="Cari Hesabım" icon={Wallet} /><Spinner /></div>);
+
+  // 2026-09-25 denetim bulgusu 19 — "BORÇ YOK" YANLIŞ SONUCU.
+  //   isError hiç okunmuyordu; bağlantı/sunucu hatasında data undefined kalıyor ve
+  //   `Number(data?.bakiye ?? 0)` sıfıra düşüyordu → mükellef YEŞİL "Borç yok · 0,00 ₺",
+  //   "Toplam tahakkuk 0", "0 kayıt" görüyordu. Üstelik "Ekstre indir" açık kalıyor ve
+  //   MOREN logolu BOŞ bir ekstre üretiyordu — mükellefin "borcum yok" belgesi sanabileceği
+  //   bir kâğıt. Sonucu: mükellef ödemeyi keser, ofis "ödemiyor" der, uyuşmazlık çıkar.
+  //   Arka uç temizdi (getCariOzet gerçek toplamı veriyor); kusur tamamen ekrandaydı.
+  if (isError) {
+    return (
+      <div>
+        <PageTitle ust="Ofis" baslik="Cari Hesabım" icon={Wallet} />
+        <div className="rounded-[12px] p-4 text-[13px]" style={portalStyle({ background: 'rgba(224,49,49,0.10)', border: '1px solid rgba(224,49,49,0.35)', color: '#e03131' })}>
+          <div className="font-semibold mb-1">Cari hesabınız şu an görüntülenemiyor.</div>
+          <div style={{ opacity: 0.9 }}>
+            Bağlantı ya da sunucu hatası oluştu. <b>Bu, &quot;borcunuz yok&quot; anlamına gelmez</b> —
+            bakiyeniz gösterilemediği için hiçbir tutar görüntülenmiyor.
+          </div>
+          <button
+            type="button"
+            onClick={() => refetch()}
+            className="mt-3 inline-flex items-center gap-1.5 h-[34px] px-3 rounded-[10px] text-[12.5px] font-semibold"
+            style={portalStyle({ background: 'rgba(212,184,118,0.14)', border: '1px solid rgba(212,184,118,0.3)', color: '#d4b876' })}
+          >
+            Yeniden dene
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const netBakiye = Number(data?.bakiye ?? 0);
   const borclu = netBakiye > 0;

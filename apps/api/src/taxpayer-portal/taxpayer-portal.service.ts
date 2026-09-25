@@ -596,6 +596,14 @@ export class TaxpayerPortalService {
       faturaAdet,
       beyanVar: !!beyan,
       beyanDurum: beyan?.durum || null,
+      // 2026-09-25 denetim bulgusu 18 — TUTARIN KAYNAĞI AÇIKÇA BİLDİRİLİYOR.
+      //   TUTARIN koşulu (tahakkukTutari var mı) ile EKRAN ETİKETİNİN koşulu (beyanVar) farklıydı:
+      //   KDV1 satırı açılmış ama tahakkuk henüz girilmemişse tutar TASLAK hesaptan geliyor, ekran
+      //   ise "resmî KDV beyannamenizden alınmıştır" diyordu. Bu durum ofisin kendi rutininde
+      //   oluşuyor: setDevredenKdv() devreden girilince KDV1 satırını durum='beklemede',
+      //   tahakkukTutari=null olarak açıyor. Mükellef taslak rakamı tahakkuk sanıp eksik ödeyebilir.
+      //   Ekran metni artık beyanVar'a değil BUNA bakmalı.
+      kaynak: beyanOdenecek != null ? 'beyan' : 'taslak',
     };
   }
 
@@ -1019,7 +1027,13 @@ export class TaxpayerPortalService {
           if (k.hesaplananKdv != null) parts.push(`Hesaplanan/satış ${TL(k.hesaplananKdv)}`);
           if (k.indirilecekKdv != null) parts.push(`İndirilecek/alış ${TL(k.indirilecekKdv)}`);
           if (k.devredenKdv != null) parts.push(`Devreden ${TL(k.devredenKdv)}`);
-          return `- ${k.donem}: ${parts.join(', ') || 'rakam yok'}${k.beyanVar ? ' [KDV1 beyanı verildi]' : ''}`;
+          // Denetim bulgusu 18: AI'a verilen metin de beyanVar yerine kaynak'a bakıyor.
+          // Eskiden yalnız "beklemede" satır açılmışken bile AI'a "KDV1 beyanı verildi"
+          // diyordu; asistan bu yüzden mükellefe taslak rakamı resmî gibi anlatıyordu.
+          const kaynakNot = k.kaynak === 'beyan'
+            ? ' [resmî KDV1 tahakkukundan]'
+            : ' [TASLAK — beyanname henüz tahakkuk etmedi, kesin tutar değil]';
+          return `- ${k.donem}: ${parts.join(', ') || 'rakam yok'}${kaynakNot}`;
         }).join('\n')
       : 'Hesaplanamadı (KDV mükellefi olmayabilir veya bu dönemler için veri yok).';
 

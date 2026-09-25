@@ -4,6 +4,7 @@ import { portalStyle } from '@/lib/portal-theme';
 import { useState } from 'react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { taxpayerApi } from '@/lib/taxpayer-api';
+import { kdvKaynagi, kdvKaynakMetni, KDV_KAYNAK_ROZET } from '@/lib/kdv-kaynak';
 import { fmtTRY, Card, Section, Empty, Spinner, PageTitle, StatStrip, GOLD, Badge, Th, THead, openFaturaGoruntu } from '../_lib/shared';
 import {
   ArrowDownLeft, ArrowUpRight, Eye, BarChart3, Calendar,
@@ -24,6 +25,11 @@ const VERI_GUVENI: Record<string, { label: string; color: string }> = {
   kontrol_gerekli: { label: 'Kontrol gerekli', color: '#fbbf24' },
   eksik: { label: 'Eksik veri', color: '#f87171' },
 };
+// 2026-09-25 denetim bulgusu 18 — ROZET ARTIK TUTARIN KAYNAĞINI SÖYLÜYOR.
+//   Eski hâlde rozet KDV1 ön-hazırlığının İÇ puanını gösteriyordu. Sonuç ters dönmüştü:
+//   taslak tutarın üstünde yeşil "Veri güveni: Kesin", gerçekten resmî beyandan gelen
+//   tutarın üstünde ise HİÇBİR rozet yoktu (haritada 'beyan' anahtarı eksikti).
+//   Karar mantığı @/lib/kdv-kaynak içinde — davranış testi oradan çağırıyor.
 
 export default function MukellefFaturalar() {
   const now = new Date();
@@ -43,6 +49,7 @@ export default function MukellefFaturalar() {
   const aylik: any[] = data?.aylik || [];
   const faturalar: any[] = data?.faturalar || [];
   const kdv = data?.kdv;
+  const kdvKaynak = kdvKaynagi(kdv);
   const net = (ayOzet.satisToplam || 0) - (ayOzet.alisToplam || 0);
   const maxAy = Math.max(1, ...aylik.map((a) => Math.max(a.alis, a.satis)));
   const toplamHacim = (ayOzet.alisToplam || 0) + (ayOzet.satisToplam || 0);
@@ -127,11 +134,9 @@ export default function MukellefFaturalar() {
               <div className="flex items-center gap-2 mb-4 flex-wrap">
                 <Percent size={15} style={portalStyle({ color: KDV_RENK })} />
                 <h2 className="text-[14px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>KDV Özeti · {AY_ADLARI[ay - 1]} {yil}</h2>
-                {VERI_GUVENI[kdv.veriGuveni] && (
-                  <span className="ml-auto inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-medium" style={portalStyle({ background: `${VERI_GUVENI[kdv.veriGuveni].color}1a`, color: VERI_GUVENI[kdv.veriGuveni].color })}>
-                    Veri güveni: {VERI_GUVENI[kdv.veriGuveni].label}
-                  </span>
-                )}
+                <span className="ml-auto inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-medium" style={portalStyle({ background: `${KDV_KAYNAK_ROZET[kdvKaynak].color}1a`, color: KDV_KAYNAK_ROZET[kdvKaynak].color })}>
+                  {KDV_KAYNAK_ROZET[kdvKaynak].label}
+                </span>
               </div>
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                 <KdvKutu label="İndirilecek KDV (Alış)" value={kdv.indirilecekKdv != null ? fmtTRY(kdv.indirilecekKdv) : '—'} accent={ALIS} icon={ArrowDownLeft} />
@@ -139,10 +144,17 @@ export default function MukellefFaturalar() {
                 <KdvKutu label="Ödenecek KDV" value={kdv.odenecekKdv != null ? fmtTRY(kdv.odenecekKdv) : '—'} accent={KDV_RENK} icon={TrendingUp} />
                 <KdvKutu label="Sonraki Aya Devreden" value={kdv.devredenKdv != null ? fmtTRY(kdv.devredenKdv) : '—'} accent="#60a5fa" icon={Scale} />
               </div>
-              <p className="text-[11.5px] mt-3" style={portalStyle({ color: 'rgba(250,250,249,0.38)' })}>
-                {kdv.beyanVar
-                  ? 'Ödenecek KDV resmî KDV beyannamenizden alınmıştır. Alış/satış KDV kırılımı dönem verinizden hesaplanır.'
-                  : 'Bu dönem KDV beyannamesi henüz görünmüyor; tutarlar dönem verinizden hesaplanan ön bilgidir.'}
+              {/* Denetim bulgusu 18: metin artık beyanVar'a (satır AÇILDI MI) değil, kaynak'a
+                  (TUTAR gerçekten tahakkuktan mı geldi) bakıyor. Ofis dönem başında devreden KDV'yi
+                  işlerken beyanname satırını "beklemede" olarak açıyor; eski koşul o anda "resmî
+                  beyannamenizden alınmıştır" diyerek taslak tutarı resmî gibi gösteriyordu. */}
+              <p className="text-[11.5px] mt-3" style={portalStyle({ color: kdvKaynak === 'beyan' ? 'rgba(250,250,249,0.38)' : '#fbbf24' })}>
+                {kdvKaynakMetni(
+                  kdvKaynak,
+                  kdv.veriGuveni && kdv.veriGuveni !== 'kesin' && VERI_GUVENI[kdv.veriGuveni]
+                    ? VERI_GUVENI[kdv.veriGuveni].label
+                    : null,
+                )}
               </p>
             </Card>
           ) : null}
