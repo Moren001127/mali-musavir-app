@@ -6,16 +6,16 @@ import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
-import { AlanGirdi, DurumCipi, FormAltBilgi, Salter, Secici } from '@/components/kayit-formu/KayitFormu';
+import { AlanGirdi, AlanSecim, Anahtar, DurumCipi, FormAltBilgi, FormGrup, Satir } from '@/components/kayit-formu/KayitFormu';
 
-// v3 (2026-09-14, Muzaffer Bey: "beyanname | dönem — bu kadar; tablo düzeni belli olsun, profesyonel"):
-// İKİ sütunlu, TAM ÇİZGİLİ tablo. Açıklama/kod/durum sütunu YOK, GRUP SATIRI YOK — başlığın altında düz liste. Altın yok.
+// v4 (2026-09-25, Muzaffer Bey: "mükellefiyet bilgilerinin kaydedildiği ekran leş gibi; sade, anlaşılır olsun"):
+// Tablo KALKTI. İki sütunlu tabloda beyanname adı solda, seçici ~1200px ötede sağ kenarda duruyordu; arası bomboştu.
+// Artık ekranın KENDİ form dili: etiket alanın üstünde, üç sütun — Müşteri/İletişim/Defter bölümleriyle aynı.
+// Alanlar üçün katına tamamlandı ki hiçbiri tek başına satırda kalmasın (yıllık tür segment yerine seçim kutusu,
+// e-Defter başlangıcı ayrı alan). Denenip bırakılanlar: kart ızgarası, gruplu ayar listesi, renkli kart başlıkları.
 const GOOD = '#5fcf8e';
 const TEXT = '#fafaf9';
 const MUTED = 'rgba(250,250,249,0.60)';
-const CIZGI = 'rgba(255,255,255,0.13)';
-const HUCRE: React.CSSProperties = { border: `1px solid ${CIZGI}`, padding: '0 14px', height: 48, verticalAlign: 'middle', fontSize: 14 };
-const BASLIK_HUCRE: React.CSSProperties = { ...HUCRE, height: 40, fontSize: 12, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: 'rgba(250,250,249,0.62)', background: 'rgba(255,255,255,0.055)', textAlign: 'left' };
 
 type Period = 'AYLIK' | 'UCAYLIK' | 'ON_BES_GUNLUK' | null;
 type IncomeTaxType = 'KURUMLAR' | 'GELIR' | 'BASIT_USUL' | null;
@@ -201,83 +201,85 @@ export function MukellefiyetlerCard({
   // Ekranda ad: kod parantezi zaten adın içinde; KDV1 için okunur biçim.
   const gosterAd = (d: BeyannameDef) => (d.kod === 'KDV1' ? 'KDV (KDV1)' : d.ad);
 
+  // Üç sütunda dört tam satır: hiçbir alan tek başına kalmasın diye sıra elle kuruldu.
+  const SIRA: Array<BeyannameDef['key']> = [
+    'kdv1Period', 'muhtasarPeriod',
+    'gelirGeciciPeriod', 'kurumGeciciPeriod', 'turizmPeriod',
+    'damgaEnabled', 'konaklamaEnabled', 'posetEnabled',
+    'sgkBildirgeEnabled', 'eDefterPeriod',
+  ];
+  const KOD: Partial<Record<string, string>> = {
+    kdv1Period: 'KDV1', gelirGeciciPeriod: 'GGEÇİCİ', kurumGeciciPeriod: 'KGEÇİCİ', muhtasarPeriod: 'MUHSGK',
+  };
+  const etiket = (d: BeyannameDef) => {
+    const ad = d.ad.replace(/\s*\([^)]*\)\s*$/, '');
+    const kod = KOD[d.key as string];
+    return kod ? (
+      <>
+        {ad}
+        <span className="text-[9.5px] font-extrabold tracking-[.04em]" style={portalStyle({ color: MUTED })}>{kod}</span>
+      </>
+    ) : ad;
+  };
+
   return (
     <div className="space-y-4">
-      <div className="overflow-x-auto" style={portalStyle({ border: `1px solid ${CIZGI}`, borderRadius: 8 })}>
-        <table className="w-full border-collapse" style={portalStyle({ minWidth: 640 })}>
-          <colgroup>
-            <col />
-            <col style={portalStyle({ width: 360 })} />
-          </colgroup>
-          <thead>
-            <tr>
-              <th style={portalStyle(BASLIK_HUCRE)}>Beyanname</th>
-              <th style={portalStyle(BASLIK_HUCRE)}>Dönem</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td style={portalStyle({ ...HUCRE, color: form.incomeTaxType ? TEXT : MUTED, fontWeight: form.incomeTaxType ? 600 : 500 })}>Yıllık vergi türü</td>
-              <td style={portalStyle(HUCRE)}>
-                <Secici
-                  boy="kucuk"
-                  value={form.incomeTaxType ?? 'YOK'}
-                  onChange={(v) => setForm((prev) => ({ ...prev, incomeTaxType: v === 'YOK' ? null : (v as IncomeTaxType) }))}
-                  options={[
-                    { value: 'YOK', label: 'Yok', pasif: true },
-                    { value: 'KURUMLAR', label: 'Kurumlar' },
-                    { value: 'GELIR', label: 'Gelir' },
-                    { value: 'BASIT_USUL', label: 'Basit usul' },
-                  ]}
-                />
-              </td>
-            </tr>
+      <FormGrup baslik="Beyanname ve dönemler" aciklama="vergi türleri, dönemler ve aç / kapat" sutun={3}>
+        <Satir etiket="Yıllık vergi türü">
+          <AlanSecim
+            value={form.incomeTaxType ?? ''}
+            onChange={(e) => setForm((prev) => ({ ...prev, incomeTaxType: (e.target.value || null) as IncomeTaxType }))}
+          >
+            <option value="">Yok</option>
+            <option value="KURUMLAR">Kurumlar</option>
+            <option value="GELIR">Gelir</option>
+            <option value="BASIT_USUL">Basit usul</option>
+          </AlanSecim>
+        </Satir>
 
-            {gruplar.map((g) => (
-              <React.Fragment key={g.baslik}>
-                {g.defs.map((item) => {
-                  const value = (form as any)[item.key];
-                  const isActive = aktifMi(item);
-                  return (
-                    <tr key={item.key as string}>
-                      <td style={portalStyle({ ...HUCRE, color: isActive ? TEXT : MUTED, fontWeight: isActive ? 600 : 500 })}>{gosterAd(item)}</td>
-                      <td style={portalStyle(HUCRE)}>
-                        {item.tip === 'toggle' ? (
-                          <label className="flex cursor-pointer items-center gap-2.5">
-                            <input type="checkbox" className="sr-only" checked={isActive} onChange={() => setForm({ ...form, [item.key]: !value } as BeyanConfig)} />
-                            <Salter checked={isActive} />
-                            <span className="text-[13.5px] font-medium" style={portalStyle({ color: isActive ? GOOD : MUTED })}>{isActive ? 'Açık' : 'Kapalı'}</span>
-                          </label>
-                        ) : item.key === 'eDefterPeriod' ? (
-                          // E-Defter: dönem tercihi + "Başlangıç" ayı (berat takibinde bu aydan önceki dönemler beklenmez)
-                          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                            <PeriodSegment value={value} onChange={(v) => setForm({ ...form, eDefterPeriod: v, eDefterBaslangic: v ? form.eDefterBaslangic : null })} />
-                            {value !== null && (
-                              <span className="flex items-center gap-2 text-[12.5px]" style={portalStyle({ color: MUTED })}>
-                                Başlangıç
-                                <AlanGirdi
-                                  type="month"
-                                  aria-label="E-Defter başlangıç ayı"
-                                  title="e-Defter mükellefiyetinin başladığı ay — öncesindeki dönemler takibe düşmez"
-                                  value={form.eDefterBaslangic ?? ''}
-                                  onChange={(e) => setForm({ ...form, eDefterBaslangic: e.target.value || null })}
-                                  className="!h-[30px] !w-[150px] !px-2.5 !text-[12.5px]"
-                                />
-                              </span>
-                            )}
-                          </div>
-                        ) : (
-                          <PeriodSegment value={value} full15={item.tip === 'period_15gun'} onChange={(v) => setForm({ ...form, [item.key]: v } as BeyanConfig)} />
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </React.Fragment>
-            ))}
-          </tbody>
-        </table>
-      </div>
+        {SIRA.map((key) => {
+          const item = visibleDefs.find((d) => d.key === key);
+          if (!item) return null;
+          const value = (form as any)[item.key];
+          const isActive = aktifMi(item);
+          return (
+            <Satir key={item.key as string} etiket={etiket(item)}>
+              {item.tip === 'toggle' ? (
+                <Anahtar checked={isActive} onChange={() => setForm({ ...form, [item.key]: !value } as BeyanConfig)} />
+              ) : (
+                <AlanSecim
+                  value={value ?? ''}
+                  onChange={(e) => {
+                    const v = (e.target.value || null) as Period;
+                    setForm(item.key === 'eDefterPeriod'
+                      ? { ...form, eDefterPeriod: v, eDefterBaslangic: v ? form.eDefterBaslangic : null }
+                      : ({ ...form, [item.key]: v } as BeyanConfig));
+                  }}
+                >
+                  <option value="">Yok</option>
+                  <option value="AYLIK">Aylık</option>
+                  <option value="UCAYLIK">3 Aylık</option>
+                  {item.tip === 'period_15gun' && <option value="ON_BES_GUNLUK">15 Gün</option>}
+                </AlanSecim>
+              )}
+            </Satir>
+          );
+        })}
+
+        {/* e-Defter başlangıcı: kendi alanı — eskiden aynı hücrede sıkışıyor, ay adı kırpılıyordu */}
+        <Satir
+          etiket="E-Defter başlangıcı"
+          ipucu={form.eDefterPeriod ? 'Öncesindeki dönemler takibe düşmez.' : 'E-Defter dönemi seçilince açılır.'}
+        >
+          <AlanGirdi
+            type="month"
+            aria-label="E-Defter başlangıç ayı"
+            disabled={!form.eDefterPeriod}
+            value={form.eDefterBaslangic ?? ''}
+            onChange={(e) => setForm({ ...form, eDefterBaslangic: e.target.value || null })}
+          />
+        </Satir>
+      </FormGrup>
 
       <FormAltBilgi
         onSave={() => saveMut.mutate()}
@@ -292,23 +294,5 @@ export function MukellefiyetlerCard({
         }
       />
     </div>
-  );
-}
-
-// Dönem seçici — nötr, küçük (Yok / Aylık / 3 Aylık / 15 Gün).
-function PeriodSegment({ value, full15, onChange }: { value: Period; full15?: boolean; onChange: (v: Period) => void }) {
-  const opts: Array<{ v: Period; l: string }> = [
-    { v: null, l: 'Yok' },
-    { v: 'AYLIK', l: 'Aylık' },
-    { v: 'UCAYLIK', l: '3 Aylık' },
-    ...(full15 ? [{ v: 'ON_BES_GUNLUK' as Period, l: '15 Gün' }] : []),
-  ];
-  return (
-    <Secici
-      boy="kucuk"
-      value={value ?? 'YOK'}
-      onChange={(v) => onChange(v === 'YOK' ? null : (v as Period))}
-      options={opts.map((o) => ({ value: o.v ?? 'YOK', label: o.l, pasif: o.v === null }))}
-    />
   );
 }

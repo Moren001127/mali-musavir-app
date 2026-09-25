@@ -6,7 +6,8 @@ import { ChevronDown } from 'lucide-react';
 import { GREEN, HAIR, LINE, MUTED, R_KART, TEXT, ikonRozeti } from '../../_lib/tema';
 
 /**
- * Tek katmanlı akordeon satırı: 3px sol renk şeridi · 34px ikon rozeti · başlık 14/700 · alt yazı 11.5 · sağda "Tanımlı".
+ * Tek katmanlı akordeon satırı: 3px sol renk şeridi · 28px ikon rozeti · başlık 12.5/700 · alt yazı 11 · sağda "Tanımlı".
+ * Satır yüksekliği 2026-09-25'te 120px'ten ~52px'e indirildi: dokuz bölüm alt alta dizildiğinde ekranı dolduruyordu.
  * Açıkken hafif degrade zemin; içerik doğrudan açılan alana (iç kutu YOK).
  */
 export function AccordionRow({
@@ -49,17 +50,17 @@ export function AccordionRow({
         type="button"
         aria-expanded={open}
         onClick={onToggle}
-        className="flex w-full items-center gap-3 py-3 pl-4 pr-3.5 text-left transition-colors hover:bg-white/[0.025]"
+        className="flex w-full items-center gap-2.5 py-2 pl-3.5 pr-3 text-left transition-colors hover:bg-white/[0.025]"
       >
-        <span className="flex h-[34px] w-[34px] shrink-0 items-center justify-center" style={portalStyle(ikonRozeti(renk))}>
-          <Icon size={16} />
+        <span className="flex h-[28px] w-[28px] shrink-0 items-center justify-center" style={portalStyle(ikonRozeti(renk))}>
+          <Icon size={14} />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[14px] font-bold leading-5" style={portalStyle({ color: TEXT })}>{title}</span>
-          <span className="mt-[2px] block truncate text-[11.5px]" style={portalStyle({ color: MUTED })}>{subtitle}</span>
+          <span className="block truncate text-[12.5px] font-bold leading-[17px]" style={portalStyle({ color: TEXT })}>{title}</span>
+          <span className="mt-[1px] block truncate text-[11px] leading-[14px]" style={portalStyle({ color: MUTED })}>{subtitle}</span>
         </span>
         {filled && (
-          <span className="hidden items-center gap-1.5 text-[11.5px] font-medium sm:inline-flex" style={portalStyle({ color: GREEN })}>
+          <span className="hidden items-center gap-1.5 text-[11px] font-medium sm:inline-flex" style={portalStyle({ color: GREEN })}>
             <span className="h-1.5 w-1.5 rounded-full" style={portalStyle({ background: GREEN })} />
             {filledLabel}
           </span>
@@ -71,7 +72,7 @@ export function AccordionRow({
         />
       </button>
       {open && (
-        <div className="border-t px-4 py-4 pl-[19px] sm:px-5 sm:pl-[23px]" style={portalStyle({ borderColor: HAIR })}>
+        <div className="border-t px-3.5 py-3.5 pl-[17px] sm:px-4 sm:pl-[19px]" style={portalStyle({ borderColor: HAIR })}>
           {children}
         </div>
       )}

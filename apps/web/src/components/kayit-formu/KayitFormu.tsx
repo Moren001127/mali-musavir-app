@@ -10,8 +10,8 @@ import { Loader2, Save } from 'lucide-react';
  *
  * - Altın YOK (altın yalnız kart başlığındaki Kaydet'te kalır). Vurgu rengi: çelik mavi (odak, seçili parça, bölüm kaydı).
  * - FormGrup : küçük soluk büyük harf başlık + ince çizgi; bant/dolgu/sol şerit YOK.
- * - Satir    : etiket SOLDA sabit sütun (13px), alan SAĞDA; ipucu alanın altında.
- * - AlanGirdi / AlanSecim / AlanMetin : 38px, koyu zemin, ince kenar, normal yazı tipi (rakamlar da; tabular-nums).
+ * - Satir    : etiket ALANIN ÜSTÜNDE (2026-09-25); ipucu alanın altında. Grup varsayılanı 3 sütun.
+ * - AlanGirdi / AlanSecim / AlanMetin : 34px, koyu zemin, ince kenar, normal yazı tipi (rakamlar da; tabular-nums).
  * - Secici   : nötr; seçili parça açık dolgu + parlak yazı. Pasif seçenek ("Yok") seçiliyken daha soluk.
  * - Anahtar  : şalter (açık = yeşil) + Açık/Kapalı.
  * - FormAltBilgi : solda kısa not, sağda düğme (nötr Güncelle; `vurgulu` = çelik mavi dolgu).
@@ -32,10 +32,10 @@ const R = 8;
 
 // ── Alan stilleri (tek kaynak) ──
 const ALAN_TEMEL =
-  'w-full rounded-[8px] border border-white/[0.09] bg-[#0f1013] text-[14px] font-medium text-[#fafaf9] tabular-nums outline-none transition-colors duration-150 placeholder:text-white/28 hover:border-white/[0.18] focus:border-[#4f86c9] focus:shadow-[0_0_0_3px_rgba(79,134,201,0.18)] disabled:opacity-50';
-export const GIRDI_CLS = `${ALAN_TEMEL} h-[38px] px-3.5`;
+  'w-full rounded-[8px] border border-white/[0.09] bg-[#0f1013] text-[13px] font-medium text-[#fafaf9] tabular-nums outline-none transition-colors duration-150 placeholder:text-white/28 hover:border-white/[0.18] focus:border-[#4f86c9] focus:shadow-[0_0_0_3px_rgba(79,134,201,0.18)] disabled:opacity-50';
+export const GIRDI_CLS = `${ALAN_TEMEL} h-[34px] px-3`;
 export const SECIM_CLS = `${GIRDI_CLS} cursor-pointer pr-9`;
-export const METIN_CLS = `${ALAN_TEMEL} min-h-[76px] resize-y px-3.5 py-2.5 leading-[1.5]`;
+export const METIN_CLS = `${ALAN_TEMEL} min-h-[64px] resize-y px-3 py-2 leading-[1.5]`;
 
 export function AlanGirdi({ className = '', mono: _mono, style, ...props }: React.InputHTMLAttributes<HTMLInputElement> & { mono?: boolean }) {
   // `mono` geriye uyumluluk için kabul edilir, uygulanmaz (rakamlar normal yazı tipinde, tabular-nums).
@@ -74,7 +74,7 @@ export function FormGrup({
   aciklama,
   sag,
   children,
-  sutun = 2,
+  sutun = 3,
   className = '',
 }: {
   baslik: string;
@@ -89,12 +89,12 @@ export function FormGrup({
   const sutunCls = sutun === 1 ? 'grid-cols-1' : sutun === 3 ? 'grid-cols-1 md:grid-cols-2 xl:grid-cols-3' : 'grid-cols-1 md:grid-cols-2';
   return (
     <section className={className}>
-      <header className="mb-3 flex min-h-[26px] items-center gap-3 border-b pb-2" style={portalStyle({ borderColor: LINE })}>
-        <span className="text-[11.5px] font-bold uppercase tracking-[0.10em]" style={portalStyle({ color: 'rgba(250,250,249,0.50)' })}>{baslik}</span>
+      <header className="mb-2.5 flex min-h-[24px] items-center gap-2.5 border-b pb-1.5" style={portalStyle({ borderColor: LINE })}>
+        <span className="text-[10.5px] font-extrabold uppercase tracking-[0.11em]" style={portalStyle({ color: 'rgba(250,250,249,0.50)' })}>{baslik}</span>
         {aciklama && <span className="hidden truncate text-[12px] sm:inline" style={portalStyle({ color: FAINT })}>{aciklama}</span>}
         {sag && <span className="ml-auto flex items-center gap-2">{sag}</span>}
       </header>
-      <div className={`grid gap-x-10 gap-y-3 ${sutunCls}`}>{children}</div>
+      <div className={`grid gap-x-5 gap-y-3.5 ${sutunCls}`}>{children}</div>
     </section>
   );
 }
@@ -121,19 +121,22 @@ export function Satir({
   htmlFor?: string;
 }) {
   const Etiket = htmlFor ? 'label' : 'div';
+  // Etiket ALANIN ÜSTÜNDE (2026-09-25): 160px'lik sol etiket sütunu ekranın üçte birini yiyordu ve
+  // etiketle alanı birbirinden koparıyordu. Etiket üstte olunca üç sütun sığıyor, ikisi yan yana okunuyor.
+  // `hizala` artık görünümü etkilemiyor; çağrı yerleri kırılmasın diye kabul edilmeye devam ediyor.
   return (
-    <div className={`grid grid-cols-[160px_minmax(0,1fr)] gap-x-4 ${genis ? 'md:col-span-full' : ''}`} style={portalStyle({ alignItems: hizala === 'ust' ? 'start' : 'center' })}>
+    <div className={`flex min-w-0 flex-col gap-1.5 ${genis ? 'md:col-span-full' : ''}`}>
       <Etiket
         {...(htmlFor ? { htmlFor } : {})}
-        className={`text-[13px] font-medium leading-[18px] ${hizala === 'ust' ? 'pt-2.5' : ''}`}
-        style={portalStyle({ color: 'rgba(250,250,249,0.74)' })}
+        className="flex items-center gap-1.5 text-[11.5px] font-semibold leading-[15px]"
+        style={portalStyle({ color: 'rgba(250,250,249,0.66)' })}
       >
         {etiket}
-        {zorunlu && <span style={portalStyle({ color: AMBER })}> *</span>}
+        {zorunlu && <span style={portalStyle({ color: AMBER })}>*</span>}
       </Etiket>
       <div className="min-w-0">
         {children}
-        {ipucu && <div className="mt-1 text-[12px] leading-4" style={portalStyle({ color: FAINT })}>{ipucu}</div>}
+        {ipucu && <div className="mt-1 text-[11px] leading-[15px]" style={portalStyle({ color: FAINT })}>{ipucu}</div>}
       </div>
     </div>
   );
@@ -161,7 +164,7 @@ export function Anahtar({
   disabled?: boolean;
 }) {
   return (
-    <label className={`flex min-h-[38px] items-center gap-2.5 ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+    <label className={`flex min-h-[34px] items-center gap-2.5 ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
       <input type="checkbox" className="sr-only" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
       <Salter checked={checked} disabled={disabled} />
       <span className="text-[13.5px] font-medium" style={portalStyle({ color: checked ? GREEN : MUTED })}>{checked ? acikYazi : kapaliYazi}</span>
@@ -199,9 +202,9 @@ export function Secici({
   onChange: (v: string) => void;
   boy?: 'orta' | 'kucuk';
 }) {
-  const h = boy === 'kucuk' ? 'h-[30px]' : 'h-[38px]';
-  const px = boy === 'kucuk' ? 'px-3' : 'px-4';
-  const fs = boy === 'kucuk' ? 'text-[12.5px]' : 'text-[13.5px]';
+  const h = boy === 'kucuk' ? 'h-[30px]' : 'h-[34px]';
+  const px = boy === 'kucuk' ? 'px-3' : 'px-3.5';
+  const fs = boy === 'kucuk' ? 'text-[12px]' : 'text-[12.5px]';
   return (
     <div className={`inline-flex ${h} max-w-full overflow-x-auto p-[3px] [scrollbar-width:none]`} style={portalStyle({ border: `1px solid ${LINE}`, background: ALAN_ZEMIN, borderRadius: R })}>
       {options.map((o) => {
@@ -270,7 +273,7 @@ export function FormAltBilgi({
   vurgulu?: boolean;
 }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4" style={portalStyle({ borderColor: HAIR })}>
+    <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-3" style={portalStyle({ borderColor: HAIR })}>
       <span className="text-[12px]" style={portalStyle({ color: FAINT })}>
         {not ?? 'Bu bölümdeki değişiklikler üstteki Kaydet ile de kaydedilir.'}
       </span>
@@ -278,7 +281,7 @@ export function FormAltBilgi({
         type="button"
         onClick={onSave}
         disabled={saving}
-        className="inline-flex h-[38px] items-center gap-2 px-4 text-[13.5px] font-semibold transition hover:brightness-110 disabled:opacity-50"
+        className="inline-flex h-[34px] items-center gap-2 px-4 text-[13px] font-semibold transition hover:brightness-110 disabled:opacity-50"
         style={
           portalStyle(vurgulu
             ? { background: STEEL, color: '#fff', borderRadius: R, boxShadow: '0 4px 14px rgba(79,134,201,0.25)' }

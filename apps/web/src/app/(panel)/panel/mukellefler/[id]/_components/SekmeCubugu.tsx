@@ -3,7 +3,7 @@ import { portalStyle } from '@/lib/portal-theme';
 
 import React from 'react';
 import { BookOpen, Contact, FileText, Landmark, Mail, MessageSquareText, Shield, Sparkles, UserCog } from 'lucide-react';
-import { GOLD, HAIR, MUTED, TEXT } from '../_lib/tema';
+import { GOLD, LINE, MUTED, TEXT } from '../_lib/tema';
 
 export type TabKey =
   | 'bilgiler'
@@ -28,13 +28,14 @@ export const REAL_TABS: Array<{ key: TabKey; label: string; icon: React.ElementT
   { key: 'notlar', label: 'Mükellef Not', icon: MessageSquareText },
 ];
 
-/** Tek satır sekmeler: taşarsa yatay kaydırma (çubuk gizli), aktifte 2px altın alt çizgi, ikon 16px. 2 satıra kırılmaz. */
+/** Tek satır sekmeler: taşarsa yatay kaydırma (çubuk gizli), aktifte 2px altın alt çizgi, ikon 16px. 2 satıra kırılmaz.
+ *  Şerit zemini 2026-09-25'te hafif çelik maviye alındı — neredeyse beyazdı, gövdeden ayrılmıyordu. */
 export function SekmeCubugu({ tabs, activeTab, onChange }: { tabs: typeof REAL_TABS; activeTab: TabKey; onChange: (k: TabKey) => void }) {
   return (
     <nav
       role="tablist"
       className="flex overflow-x-auto border-b px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-      style={portalStyle({ borderColor: HAIR, background: 'linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0.005))' })}
+      style={portalStyle({ borderColor: LINE, background: 'linear-gradient(180deg, rgba(79,134,201,0.10), rgba(79,134,201,0.04))' })}
     >
       {tabs.map((t) => {
         const Icon = t.icon;

@@ -240,7 +240,7 @@ function CredentialEditor({
             baslik={sgk ? 'SGK e-Bildirge girişi' : 'Vergi dairesi girişi'}
             aciklama={sgk ? 'Kullanıcı adı, e-kod ve iki şifre' : 'İnteraktif vergi dairesi kullanıcı kodu ve şifresi'}
             sag={durum}
-            sutun={sgk ? 2 : 1}
+            sutun={2}
           >
             {sgk ? (
               <>

@@ -83,7 +83,7 @@ export function BilgilerTab({
     { id: 'musteri', title: 'Müşteri & Vergi Dairesi Bilgileri', subtitle: 'Ad, tip, VKN/TCKN, vergi dairesi, sicil ve adres', icon: Building2, show: true, filled: !!(form.companyName || form.firstName || form.taxNumber || form.taxOffice), renk: '#4f86c9' },
     { id: 'mukellefiyet', title: 'Mükellefiyet Bilgileri', subtitle: 'Vergi türleri ve dönemler', icon: FileCheck, show: !!taxpayerId, filled: !!taxpayerId, renk: '#5fcf8e' },
     { id: 'yetkili', title: 'Firma Yetkili Bilgileri', subtitle: 'Müdür, ortak, imza', icon: UserCog, show: !!taxpayerId, filled: false, renk: '#a78bfa' },
-    { id: 'iletisim', title: 'İletişim Bilgileri', subtitle: 'Telefon, e-posta, KEP', icon: Phone, show: true, filled: form.phones.some(Boolean) || form.emails.some(Boolean) || !!form.kepAdresi, renk: '#a78bfa' },
+    { id: 'iletisim', title: 'İletişim Bilgileri', subtitle: 'Telefon ve e-posta', icon: Phone, show: true, filled: form.phones.some(Boolean) || form.emails.some(Boolean), renk: '#a78bfa' },
     { id: 'giris', title: 'E-Devlet / E-Bildirge Giriş Bilgileri', subtitle: 'Portal kullanıcıları ve şifreler', icon: Lock, show: !!taxpayerId, filled: false, renk: '#d4b876' },
     { id: 'bagkur', title: 'Bağ-Kur Bilgileri', subtitle: 'Sicil bilgisi', icon: Shield, show: true, filled: !!form.bagkurSicilNo, renk: '#38bdf8' },
     { id: 'entegrator', title: 'E-Fatura Entegratör Bilgileri', subtitle: 'Sağlayıcı ve mükellefiyet', icon: Sparkles, show: true, filled: !!form.eFaturaEntegrator || form.isEFaturaMukellefi, renk: '#f472b6' },
@@ -264,14 +264,6 @@ export function BilgilerTab({
               ))}
             </FormGrup>
           </div>
-          <FormGrup baslik="Resmî ve web">
-            <Satir etiket="KEP adresi">
-              <AlanGirdi type="email" value={form.kepAdresi} onChange={alan('kepAdresi')} placeholder="firma@hs01.kep.tr" />
-            </Satir>
-            <Satir etiket="Web sitesi">
-              <AlanGirdi value={form.webSitesi} onChange={alan('webSitesi')} placeholder="www.firma.com" />
-            </Satir>
-          </FormGrup>
           <FormAltBilgi onSave={onSave} saving={saving} hasRecord={!!taxpayerId} />
         </div>
       );
