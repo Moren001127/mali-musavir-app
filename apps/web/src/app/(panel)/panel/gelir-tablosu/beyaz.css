@@ -43,7 +43,8 @@ html[data-theme='D'] [data-gelir-report] thead th.text-center button.inline-flex
 /* ── Satırlar: ayrıntı beyaz/zebra · grup açık gri · toplam gri + koyu çizgi · sonuç çivit yumuşak ── */
 html[data-theme='D'] [data-gelir-report] tbody tr { border-color: var(--mt-line-soft) !important; }
 html[data-theme='D'] [data-gelir-report] [data-report-row='detail'] { background: #fff !important; }
-html[data-theme='D'] [data-gelir-report] [data-report-row='detail']:nth-child(even) { background: var(--mt-zebra) !important; }
+/* zebra KALDIRILDI (2026-09-25): grup/toplam satırları da sayıldığı için tek-çift düzeni kayıyor,
+   ana başlığın hemen altındaki satır rastgele farklı tonda çıkıyordu — göz yoruyordu. */
 html[data-theme='D'] [data-gelir-report] [data-report-row='detail'] > td:first-child { color: var(--mt-muted) !important; font-weight: 600 !important; }
 html[data-theme='D'] [data-gelir-report] [data-report-row='detail'] > td:nth-child(2) { color: var(--mt-ink-2) !important; }
 html[data-theme='D'] [data-gelir-report] [data-report-row='group'] { background: #f8fafc !important; }
@@ -181,22 +182,20 @@ html[data-theme='D'] body [data-panel-main] [data-gelir-report] thead th.text-ce
 /* Yüzde rozeti: tutarın tam altında, ortalı */
 html[data-theme='D'] body [data-panel-main] [data-gelir-report] [data-report-percent] { margin-left: auto !important; margin-right: auto !important; }
 
-/* ── 3. VERİ YOK sütunu geri çekilsin ─────────────────────────────────────────────────────────────
-   Boş dönemler dolu dönemlerle aynı ağırlıktaydı; göz her seferinde onlara takılıyordu. */
+/* ── 3. VERİ YOK sütunu geri çekilsin — ama SATIRIN ZEMİNİNİ KESMEDEN ──────────────────────────────
+   Boş dönemler dolu dönemlerle aynı ağırlıktaydı. İlk denemede bu hücrelere ayrı bir zemin verildi;
+   grup satırlarının gri zemini içinde açık renk delikler oluştu, satır ortasından kesilmiş gibi
+   duruyordu (Muzaffer Bey: "görsel kesiliyor gibi"). Artık yalnız YAZI soluklaşıyor, zemin satırın. */
 html[data-theme='D'] body [data-panel-main] [data-gelir-report] tbody td[data-gt-bos='evet'] {
-  background: #fafbfd !important; color: #cbd5e1 !important;
+  background: transparent !important; color: #c3ccd8 !important;
 }
-html[data-theme='D'] body [data-panel-main] [data-gelir-report] tbody td[data-gt-bos='evet'] * { color: #cbd5e1 !important; }
+html[data-theme='D'] body [data-panel-main] [data-gelir-report] tbody td[data-gt-bos='evet'] * { color: #c3ccd8 !important; }
 
 /* ── 4. SATIRLAR: kademe belli olsun ──────────────────────────────────────────────────────────────
    Ara toplamlar (A/B/D/E) ayrıntı satırlarıyla neredeyse aynı zemindeydi; yalnız kalınlık ayırıyordu. */
-html[data-theme='D'] body [data-panel-main] [data-gelir-report] [data-report-row='detail'] > td { border-bottom-color: var(--mt-line-soft) !important; }
-html[data-theme='D'] body [data-panel-main] [data-gelir-report] [data-report-row='group'] { background: #eef2f7 !important; }
 html[data-theme='D'] body [data-panel-main] [data-gelir-report] [data-report-row='group'] > td {
   border-top: 1px solid var(--mt-line) !important; border-bottom: 1px solid var(--mt-line) !important; color: #0f172a !important;
 }
-html[data-theme='D'] body [data-panel-main] [data-gelir-report] [data-report-row='total'] { background: #e7edf5 !important; }
-html[data-theme='D'] body [data-panel-main] [data-gelir-report] [data-report-row='final'] { background: var(--mt-primary-soft) !important; }
 /* Ayrıntı satırlarında kalem yazısı biraz geri çekilsin ki ara toplamlar öne çıksın */
 html[data-theme='D'] body [data-panel-main] [data-gelir-report] [data-report-row='detail'] > td:nth-child(2) { font-weight: 450 !important; color: var(--mt-ink-2) !important; }
 
@@ -220,3 +219,12 @@ html[data-theme='D'] body [data-panel-main] [data-gelir-report] [data-report-rat
 html[data-theme='D'] body [data-panel-main] [data-gelir-report] [data-report-ratio='bad'] { border-left-color: #e03131 !important; background: #fffafa !important; }
 html[data-theme='D'] body [data-panel-main] [data-gelir-report] [data-report-ratio] > :nth-child(2) { letter-spacing: -0.02em !important; }
 html[data-theme='D'] body [data-panel-main] [data-gelir-report] [data-report-ratio] > :first-child { font-weight: 650 !important; color: var(--mt-ink-2) !important; }
+
+/* ── 7. Ayrıntı satırları TEK TON (2026-09-25) ────────────────────────────────────────────────────
+   Zebra kalktı: grup satırı gri, ayrıntı satırı beyaz. Kademe farkı zeminden değil, zeminin
+   OLMAMASINDAN okunuyor; liste sakinleşti. */
+html[data-theme='D'] body [data-panel-main] [data-gelir-report] [data-report-row='detail'] { background: #fff !important; }
+html[data-theme='D'] body [data-panel-main] [data-gelir-report] [data-report-row='detail'] > td { background: transparent !important; }
+html[data-theme='D'] body [data-panel-main] [data-gelir-report] [data-report-row='detail']:hover { background: var(--mt-hover) !important; }
+/* Stok tablosunda da aynı sadeleştirme */
+html[data-theme='D'] body [data-panel-main] [data-gelir-stok] tbody tr:not([style*='copper']):not([style*='rose']) { background: #fff !important; }
