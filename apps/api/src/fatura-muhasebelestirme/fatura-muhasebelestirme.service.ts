@@ -16029,9 +16029,17 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const eski = sade(d.vendorName);
       if (eski === yeni) continue;
 
+      // "tamamlandi" YALNIZ gerçekten uzayan adlarda. Eşit uzunlukta kapsama, çoğu zaman aynı
+      // adın bir başka OCR okumasıdır ve Türkçe harf KAYBETTİRİR ("TİC.LTD.ŞTİ." → "TIC.LTD.ŞTI.",
+      // katla() ikisini aynı gördüğü için "kapsıyor" sanılıyordu). Yazım seçimi bu metodun değil,
+      // cari ünvan hizalamasının işi (orada Türkçe doğruluğu ölçütü var).
+      // Aynı ad, daha doğru Türkçe: OCR Türkçe harfi DÜŞÜRÜR, eklemez → harf sayısı artıyorsa
+      // yeni okuma daha iyidir ("MADENİ ESYA" → "MADENİ EŞYA"). Ters yön (ŞTİ → ŞTI) elenir.
+      const trPuan = (s: string) => (s.match(/[ÇĞİÖŞÜçğıöşü]/g) || []).length;
       const gerekce = !eski ? 'bos-doldu'
         : ADRES_KALIBI.test(this.ocr.foldTurkishAscii(eski)) ? 'adres-duzeldi'
-        : katla(yeni).includes(katla(eski)) ? 'tamamlandi'
+        : (katla(yeni).length > katla(eski).length && katla(yeni).includes(katla(eski))) ? 'tamamlandi'
+        : (katla(yeni) === katla(eski) && trPuan(yeni) > trPuan(eski)) ? 'turkce-duzeldi'
         : null;
       if (!gerekce) {
         korunan++;

@@ -1048,18 +1048,26 @@ Yanlış ipucuna uyup yanlış karar vermek, ipucu olmamasından DAHA KÖTÜDÜR
       // iki okumasıdır ve doğrusu ikincisidir. Sıklık tek başına yanlış yönü seçiyordu (bozuk
       // yazılış daha sık olabiliyor). Eşitlikte sıklık, sonra uzunluk.
       const trPuan = (s: string) => (s.match(/[ÇĞİÖŞÜçğıöşü]/g) || []).length;
+      // Ünvan büyük harfle yazılır; küçük harfli okuma ("Oto İsmail ... Şti.") ikincil kaynaktır.
+      const buyukOran = (s: string) => {
+        const harf = (s.match(/[A-Za-zÇĞİÖŞÜçğıöşü]/g) || []).length;
+        return harf ? (s.match(/[A-ZÇĞİÖŞÜ]/g) || []).length / harf : 0;
+      };
       const temsilciler = [...yazimGruplari.values()].map((g) => {
-        const en = [...g].sort((x, y) => trPuan(y.ad) - trPuan(x.ad) || y.adet - x.adet || y.ad.length - x.ad.length)[0];
+        const en = [...g].sort((x, y) =>
+          trPuan(y.ad) - trPuan(x.ad) || buyukOran(y.ad) - buyukOran(x.ad) || y.adet - x.adet || y.ad.length - x.ad.length)[0];
         return { ad: en.ad, adet: g.reduce((t, x) => t + x.adet, 0) };
       });
 
+      // ÖNCE belgelerdeki adaylar arasında karar ver. Defterdeki kayda kestirmeden uymak
+      // (gerçek vaka) şube önekli adı kazandırıyordu: DİNAMİK OTOMOTİV'in UBL kaydı
+      // "BEYLİKDÜZÜ SB. - ..." olduğu için şubesiz tam ünvanlı 88 belge şubeliye dönecekti.
+      // Adaylar kendi aralarında anlaşamıyorsa zaten elle karar gerekir; defter bunu çözmez.
       let resmi: string | null = null;
-      if (defter?.cariKaynak === 'ubl' && sade(defter.firmaUnvan)) {
-        resmi = sade(defter.firmaUnvan);                    // 1) UBL resmî ünvanı — tartışmasız
-      } else if (temsilciler.length === 1) {
-        resmi = temsilciler[0].ad;                          // 2) yalnız yazım farkı
+      if (temsilciler.length === 1) {
+        resmi = temsilciler[0].ad;                          // 1) yalnız yazım farkı
       } else {
-        // 3) bir aday diğer TÜM adayları kapsıyor mu (eksik okumanın tamamlanmışı)?
+        // 2) bir aday diğer TÜM adayları kapsıyor mu (eksik okumanın tamamlanmışı)?
         const enUzun = [...temsilciler].sort((x, y) => y.ad.length - x.ad.length)[0];
         if (temsilciler.every((t) => katla(enUzun.ad).includes(katla(t.ad)))) resmi = enUzun.ad;
       }
@@ -1069,6 +1077,17 @@ Yanlış ipucuna uyup yanlış karar vermek, ipucu olmamasından DAHA KÖTÜDÜR
         if (elleKarar.length < 20) elleKarar.push({ vkn, adaylar: temsilciler.map((t) => `${t.ad} (${t.adet})`) });
         continue;
       }
+
+      // 3) Defterdeki kayıt yalnız DAHA TAM ise öne geçer (UBL'den gelen resmî yazım). Güvenilirlik
+      // şartı: ya şirket eki taşısın ya da belgelerdeki adlarla örtüşsün — TT MOBİL'in defter kaydı
+      // "Değerli Hissettirir" (fişteki slogan) aksi halde gerçek ünvanın yerine geçiyordu. Defter
+      // adı seçilenden KISAysa (FİLE MARKET: "... ANONİM" vs "... ANONİM ŞİRKETİ") belge adı kalır.
+      const defterAdi = sade(defter?.firmaUnvan);
+      const defterGuvenilir = !!defterAdi && (
+        /\b(?:LTD|ŞTİ|STI|A\.?Ş|AŞ|ANONİM|ANONIM|ŞİRKET|SIRKET|LİMİTED|LIMITED|KOLL|KOM)\b/i.test(defterAdi)
+        || temsilciler.some((t) => katla(t.ad).includes(katla(defterAdi)) || katla(defterAdi).includes(katla(t.ad)))
+      );
+      if (defterGuvenilir && katla(defterAdi).includes(katla(resmi))) resmi = defterAdi;
 
       const farkliBelgeAdlari = adaylar.filter((a) => a.ad !== resmi);
       const defterFarkli = !defter || sade(defter.firmaUnvan) !== resmi;

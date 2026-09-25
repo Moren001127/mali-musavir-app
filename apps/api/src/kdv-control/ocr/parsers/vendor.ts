@@ -108,7 +108,11 @@ function ekOnekiniAl(raw: string, foldFn: FoldFn): string | null {
  */
 export function extractSaticiUnvan(text: string, foldFn: FoldFn): string | null {
   if (!text) return null;
-  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  // Bazi kayitlarda ham metin iki motorun ciktisini tasir: "[MAX] {json}" + "[AZURE] <fis metni>".
+  // Etiket unvanin parcasi degil (gercek vaka: "[AZURE] OTO ISMAIL ..."); JSON satiri hic unvan olamaz.
+  const lines = text.split(/\r?\n/)
+    .map((l) => l.replace(/^\s*\[(?:AZURE|MAX)\]\s*/i, '').trim())
+    .filter((l) => l && !l.startsWith('{'));
   const stop = lines.findIndex((l) => /SAYIN|ALICI|MUSTERI|MÜŞTERİ/.test(foldFn(l)));
   const topLines = stop >= 0 ? lines.slice(0, stop) : lines.slice(0, 12);
 
