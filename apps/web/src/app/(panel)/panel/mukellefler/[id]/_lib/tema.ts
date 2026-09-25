@@ -46,11 +46,14 @@ export const R_KART = 10;
 export const R_ALAN = 8;
 
 // ── Zeminler ──
-/** Kart zemini: degrade + köşede hafif altın parıltı. `renk` verilirse parıltı o renkte olur. */
+/** Kart zemini: degrade + köşede hafif parıltı. `renk` verilirse parıltı o renkte olur.
+ *  TABAN KATMANI NÖTR (2026-09-25): eskiden `#15120f → #0d0b09` (kahverengi-siyah) idi; beyaz temada
+ *  bej/krem bir zemine dönüşüyor, üstüne konan parıltı rengi görünmez hâle geliyordu
+ *  (Muzaffer Bey: "üstte firma unvanının yazdığı tablonun arka plan renk geçişi kötü"). */
 export function kartZemin(renk: string = GOLD, guc: 'hafif' | 'orta' = 'hafif'): CSSProperties {
   const a = guc === 'orta' ? '22' : '12';
   return {
-    background: `radial-gradient(120% 90% at 0% 0%, ${renk}${a}, transparent 55%), linear-gradient(160deg, rgba(255,255,255,0.035), rgba(255,255,255,0.01)), linear-gradient(160deg, #15120f, #0d0b09)`,
+    background: `radial-gradient(120% 90% at 0% 0%, ${renk}${a}, transparent 55%), linear-gradient(160deg, rgba(255,255,255,0.035), rgba(255,255,255,0.01)), linear-gradient(160deg, #131519, #0c0d10)`,
     border: `1px solid ${LINE}`,
     borderRadius: R_KART,
     boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04), 0 12px 30px rgba(0,0,0,0.25)',
