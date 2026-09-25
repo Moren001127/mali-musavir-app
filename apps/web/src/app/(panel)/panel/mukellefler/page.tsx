@@ -1,5 +1,6 @@
 'use client';
 import './aylik-takip.css';
+import './aylik-takip-nabiz.css';
 
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -444,10 +445,13 @@ export default function MukelleflerPage() {
         })}
       </div>
 
-      {/* AŞAMA SAYAÇLARI — dağılım çubuğu + lejant çipleri (karar 2026-09-22); tıklanınca süzer */}
+      {/* AŞAMA SAYAÇLARI — takvim nabzı + akan renk yelpazesi (karar 2026-09-25); tıklanınca süzer */}
       <AsamaSayaclari
         kartlar={stageCards}
         toplam={counts.total}
+        yil={year}
+        ay={month}
+        donemEtiketi={beyannameDonemiStr}
         secili={filter === 'islenmedi' || filter === 'beyanname-verilmedi' ? 'all' : filter}
         onSec={(key) => {
           const next: FilterKey = filter === key && key !== 'all' ? 'all' : key;
