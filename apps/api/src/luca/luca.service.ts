@@ -584,10 +584,23 @@ export class LucaService {
     //   Belgeyi FAILED yapmıyoruz: yükleme yapılmış olabilir, FAILED "tekrar dene"yi açar ve ÇİFT FİŞ
     //   üretir (bulgu 1/13). Bunun yerine POSTED + görünür teyit uyarısı: belge listeden kaybolmaz,
     //   ekran "Luca'dan teyit edin" der. Eski ajan alanı göndermezse (undefined) davranış değişmez.
-    const teyitsiz = extra?.fisBasari === false;
-    const teyitNotu = teyitsiz
+    // SATIR SAYISI KARŞILAŞTIRMASI (2026-09-25) — `beklenenSatir` geliyordu ama YALNIZ log'a
+    // yazılıyor, `recordCount` ile hiç KARŞILAŞTIRILMIYORDU. Luca bir satırı reddedip düşürürse
+    // (ünvan/vergi dairesi/sözlük hatası) fiş EKSİK kesilir; ajan tarafındaki kalıntı denetimi
+    // tek yönlüdür (fazlasını yakalar, eksiğini yakalamaz) → tüm belgeler yine POSTED olur ve
+    // portal "Aktarıldı" der. Artık eksik satır da teyitsiz sayılır: belge kaybolmaz ama
+    // "Luca'dan teyit edin" uyarısı çıkar.
+    const beklenen = Number(extra?.beklenenSatir || 0);
+    const eksikSatir = beklenen > 0 && nextRecordCount > 0 && nextRecordCount < beklenen
+      ? beklenen - nextRecordCount
+      : 0;
+    const teyitsiz = extra?.fisBasari === false || eksikSatir > 0;
+    const teyitNotu = extra?.fisBasari === false
       ? 'Excel yüklendi ve "Fiş Kes" tıklandı, fakat Luca\'da fiş onayı DOĞRULANAMADI. Luca > Fiş Listesi\'nden teyit edin; fiş yoksa belgeyi geri alıp yeniden gönderin.'
-      : null;
+      : eksikSatir > 0
+        ? `EKSİK SATIR: ${beklenen} satır gönderildi ama Luca ${nextRecordCount} satır işledi (${eksikSatir} satır düştü). `
+          + 'Fiş eksik kesilmiş olabilir — Luca > Fiş Listesi\'nden kontrol edin (genelde ünvan/vergi dairesi/sözlük reddi).'
+        : null;
     await (this.prisma as any).lucaFetchJob.updateMany({
       where: { id: jobId, status: { notIn: ['cancelled'] } },
       data: {
@@ -1367,12 +1380,45 @@ export class LucaService {
       },
       // Boyut C — priority önce, sonra eskiden yeni
       orderBy: [{ priority: 'desc' }, { createdAt: 'asc' }],
-      take: 5,
+      // KUYRUK BAŞI TIKANMASI (2026-09-25) — eskiden take:5 idi. Ajanın ALAMAYACAĞI bir iş
+      // (desteklemediği tip) her yoklamada yine ilk sırada dönüyor, ajan onu SESSİZCE atlıyor
+      // (agent.js:1886 `if (!JOB_TYPES.has(tip)) return;` — sunucuya hiçbir şey bildirmiyor) ve
+      // böyle 5 iş birikince YENİ hiçbir iş ajana ulaşmıyordu; temizlik ancak 24 saatte geliyordu.
+      // Çözüm iki parçalı: (a) pencere genişletildi, (b) aşağıda ajanın BİLDİRDİĞİ tip listesiyle
+      // süzülüyor — desteklenmeyen iş listeye hiç girmiyor, arkasındakiler akıyor.
+      take: 25,
     });
+
+    // (b) AJANIN DESTEKLEDİĞİ TİPLER — ping ile `agentStatus.meta.jobTypes` olarak geliyordu
+    // ama kuyruk bunu HİÇ kullanmıyordu. Artık destekleneni öne alıp en fazla 5 iş veriyoruz;
+    // liste boş kalmasın diye tip bilgisi yoksa (eski ajan) eski davranış korunur.
+    let jobsFiltered = jobs;
+    if (deviceId) {
+      const st = await (this.prisma as any).agentStatus.findFirst({
+        where: { agent: 'luca' },
+        select: { meta: true },
+        orderBy: { lastPing: 'desc' },
+      }).catch(() => null);
+      const hepsi = await (this.prisma as any).agentStatus.findMany({
+        where: { agent: 'luca', lastPing: { gte: new Date(Date.now() - 5 * 60 * 1000) } },
+        select: { meta: true },
+      }).catch(() => [] as any[]);
+      const benim = hepsi.find((x: any) => String((x?.meta as any)?.deviceId || '') === deviceId) || st;
+      const tipler: string[] = Array.isArray((benim?.meta as any)?.jobTypes) ? (benim!.meta as any).jobTypes : [];
+      if (tipler.length) {
+        const destekli = jobs.filter((j: any) => tipler.includes(j.tip));
+        const atlanan = jobs.length - destekli.length;
+        if (atlanan > 0) {
+          this.logger.warn(`[KUYRUK] ${deviceId}: ${atlanan} iş bu ajanın desteklemediği tipte → listeden çıkarıldı, arkadakiler akıyor`);
+        }
+        jobsFiltered = destekli;
+      }
+    }
+    jobsFiltered = jobsFiltered.slice(0, 5);
 
     // Her job için ilgili Taxpayer bilgilerini join'le
     const enriched = await Promise.all(
-      jobs.map(async (job: any) => {
+      jobsFiltered.map(async (job: any) => {
         const tp = await (this.prisma as any).taxpayer.findUnique({
           where: { id: job.mukellefId },
           select: {

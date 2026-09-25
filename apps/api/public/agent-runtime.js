@@ -92,7 +92,7 @@
   // v1.47.82 (2026-09-23): İŞLETME Fiş Kes — Luca'nın gönderim sonrası mesajı (lucaNotYaz) önce/sonra FARKIYLA loga
   //   yazılır (sayfa metni 4.200 karakterde kesiliyor, mesajlar sonda kalıyordu); sayfanın son 1.200 karakteri de yazılır.
   // v1.47.83 (2026-09-23): İŞLETME Fiş Kes — KOD alanı Luca biçiminde "614 | 5/10" yazılır (yalnız "614" sessizce reddediliyordu).
-  const AGENT_VERSION = '1.48.0';
+  const AGENT_VERSION = '1.48.1';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -3678,7 +3678,16 @@
                           fd.set(fi.name || 'formFile', yeniDosya, dosya0.name);
                           await log(`ℹ[liste-hizala] ${degisenler.length} değer Luca etiketiyle değiştirildi: ${[...new Set(degisenler)].slice(0, 6).join(' · ')}`);
                         }
-                        if (eslesmeyen.length) await log(`⚠[liste-hizala] Luca listesinde karşılığı YOK: ${[...new Set(eslesmeyen)].slice(0, 6).join(' · ')}`);
+                        // SÖZLÜK REDDİ ARTIK GÖRÜNÜR (2026-09-25) — karşılığı bulunamayan değer
+                        // yalnız log'a yazılıp CSV yine de gönderiliyordu. Luca o satırı reddedip
+                        // DÜŞÜRÜYOR, fiş eksik kesiliyor ve (eksik-satır kontrolü olmadığı için)
+                        // portal yine "Aktarıldı" diyordu. Artık iş teyitsiz işaretlensin diye
+                        // beklenen satır sayısıyla birlikte sunucuya taşınacak bir iz bırakılır.
+                        if (eslesmeyen.length) {
+                          const ozet = [...new Set(eslesmeyen)].slice(0, 6).join(' · ');
+                          await log(`⚠[liste-hizala] Luca listesinde karşılığı YOK: ${ozet} — bu satırlar Luca tarafından REDDEDİLEBİLİR (fiş eksik kesilebilir).`);
+                          try { window.__morenSozlukRed = (window.__morenSozlukRed || 0) + eslesmeyen.length; } catch {}
+                        }
                         if (tabloTurleri.length) await log(`ℹ[liste-hizala] KDV tablo türleri (${tabloTurleri.length}): ${tabloTurleri.slice(0, 10).join(' | ').slice(0, 400)}`);
                       } catch (e7) { await log(`liste-hizala atlandı: ${(e7 && e7.message) || e7}`); }
                       const resp = await fw.fetch(action, { method: 'POST', body: fd, credentials: 'include' });

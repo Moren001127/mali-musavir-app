@@ -779,6 +779,13 @@ export class EarsivService {
     // biçimde) kendi dönemlerine yazıyor. Canlı örnek: 46 fatura geldi → 21'i 2026-09,
     // 25'i 2026-08. Kullanıcı ekranda 21 görüp "46 nerede?" diye düşünüyordu.
     // Artık dağılım iş günlüğüne yazılır; başka döneme yazılan varsa açıkça söylenir.
+    const tarihsiz = parsed.filter((f: any) => f.tarihOkunamadi).length;
+    if (tarihsiz > 0) {
+      uyarilar.push(
+        `⚠️ ${tarihsiz} faturanın TARİHİ okunamadı; bugünün tarihiyle kaydedildiler ve bu yüzden `
+        + `kendi dönemlerinde görünmeyebilir. Bu faturaları kontrol edin.`,
+      );
+    }
     if (donemDagilimi.size > 1) {
       const satir = [...donemDagilimi.entries()].sort()
         .map(([d, n]) => `${d}: ${n}`).join(' · ');

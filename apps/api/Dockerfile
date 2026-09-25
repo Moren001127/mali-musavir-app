@@ -13,6 +13,10 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Playwright'ın kendi Chromium'unu indirmesini engelle — sistem Chromium'u kullan
+# SAAT DILIMI (2026-09-25) — konteyner UTC calisiyordu. Cron Istanbul saatine ayarli ama
+# donem hesabi `new Date().getMonth()` ile SUNUCU saatinden turetiliyordu: 1 Eylul 02:00
+# Istanbul = 31 Agustos 23:00 UTC → gece isi "2026-08" yerine "2026-07" cekiyordu.
+ENV TZ=Europe/Istanbul
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
 ENV CHROMIUM_PATH=/usr/bin/chromium

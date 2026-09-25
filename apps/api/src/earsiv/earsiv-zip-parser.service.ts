@@ -29,6 +29,8 @@ export interface ParsedEarsivFatura {
   htmlContent?: string;
   zipFileName: string;
   sourcePath?: string;
+  /** XML'de IssueDate okunamadı → faturaTarihi BUGÜN'e düştü. Çağıran uyarı üretir (2026-09-25). */
+  tarihOkunamadi?: boolean;
 }
 
 @Injectable()
@@ -437,10 +439,15 @@ export class EarsivZipParserService {
       return isFinite(n) ? n : undefined;
     };
 
+    // TARİH OKUNAMADI İŞARETİ (2026-09-25) — varsayılan BUGÜN olduğu için tarihi okunamayan
+    // fatura sessizce BUGÜNÜN dönemine yazılıyordu; kullanıcı Nisan'ı sorguladığında o fatura
+    // listede çıkmıyor, sessiz kayıp gibi görünüyordu. Varsayılan korunuyor (kayıt kaybolmasın)
+    // ama artık İŞARETLENİYOR; çağıran taraf bunu işin günlüğüne uyarı olarak yazar.
     let faturaTarihi = new Date();
+    let tarihOkunamadi = true;
     if (dateMatch) {
       const d = new Date(dateMatch[1]);
-      if (!isNaN(d.getTime())) faturaTarihi = d;
+      if (!isNaN(d.getTime())) { faturaTarihi = d; tarihOkunamadi = false; }
     }
 
     // Türk muhasebe görünümü: matrah = TaxExclusiveAmount (indirimler düşülmüş, KDV'siz);
@@ -454,6 +461,7 @@ export class EarsivZipParserService {
     return {
       faturaNo: idMatch?.[1]?.trim() || uuidMatch?.[1]?.trim() || 'BILINMIYOR',
       faturaTarihi,
+      tarihOkunamadi,
       ettn: uuidMatch?.[1]?.trim(),
       matrah,
       kdvTutari,
@@ -615,10 +623,12 @@ export class EarsivZipParserService {
     }
     const ettn = txt(get(['UUID']));
     const issueDateRaw = txt(get(['IssueDate']));
+    // TARİH OKUNAMADI İŞARETİ — bkz. yukarıdaki açıklama (aynı tuzak bu yolda da vardı).
     let faturaTarihi = new Date();
+    let tarihOkunamadi = true;
     if (issueDateRaw) {
       const d = new Date(issueDateRaw);
-      if (!isNaN(d.getTime())) faturaTarihi = d;
+      if (!isNaN(d.getTime())) { faturaTarihi = d; tarihOkunamadi = false; }
     }
 
     // Şahıs satıcı/alıcı: ünvan PartyName/PartyLegalEntity'de değil <cac:Person>
@@ -716,6 +726,7 @@ export class EarsivZipParserService {
     return {
       faturaNo: faturaNo || 'BILINMIYOR',
       faturaTarihi,
+      tarihOkunamadi,
       ettn,
       satici,
       saticiVergiNo,

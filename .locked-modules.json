@@ -17,12 +17,12 @@
       "lockedBy": "muzaffer"
     },
     "apps/api/public/agent-runtime.js": {
-      "sha256": "c50662c3991b2172cafc7f40e82f8823998b51ce9f401bd018b8090b8320c86f",
+      "sha256": "65752abe111c3def843552cc3665df8d452ad57ebbf2394b8ba281a1d9f6251a",
       "reason": "Moren Agent v1.36.64 - log denetim uyarilari + Claude Vision maliyet optimizasyonu",
       "lockedBy": "muzaffer"
     },
     "apps/web/public/moren-agent.js": {
-      "sha256": "c50662c3991b2172cafc7f40e82f8823998b51ce9f401bd018b8090b8320c86f",
+      "sha256": "65752abe111c3def843552cc3665df8d452ad57ebbf2394b8ba281a1d9f6251a",
       "reason": "Moren Agent v1.36.64 (web ayna kopya) - log denetim uyarilari + Claude Vision maliyet optimizasyonu",
       "lockedBy": "muzaffer"
     },
@@ -52,7 +52,7 @@
       "lockedBy": "muzaffer"
     },
     "apps/api/src/earsiv/earsiv.service.ts": {
-      "sha256": "f913e76895d110cc95dfe96e4ab29490c143d49b43c02c23d54c878a1704893f",
+      "sha256": "a7401046e8bc92a33e33146f2696308aeaefe2b1d16a1922a501c8b713538158",
       "reason": "E-Arsiv service — uploadFaturasToMihsap",
       "lockedBy": "muzaffer"
     }

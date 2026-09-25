@@ -705,7 +705,12 @@ async function girisKilidi(page, acik) {
     if (acik) {
       girisKilidiDerinlik++;
       if (girisKilidiDerinlik > 1) return;
-      await page.context().addCookies([{ name: 'moren_node_giris', value: '1', domain: '.luca.com.tr', path: '/', secure: true }]);
+      // ZAMAN DAMGASI (2026-09-25) — kilit acik kalirsa ajan SONSUZA KADAR is almiyordu:
+      // cerez varken __lucaJobRunning sabit true okunur, is dongusu ilk kapida doner; ajan
+      // yine de "calisiyor" ping'i attigi icin portal "ajan acik" der ama HIC is baslamaz.
+      // Kilidi kaldirma yolu hata yutuyor ve watchdog'lar tarayiciyi kapatmadan prosesi
+      // oldurebiliyordu. Deger artik "1:<ms>"; okuyan taraf 3 dakikadan eskiyse YOK SAYAR.
+      await page.context().addCookies([{ name: 'moren_node_giris', value: `1:${Date.now()}`, domain: '.luca.com.tr', path: '/', secure: true }]);
       await page.evaluate(() => {
         if (window.__morenNodeGirisKilidi) return;
         window.__morenNodeGirisKilidi = true;
@@ -1301,7 +1306,13 @@ async function installMorenRuntimeBridge(context, page) {
     const installGirisKilidi = () => {
       try {
         if (window.__morenNodeGirisKilidi) return;
-        if (!/(?:^|;\s*)moren_node_giris=1(?:;|$)/.test(document.cookie || '')) return;
+        // Kilit 3 dakikadan eskiyse YOK SAY (asili kalmis kilit ajani is alamaz hale getiriyordu).
+        {
+          const m = /(?:^|;\s*)moren_node_giris=1(?::(\d+))?(?:;|$)/.exec(document.cookie || '');
+          if (!m) return;
+          const ts = m[1] ? Number(m[1]) : 0;
+          if (ts && Date.now() - ts > 180000) return;
+        }
         window.__morenNodeGirisKilidi = true;
         window.__morenNodeGirisSonDeger = false;
         Object.defineProperty(window, '__lucaJobRunning', {
@@ -1372,7 +1383,13 @@ async function installMorenRuntimeBridge(context, page) {
       const installGirisKilidi = () => {
         try {
           if (window.__morenNodeGirisKilidi) return;
-          if (!/(?:^|;\s*)moren_node_giris=1(?:;|$)/.test(document.cookie || '')) return;
+          // Kilit 3 dakikadan eskiyse YOK SAY (asili kalmis kilit ajani is alamaz hale getiriyordu).
+        {
+          const m = /(?:^|;\s*)moren_node_giris=1(?::(\d+))?(?:;|$)/.exec(document.cookie || '');
+          if (!m) return;
+          const ts = m[1] ? Number(m[1]) : 0;
+          if (ts && Date.now() - ts > 180000) return;
+        }
           window.__morenNodeGirisKilidi = true;
           window.__morenNodeGirisSonDeger = false;
           Object.defineProperty(window, '__lucaJobRunning', {

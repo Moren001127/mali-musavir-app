@@ -97,9 +97,14 @@ export class LucaScheduleService {
       this.logger.log('Gece e-Arşiv sorgusu KAPALI (varsayılan; açmak için NIGHTLY_EARSIV=on)');
       return;
     }
-    const now = new Date();
+    // DÖNEM İSTANBUL SAATİNDEN (2026-09-25) — cron Istanbul'a ayarlıydı ama dönem sunucu
+    // saatinden (UTC) türetiliyordu: 1 Eylül 02:00 İstanbul = 31 Ağustos 23:00 UTC →
+    // gece işi "2026-08" yerine "2026-07" çekiyordu. Konteynere TZ=Europe/Istanbul eklendi,
+    // burada da açıkça İstanbul'a göre hesaplanıyor (TZ ayarı düşse bile doğru kalsın).
+    const trNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
+    const now = trNow;
     // donem = ÖNCEKİ AY → ajan Sorgu1 = önceki ay tamamı, Sorgu2 = bu ay başı → bugün.
-    const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const prev = new Date(trNow.getFullYear(), trNow.getMonth() - 1, 1);
     const donem = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`;
     const firstDay = prev; // kapanan-firma filtresi: önceki ay başında aktif olanlar
 
@@ -152,8 +157,17 @@ export class LucaScheduleService {
     let mukellefIds: string[] = Array.isArray(sched.mukellefIds) ? sched.mukellefIds : [];
     if (mukellefIds.length === 0) {
       // Tüm aktif mükellefler
+      // AKTİF SÜZGECİ (2026-09-25) — burada yalnız YORUM vardı, süzgeç hiç yazılmamıştı:
+      // işi bırakmış firmalar ve WHATSAPP-* sanal kayıtlar dahil 1000 mükellefe iş açılıyordu
+      // (gereksiz Luca yükü + 24 saat sonra "bayat iş" iptalleri + bildirim gürültüsü).
+      // Gece e-Arşiv işi bu süzgeci zaten doğru uyguluyor; zamanlı yol ona eşitlendi.
       const taxpayers = await (this.prisma as any).taxpayer.findMany({
-        where: { tenantId: sched.tenantId, /* aktif filter buraya */ },
+        where: {
+          tenantId: sched.tenantId,
+          isActive: true,
+          NOT: { taxNumber: { startsWith: 'WHATSAPP-' } },
+          OR: [{ endDate: null }, { endDate: { gte: new Date() } }],
+        },
         select: { id: true, companyName: true, firstName: true, lastName: true },
         take: 1000,
       });
@@ -161,7 +175,9 @@ export class LucaScheduleService {
     }
     const opts = (sched.options as any) || {};
     // Dönem: opts.donem belirtildiyse onu kullan, yoksa içinde bulunulan ay
-    const donem = opts.donem || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    // Dönem varsayılanı da İstanbul saatinden (sunucu UTC ise ayın 1'inde bir önceki aya kayıyordu).
+    const trSimdi = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
+    const donem = opts.donem || `${trSimdi.getFullYear()}-${String(trSimdi.getMonth() + 1).padStart(2, '0')}`;
 
     let created = 0;
     for (const mukellefId of mukellefIds) {
@@ -195,6 +211,18 @@ export class LucaScheduleService {
       }
     } catch (e: any) {
       this.logger.warn(`Cron parse hatası (${sched.cron}): ${e?.message}`);
+    }
+    // BOĞMA KORUMASI (2026-09-25) — cron okunamazsa `nextRunAt` null kalıyordu; tetikleyicinin
+    // sorgusu ise `OR: [{ nextRunAt: null }, ...]` olduğu için null'ı "vadesi gelmiş" sayıyordu.
+    // Sonuç: hatalı cron yazılmış BİR satır DAKİKADA BİR tüm mükellefler için iş üretiyor ve
+    // Luca'yı boğuyordu (geçmişteki flood senaryosunun aynısı). Artık satır pasife alınır.
+    if (!nextRunAt) {
+      this.logger.error(`Zamanlama PASİFE ALINDI — cron çözümlenemedi (${sched.cron}); dakikada bir tetiklenip Luca'yı boğmasın diye kapatıldı.`);
+      await (this.prisma as any).scheduledLucaJob.update({
+        where: { id: sched.id },
+        data: { lastRunAt: now, nextRunAt: null, active: false },
+      }).catch((err: any) => this.logger.warn(`Zamanlama pasife alınamadı: ${err?.message}`));
+      return;
     }
     await (this.prisma as any).scheduledLucaJob.update({
       where: { id: sched.id },
