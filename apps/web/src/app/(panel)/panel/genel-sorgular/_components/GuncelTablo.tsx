@@ -19,45 +19,35 @@ import { TurIkonu } from './TurIkonu';
  * Kenarlıklı düz tablo; durum kelimeyle.
  * 2026-09-22 profesyonel görünüm: VKN/TCKN ayrı sütun (satırlar tek satır, 42px), kart başlığı beyaz (ad · özet ·
  * son sorgu · sağda Excel), boş durum tek sakin satır.
- * 2026-09-25 TAŞMA DÜZELTMESİ (Muzaffer Bey: "bazı tablolar taşmış, sığmamış"): satır başına "Son sorgu"
- * sütunu KALKTI — aynı bilgi kart başlığında ("son sorgu …"), mükellef bazında da Mükellef Panosu'nda var;
- * satırda tekrar edip 142px yiyordu. Kalan sütunlar gerçek en-az genişliğe çekildi ve EN_AZ_GENISLIK artık
- * sütun toplamına EŞİT (eskiden toplamın altındaydı: table-layout:fixed'de sütunlar birbirini eziyordu).
+ * 2026-09-25 TAŞMA DÜZELTMESİ (Muzaffer Bey: "bazı tablolar taşmış, sığmamış" → 2. tur: "gelen e-arşivde
+ * ödenecek tutar taşmış"). Üç sütun kalktı:
+ *   "Son sorgu"   — aynı bilgi kart başlığında ("son sorgu …") zaten yazıyor, satırda 142px yiyordu.
+ *   "Mükellef" + "VKN / TCKN" — ekran artık MÜKELLEF SEÇİMLİ (tek mükellef), her satırda adını tekrar
+ *                  etmek 374px boşa harcıyordu; ad araç çubuğundaki seçicide duruyor.
+ * Ayrıca EN_AZ_GENISLIK artık sütun toplamına EŞİT (eskiden toplamın ALTINDAYDI: table-layout:fixed'de
+ * sütunlar birbirini eziyor, son sütun — Ödenecek — kart dışına taşıyordu).
  */
 
 /** Tablo en az genişliği = sabit sütunlar + esnek sütunun tabanı. Sayfa 1560px; altına inince yatay kaydırma. */
-const EN_AZ_GENISLIK: Record<SorguTuru, number> = { VERGI_BORCU: 1020, E_HACIZ: 1202, YOKLAMA_DENETIM: 1202, POS: 1042, GELEN_EARSIV: 1270 };
+const EN_AZ_GENISLIK: Record<SorguTuru, number> = { VERGI_BORCU: 726, E_HACIZ: 828, YOKLAMA_DENETIM: 828, POS: 684, GELEN_EARSIV: 896 };
 const AYRINTI_GENISLIK = 84;
 
 const BOS_BASLIK = 'Henüz sorgu çalıştırılmadı';
-const BOS_ACIKLAMA = "Yukarıdan mükellef seçip Sorgula'ya basın ya da gece sorgusunu bekleyin.";
+const BOS_ACIKLAMA = "Bu mükellef için Sorgula'ya basın ya da gece sorgusunu bekleyin.";
 
 type Sutun = { baslik: string; genislik?: number; sag?: boolean; tekSatir?: boolean; hucre: (s: GuncelSatir) => React.ReactNode };
 
-const MUKELLEF: Sutun = {
-  baslik: 'Mükellef',
-  genislik: 250,
-  tekSatir: true,
-  hucre: (s) => (
-    <Link href={`/panel/mukellefler/${s.taxpayerId}`} className="gs-mukellef" title={`${sorguMukellefAdi(s.taxpayer) || s.taxpayerId} — son sorgu ${tarihSaat(s.sorguTarihi)}`} onClick={(e) => e.stopPropagation()}>{sorguMukellefAdi(s.taxpayer) || s.taxpayerId}</Link>
-  ),
-};
-const VKN: Sutun = { baslik: 'VKN / TCKN', genislik: 124, hucre: (s) => (s.taxpayer?.taxNumber ? <span className="gs-vkn">{s.taxpayer.taxNumber}</span> : <span className="gs-sifir">—</span>) };
-const DONEM: Sutun = { baslik: 'Dönem', genislik: 112, tekSatir: true, hucre: (s) => <span>{donemEtiketi(s.donem) || '—'}</span> };
+const DONEM: Sutun = { baslik: 'Dönem', genislik: 128, tekSatir: true, hucre: (s) => <span>{donemEtiketi(s.donem) || '—'}</span> };
 const para = (n: number, kirmizi = false) => <span className={n === 0 ? 'gs-sifir' : kirmizi ? 'gs-kirmizi' : ''}>{tutar(n)}</span>;
 
 const SUTUNLAR: Record<SorguTuru, Sutun[]> = {
   VERGI_BORCU: [
-    { ...MUKELLEF, genislik: 270 },
-    VKN,
     { baslik: 'Vadesi geçmiş (₺)', genislik: 152, sag: true, hucre: (s) => para(s.vadesiGecmis, s.vadesiGecmis > 0) },
     { baslik: 'Vadesi gelmemiş (₺)', genislik: 162, sag: true, hucre: (s) => para(s.vadesiGelmemis) },
     { baslik: 'Toplam borç (₺)', genislik: 152, sag: true, hucre: (s) => <b>{tutar(s.toplam)}</b> },
     { baslik: 'Kalem', genislik: 76, sag: true, hucre: (s) => adet(s.kalemSayisi) },
   ],
   E_HACIZ: [
-    MUKELLEF,
-    VKN,
     { baslik: 'Kapsam', genislik: 84, hucre: (s) => (s.kapsam === 'ARAC' ? 'Araç' : 'Banka') },
     { baslik: 'Bildiri no', genislik: 178, tekSatir: true, hucre: (s) => <span className="gs-sayi" title={s.bildiriNo}>{s.bildiriNo}</span> },
     { baslik: 'Vergi dairesi', genislik: 150, tekSatir: true, hucre: (s) => <span title={s.vergiDairesi || undefined}>{s.vergiDairesi || s.vergiDairesiKodu || '—'}</span> },
@@ -65,8 +55,6 @@ const SUTUNLAR: Record<SorguTuru, Sutun[]> = {
     { baslik: 'Durum', tekSatir: true, hucre: (s) => <span className={s.tatbikEdildi ? 'gs-kirmizi' : 'gs-soluk'} title={durumYazisi(s.durum)}>{durumYazisi(s.durum)}</span> },
   ],
   YOKLAMA_DENETIM: [
-    MUKELLEF,
-    VKN,
     { baslik: 'Kayıt', genislik: 86, hucre: (s) => (s.kayit === 'DENETIM' ? 'Denetim' : 'Yoklama') },
     { baslik: 'Vergi dairesi', genislik: 150, tekSatir: true, hucre: (s) => <span title={s.vergiDairesi || undefined}>{s.vergiDairesi || '—'}</span> },
     { baslik: 'Kod', genislik: 152, tekSatir: true, hucre: (s) => <span className="gs-sayi" title={s.kod}>{s.kod || '—'}</span> },
@@ -74,16 +62,12 @@ const SUTUNLAR: Record<SorguTuru, Sutun[]> = {
     { baslik: 'Tarih', genislik: 126, tekSatir: true, hucre: (s) => <span className="gs-sayi">{tarihSaat(s.tarih) || '—'}</span> },
   ],
   POS: [
-    MUKELLEF,
-    VKN,
     DONEM,
     { baslik: 'Banka / kuruluş', tekSatir: true, hucre: (s) => <span title={s.unvan}>{`${s.unvan || '—'}${s.kaynak === 'ODEME_KURULUSU' ? ' (ödeme kuruluşu)' : ''}`}</span> },
     { baslik: 'Üye işyeri no', genislik: 136, hucre: (s) => <span className="gs-sayi gs-soluk">{s.uyeIsyeriNo || '—'}</span> },
     { baslik: 'Tutar (₺)', genislik: 140, sag: true, hucre: (s) => <b>{tutar(s.tutar)}</b> },
   ],
   GELEN_EARSIV: [
-    MUKELLEF,
-    VKN,
     // Dönem sütunu yok: fatura tarihi zaten dönemi söylüyor, satıcı ünvanına yer açıyor (2026-09-25 taşma düzeltmesi).
     { baslik: 'Fatura tarihi', genislik: 118, tekSatir: true, hucre: (s) => <span className="gs-sayi">{tarihKisa(s.duzenlenmeTarihi) || '—'}</span> },
     { baslik: 'Fatura no', genislik: 168, tekSatir: true, hucre: (s) => <span className="gs-sayi" title={s.faturaNo}>{s.faturaNo}</span> },
@@ -101,29 +85,32 @@ function durumYazisi(d: string): string {
   return k.charAt(0).toLocaleUpperCase('tr-TR') + k.slice(1);
 }
 
-/** Kart başlığındaki özet cümlesi: kayıt sayısı · sorgulanan mükellef · en son sorgu zamanı. */
+/**
+ * Kart başlığındaki özet cümlesi: kayıt sayısı · en son sorgu zamanı.
+ * 2026-09-25: "1 mükellef sorgulandı, 1'inde haciz yok" kalıbı KALKTI — ekran tek mükellefli, aynı cümle
+ * hemen altındaki boş-durum satırında tekrar ediyordu.
+ */
 function ozetCumlesi(tur: SorguTuru, total: number, ozet?: { mukellef: number; bos: number; enYeniSorgu?: string | null }): string {
   if (!ozet || ozet.mukellef === 0) return '';
-  const m = `${adet(ozet.mukellef)} mükellef`;
-  const son = ozet.enYeniSorgu ? ` · son sorgu ${tarihSaat(ozet.enYeniSorgu)}` : '';
-  switch (tur) {
-    case 'VERGI_BORCU': return `${m}${ozet.bos ? ` · ${adet(ozet.bos)} borçsuz` : ''}${son}`;
-    case 'E_HACIZ': return `${adet(total)} bildiri · ${m} sorgulandı${ozet.bos ? `, ${adet(ozet.bos)}'inde haciz yok` : ''}${son}`;
-    case 'YOKLAMA_DENETIM': return `${adet(total)} tutanak · ${m} sorgulandı${ozet.bos ? `, ${adet(ozet.bos)}'inde tutanak yok` : ''}${son}`;
-    case 'POS': return `${adet(total)} satır · ${m}${son}`;
-    case 'GELEN_EARSIV': return `${adet(total)} fatura · ${m}${son}`;
-  }
+  const son = ozet.enYeniSorgu ? `son sorgu ${tarihSaat(ozet.enYeniSorgu)}` : '';
+  const say =
+    tur === 'VERGI_BORCU' ? (total ? `${adet(total)} kayıt` : 'borç yok')
+    : tur === 'E_HACIZ' ? (total ? `${adet(total)} bildiri` : 'bildiri yok')
+    : tur === 'YOKLAMA_DENETIM' ? (total ? `${adet(total)} tutanak` : 'tutanak yok')
+    : tur === 'POS' ? (total ? `${adet(total)} satır` : 'POS işlemi yok')
+    : total ? `${adet(total)} fatura` : 'fatura yok';
+  return [say, son].filter(Boolean).join(' · ');
 }
 
+/** Boş kart satırı. Sorgu HİÇ çalışmadıysa ne yapılacağını, çalıştıysa neyin çıkmadığını söyler. */
 function bosAciklama(tur: SorguTuru, ozet?: { mukellef: number }): { baslik: string; aciklama: string } {
   if (!ozet || ozet.mukellef === 0) return { baslik: BOS_BASLIK, aciklama: BOS_ACIKLAMA };
-  const m = `${adet(ozet.mukellef)} mükellef sorgulandı`;
   switch (tur) {
-    case 'VERGI_BORCU': return { baslik: 'Borç kaydı yok', aciklama: `${m}.` };
-    case 'E_HACIZ': return { baslik: 'Haciz bildirisi yok', aciklama: `${m}; hiçbirinde e-haciz bildirisi bulunmadı.` };
-    case 'YOKLAMA_DENETIM': return { baslik: 'Tutanak yok', aciklama: `${m}; yoklama ya da denetim tutanağı bulunmadı.` };
-    case 'POS': return { baslik: 'POS işlemi yok', aciklama: `${m}; seçili dönemde POS tutarı bulunmadı.` };
-    case 'GELEN_EARSIV': return { baslik: 'Gelen e-Arşiv faturası yok', aciklama: `${m}; seçili dönemde mükellef adına düzenlenmiş e-Arşiv faturası bulunmadı.` };
+    case 'VERGI_BORCU': return { baslik: 'Borç kaydı yok', aciklama: 'Sorgu çalıştı; bu mükellefin vergi borcu çıkmadı.' };
+    case 'E_HACIZ': return { baslik: 'Haciz bildirisi yok', aciklama: 'Sorgu çalıştı; bu mükellefte e-haciz bildirisi bulunmadı.' };
+    case 'YOKLAMA_DENETIM': return { baslik: 'Tutanak yok', aciklama: 'Sorgu çalıştı; yoklama ya da denetim tutanağı bulunmadı.' };
+    case 'POS': return { baslik: 'POS işlemi yok', aciklama: 'Sorgu çalıştı; seçili dönemde POS tutarı bulunmadı.' };
+    case 'GELEN_EARSIV': return { baslik: 'Gelen e-Arşiv faturası yok', aciklama: 'Sorgu çalıştı; seçili dönemde bu mükellef adına düzenlenmiş e-Arşiv faturası bulunmadı.' };
   }
 }
 
@@ -177,7 +164,7 @@ export function GuncelTablo(p: GuncelTabloProps) {
 
   return (
     <section className="gs-grup" data-gs-grup={p.tur}>
-      <div className="gs-grup-bas">
+      <div className="gs-grup-bas" data-tur={p.tur}>
         <span className="gs-grup-adi"><TurIkonu tur={p.tur} buyuk />{SORGU_TURU_ADI[p.tur]}</span>
         <span className="gs-grup-sayi">{q.isLoading ? 'Yükleniyor…' : ozetCumlesi(p.tur, total, ozet)}{!ayBazli && p.suzgec.donem ? ' · dönem süzgeci bu türde uygulanmaz' : ''}</span>
         {earsiv && (

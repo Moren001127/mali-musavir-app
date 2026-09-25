@@ -55,26 +55,6 @@ export class GenelSorgularController {
   }
 
   /**
-   * GET /genel-sorgular/pano?donem=YYYY-MM&page=1&pageSize=25 — MÜKELLEF PANOSU
-   * → { rows:[{ taxpayerId, taxpayer, sonSorgu, sorgulanmayan, borc, haciz, yoklama, pos, earsiv, uyari }],
-   *     total, page, pageSize, ozet:{ mukellef, borclu, hacizli, toplamBorc, vadesiGecmis, enYeniSorgu } }
-   * DİKKAT: kök @Get()'ten ÖNCE durmalı, yoksa "/pano" kök uca düşer.
-   */
-  @Get('pano')
-  pano(
-    @Req() req: any,
-    @Query('donem') donem?: string,
-    @Query('page') page?: string,
-    @Query('pageSize') pageSize?: string,
-  ) {
-    return this.genelSorgular.pano(req.user.tenantId, {
-      donem: donem || undefined,
-      page: page ? parseInt(page, 10) : undefined,
-      pageSize: pageSize ? parseInt(pageSize, 10) : undefined,
-    });
-  }
-
-  /**
    * GET /genel-sorgular?taxpayerId=&tur=&donem=YYYY-MM&page=1&pageSize=50
    * → { rows:[{ id, taxpayerId, taxpayer:{id,companyName,firstName,lastName,taxNumber}, tur, donem,
    *              sorguTarihi, ozet, veri, kaynak, whatsappGonderildiMi }], total, page, pageSize }

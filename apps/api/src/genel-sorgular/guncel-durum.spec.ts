@@ -1,4 +1,4 @@
-import { enSonSonuclar, guncelSatirlar, panoSatirlari, type GuncelTur, type HamSonuc } from './guncel-durum';
+import { enSonSonuclar, guncelSatirlar, type HamSonuc } from './guncel-durum';
 
 const tp = (id: string) => ({ id, companyName: id.toUpperCase(), firstName: null, lastName: null, taxNumber: '1' });
 const ham = (o: Partial<HamSonuc> & { taxpayerId: string; tur: string; sorguTarihi: string }): HamSonuc =>
@@ -50,74 +50,5 @@ describe('güncel durum — koşu geçmişi değil, mükellef başına en son so
     const { rows: r } = guncelSatirlar('YOKLAMA_DENETIM', enSonSonuclar('YOKLAMA_DENETIM', rows));
     expect(r.map((x) => x.kod)).toEqual(['D1', 'Y1']);
     expect(r[1]).toMatchObject({ kayit: 'YOKLAMA', pdfDocumentId: 'd1' });
-  });
-});
-
-describe('mükellef panosu — mükellef başına tek satır, 5 tür yan yana', () => {
-  /** Ham kayıtları tür bazına ayırıp en son sonuçlara indirger (servisin yaptığının aynısı). */
-  const turBazli = (rows: HamSonuc[]) => {
-    const out = {} as Record<GuncelTur, HamSonuc[]>;
-    for (const tur of ['VERGI_BORCU', 'E_HACIZ', 'YOKLAMA_DENETIM', 'POS', 'GELEN_EARSIV'] as GuncelTur[]) {
-      out[tur] = enSonSonuclar(
-        tur,
-        rows.filter((r) => r.tur === tur).sort((a, b) => String(b.sorguTarihi).localeCompare(String(a.sorguTarihi))),
-      );
-    }
-    return out;
-  };
-
-  it('vadesi geçmiş borçlu mükellef uyari=2 ve en üstte; tatbik edilmiş haciz de uyari=2', () => {
-    const { rows, ozet } = panoSatirlari(
-      turBazli([
-        ham({ taxpayerId: 'sakin', tur: 'YOKLAMA_DENETIM', sorguTarihi: '2026-09-22T02:00:00Z', veri: { yoklamalar: [{ yoklamaKodu: 'Y1', tarih: '2025-09-26T12:32:16' }], denetimler: [] } }),
-        ham({ taxpayerId: 'borclu', tur: 'VERGI_BORCU', sorguTarihi: '2026-09-25T03:40:00Z', veri: { toplam: 384303.91, vadesiGecmis: 379614.21, vadesiGelmemis: 4689.7, kalemler: [{}, {}, {}] } }),
-        ham({ taxpayerId: 'hacizli', tur: 'E_HACIZ', sorguTarihi: '2026-09-25T03:31:00Z', veri: { bildiriler: [{ bildiriNo: '1', tutar: 113505.77, durum: 'HACİZ TATBİK EDİLMİŞTİR' }, { bildiriNo: '2', tutar: '16887.67', durum: 'HACİZ TATBİK EDİLECEK VARLIK BULUNAMAMIŞTIR' }] } }),
-      ]),
-    );
-    expect(rows.map((r) => r.taxpayerId)).toEqual(['borclu', 'hacizli', 'sakin']); // uyari desc → vadesi geçmiş desc
-    expect(rows[0]).toMatchObject({ uyari: 2, sorgulanmayan: 4, sonSorgu: '2026-09-25T03:40:00Z' });
-    expect(rows[0].borc).toMatchObject({ toplam: 384303.91, vadesiGecmis: 379614.21, kalemSayisi: 3 });
-    expect(rows[1]).toMatchObject({ uyari: 2, borc: null });
-    expect(rows[1].haciz).toEqual({ bildiri: 2, tatbik: 1, tutar: 130393.44, sorguTarihi: '2026-09-25T03:31:00Z' });
-    expect(rows[2]).toMatchObject({ uyari: 0, sorgulanmayan: 4 });
-    expect(rows[2].yoklama).toEqual({ tutanak: 1, sonTarih: '2025-09-26T12:32:16', sorguTarihi: '2026-09-22T02:00:00Z' });
-    expect(ozet).toEqual({ mukellef: 3, borclu: 1, hacizli: 1, toplamBorc: 384303.91, vadesiGecmis: 379614.21, enYeniSorgu: '2026-09-25T03:40:00Z' });
-  });
-
-  it('"borcu yok" ile "hiç sorgulanmadı" ayrı: sonucu olan mükellefin borc nesnesi dolu (toplam 0) ve uyari=0', () => {
-    const { rows, ozet } = panoSatirlari(
-      turBazli([
-        ham({ taxpayerId: 'temiz', tur: 'VERGI_BORCU', sorguTarihi: '2026-09-25T03:26:00Z', veri: { toplam: 0, vadesiGecmis: 0, vadesiGelmemis: 0, kalemler: [] } }),
-        ham({ taxpayerId: 'temiz', tur: 'E_HACIZ', sorguTarihi: '2026-09-25T03:23:00Z', veri: { bildiriler: [] } }),
-        ham({ taxpayerId: 'gelmemis', tur: 'VERGI_BORCU', sorguTarihi: '2026-09-25T03:22:00Z', veri: { toplam: 27460, vadesiGecmis: 0, vadesiGelmemis: 27460, kalemler: [{}, {}] } }),
-      ]),
-    );
-    const temiz = rows.find((r) => r.taxpayerId === 'temiz')!;
-    expect(temiz.borc).toEqual({ toplam: 0, vadesiGecmis: 0, vadesiGelmemis: 0, kalemSayisi: 0, sorguTarihi: '2026-09-25T03:26:00Z' });
-    expect(temiz.haciz).toEqual({ bildiri: 0, tatbik: 0, tutar: 0, sorguTarihi: '2026-09-25T03:23:00Z' });
-    expect(temiz).toMatchObject({ uyari: 0, sorgulanmayan: 3, sonSorgu: '2026-09-25T03:26:00Z' });
-    expect(temiz.pos).toBeNull(); // hiç sorgulanmadı → null
-    // vadesi GELMEMİŞ borç uyari=1 ve temizden önce gelir
-    expect(rows.map((r) => r.taxpayerId)).toEqual(['gelmemis', 'temiz']);
-    expect(rows[0].uyari).toBe(1);
-    expect(ozet).toMatchObject({ mukellef: 2, borclu: 1, hacizli: 0, toplamBorc: 27460 });
-  });
-
-  it('dönem süzgeci yokken POS / e-Arşiv mükellefin EN SON ayını alır (ayları TOPLAMAZ); süzgeç verilince o ay', () => {
-    const kayitlar = [
-      ham({ taxpayerId: 'a', tur: 'POS', donem: '2026-08', sorguTarihi: '2026-09-25T03:27:00Z', veri: { satirlar: [{ tutar: 171204.3 }, { tutar: 88650 }] } }),
-      ham({ taxpayerId: 'a', tur: 'POS', donem: '2026-07', sorguTarihi: '2026-08-25T03:27:00Z', veri: { satirlar: [{ tutar: 158420.6 }, { tutar: 92310.15 }, { tutar: 12480 }] } }),
-      ham({ taxpayerId: 'a', tur: 'GELEN_EARSIV', donem: '2026-09', sorguTarihi: '2026-09-25T03:44:00Z', veri: { faturalar: [{ odenecekTutar: '10.50' }, { odenecekTutar: 20 }] } }),
-      ham({ taxpayerId: 'a', tur: 'GELEN_EARSIV', donem: '2026-08', sorguTarihi: '2026-09-04T03:17:00Z', veri: { faturalar: [{ odenecekTutar: 1000 }] } }),
-    ];
-    const { rows } = panoSatirlari(turBazli(kayitlar));
-    expect(rows[0].pos).toEqual({ tutar: 259854.3, satir: 2, donem: '2026-08', sorguTarihi: '2026-09-25T03:27:00Z' });
-    expect(rows[0].earsiv).toEqual({ fatura: 2, tutar: 30.5, donem: '2026-09', sorguTarihi: '2026-09-25T03:44:00Z' });
-    expect(rows[0]).toMatchObject({ uyari: 0, sorgulanmayan: 3 });
-
-    const { rows: eski } = panoSatirlari(turBazli(kayitlar), '2026-07');
-    expect(eski[0].pos).toEqual({ tutar: 263210.75, satir: 3, donem: '2026-07', sorguTarihi: '2026-08-25T03:27:00Z' });
-    expect(eski[0].earsiv).toBeNull(); // o ayda e-Arşiv sonucu yok
-    expect(eski[0].sorgulanmayan).toBe(4);
   });
 });

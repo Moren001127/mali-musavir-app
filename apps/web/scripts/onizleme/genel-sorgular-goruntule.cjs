@@ -1,9 +1,10 @@
-// Genel Sorgulamalar (2026-09-25 mükellef panosu sürümü) görüntüleri — sahte çift KENDİ portlarında:
+// Genel Sorgulamalar (2026-09-25 2. tur: mükellef seçimli) görüntüleri — sahte çift KENDİ portlarında:
 //   SAHTE_API_PORT=3022 SAHTE_WEB_PORT=3023 node apps/web/scripts/dev-sahte-kart.cjs
 //   node apps/web/scripts/onizleme/genel-sorgular-goruntule.cjs [cikisKlasoru]
 // Sahte veri: scripts/mock/oncelik/genel-sorgular.cjs. Çıktılar _previews/genel-sorgular/:
-//   01-tam (MÜKELLEF PANOSU) · 02-ust (başlık + araç çubuğu + sekmeler) · 03-tablo-detay (pano satırına tıklanmış:
-//   künye şeridi + mükellefin tabloları) · 04-mukellef-suzgec · 05-sorgu-suruyor · 06-tek-tur-haciz · 07-earsiv-eksik
+//   01-tam (mükellef seçili, 5 tablo alt alta, başlıklar gradyanlı) · 02-ust (mükellef SEÇİLMEDEN: yönlendirme
+//   kartı) · 03-donem-takvim (takvimli dönem seçici açık) · 04-mukellef-suzgec · 05-sorgu-suruyor
+//   06-tek-tur-haciz · 07-earsiv-eksik · 08-tek-tur-earsiv (en geniş tablo — taşma denetimi)
 const path = require('path');
 const fs = require('fs');
 const { chromium } = require(path.join(__dirname, '..', '..', '..', '..', 'node_modules', '.pnpm', 'playwright@1.60.0', 'node_modules', 'playwright'));
@@ -66,18 +67,23 @@ async function sayfayaGit(pg, adres) {
   await pg.locator('button[type=submit]').click();
   await pg.waitForURL(/\/panel/, { timeout: 90000 });
 
-  // 01/02 — MÜKELLEF PANOSU (mükellef ve tür seçili değilken ana görünüm)
+  // 02 — MÜKELLEF SEÇİLMEDEN: tablo yok, tek yönlendirme kartı
   await sayfayaGit(pg, `${KOK}/panel/genel-sorgular`);
-  await pg.locator('[data-gs-pano]').waitFor({ state: 'visible', timeout: 30000 });
-  await tamSayfa(pg, path.join(CIKIS, '01-tam.png'));
-  await ustKesit(pg, path.join(CIKIS, '02-ust.png'), 420);
+  await pg.locator('.gs-secim-bekliyor').waitFor({ state: 'visible', timeout: 30000 });
+  await ustKesit(pg, path.join(CIKIS, '02-ust.png'), 620);
 
-  // 03 — pano satırına tıkla: o mükellefin künye şeridi + ayrıntı tabloları
-  await pg.locator('[data-gs-pano] .gs-satir').first().locator('.gs-pano-ad').click();
-  await pg.locator('.gs-kunye').waitFor({ state: 'visible', timeout: 30000 });
+  // 01 — mükellef seçili: 5 tablo alt alta, kart başlıkları türün renginde gradyan
+  await sayfayaGit(pg, `${KOK}/panel/genel-sorgular?mukellef=gs1`);
   await pg.locator('.gs-grup').first().waitFor({ state: 'visible', timeout: 30000 });
-  await pg.waitForTimeout(1200);
-  await ustKesit(pg, path.join(CIKIS, '03-tablo-detay.png'), 1000);
+  await tamSayfa(pg, path.join(CIKIS, '01-tam.png'));
+
+  // 03 — takvimli dönem seçici açık
+  await pg.locator('.gs-donem-dugme').click();
+  await pg.locator('.gs-donem-panel').waitFor({ state: 'visible', timeout: 15000 });
+  await pg.waitForTimeout(400);
+  await ustKesit(pg, path.join(CIKIS, '03-donem-takvim.png'), 620);
+  await pg.keyboard.press('Escape');
+  await pg.waitForTimeout(300);
 
   // Mükellef süzgeci + Sorgula sürüyor
   await sayfayaGit(pg, `${KOK}/panel/genel-sorgular?mukellef=gs1`);
@@ -88,10 +94,10 @@ async function sayfayaGit(pg, adres) {
   await pg.locator('.gs-arac').screenshot({ path: path.join(CIKIS, '05-sorgu-suruyor.png') });
 
   // Tek tür sekmesi (E-Haciz) ve Gelen e-Arşiv "Görseli eksik faturalar"
-  await sayfayaGit(pg, `${KOK}/panel/genel-sorgular?tur=E_HACIZ`);
+  await sayfayaGit(pg, `${KOK}/panel/genel-sorgular?mukellef=gs1&tur=E_HACIZ`);
   await pg.locator('.gs-grup').first().waitFor({ state: 'visible', timeout: 30000 });
   await ustKesit(pg, path.join(CIKIS, '06-tek-tur-haciz.png'), 1000);
-  await sayfayaGit(pg, `${KOK}/panel/genel-sorgular?tur=GELEN_EARSIV`);
+  await sayfayaGit(pg, `${KOK}/panel/genel-sorgular?mukellef=gs1&tur=GELEN_EARSIV`);
   await pg.locator('.gs-grup').first().waitFor({ state: 'visible', timeout: 30000 });
   // En geniş tablo — taşma denetimi (sütunlar 2026-09-25'te daraltıldı)
   await ustKesit(pg, path.join(CIKIS, '08-tek-tur-earsiv.png'), 1000);

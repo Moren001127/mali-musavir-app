@@ -168,35 +168,6 @@ export interface GuncelYaniti {
   ozet: { mukellef: number; bos: number; enEskiSorgu: string | null; enYeniSorgu: string | null };
 }
 
-/**
- * MÜKELLEF PANOSU satırı (GET /genel-sorgular/pano) — bir mükellefin 5 sorgudaki güncel özeti.
- * (2026-09-25, Muzaffer Bey: "tüm mükellefler tek tabloda görünmesin, karışık duruyor".)
- * Tür alanı `null` ise o sorgu bu mükellefte HİÇ çalışmamıştır; nesne dolu ama sayı 0 ise sorgu çalışmış,
- * kayıt çıkmamıştır (borcu yok / bildirisi yok). İkisi ekranda ayrı yazılır.
- */
-export interface PanoSatiri {
-  taxpayerId: string;
-  taxpayer?: SorguMukellef | null;
-  /** Dolu türlerin en yeni sorgu zamanı */
-  sonSorgu: string | null;
-  /** Bu mükellefte hiç sonucu olmayan tür sayısı (0-5) */
-  sorgulanmayan: number;
-  borc: { toplam: number; vadesiGecmis: number; vadesiGelmemis: number; kalemSayisi: number; sorguTarihi: string } | null;
-  haciz: { bildiri: number; tatbik: number; tutar: number; sorguTarihi: string } | null;
-  yoklama: { tutanak: number; sonTarih: string | null; sorguTarihi: string } | null;
-  pos: { tutar: number; satir: number; donem: string | null; sorguTarihi: string } | null;
-  earsiv: { fatura: number; tutar: number; donem: string | null; sorguTarihi: string } | null;
-  /** 2 = vadesi geçmiş borç ya da tatbik edilmiş haciz · 1 = borç/bildiri var · 0 = sakin */
-  uyari: 0 | 1 | 2;
-}
-export interface PanoYaniti {
-  rows: PanoSatiri[];
-  total: number;
-  page: number;
-  pageSize: number;
-  ozet: { mukellef: number; borclu: number; hacizli: number; toplamBorc: number; vadesiGecmis: number; enYeniSorgu: string | null };
-}
-
 /** Görseli eksik fatura satırı (DVD gelen e-Arşiv listesi ↔ Luca alış e-Arşiv/e-Fatura çekimi). */
 export interface EksikGorselSatiri {
   taxpayerId: string;
@@ -265,21 +236,6 @@ export const genelSorgularApi = {
 
   ozet: () => api.get('/genel-sorgular/ozet').then((r) => (r.data ?? {}) as SorguOzeti),
 
-  /** Mükellef panosu: mükellef başına 5 sorgunun güncel özeti (uyarısı olan önce). */
-  pano: (params: { donem?: string; page?: number; pageSize?: number } = {}) =>
-    api
-      .get('/genel-sorgular/pano', { params: { donem: params.donem || undefined, page: params.page ?? 1, pageSize: params.pageSize ?? 25 } })
-      .then((r) => {
-        const d = (r.data ?? {}) as Partial<PanoYaniti>;
-        const rows = (Array.isArray(d.rows) ? d.rows : []) as PanoSatiri[];
-        return {
-          rows,
-          total: Number(d.total ?? rows.length) || 0,
-          page: Number(d.page ?? params.page ?? 1) || 1,
-          pageSize: Number(d.pageSize ?? params.pageSize ?? 25) || 25,
-          ozet: d.ozet ?? { mukellef: 0, borclu: 0, hacizli: 0, toplamBorc: 0, vadesiGecmis: 0, enYeniSorgu: null },
-        } satisfies PanoYaniti;
-      }),
 
   /** Güncel durum satırları (tür zorunlu). Sayısal alanlar eksik gelirse 0'a çekilir. */
   guncel: (params: { tur: SorguTuru; taxpayerId?: string; donem?: string; page?: number; pageSize?: number }) =>

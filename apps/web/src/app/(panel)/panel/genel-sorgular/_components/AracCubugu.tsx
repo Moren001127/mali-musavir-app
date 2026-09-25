@@ -2,11 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CalendarDays, Search, Users } from 'lucide-react';
+import { Search, Users } from 'lucide-react';
 import { GENEL_SORGU_DVD_ANAHTARI, type DvdSorguTuru } from '@mali-musavir/shared';
 import TaxpayerSelect, { type TaxpayerLite } from '@/components/ui/TaxpayerSelect';
 import { DVD_SORGULARI, SORGU_TURU_ADI, genelSorgularApi, sorguMukellefAdi, type SorguKosusu, type SorguTuru } from '@/lib/genel-sorgular';
 import { sure } from '../_lib/bicim';
+import { DonemSecici } from './DonemSecici';
 
 export interface Suzgec {
   /** '' → tüm mükellefler */
@@ -17,11 +18,10 @@ export interface Suzgec {
   donem: string;
 }
 
-const TUMU = '__TUMU__';
-
 /**
- * Araç çubuğu: mükellef · dönem süzgeci + Sorgula (tür, altındaki sekmelerden gelir).
- * Süzgeç tabloları daraltır; Sorgula seçili mükellef için (tür sekmesi seçiliyse yalnız o tür, Tümü'de 6 sorgu) Dijital
+ * Araç çubuğu: mükellef (ZORUNLU — 2026-09-25: "tüm mükellefler" seçeneği kaldırıldı) · dönem süzgeci + Sorgula
+ * (tür, altındaki sekmelerden gelir). Mükellef seçilene kadar aşağıda tablo çizilmez.
+ * Sorgula seçili mükellef için (tür sekmesi seçiliyse yalnız o tür, Tümü'de 6 sorgu) Dijital
  * Vergi Dairesi sorgusunu kuyruğa alır ve iş bitene kadar altındaki durum satırına yazar. Durum yokken aynı satır
  * düğmenin ne yapacağını söyler. Gece sorgusu mükellef kartındaki Otomatik Sorgulama Ayarı'na göre kendiliğinden
  * çalışır — burada ayrıca kurulum yok. Dönem süzgeci yalnız POS ve Gelen e-Arşiv'de anlamlıdır; başka tür
@@ -29,7 +29,6 @@ const TUMU = '__TUMU__';
  */
 export function AracCubugu({ suzgec, onSuzgec, mukellefler }: { suzgec: Suzgec; onSuzgec: (s: Suzgec) => void; mukellefler: TaxpayerLite[] }) {
   const qc = useQueryClient();
-  const tumDonemler = suzgec.donem === '';
   const secili = useMemo(() => mukellefler.find((m) => m.id === suzgec.mukellefId) || null, [mukellefler, suzgec.mukellefId]);
 
   // Kuyruğa alınan işler: bitene kadar 4 sn'de bir izlenir; bitince tablolar yenilenir.
@@ -97,7 +96,7 @@ export function AracCubugu({ suzgec, onSuzgec, mukellefler }: { suzgec: Suzgec; 
 
   const sorgulanabilir = !!suzgec.mukellefId && izlenen.length === 0 && !isPending;
   const dugmeIpucu = !suzgec.mukellefId
-    ? 'Sorgulamak için bir mükellef seçin; mükellef ve dönem süzgeci tabloları daraltır.'
+    ? 'Sorgular mükellef başına çalışır: yukarıdan bir mükellef seçin, tabloları da sorgu düğmesini de o açar.'
     : suzgec.tur
     ? `Sorgula: ${sorguMukellefAdi(secili) || 'Mükellef'} için Dijital Vergi Dairesi'nde yalnız ${SORGU_TURU_ADI[suzgec.tur]} sorgulanır.`
     : `Sorgula: ${sorguMukellefAdi(secili) || 'Mükellef'} için Dijital Vergi Dairesi'nde 6 sorgu tek oturumda çalışır (e-Defter dahil).`;
@@ -112,26 +111,22 @@ export function AracCubugu({ suzgec, onSuzgec, mukellefler }: { suzgec: Suzgec; 
             <span className="gs-alan-ikon" data-ton="mukellef" aria-hidden><Users size={14} strokeWidth={2} /></span>
             <TaxpayerSelect
               taxpayers={mukellefler}
-              value={suzgec.mukellefId || TUMU}
-              onChange={(id) => onSuzgec({ ...suzgec, mukellefId: id === TUMU ? '' : id })}
-              allLabel="Tüm mükellefler"
-              allValue={TUMU}
+              value={suzgec.mukellefId}
+              onChange={(id) => onSuzgec({ ...suzgec, mukellefId: id })}
+              placeholder="Mükellef seçin…"
               className="gs-mukellef-secici"
             />
           </span>
         </label>
-        <label className="gs-alan gs-alan-donem" title={donemKapali ? 'Dönem süzgeci yalnız POS ve Gelen e-Arşiv tablolarında uygulanır' : undefined}>
+        <div className="gs-alan gs-alan-donem">
           <span className="gs-alan-etiket">Dönem</span>
-          <span className="gs-alan-govde">
-            <span className="gs-alan-ikon" data-ton="donem" aria-hidden><CalendarDays size={14} strokeWidth={2} /></span>
-            <select className="gs-secim" value={tumDonemler ? '' : suzgec.donem} disabled={donemKapali} onChange={(e) => onSuzgec({ ...suzgec, donem: e.target.value })} aria-label="Dönem">
-              <option value="">Tüm dönemler</option>
-              {sonAylar(12).map((a) => (
-                <option key={a.deger} value={a.deger}>{a.etiket}</option>
-              ))}
-            </select>
-          </span>
-        </label>
+          <DonemSecici
+            deger={suzgec.donem}
+            onDegis={(d) => onSuzgec({ ...suzgec, donem: d })}
+            disabled={donemKapali}
+            kapaliIpucu="Dönem süzgeci yalnız POS ve Gelen e-Arşiv tablolarında uygulanır"
+          />
+        </div>
 
         <button type="button" className="gs-dugme gs-arac-dugme" disabled={!sorgulanabilir} title={dugmeIpucu} onClick={() => { setNot(null); mutate(); }} data-gs-sorgula>
           <Search size={15} strokeWidth={2.2} aria-hidden />
@@ -147,17 +142,4 @@ export function AracCubugu({ suzgec, onSuzgec, mukellefler }: { suzgec: Suzgec; 
 
 function kosuAdi(k: SorguKosusu): string {
   return sorguMukellefAdi(k.taxpayer) || 'Mükellef';
-}
-
-const AYLAR = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
-
-/** Bu aydan geriye n ay: [{ deger:'2026-09', etiket:'Eylül 2026' }, …] */
-function sonAylar(n: number): Array<{ deger: string; etiket: string }> {
-  const d = new Date();
-  const out: Array<{ deger: string; etiket: string }> = [];
-  for (let i = 0; i < n; i++) {
-    const t = new Date(d.getFullYear(), d.getMonth() - i, 1);
-    out.push({ deger: `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}`, etiket: `${AYLAR[t.getMonth()]} ${t.getFullYear()}` });
-  }
-  return out;
 }
