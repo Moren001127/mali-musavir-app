@@ -1,6 +1,7 @@
 'use client';
 import { portalStyle } from '@/lib/portal-theme';
 
+import { api } from '@/lib/api';
 import { useMe } from '@/hooks/useAuth';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
@@ -33,6 +34,28 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
     ping();
     const id = setInterval(ping, 4 * 60 * 1000); // her 4 dk: sekme kapandıysa geri aç
     return () => clearInterval(id);
+  }, [user]);
+
+  // AJAN ANAHTARI TAZELEME — 2026-09-25 (denetim bulgusu 01 geçişi).
+  //   Eklenti anahtarı ÖNBELLEKTE tutuyor ve portal onu yalnız ÜÇ ekranda (e-Arşiv, KDV
+  //   Kontrol, Mizan) yeniliyordu. Anahtar sunucuda değiştirildikten sonra bu ekranlara
+  //   girmeyen bir tarayıcı, eski (ofis kısa adı) anahtarı göndermeye devam ediyordu —
+  //   canlı ölçümde eski yol dakikada ~10 çağrıyla kullanılmaya devam etti ve kısa ad
+  //   yolu bu yüzden kapatılamadı. Artık HER portal sayfasında tazeleniyor.
+  useEffect(() => {
+    if (!user) return;
+    let iptal = false;
+    const tazele = async () => {
+      try {
+        const bridge = (window as any).__morenAutoAgent;
+        if (!bridge || typeof bridge.setAgentToken !== 'function') return;
+        const bilgi = await api.get('/agent/me/token').then((r) => r.data).catch(() => null);
+        if (!iptal && bilgi?.token) await bridge.setAgentToken(bilgi.token).catch(() => null);
+      } catch { /* eklenti yoksa ya da uç kapalıysa sessiz geç */ }
+    };
+    void tazele();
+    const id = setInterval(() => { void tazele(); }, 10 * 60 * 1000);
+    return () => { iptal = true; clearInterval(id); };
   }, [user]);
 
   if (isLoading) {
