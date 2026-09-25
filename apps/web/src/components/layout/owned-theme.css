@@ -195,6 +195,10 @@ html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-icon] {
     color-mix(in srgb, var(--menu-c, #4a90e2) 52%, #07243a)) !important;
   border-color: transparent !important;
 }
+/* Grup başlığı ikonu (madde değil) nötr kalsın */
+html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-group] > [data-moren-sidebar-icon] {
+  background: rgba(255, 255, 255, 0.06) !important;
+}
 html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-icon] svg {
   color: #ffffff !important;
   stroke: #ffffff !important;
@@ -560,36 +564,49 @@ html[data-theme='D'] [data-moren-sidebar][data-collapsed='false'] [data-moren-si
   font-weight: 500 !important;
   color: rgba(232, 241, 248, 0.88) !important;
 }
+/* İKON KUTUSU GRUP RENGİNDE DOLU (2026-09-25, Muzaffer Bey onayı).
+   Önceden kutu `rgba(255,255,255,.09)`, ikon da grup rengi değil soluk beyazdı; yalnız etkin
+   madde sabit nane yeşiliydi. Dokuz satır tekdüze görünüyordu — Fatura Merkezi menüsünde her
+   satırın kutusu kendi renginde dolu. Renk, Sidebar.tsx'in satıra verdiği --menu-c'den gelir. */
 html[data-theme='D'] [data-moren-sidebar][data-collapsed='false'] [data-moren-sidebar-item] [data-moren-sidebar-icon] {
-  width: 24px !important;
-  height: 24px !important;
-  border-radius: 7px !important;
-  background: rgba(255, 255, 255, 0.09) !important;
+  width: 26px !important;
+  height: 26px !important;
+  border-radius: 8px !important;
+  background: linear-gradient(140deg,
+    color-mix(in srgb, var(--menu-c, #4a90e2) 94%, #0d2b45),
+    color-mix(in srgb, var(--menu-c, #4a90e2) 52%, #07243a)) !important;
 }
 html[data-theme='D'] [data-moren-sidebar][data-collapsed='false'] [data-moren-sidebar-item] [data-moren-sidebar-icon] svg {
   width: 15px;
   height: 15px;
-  color: rgba(226, 240, 248, 0.82) !important;
+  color: #ffffff !important;
+  stroke: #ffffff !important;
+  opacity: 1 !important;
 }
 html[data-theme='D'] [data-moren-sidebar][data-collapsed='false'] [data-moren-sidebar-item]:hover [data-moren-sidebar-icon],
 html[data-theme='D'] [data-moren-sidebar][data-collapsed='false'] [data-moren-sidebar-item]:focus-visible [data-moren-sidebar-icon] {
-  background: rgba(255, 255, 255, 0.16) !important;
+  filter: brightness(1.14);
 }
 html[data-theme='D'] [data-moren-sidebar][data-collapsed='false'] [data-moren-sidebar-active='true'] {
-  background: rgba(255, 255, 255, 0.12) !important;
+  background: rgba(255, 255, 255, 0.13) !important;
   color: #ffffff !important;
   font-weight: 650 !important;
 }
+/* Etkin maddenin kutusu sabit nane yeşili değil, kendi grup renginin parlak hâli */
 html[data-theme='D'] [data-moren-sidebar][data-collapsed='false'] [data-moren-sidebar-active='true'] [data-moren-sidebar-icon] {
-  background: linear-gradient(135deg, #2fd7b5, #0d9d8e) !important;
+  background: linear-gradient(140deg,
+    var(--menu-c, #2fd7b5),
+    color-mix(in srgb, var(--menu-c, #2fd7b5) 62%, #06312f)) !important;
 }
 html[data-theme='D'] [data-moren-sidebar][data-collapsed='false'] [data-moren-sidebar-active='true'] [data-moren-sidebar-icon] svg {
-  color: #06312f !important;
+  color: #ffffff !important;
+  stroke: #ffffff !important;
   stroke-width: 2.2;
 }
-/* Etkin maddede sol nane şerit yerine simge kutusu konuşuyor */
+/* Etkin maddede sol şerit geri geldi — kendi grup renginde, kutuya eşlik ediyor */
 html[data-theme='D'] [data-moren-sidebar][data-collapsed='false'] [data-moren-sidebar-indicator] {
-  display: none !important;
+  display: block !important;
+  background: var(--menu-c, #ffffff) !important;
 }
 
 
