@@ -6,8 +6,9 @@ import { api } from '@/lib/api';
 import { toast } from 'sonner';
 import { isletmeRef, ISLETME_ISLEM_TURU, ISLETME_KDV_ORAN, defaultBelgeTuruKod, normalizeDocumentType, getKayitAltList, defaultKayitAltKod, kayitAltKisaAd, isletmeAutoKayitTuru, isletmeAutoKayitAltKod, KURUM_TURU_SECENEKLERI, DEFTER_TURU_ETIKETLERI, kurumTuruEtiketi } from '@mali-musavir/shared';
 
-// MİKRO e-PORTAL OTURUMU (2026-09-26): Mikro girişi güvenlik duvarı (Cloudflare) yüzünden SUNUCUDAN
-//   yapılamıyor — yalnız gerçek tarayıcı + ofis IP'si geçiyor. Girişten sonraki işler (liste, belge)
+// MİKRO e-PORTAL OTURUMU (2026-09-26) — YEDEK YOL. Asıl yol web servisi (Firmbox, sunucudan, tarayıcısız).
+//   Web servisi bir hesabı reddederse e-Portal'a düşülür; onun girişi güvenlik duvarı (Cloudflare) yüzünden
+//   SUNUCUDAN yapılamıyor — yalnız gerçek tarayıcı + ofis IP'si geçiyor. Girişten sonraki işler (liste, belge)
 //   sunucudan yürüyor. Bu yüzden oturumu kullanıcının Chrome'u açar; Moren eklentisi (portal-kopru.js)
 //   tarayıcıdaki çerezi verir, biz de kullanıcının kendi portal oturumuyla sunucuya iletiriz.
 //   Eklenti yoksa ya da Mikro'ya girilmemişse sessizce geçer; sunucu yapılacak işi söyleyen mesajı döner.
@@ -2878,15 +2879,10 @@ function ScreenSorgu({ taxpayerId, period, source, onOpenEntegrator }: { taxpaye
   }, [provMenuAcik]);
   const efaturaFetchMut = useMutation({
     mutationFn: async (v: { provider: string }) => {
-      // Mikro: sorgudan hemen önce Chrome'daki e-Portal oturumunu tazele (bkz. mikroOturumuTazele)
-      if (v.provider === 'MIKRO') {
-        const m = await mikroOturumuTazele();
-        if (m.durum === 'eklenti-yok') {
-          toast.warning('Moren Chrome eklentisi bulunamadı ya da eski sürüm — Mikro için eklentinin 2.5.0 sürümü gerekli (chrome://extensions → Yenile).', { duration: 9000 });
-        } else if (m.durum === 'oturum-yok' && m.mesaj) {
-          toast.warning(m.mesaj, { duration: 9000 });
-        }
-      }
+      // Mikro: asıl yol WEB SERVİSİ (Firmbox). Chrome'daki e-Portal oturumu yalnız YEDEK → sessizce tazelenir;
+      //   uyarı basılmaz (web servisi çalışırken "eklenti gerekli" demek yanıltıyordu). Yedek de gerekirse
+      //   ve oturum yoksa sunucunun kendi hata mesajı yapılacak işi söyler.
+      if (v.provider === 'MIKRO') await mikroOturumuTazele();
       return api.post('/fatura-muhasebelestirme/efatura-sync', {
         taxpayerId,
         direction: efaturaDirection,
@@ -6148,11 +6144,7 @@ function ScreenEntegrator({ taxpayerId, period }: { taxpayerId: string; period: 
   });
   const fetchMut = useMutation({
     mutationFn: async (prov: string) => {
-      if (prov === 'MIKRO') {
-        const m = await mikroOturumuTazele();
-        if (m.durum === 'eklenti-yok') toast.warning('Moren Chrome eklentisi bulunamadı ya da eski sürüm — Mikro için 2.5.0 gerekli (chrome://extensions → Yenile).', { duration: 9000 });
-        else if (m.durum === 'oturum-yok' && m.mesaj) toast.warning(m.mesaj, { duration: 9000 });
-      }
+      if (prov === 'MIKRO') await mikroOturumuTazele(); // yalnız yedek yol için, sessiz (bkz. efaturaFetchMut)
       return api.post('/fatura-muhasebelestirme/integrations/fetch', { taxpayerId: taxpayerId || undefined, providers: [prov], direction: 'ALIS', donem: period });
     },
     onSuccess: (r: any) => { showFetchResult(r?.data); qc.invalidateQueries({ queryKey: ['fm2'] }); },
