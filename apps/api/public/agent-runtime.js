@@ -92,7 +92,7 @@
   // v1.47.82 (2026-09-23): İŞLETME Fiş Kes — Luca'nın gönderim sonrası mesajı (lucaNotYaz) önce/sonra FARKIYLA loga
   //   yazılır (sayfa metni 4.200 karakterde kesiliyor, mesajlar sonda kalıyordu); sayfanın son 1.200 karakteri de yazılır.
   // v1.47.83 (2026-09-23): İŞLETME Fiş Kes — KOD alanı Luca biçiminde "614 | 5/10" yazılır (yalnız "614" sessizce reddediliyordu).
-  const AGENT_VERSION = '1.47.83';
+  const AGENT_VERSION = '1.47.84';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -4712,14 +4712,33 @@
               //   veriyordu). Popup HÂLÂ açıksa booking olmamıştır. 6a popup'ı zaten kapattı; burada
               //   yalnız Fiş Kes sonrası AYIRT EDİCİ onay ararız (parsing metni kapanınca kaybolur).
               let fisBasari = false;
+              let fisNo = '';
+              let fisMetin = '';
               if (!islemTakipAcik()) {
                 for (const doc of lucaDocuments()) {
-                  try { const t = doc.body ? doc.body.textContent : ''; if (/(fi[şs]ler?\s+ba[şs]ar[ıi]yla|fi[şs]\s+kesildi|muhasebe\s+fi[şs]i.*olu[şs]turuldu|kay[ıi]t\s+ba[şs]ar[ıi]l[ıi]|i[şs]lem\s+ba[şs]ar[ıi]yla\s+tamamland)/i.test(t)) { fisBasari = true; break; } } catch {}
+                  try {
+                    const t = doc.body ? doc.body.textContent : '';
+                    if (/(fi[şs]ler?\s+ba[şs]ar[ıi]yla|fi[şs]\s+kesildi|muhasebe\s+fi[şs]i.*olu[şs]turuldu|kay[ıi]t\s+ba[şs]ar[ıi]l[ıi]|i[şs]lem\s+ba[şs]ar[ıi]yla\s+tamamland)/i.test(t)) {
+                      fisBasari = true;
+                      // v1.47.84 MUTABAKAT İÇİN FİŞ NO: başarı metninde fiş/yevmiye numarası geçiyorsa
+                      //   yakala. Bulamazsa BOŞ kalır — uydurma yok. Portal arşivindeki "fiş no" sütunu
+                      //   bugüne kadar hep boştu (markJobDone'a fisNo hiç gönderilmiyordu), bu yüzden
+                      //   "Luca'da var mı" karşılaştırması yapılamıyordu.
+                      const m = t.match(/(?:fi[şs]|yevmiye)\s*(?:no|numaras[ıi])?\s*[:#]?\s*([0-9][0-9/.\-]{0,20})/i);
+                      if (m && m[1]) fisNo = String(m[1]).trim();
+                      fisMetin = String(t).replace(/\s+/g, ' ').trim().slice(0, 300);
+                      break;
+                    }
+                  } catch {}
                 }
               }
+              // v1.47.84 (denetim bulgusu 14a): fisBasari artık SUNUCUYA BİLDİRİLİYOR. Eskiden yalnız
+              //   ekrandaki yazıyı değiştiriyordu; iş her hâlde "done" gidiyor, sunucu da bağlı BÜTÜN
+              //   belgeleri POSTED yapıyordu → fiş kesilmemişken portal "Aktarıldı" diyordu (sessiz
+              //   kayıp; Luca 200 satır tavanı ya da onay ekranı gelmediğinde tam olarak bu oluyor).
               await fetch(API + `/agent/luca/jobs/${job.id}/done`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
-                body: JSON.stringify({ recordCount: p.totalCount || 0 }),
+                body: JSON.stringify({ recordCount: p.totalCount || 0, fisBasari, fisNo, fisMetin, beklenenSatir: p.totalCount || 0 }),
               }).catch(() => {});
               setStatus(fisBasari ? 'Luca: fiş OLUŞTURULDU (Fiş Kes tamam)' : 'Luca: Fiş Kes tıklandı');
               await log(fisBasari

@@ -5406,6 +5406,12 @@ function ScreenAktarilanlar({ taxpayerId, period, mode = 'bekleyen', isIsletme =
   // ONAY = "Aktarıma hazır" (tek tek Luca'ya GİTMEZ). Gerçek aktarım yön butonuyla toplu olur.
   const lucaPill = (d: any) => {
     const s = d.lucaStatus;
+    // 2026-09-25 bulgu 14a: ajan "Fiş Kes"ten sonra Luca'da fiş onayını göremediyse sunucu belgeyi
+    //   POSTED yapar ama lucaErrorMessage'a teyit uyarısı yazar (FAILED yapmak "tekrar dene"yi açıp
+    //   ÇİFT FİŞ üretir). Uyarı burada görünür olmalı, yoksa eskisi gibi sessiz "Aktarıldı ✓" kalır.
+    if (s === 'POSTED' && d.lucaErrorMessage) {
+      return <span className="pill warn" title={String(d.lucaErrorMessage)}>Aktarıldı · teyit gerekli</span>;
+    }
     if (s === 'POSTED') return <span className="pill ok">Aktarıldı ✓</span>;
     // PLAN16-G: Luca'dan geri alınıp yeniden onaylanan belge de MANUAL_DONE olur (fiş Luca'da elle düzeltilir) — ipucu ayrı.
     if (s === 'MANUAL_DONE') return <span className="pill asset" title={ghElleDurumu(d).durum ? "Luca'dan geri alınmış belge — fiş Luca'da elle düzeltilir; portaldan tekrar gönderilmez" : "Demirbaş kararı: Luca'da elle işlendi — portaldan gönderilmedi"}>Luca'da elle işlendi</span>;

@@ -633,11 +633,18 @@ export class LucaController {
   @HttpCode(HttpStatus.OK)
   async finishJob(
     @Param('id') id: string,
-    @Body() body: { recordCount?: number },
+    @Body() body: { recordCount?: number; fisBasari?: boolean; fisNo?: string; fisMetin?: string; beklenenSatir?: number },
     @Headers('x-agent-token') agentToken: string,
   ) {
     await this.resolveTenantFromAgentToken(agentToken);
-    await this.luca.markJobDone(id, body.recordCount ?? 0);
+    // 2026-09-25 bulgu 14a: ajan (v1.47.84+) fiş onayını gerçekten gördü mü bildiriyor. Eski ajan bu
+    //   alanları göndermez → undefined kalır ve markJobDone eski davranışı korur (geriye dönük uyumlu).
+    await this.luca.markJobDone(id, body.recordCount ?? 0, {
+      fisNo: body.fisNo,
+      fisBasari: body.fisBasari,
+      fisMetin: body.fisMetin,
+      beklenenSatir: body.beklenenSatir,
+    });
     // HESAP GÖNDERİMİ SONRASI PLANI LUCA'DAN TAZELE (2026-08-20, kullanıcı bulgusu:
     //   "hesap planı aktarılınca otomatik kendisi güncellemeyecek mi, hâlâ yerel görünüyor").
     //   Ajan "hesap açıldı mı" kararını sayfa metnindeki kelimelere bakarak veriyordu ve

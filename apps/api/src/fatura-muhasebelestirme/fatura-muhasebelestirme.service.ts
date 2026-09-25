@@ -984,6 +984,27 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     '320.01.001', '120.01.001', '360.01.001',
     '191.02.001', // Sorumlu Sıfatıyla İndirilecek KDV (tevkifatlı ALIŞ — ikinci 191 satırı)
   ];
+  /** OKUMA kapısı: plan yoksa / kod placeholder ise hesap kodunu GİZLE — ama VERİYE DOKUNMA.
+   *  2026-09-25 denetim bulgusu 11: bu iş eskiden list() içinde gateExistingDocsIfNoPlan ile
+   *  KALICI updateMany yapıyordu. Yani salt görüntüleme isteği veri yazıyordu: dönem sınırı yoktu
+   *  (mükellefin TÜM yılları), kaynak='KULLANICI' koruması yoktu (elle girilen kod da silinirdi),
+   *  logAudit çağrılmıyordu ve iki updateMany da .catch(()=>{}) ile sessizdi → kaç kodun silindiği
+   *  geriye dönük çıkarılamıyor. Ekran 60 sn'de tazelendiği için her dönüşte tekrar çalışıyordu.
+   *  Görünen sonuç birebir aynı (kod "Eksik" görünür), fark: DB'ye yazma YOK. Kalıcı temizlik yalnız
+   *  açık işlemde (reapplyAccountCodes → POST documents/reapply-codes).
+   *  Onaylı belgeye dokunulmaz — eski kalıcı kapı da status!='APPROVED' ile sınırlıydı. */
+  private maskLinesByPlanForRead(doc: any, planCodes: Set<string> | null): any[] {
+    const lines = Array.isArray(doc?.lines) ? doc.lines : [];
+    if (!lines.length) return lines;
+    if (String(doc?.status || '').toUpperCase() === 'APPROVED') return lines;
+    // Plan YOK → hiçbir kod geçerli olamaz (olmayan hesaba fiş kesilmez).
+    if (!planCodes) return lines.map((l: any) => (l?.accountCode == null ? l : { ...l, accountCode: null }));
+    // Plan VAR → yalnız planda OLMAYAN placeholder'ları gizle; gerçek plan kodu korunur.
+    const toClear = new Set(this.PLACEHOLDER_CODES.filter((c) => !planCodes.has(c)));
+    if (!toClear.size) return lines;
+    return lines.map((l: any) => (toClear.has(String(l?.accountCode || '').trim()) ? { ...l, accountCode: null } : l));
+  }
+
   private async gateExistingDocsIfNoPlan(tenantId: string, taxpayerId?: string) {
     if (!taxpayerId) return;
     const planCodes = await this.getPlanCodeSet(tenantId, taxpayerId);
@@ -998,27 +1019,36 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   kodları da (ör. "153.01.001-TİCARİ MAL %20" — kod+ad yapışmış) temizler. Frontend "Hesap planı
     //   aktarılmamış" banner'ı sebebi açıklar; plan çekilip "Kodları düzelt" denince gerçek kodlar gelir.
     if (!planCodes) {
-      await (this.prisma as any).invoiceAccountingLine.updateMany({
-        where: { documentId: { in: docIds }, NOT: { accountCode: null } },
+      const r = await (this.prisma as any).invoiceAccountingLine.updateMany({
+        // 2026-09-25 bulgu 11: elle girilen kod KORUNUR (kaynak=KULLANICI) — müşavirin emeği
+        //   sessizce silinmesin. Aktarılmış/kuyruktaki belgenin satırına da dokunulmaz.
+        where: {
+          documentId: { in: docIds },
+          NOT: { accountCode: null },
+          kaynak: { not: 'KULLANICI' },
+        },
         data: { accountCode: null },
-      }).catch(() => {});
+      }).catch((e: any) => { this.logger.warn(`plan kapısı (plan yok) temizlenemedi: ${e?.message || e}`); return { count: 0 }; });
+      if (r?.count) this.logger.log(`plan kapısı: ${r.count} satır kodu boşaltıldı (plan yok, mükellef ${taxpayerId})`);
       return;
     }
     // Plan VAR → yalnız planda OLMAYAN placeholder'ları boşalt (191.01.020 mükellefte yoksa temizle;
     //   gerçekten planda olan 320.01.001 vb. KORUNUR).
     const toClear = this.PLACEHOLDER_CODES.filter((c) => !planCodes.has(c));
     if (!toClear.length) return;
-    await (this.prisma as any).invoiceAccountingLine.updateMany({
-      where: { documentId: { in: docIds }, accountCode: { in: toClear } },
+    const r = await (this.prisma as any).invoiceAccountingLine.updateMany({
+      where: { documentId: { in: docIds }, accountCode: { in: toClear }, kaynak: { not: 'KULLANICI' } },
       data: { accountCode: null },
-    }).catch(() => {});
+    }).catch((e: any) => { this.logger.warn(`plan kapısı (placeholder) temizlenemedi: ${e?.message || e}`); return { count: 0 }; });
+    if (r?.count) this.logger.log(`plan kapısı: ${r.count} placeholder kod boşaltıldı (mükellef ${taxpayerId})`);
   }
 
   async list(tenantId: string, opts: { status?: string; limit?: number; taxpayerId?: string; period?: string }) {
     // status='PENDING' frontend konvansiyonu = onaylanmamış belgeler (READY + NEEDS_REVIEW).
     // Schema status enum: NEEDS_REVIEW | READY | APPROVED | REJECTED
-    // Plan yoksa sahte kodları temizle (tek mükellef listesinde).
-    await this.gateExistingDocsIfNoPlan(tenantId, opts.taxpayerId);
+    // 2026-09-25 bulgu 11: burada gateExistingDocsIfNoPlan çağrısı vardı — SALT OKUMA isteği kalıcı
+    //   updateMany ile hesap kodlarını siliyordu (elle girilenler dahil, dönem sınırı yok, izi yok).
+    //   Kaldırıldı; kod gizleme artık aşağıda maskLinesByPlanForRead ile BELLEKTE yapılıyor.
     const statusFilter = (() => {
       const s = String(opts.status || '').toUpperCase();
       if (!s) return {};
@@ -1056,13 +1086,23 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         .catch(() => []);
       for (const tp of tpler) if (isIsletmeLedger(tp?.defterTuru, tp?.mihsapDefterTuru)) isletmeTpler.add(String(tp.id));
     }
-    return docs.map((d: any) => ({
-      ...d,
-      guven: this.computeDocConfidence(d),
-      ...(isletmeTpler.has(String(d.taxpayerId || ''))
-        ? { ocrData: { ...(d.ocrData || {}), isletme: isletmeWithBelgeDefaults(d) } }
-        : {}),
-    }));
+    // Plan kapısı OKUMA tarafında (bulgu 11): mükellef başına plan kod kümesi bir kez alınır
+    //   (getPlanCodeSet 30 sn önbellekli), satır kodları BELLEKTE gizlenir. Güven skoru maskeli
+    //   satırlardan hesaplanır ki ekranda görünen kod ile güven rozeti tutarlı olsun.
+    const planSetByTp = new Map<string, Set<string> | null>();
+    for (const tpId of tpIdler) {
+      planSetByTp.set(tpId, await this.getPlanCodeSet(tenantId, tpId).catch(() => null));
+    }
+    return docs.map((d: any) => {
+      const masked = { ...d, lines: this.maskLinesByPlanForRead(d, planSetByTp.get(String(d.taxpayerId || '')) ?? null) };
+      return {
+        ...masked,
+        guven: this.computeDocConfidence(masked),
+        ...(isletmeTpler.has(String(d.taxpayerId || ''))
+          ? { ocrData: { ...(d.ocrData || {}), isletme: isletmeWithBelgeDefaults(d) } }
+          : {}),
+      };
+    });
   }
 
   /** Belge güveni: 'yuksek' (öğrenilmiş/kesin, otomatik onaya uygun) | 'orta' (AI tahmini, tam ama
@@ -3431,6 +3471,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const zengin = isletmeWithBelgeDefaults(doc);
       if (zengin && Object.keys(zengin).length) doc.ocrData = { ...ocr, isletme: zengin };
     } catch { /* varsayılan uygulanamadıysa ham belge döner */ }
+    // PLAN KAPISI (2026-09-25 bulgu 11): list() artık kalıcı silme yapmadığı için plan kapısı burada
+    //   da uygulanmalı — aksi halde plansız mükellefte DB'de duran placeholder kod approve() üzerinden
+    //   (approve belgeyi bu get() ile alır) Luca dosyasına sızardı. Gizleme yalnız bellekte.
+    try {
+      const planCodes = await this.getPlanCodeSet(tenantId, doc.taxpayerId).catch(() => null);
+      doc.lines = this.maskLinesByPlanForRead(doc, planCodes);
+    } catch (e: any) { this.logger.warn(`plan kapısı (get ${id}) uygulanamadı: ${e?.message || e}`); }
     return doc;
   }
 

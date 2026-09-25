@@ -537,7 +537,11 @@ export class LucaService {
     });
   }
 
-  async markJobDone(jobId: string, recordCount: number, extra?: { fisNo?: string }) {
+  async markJobDone(
+    jobId: string,
+    recordCount: number,
+    extra?: { fisNo?: string; fisBasari?: boolean; fisMetin?: string; beklenenSatir?: number },
+  ) {
     const current = await (this.prisma as any).lucaFetchJob.findUnique({
       where: { id: jobId },
       select: { recordCount: true, tip: true, invoiceDocumentId: true },
@@ -545,14 +549,31 @@ export class LucaService {
     const nextRecordCount = Number.isFinite(recordCount) && recordCount > 0
       ? recordCount
       : (current?.recordCount || 0);
+    // 2026-09-25 bulgu 14a — FİŞ TEYİDİ. Ajan "Fiş Kes"i tıkladıktan sonra Luca'da ayırt edici başarı
+    //   yazısını arıyor; bulamazsa fiş GERÇEKTEN kesilmemiş olabilir (200 satır tavanı, onay ekranı,
+    //   ekran değişikliği). Eskiden bu bilgi sunucuya hiç gelmiyor, belgeler koşulsuz POSTED oluyordu.
+    //   Belgeyi FAILED yapmıyoruz: yükleme yapılmış olabilir, FAILED "tekrar dene"yi açar ve ÇİFT FİŞ
+    //   üretir (bulgu 1/13). Bunun yerine POSTED + görünür teyit uyarısı: belge listeden kaybolmaz,
+    //   ekran "Luca'dan teyit edin" der. Eski ajan alanı göndermezse (undefined) davranış değişmez.
+    const teyitsiz = extra?.fisBasari === false;
+    const teyitNotu = teyitsiz
+      ? 'Excel yüklendi ve "Fiş Kes" tıklandı, fakat Luca\'da fiş onayı DOĞRULANAMADI. Luca > Fiş Listesi\'nden teyit edin; fiş yoksa belgeyi geri alıp yeniden gönderin.'
+      : null;
     await (this.prisma as any).lucaFetchJob.updateMany({
       where: { id: jobId, status: { notIn: ['cancelled'] } },
       data: {
         status: 'done',
         recordCount: nextRecordCount,
         finishedAt: new Date(),
+        ...(teyitNotu ? { errorMsg: `TEYİT EDİLMEDİ: ${teyitNotu}` } : {}),
       },
     });
+    if (teyitsiz) {
+      this.logger.warn(
+        `Luca işi ${jobId}: fiş onayı doğrulanamadı (beklenen satır: ${extra?.beklenenSatir ?? nextRecordCount}` +
+        `${extra?.fisMetin ? `, ekran: "${extra.fisMetin}"` : ''}) — belgeler teyit uyarısıyla işaretlendi.`,
+      );
+    }
 
     // v1.38: INVOICE_POST -> InvoiceAccountingDocument.lucaStatus = POSTED
     // v2.3: Toplu (BATCH_EXCEL) job'da invoiceDocumentId=null; belgeler lucaJobId ile
@@ -567,7 +588,8 @@ export class LucaService {
           data: {
             lucaStatus: 'POSTED',
             lucaPostedAt: new Date(),
-            lucaErrorMessage: null,
+            // Teyit edilemediyse uyarı KALSIN (null'a çekmek sessizliğe geri döndürür).
+            lucaErrorMessage: teyitNotu,
             ...(extra?.fisNo ? { lucaFisNo: extra.fisNo } : {}),
           },
         });
