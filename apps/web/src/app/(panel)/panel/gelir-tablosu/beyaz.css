@@ -171,11 +171,15 @@ html[data-theme='D'] body [data-panel-main] [data-gelir-report] table :is(td, th
   border-left: 2px solid var(--mt-line) !important;
 }
 
-/* ── 2. RAKAMLAR: mali tablo düzeni — sağa yaslı, basamaklar alt alta ──────────────────────────────
-   Tutarlar ortalıydı; basamaklar hizalanmadığı için sayılar birbiriyle karşılaştırılamıyordu. */
-html[data-theme='D'] body [data-panel-main] [data-gelir-report] tbody td.text-center { text-align: right !important; }
-html[data-theme='D'] body [data-panel-main] [data-gelir-report] tbody td.text-center > * { justify-content: flex-end !important; }
+/* ── 2. RAKAMLAR ve ORANLAR: hücrede ORTALI ────────────────────────────────────────────────────────
+   2026-09-25 ikinci tur — Muzaffer Bey'in tercihi: tutarlar da yüzde rozetleri de sütunun ortasında
+   dursun (bir ara sağa yaslanmıştı, geri alındı). Sayılar tabular-nums olduğu için aynı basamak
+   sayısındaki tutarlar ortalıyken de alt alta hizalı kalır. */
+html[data-theme='D'] body [data-panel-main] [data-gelir-report] tbody td.text-center { text-align: center !important; }
+html[data-theme='D'] body [data-panel-main] [data-gelir-report] tbody td.text-center > * { justify-content: center !important; margin-left: auto !important; margin-right: auto !important; }
 html[data-theme='D'] body [data-panel-main] [data-gelir-report] thead th.text-center { text-align: center !important; }
+/* Yüzde rozeti: tutarın tam altında, ortalı */
+html[data-theme='D'] body [data-panel-main] [data-gelir-report] [data-report-percent] { margin-left: auto !important; margin-right: auto !important; }
 
 /* ── 3. VERİ YOK sütunu geri çekilsin ─────────────────────────────────────────────────────────────
    Boş dönemler dolu dönemlerle aynı ağırlıktaydı; göz her seferinde onlara takılıyordu. */

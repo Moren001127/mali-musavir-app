@@ -1051,7 +1051,7 @@ function KarsilastirmaTablosu({
     return `%${pct.toFixed(1).replace('.', ',')}`;
   };
 
-  const COL_WIDTH = `${76 / tersDonemler.length}%`;
+  const COL_WIDTH = `${73 / tersDonemler.length}%`;
 
   // Gelir tablosuyla aynı altın renk
   const GOLD = '#d4b876';
@@ -1252,11 +1252,11 @@ function KarsilastirmaTablosu({
   }, []);
 
   return (
-    <div data-report-sections style={portalStyle({ maxWidth: Math.min(1120, 320 + tersDonemler.length * 200), marginRight: 'auto' })}>
-      {/* v1.36.71: Tablo ekranı boydan boya kaplamasın — dönem sayısına göre ölçeklenen genişlik sınırı + ortala.
-          2026-09-25: Bu sınır ÖNCEDEN yalnız ilk bloğa (Kar/Zarar) uygulanıyordu; Stok ve Geçici Vergi
-          blokları tam genişlikte kalıyor, ilk tablo dar ve içeride duruyordu ("eşit durmuyor"). Sınır artık
-          BÜTÜN bölümleri saran kaba verildi; üç blok da aynı genişlikte ve aynı hizada. */}
+    <div data-report-sections>
+      {/* 2026-09-25: Eskiden `maxWidth` sınırı YALNIZ ilk bloğa (Kar/Zarar) uygulanıyordu; Stok ve Geçici
+          Vergi blokları tam genişlikteydi, ilk tablo dar ve içeride duruyordu ("eşit durmuyor"). Sınır önce
+          hepsine verildi, ama bu sefer sağda boşluk bıraktı. Sonuç: sınır tamamen KALDIRILDI — üç blok da
+          alanın tamamını kullanıyor, sütunlar yüzdeyle (27% etiket + dönem başına eşit pay) esniyor. */}
       {/* v1.36.26: Dönem Aksiyonları + KAR/ZARAR ÖZETİ tek bağlı blok — boşluk yok */}
       <div className="space-y-0">
       {/* Üst dönem barı — tablonun sütun genişlikleriyle birebir hizalı */}
@@ -1273,8 +1273,8 @@ function KarsilastirmaTablosu({
         <div
           className="grid"
           style={portalStyle({
-            // Tablo colgroup ile aynı: 34% boş + 4 dönem × COL_WIDTH
-            gridTemplateColumns: `24% repeat(${tersDonemler.length}, ${COL_WIDTH})`,
+            // Tablo colgroup ile aynı: 27% etiket + 4 dönem × COL_WIDTH
+            gridTemplateColumns: `27% repeat(${tersDonemler.length}, ${COL_WIDTH})`,
           })}
         >
           {/* Sol başlık — KAR/ZARAR ÖZETİ (tam-genişlik bant kaldırıldı, buraya taşındı;
@@ -1476,7 +1476,7 @@ function KarsilastirmaTablosu({
       >
         <table className="w-full text-sm" style={portalStyle(REPORT_TABLE_STYLE)}>
           <colgroup>
-            <col style={portalStyle({ width: '24%' })} />
+            <col style={portalStyle({ width: '27%' })} />
             {tersDonemler.map((d) => (
               <col key={d} style={portalStyle({ width: COL_WIDTH })} />
             ))}
@@ -1576,7 +1576,7 @@ function KarsilastirmaTablosu({
       >
         <table className="w-full text-sm" style={portalStyle(REPORT_TABLE_STYLE)}>
           <colgroup>
-            <col style={portalStyle({ width: '24%' })} />
+            <col style={portalStyle({ width: '27%' })} />
             {tersDonemler.map((d) => (
               <col key={d} style={portalStyle({ width: COL_WIDTH })} />
             ))}
@@ -1631,7 +1631,7 @@ function KarsilastirmaTablosu({
       >
         <table className="w-full text-sm" style={portalStyle(REPORT_TABLE_STYLE)}>
           <colgroup>
-            <col style={portalStyle({ width: '24%' })} />
+            <col style={portalStyle({ width: '27%' })} />
             {tersDonemler.map((d) => (
               <col key={d} style={portalStyle({ width: COL_WIDTH })} />
             ))}
@@ -1701,8 +1701,8 @@ function KarsilastirmaTablosu({
         data-mali-actions
         className="grid rounded-xl py-3 mt-3 items-center"
         style={portalStyle({
-          // Üst tablo ile aynı: 24% etiket + N × COL_WIDTH (her dönem 19%)
-          gridTemplateColumns: `24% repeat(${tersDonemler.length}, ${COL_WIDTH})`,
+          // Üst tablo ile aynı: 27% etiket + N × COL_WIDTH
+          gridTemplateColumns: `27% repeat(${tersDonemler.length}, ${COL_WIDTH})`,
           background: 'linear-gradient(135deg, rgba(212,184,118,0.08), rgba(212,184,118,0.02))',
           border: '1px solid rgba(212,184,118,0.25)',
         })}

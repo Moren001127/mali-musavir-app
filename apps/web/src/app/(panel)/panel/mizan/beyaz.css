@@ -282,3 +282,19 @@ html[data-theme='D'] body [data-panel-main] [data-mizan-report] tfoot td { font-
 
 /* ── 5. Denetim kriterleri kartı: başlık şeridi biraz daha derli toplu ───────────────────────────── */
 html[data-theme='D'] body .financial-report-readable > div.rounded-xl.border.p-4:has(h3 span.text-\[10\.5px\]) { padding: 14px 16px !important; }
+
+/* ── 6. TABLO ÇİZGİLERİ (2026-09-25 ikinci tur) ──────────────────────────────────────────────────
+   Muzaffer Bey: "hiç tablo gibi durmuyor ki". Dikey ve yatay ayraçlar en açık tonla (--mt-line-soft)
+   çiziliyordu; ekranda ızgara görünmüyor, sayılar boşlukta duruyordu. Artık ayraçlar okunur. */
+html[data-theme='D'] body [data-panel-main] [data-mizan-report] tbody td {
+  border-right-color: var(--mt-line) !important;
+  border-bottom-color: var(--mt-line-soft) !important;
+}
+html[data-theme='D'] body [data-panel-main] [data-mizan-report] thead th { border-right-color: var(--mt-line) !important; }
+/* Hesap kodu ile hesap adı tek blok sayılır; aralarındaki çizgi ince kalsın */
+html[data-theme='D'] body [data-panel-main] [data-mizan-report] :is(thead th, tbody td):nth-child(1) { border-right-color: var(--mt-line-soft) !important; }
+/* Tutar bloğunun başlangıcı (BORÇ sütunu) belirgin ayraçla ayrılsın */
+html[data-theme='D'] body [data-panel-main] [data-mizan-report] :is(thead th, tbody td):nth-child(3) { border-left: 2px solid var(--mt-line) !important; }
+/* Grup satırlarının üstü kalın çizgi: bölüm başlangıcı okunsun */
+html[data-theme='D'] body [data-panel-main] [data-mizan-report] tbody tr[data-mizan-seviye='0'] td { border-top: 2px solid var(--mt-line-strong) !important; }
+html[data-theme='D'] body [data-panel-main] [data-mizan-report] tbody tr[data-mizan-seviye='1'] td { border-top: 1px solid var(--mt-line) !important; }

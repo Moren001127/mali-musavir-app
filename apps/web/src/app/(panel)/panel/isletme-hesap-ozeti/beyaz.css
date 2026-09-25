@@ -183,10 +183,21 @@ html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-r
   font-weight: 400 !important; font-size: 11px !important;
 }
 
-/* ── 3. Tutarlar sağa yaslı — basamaklar alt alta ────────────────────────────────────────────────── */
-html[data-theme='D'] body [data-panel-main] [data-isletme-report] table tbody td:not(:first-child) { text-align: right !important; }
-html[data-theme='D'] body [data-panel-main] [data-isletme-report] table tbody td:not(:first-child) > * { justify-content: flex-end !important; margin-left: auto !important; }
-html[data-theme='D'] body [data-panel-main] [data-isletme-report] input.num-input { text-align: right !important; }
+/* ── 3. Tutarlar hücrede ORTALI (Muzaffer Bey'in tercihi; bir ara sağa yaslanmıştı) ──────────────── */
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] table tbody td:not(:first-child) { text-align: center !important; }
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] table tbody td:not(:first-child) > * { justify-content: center !important; margin-left: auto !important; margin-right: auto !important; }
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] input.num-input { text-align: center !important; }
+
+/* ── 3b. Satırlar eşit yükseklikte, kilitli hücre ile girdi kutusu aynı hizada ────────────────────
+   Kilitli dönemde girdi kutusu yerine düz yazı geliyor; kutu yüksekliği olmadığı için o sütun
+   çökük duruyor ve satırlar birbirini tutmuyordu. */
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] table tbody td { height: 46px !important; vertical-align: middle !important; }
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] table tbody td:not(:first-child) > span,
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] table tbody td:not(:first-child) > div {
+  display: inline-flex; align-items: center; justify-content: center; min-height: 30px;
+}
+/* Etiket sütunu: açıklama tek satıra sığsın, satır yüksekliği şişmesin */
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row] > td:first-child > span.normal-case:not(.rounded-md) { font-size: 10.5px !important; }
 
 /* ── 4. Bölüm başlıkları ve blok aralığı ─────────────────────────────────────────────────────────── */
 html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-sections] > [data-report-section],

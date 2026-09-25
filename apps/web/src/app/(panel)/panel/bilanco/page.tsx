@@ -559,6 +559,7 @@ export default function BilancoPage() {
                             {oranlar.map((o: any) => (
                               <div
                                 key={o.kod}
+                                data-bilanco-oran={o.yorum?.startsWith('✓') ? 'iyi' : o.yorum?.startsWith('⚠') ? 'sinir' : o.yorum?.startsWith('✗') ? 'kotu' : 'notr'}
                                 className="rounded-xl p-4"
                                 style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' })}
                               >
