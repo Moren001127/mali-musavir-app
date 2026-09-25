@@ -13157,17 +13157,35 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     }
     const endpoint = /Firmbox\.asmx/i.test(String(cfg.baseUrl || '')) ? String(cfg.baseUrl).trim() : MIKRO_FIRMBOX_URL;
 
-    let sessionId: string;
-    try {
-      sessionId = await this.mikroLogin(endpoint, firmboxKullanici, cfg.password);
-    } catch (e: any) {
-      const neden = String(e?.message || e);
-      FaturaMuhasebelestirmeService.mikroFirmboxAtla.set(firmboxKullanici, { ts: Date.now(), neden });
-      this.logger.warn(`[MIKRO] web servisi girişi reddetti (${neden.slice(0, 160)}) — tarayıcı oturumu yoluna geçiliyor`);
-      return this.mikroEportalYedek(cfg, opts, neden);
+    // KİMLİK BİÇİMİ BİRLEŞİMLERİ (2026-09-26): "br:" ŞUBE KODU — e-Mikro portal hesabında "efatura"
+    //   (WinIceberg rehberi), Mikro ERP'den açılan tek merkezli hesapta "default" (Mikro aktivasyon dokümanı).
+    //   isOnlySelf=false "yetkili olunan TÜM kutular" (müşavir hesabı) demek; tek firma hesabı bunu reddedebilir.
+    //   "Hesap durumu uygun değil"/"Sistem hatası" GENEL mesajlar (uydurma kimlik de alıyor) → yalnız bunlarda
+    //   bir sonraki birleşime geçilir; başka bir hata (gerçek şifre hatası vb.) gelirse hemen durulur.
+    //   Çalışan birleşim hatırlanır, bir dahaki sefere İLK o denenir.
+    const varyantlar = this.mikroFirmboxVaryantlari(cfg.username, vkn);
+    let sessionId = '';
+    let kullanilan = varyantlar[0];
+    let sonHata = '';
+    for (const v of varyantlar) {
+      try {
+        sessionId = await this.mikroLogin(endpoint, v.ad, cfg.password, v.onlySelf);
+        kullanilan = v;
+        break;
+      } catch (e: any) {
+        sonHata = String(e?.message || e);
+        this.logger.warn(`[MIKRO] web servisi birleşimi reddedildi (br=${v.ad.split(':')[3] || '?'}, isOnlySelf=${v.onlySelf}): ${sonHata.replace(/\s+/g, ' ').slice(0, 120)}`);
+        if (!/Hesap durumu uygun değil|Sistem hatası/i.test(sonHata)) break;
+      }
+    }
+    if (!sessionId) {
+      FaturaMuhasebelestirmeService.mikroFirmboxAtla.set(firmboxKullanici, { ts: Date.now(), neden: sonHata });
+      this.logger.warn(`[MIKRO] web servisi ${varyantlar.length} birleşimin hiçbirini kabul etmedi — tarayıcı oturumu yoluna geçiliyor`);
+      return this.mikroEportalYedek(cfg, opts, sonHata);
     }
     FaturaMuhasebelestirmeService.mikroFirmboxAtla.delete(firmboxKullanici);
-    this.logger.log(`[MIKRO] web servisi girişi BAŞARILI (${opts.period.donem})`);
+    FaturaMuhasebelestirmeService.mikroFirmboxCalisan.set(firmboxKullanici, kullanilan);
+    this.logger.log(`[MIKRO] web servisi girişi BAŞARILI (br=${kullanilan.ad.split(':')[3] || '?'}, isOnlySelf=${kullanilan.onlySelf}, ${opts.period.donem})`);
 
     try {
       const channel = String(opts.channel || (opts.direction === 'SATIS' ? 'OUT_EFATURA' : 'IN_EFATURA')).toUpperCase();
@@ -13243,7 +13261,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     } catch (err: any) {
       // Oturum düştüyse önbelleği temizle → sonraki çekim yeniden giriş yapsın.
       if (/login|session|oturum|expired|yetki/i.test(String(err?.message || ''))) {
-        FaturaMuhasebelestirmeService.mikroSessions.delete(`${endpoint}|${firmboxKullanici}`); // mikroLogin önbellek anahtarıyla aynı
+        FaturaMuhasebelestirmeService.mikroSessions.delete(`${endpoint}|${kullanilan.ad}|${kullanilan.onlySelf}`); // mikroLogin önbellek anahtarıyla aynı
       }
       throw err;
     }
@@ -13524,6 +13542,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   private static readonly mikroSessions = new Map<string, { sid: string; ts: number }>();
   /** Web servisi (Firmbox) girişi reddedilen hesaplar — 6 saat boyunca doğrudan tarayıcı yoluna gidilir. */
   private static readonly mikroFirmboxAtla = new Map<string, { ts: number; neden: string }>();
+  /** Hesap başına ÇALIŞAN kimlik birleşimi (br şubesi + isOnlySelf) — sonraki girişte ilk o denenir. */
+  private static readonly mikroFirmboxCalisan = new Map<string, { ad: string; onlySelf: boolean }>();
 
   /** Mikro/Paraşüt/Zirve ortak web servis kullanıcı adı: "tx:{VKN}:br:efatura:ad:{e-posta}".
    *  Kullanıcı Entegratörler ekranına tam kodu ("tx:" ile başlayan) yazdıysa olduğu gibi kullanılır. */
@@ -13531,6 +13551,19 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const e = String(eposta || '').trim();
     if (/^tx:/i.test(e)) return e;
     return vkn ? `tx:${vkn}:br:efatura:ad:${e}` : e;
+  }
+
+  /** Denenecek kimlik birleşimleri — daha önce çalışan varsa EN BAŞA alınır. */
+  private mikroFirmboxVaryantlari(eposta: string, vkn: string): Array<{ ad: string; onlySelf: boolean }> {
+    const e = String(eposta || '').trim();
+    const adlar = /^tx:/i.test(e) || !vkn
+      ? [this.mikroFirmboxKullanici(e, vkn)]
+      : [`tx:${vkn}:br:efatura:ad:${e}`, `tx:${vkn}:br:default:ad:${e}`];
+    const liste: Array<{ ad: string; onlySelf: boolean }> = [];
+    for (const ad of adlar) for (const onlySelf of [false, true]) liste.push({ ad, onlySelf });
+    const calisan = FaturaMuhasebelestirmeService.mikroFirmboxCalisan.get(this.mikroFirmboxKullanici(e, vkn));
+    if (calisan) return [calisan, ...liste.filter((v) => !(v.ad === calisan.ad && v.onlySelf === calisan.onlySelf))];
+    return liste;
   }
 
   /** Web servisi olmadıysa tarayıcı oturumu (e-Portal) yedeği; ikisi de olmazsa İKİ sebebi de söyler. */
@@ -13556,8 +13589,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
 
   /** Mikro Firmbox oturumu — kullanıcı bazında önbellekli (~8 dk); her çekimde yeniden giriş yapıp
    *  hesabı hatalı-giriş kilidine sokmamak için sessionId tekrar kullanılır. */
-  private async mikroLogin(endpoint: string, username: string, password: string): Promise<string> {
-    const key = `${endpoint}|${username}`;
+  private async mikroLogin(endpoint: string, username: string, password: string, onlySelf = false): Promise<string> {
+    const key = `${endpoint}|${username}|${onlySelf}`;
     const cached = FaturaMuhasebelestirmeService.mikroSessions.get(key);
     if (cached && Date.now() - cached.ts < 8 * 60 * 1000) return cached.sid;
     const ns = ' xmlns="http://tempuri.org/"';
@@ -13566,7 +13599,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       `<password${ns}>${this.xmlEscape(password)}</password>` +
       `<version${ns}>1.0</version>` +
       // isOnlySelf=false → müşavirin yetkili olduğu tüm posta kutuları (tek firmaya kilitleme).
-      `<isOnlySelf${ns}>false</isOnlySelf>`;
+      `<isOnlySelf${ns}>${onlySelf ? 'true' : 'false'}</isOnlySelf>`;
     // Mikro hatalı kimlikte SOAP Fault döner ve mesajı JENERİK olabilir ("Sistem hatası", kod 2005) →
     //   soapPost bunu ham haliyle fırlatıyordu, kullanıcı "bizde bir şey bozuk" sanıyordu. Anlamlı sar.
     let resp: string;
