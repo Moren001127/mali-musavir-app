@@ -12809,14 +12809,19 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   anlamak için Türkiye vekili reddedilirse İKİNCİ ÇIKIŞ (doğrudan) denenir; biri geçerse çekim sürer,
     //   ikisi de geçmezse hata mesajında HER İKİ IP de yazar → Uyumsoft'a "şu IP'lere izin verin" denebilir.
     const yetkiHatasiMi = (e: any) => /yetkiniz yok|Permission/i.test(String(e?.message || ''));
+    // SÜRE (2026-09-25 canlı ölçüm): Uyumsoft bu uçta faturaların TAM UBL'ini tek yanıtta döndürüyor.
+    //   SULTAN OSMAN Ağustos alışı = 16 fatura, 7,2 MB, 95-105 sn. Varsayılan 60 sn'lik sınır bunu
+    //   kesiyordu ("The operation was aborted due to timeout"). Sayfa boyutunu küçültmek İŞE YARAMIYOR,
+    //   yavaşlık Uyumsoft'un kendi tarafında. Fatura sayısı arttıkça süre uzar → geniş pay bırakıldı.
+    const UYUMSOFT_SURE = 300_000;
     try {
-      const text = await this.soapPost(url, action, body, { trProxy: true });
+      const text = await this.soapPost(url, action, body, { trProxy: true, timeoutMs: UYUMSOFT_SURE });
       return this.extractPayloadsFromProviderResponse(text, ['Data']);
     } catch (e: any) {
       if (!yetkiHatasiMi(e)) throw e;
       this.logger.warn(`[UYUMSOFT] Türkiye çıkışı reddedildi (${String(e?.message || '').slice(0, 160)}) — doğrudan çıkış deneniyor`);
       try {
-        const text2 = await this.soapPost(url, action, body, { trProxy: false });
+        const text2 = await this.soapPost(url, action, body, { trProxy: false, timeoutMs: UYUMSOFT_SURE });
         this.logger.log('[UYUMSOFT] doğrudan çıkış KABUL edildi — Türkiye vekilinin IP adresi izinli değil');
         return this.extractPayloadsFromProviderResponse(text2, ['Data']);
       } catch (e2: any) {
@@ -13537,7 +13542,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     }
   }
 
-  private async soapPost(url: string, soapAction: string, body: string, opts: { trProxy?: boolean } = {}) {
+  private async soapPost(url: string, soapAction: string, body: string, opts: { trProxy?: boolean; timeoutMs?: number } = {}) {
     const envelope = `<?xml version="1.0" encoding="utf-8"?>
       <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">
         <soapenv:Body>${body}</soapenv:Body>
@@ -13550,7 +13555,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (soapAction) headers.SOAPAction = `"${soapAction}"`;
     // Timeout: sağlayıcı bağlantıyı açık tutup yanıt vermezse istek süresiz asılı kalıyordu.
     const doFetch = opts.trProxy ? this.trFetch.bind(this) : fetch;
-    const res = await doFetch(url, { method: 'POST', headers, body: envelope, signal: AbortSignal.timeout(60_000) });
+    const res = await doFetch(url, { method: 'POST', headers, body: envelope, signal: AbortSignal.timeout(opts.timeoutMs || 60_000) });
     const text = await res.text();
     if (!res.ok) throw new Error(`SOAP ${res.status}: ${text.slice(0, 400)}`);
     if (/<(?:[^:>]+:)?Fault\b/i.test(text)) throw new Error(this.tagText(text, 'faultstring') || 'SOAP Fault');
