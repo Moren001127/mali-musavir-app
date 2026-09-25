@@ -997,17 +997,21 @@ function Check({ checked, onToggle, disabled, title }: { checked?: boolean; onTo
 }
 
 /** Belge listesi ortak sorgusu — aynı queryKey ekranlar arası cache paylaşır */
-function useDocuments(taxpayerId: string, period: string, status?: 'PENDING') {
+function useDocuments(taxpayerId: string, period: string, status?: 'PENDING', asama?: 'arsiv' | 'aktarim') {
   // period='all' (2026-09-15): Gelen Faturalar DÖNEMSİZ — Mihsap Gelen Belgeler gibi bütün bekleyenler tek listede
   //   (Muzaffer Bey: "gelen faturalarda tarih filtresi olmasın, karışıklık olmasın"). Sunucu period almayınca süzmez.
   const tum = period === 'all';
   return useQuery({
-    queryKey: ['fm2', 'documents', taxpayerId, period, status || ''],
+    // 2026-09-25 bulgu 10: asama queryKey'e girer — Aktarım ve Arşivim AYRI küme çeker, ortak cache'i
+    //   birbirinin eksik listesiyle ezmesin.
+    queryKey: ['fm2', 'documents', taxpayerId, period, status || '', asama || ''],
     // Hatayı YUTMA — react-query isError versin ki "Yüklenemedi, tekrar dene" gösterelim
     // (eskiden catch([]) ile ağ hatası "veri yok" gibi görünüyordu).
     queryFn: async () => {
       const r = await api.get('/fatura-muhasebelestirme/documents', {
-        params: { taxpayerId: taxpayerId || undefined, period: tum ? undefined : period, status, limit: tum ? 2000 : 300 },
+        // asama: sunucu aşamayı SQL'de süzer (bulgu 10). Eskiden ekran 300'lük dilimi çekip aşamayı
+        //   bellekte süzüyordu → 500 belgeli dönemde ilk girilen 200 belge Arşivim'de HİÇ görünmüyordu.
+        params: { taxpayerId: taxpayerId || undefined, period: tum ? undefined : period, status, asama, limit: tum ? 2000 : 300 },
       });
       return Array.isArray(r.data) ? r.data : [];
     },
@@ -3506,6 +3510,17 @@ function ScreenSorgu({ taxpayerId, period, source, onOpenEntegrator }: { taxpaye
               <button className="btn sm" onClick={() => efaturaInboxQ.refetch()}><Ico html={I.sync} size={12} /> Tekrar dene</button>
             </div>
           )}
+          {/* 2026-09-25 denetim bulgusu 6/10: sunucu kayıt sınırına dayandığında liste EKSİK döner.
+              Eskiden bu sessizdi — kullanıcı eksik listeyi tam sanıyordu. Sunucu artık satırlara
+              listeKirpildi bilgisi koyuyor (efatura-sync.service.ts), burada görünür yapılıyor. */}
+          {efaturaTumRows.some((r: any) => r?.listeKirpildi) && (
+            <div className="yuklenemedi">
+              <span>
+                <Ico html={I.info} size={14} /> Bu listede kayıt sınırına dayanıldı — <b>liste eksik olabilir</b>.
+                {' '}Dönemi daraltın (tek ay seçin) ya da yönü/kanalı değiştirip bakın.
+              </span>
+            </div>
+          )}
           <div className="sourcetablewrap efatura sq-tablewrap">
             {efaturaOverlayBusy && (
               <div className="queryveil">
@@ -5269,10 +5284,15 @@ const GH_ICO_UNDO = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none"
 function ScreenAktarilanlar({ taxpayerId, period, mode = 'bekleyen', isIsletme = false }: { taxpayerId: string; period: string; mode?: 'bekleyen' | 'arsiv'; isIsletme?: boolean }) {
   const arsiv = mode === 'arsiv';
   const qc = useQueryClient();
-  const docsQ = useDocuments(taxpayerId, period);
+  // 2026-09-25 bulgu 10: aşama süzgeci artık SUNUCUDA. Eskiden burada durum süzgeci OLMADAN en yeni
+  //   300 belge çekilip aşama bellekte süzülüyordu → 500 belgeli dönemde ilk girilen 200 belge
+  //   Arşivim'de hiç görünmüyordu, uyarı da çıkmıyordu. Bellekteki süzgeç güvenlik ağı olarak kaldı
+  //   (eski sunucu sürümüyle de doğru çalışsın).
+  const docsQ = useDocuments(taxpayerId, period, undefined, arsiv ? 'arsiv' : 'aktarim');
   const all: any[] = docsQ.data || [];
   // Aktarım = aktarım BEKLEYEN (işlenmiş, henüz Luca'da değil); Arşivim = AKTARILMIŞ (POSTED).
   const docs = all.filter(arsiv ? isArchived : isWaitingTransfer);
+  const listeKirpildi = all.some((d: any) => d?.listeKirpildi);
   const retryMut = useMutation({
     mutationFn: (id: string) => api.post(`/fatura-muhasebelestirme/documents/${id}/retry-luca`),
     onSuccess: () => { toast.success("Luca'ya yeniden gönderildi"); qc.invalidateQueries({ queryKey: ['fm2'] }); },
@@ -5891,6 +5911,17 @@ function ScreenAktarilanlar({ taxpayerId, period, mode = 'bekleyen', isIsletme =
       <div className="sub">{arsiv
         ? <>Luca'ya aktarılmış (fişi kesilmiş) faturaların arşivi ({period}). Buradakiler işlenmiş ve Luca'da.</>
         : <>İşlenmiş, Luca'ya aktarım <b>BEKLEYEN</b> faturalar. <b>Alış</b> ve <b>Satış</b> AYRI birer <b>tek toplu fiş</b> olarak aktarılır ({period}). Aktarılınca <b>Arşivim</b>'e geçer.</>}</div>
+      {/* 2026-09-25 denetim bulgusu 10: kayıt sınırına dayanıldığında liste EKSİK döner ve eskiden bu
+          tamamen sessizdi (500 belgeli dönemde ilk girilen 200 belge görünmüyordu). Aşama süzgeci
+          artık sunucuda olduğu için dilim doğru kümeden geliyor; yine de sınıra dayanılırsa söylenir. */}
+      {listeKirpildi && (
+        <div className="yuklenemedi">
+          <span>
+            <Ico html={I.info} size={14} /> Bu dönemde belge sayısı liste sınırını aştı — <b>aşağıdaki liste eksik</b>.
+            {' '}Dönemi daraltıp tekrar bakın.
+          </span>
+        </div>
+      )}
       {/* SÜZGEÇ ŞERİDİ (2026-09-23): tıklanınca iki tabloyu birden süzer; tekrar tıklayınca süzgeç kalkar. */}
       {!docsQ.isLoading && docs.length > 0 && !sevk && (
         <div className="filttiles">

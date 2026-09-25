@@ -33,10 +33,12 @@ function ok(cond, msg) { if (!cond) { failed++; console.error(`  ✗ ${msg}`); }
 /** Sahte prisma: yazma çağrılarını kaydeder (çağrılmaması gerekenleri yakalamak için). */
 function makePrisma(docs) {
   const yazmalar = [];
+  const sorgular = [];
   return {
     yazmalar,
+    sorgular,
     invoiceAccountingDocument: {
-      findMany: async () => docs,
+      findMany: async (args) => { sorgular.push(args); return docs; },
       findFirst: async () => docs[0] || null,
     },
     invoiceAccountingLine: {
@@ -123,6 +125,45 @@ const belge = (over = {}) => ({
     const kaynakKosulu = y && y.args && y.args.where && y.args.where.kaynak;
     ok(!!kaynakKosulu && kaynakKosulu.not === 'KULLANICI',
       `where.kaynak = { not: 'KULLANICI' } gönderildi (gelen: ${JSON.stringify(kaynakKosulu)})`);
+  }
+
+  // ── 7) BULGU 10: aşama süzgeci SQL'de + kırpılma bildirimi ──
+  console.log('6) list() aşama süzgeci sunucuda (bulgu 10)');
+  {
+    const prisma = makePrisma([belge()]);
+    const svc = makeSvc(prisma, null);
+    await svc.list('t1', { taxpayerId: 'tp1', asama: 'arsiv', limit: 300 });
+    const w = prisma.sorgular[0] && prisma.sorgular[0].where;
+    ok(!!w && w.lucaStatus && Array.isArray(w.lucaStatus.in) && w.lucaStatus.in.includes('POSTED'),
+      `arşiv aşaması SQL where'ine girdi (${JSON.stringify(w && w.lucaStatus)})`);
+    ok(!!w.lucaStatus.in.includes('MANUAL_DONE'), 'elle işlenmiş belge de arşiv sayılıyor (ekrandaki isArchived ile aynı)');
+  }
+  {
+    const prisma = makePrisma([belge()]);
+    const svc = makeSvc(prisma, null);
+    await svc.list('t1', { taxpayerId: 'tp1', asama: 'aktarim', limit: 300 });
+    const w = prisma.sorgular[0] && prisma.sorgular[0].where;
+    const and = w && Array.isArray(w.AND) ? w.AND : [];
+    ok(and.length === 2, 'aktarım aşaması iki koşullu (arşiv DEĞİL + onaylı/kuyrukta)');
+    ok(JSON.stringify(and).includes('POSTED') && JSON.stringify(and).includes('APPROVED'),
+      'aktarım süzgeci arşivi dışlıyor ve onaylıyı kapsıyor');
+  }
+  {
+    // Sunucu limit+1 çeker: sahte prisma 2 satır döndürünce limit=1 için kırpılma bildirilmeli.
+    const prisma = makePrisma([belge({ id: 'd1' }), belge({ id: 'd2' })]);
+    const svc = makeSvc(prisma, null);
+    const out = await svc.list('t1', { taxpayerId: 'tp1', limit: 1 });
+    ok(prisma.sorgular[0].take === 2, `sınır aşımını görmek için limit+1 çekiliyor (take=${prisma.sorgular[0].take})`);
+    ok(out.length === 1, 'fazla satır kullanıcıya DÖNMÜYOR (yalnız tespit için çekilir)');
+    ok(out[0] && out[0].listeKirpildi === true, 'kırpılma satırlarda bildiriliyor (ekran uyarı bandı buna bakar)');
+  }
+  {
+    const prisma = makePrisma([belge()]);
+    const svc = makeSvc(prisma, null);
+    const out = await svc.list('t1', { taxpayerId: 'tp1', limit: 300 });
+    ok(!out[0].listeKirpildi, 'sınıra dayanılmadıysa uyarı YOK (gereksiz korkutma olmasın)');
+    const w = prisma.sorgular[0].where;
+    ok(!w.lucaStatus && !w.AND, 'aşama verilmezse eski davranış korunur (tüm aşamalar)');
   }
 
   if (failed) { console.error(`\nfatura-okuma-yan-etki-regression: ${failed} BAŞARISIZ`); process.exit(1); }

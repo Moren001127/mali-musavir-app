@@ -194,14 +194,49 @@ export class EFaturaSyncService {
       if (!Number.isFinite(year) || !Number.isFinite(month)) end.setUTCMonth(end.getUTCMonth() + 1);
       periodStart = start;
       periodEnd = end;
-      if (!opts.channel) where.faturaDate = { gte: start, lt: end };
     }
     const limit = Math.min(parseInt(opts.limit || '200', 10) || 200, 3000);
-    const take = opts.channel ? Math.min(limit * 3, 5000) : limit;
-    const rows = await (this.prisma as any).eFaturaInbox.findMany({
+    const channel = String(opts.channel || '').toUpperCase();
+
+    // ── BULGU 6 (2026-09-25): DÖNEM + KANAL SÜZGECİ ARTIK SQL'DE ──────────────────────────────
+    //   ESKİ HÂL: dönem süzgeci yalnız `if (!opts.channel)` iken SQL'e giriyordu. Arayüz HER ZAMAN
+    //   kanal gönderdiği için (fatura-merkezi ekranı IN_EFATURA ile açılıyor) dönem süzmesi pratikte
+    //   HİÇ SQL'e girmiyordu: sorgu `syncedAt desc` ile ilk 5.000 satırı çekiyor, dönem/kanal
+    //   ayıklaması bellekte yapılıyordu. Çok faturalı mükellefte (kodun kendi notu: TURKCELL 47k+
+    //   fatura) eski aylar bu sınırın arkasında kalıp listede HİÇ görünmüyordu — sessiz eksik.
+    //   YENİ HÂL: dönem her zaman, kanal da JSON yol süzgeciyle SQL'e giriyor → sınır artık
+    //   "süzülmüş" kümeye uygulanıyor, eksik kalan satır kalmıyor. Sınıra dayanılırsa (aşağıda)
+    //   günlüğe uyarı düşülüp satırlara bilgi ekleniyor; sessiz kırpma yok.
+    const kosullar: any[] = [];
+    if (periodStart && periodEnd) {
+      //   faturaDate=null satırlar (TÜRMOB özet satırları) dışta BIRAKILMAZ: onların dönemi eskiden
+      //   olduğu gibi bellekte rawJson.period ile karşılaştırılır.
+      kosullar.push({ OR: [{ faturaDate: { gte: periodStart, lt: periodEnd } }, { faturaDate: null }] });
+    }
+    if (channel) {
+      //   Kanal ayrı kolon değil, rawJson.channel içinde. Postgres JSON yol süzgeci ile SQL'e taşındı
+      //   (aynı kalıp ocrData.ettn süzgecinde de kullanılıyor). Yazan taraf kanalı BÜYÜK harfe
+      //   çeviriyor (fatura-muhasebelestirme.service.ts: `String(opts.channel || ...).toUpperCase()`);
+      //   yine de küçük harfli eski kayıt varsa elenmesin diye iki biçim birlikte aranıyor.
+      const kanalCesitleri = [...new Set([channel, channel.toLowerCase()])];
+      kosullar.push({ OR: kanalCesitleri.map((v) => ({ rawJson: { path: ['channel'], equals: v } })) });
+    }
+    if (kosullar.length) where.AND = kosullar;
+
+    //   SIRALAMA: eskiden `syncedAt desc` (çekim anı) idi → eski bir fatura yeniden çekilince listenin
+    //   başına çıkıyor, çekilmeyince kayboluyordu (kararsız sıra). Artık FATURA TARİHİ esas; eşitlikte
+    //   syncedAt ve id ikincil anahtar (kararlı, tekrarlanabilir sıra). Tarihi olmayan satırlar sona.
+    const siralama = [
+      { faturaDate: { sort: 'desc', nulls: 'last' } },
+      { syncedAt: 'desc' },
+      { id: 'desc' },
+    ];
+    //   Sınırın AŞILDIĞINI anlamak için bir fazla satır çekilir (limit+1). Fazlası varsa liste
+    //   gerçekten kırpılmıştır → sessiz kalınmaz.
+    const cekilen = await (this.prisma as any).eFaturaInbox.findMany({
       where,
-      orderBy: { syncedAt: 'desc' },
-      take,
+      orderBy: siralama,
+      take: limit + 1,
       select: {
         id: true, tenantId: true, taxpayerId: true, entegrator: true, uuid: true, ettn: true, faturaNo: true, faturaDate: true,
         senderVkn: true, senderTitle: true, receiverVkn: true,
@@ -209,6 +244,28 @@ export class EFaturaSyncService {
         direction: true, invoiceProfile: true, isTransferred: true, documentId: true,
         ublXmlRaw: true, rawJson: true, markedAt: true, processedAt: true, syncedAt: true,
       },
+    });
+    const listeKirpildi = Array.isArray(cekilen) && cekilen.length > limit;
+    if (listeKirpildi) {
+      this.logger.warn(
+        `[efatura-inbox] LİSTE KIRPILDI: süzgece uyan satır sayısı ${limit} sınırını aştı `
+        + `(mükellef=${opts.taxpayerId || '-'} dönem=${opts.period || '-'} kanal=${channel || '-'}). `
+        + `Dönemi daraltın ya da limit'i yükseltin; liste EKSİK gösteriyor.`,
+      );
+    }
+    //   SQL'de süzülemeyen artık: tarihi olmayan satırın dönem eşleşmesi (rawJson.period) ve kanal
+    //   ikinci kapısı (JSON süzgeci tutmadıysa da eski davranış korunsun).
+    const rows = (Array.isArray(cekilen) ? cekilen.slice(0, limit) : []).filter((row: any) => {
+      const raw = row?.rawJson && typeof row.rawJson === 'object' ? row.rawJson : {};
+      if (channel && String(raw?.channel || '').toUpperCase() !== channel) return false;
+      if (periodStart && periodEnd) {
+        const rowDate = row.faturaDate ? new Date(row.faturaDate) : null;
+        const validRowDate = rowDate && !Number.isNaN(rowDate.getTime());
+        const dateMatches = validRowDate && rowDate >= periodStart && rowDate < periodEnd;
+        const rawPeriodMatches = String(raw?.period || '') === opts.period;
+        if (validRowDate ? !dateMatches : !rawPeriodMatches) return false;
+      }
+      return true;
     });
     // Legacy "NaN" onarimi: eski parser tamamen-rakam fatura no'yu Number'a cevirip
     // literal "NaN" yazmisti (ANPA GROSS vb.). Yazma yolu korumali ama DB'de bayat
@@ -289,31 +346,69 @@ export class EFaturaSyncService {
       const m = String(row?.ublXmlRaw || '').match(/<cbc:UUID>\s*([0-9a-fA-F-]{20,40})\s*<\/cbc:UUID>/);
       return m ? m[1].trim().toLowerCase() : '';
     };
+    // ── BULGU 5 (2026-09-25): ÇAPRAZ EŞLEŞTİRME ANAHTARI = MÜKELLEF + YÖN + ETTN ───────────────
+    //   ESKİ HÂL: harita YALNIZ ETTN ile anahtarlanıyordu. Aynı ETTN birden çok mükellefte bulunabilir
+    //   (şemadaki kardeş hata çözülmüş: @@unique([tenantId, taxpayerId, entegrator, uuid]) — "aynı UUID
+    //   birden çok mükellef/tenant'ta çekilebilir"). Bu yüzden A mükellefinin ALIŞ satırı, B mükellefinin
+    //   aynı ETTN'li SATIŞ belgesine bağlanabiliyordu → satır "Aktarıldı" görünüyor, kullanıcı Aktar'a
+    //   basmıyor, FATURA HİÇ AKTARILMIYOR (sessiz kayıp); üstüne satıra BAŞKA MÜKELLEFİN documentId'si
+    //   yazılıyor (tıklanınca o mükellefin belgesi açılır → gizlilik). Yön hiç karşılaştırılmadığı için
+    //   TEK mükellefte bile alış satırı satış belgesine bağlanabiliyordu.
+    //   YENİ HÂL: anahtar `${taxpayerId}::${yön}::${ettn}`; belge sorgusu taxpayerId + invoiceKind da okur.
+    const caprazAnahtar = (taxpayerId: any, yon: string, ettn: string): string =>
+      `${String(taxpayerId || '').trim()}::${yon}::${ettn}`;
+    /**
+     * Gelen kutusu satırının yönü → belge yönü (invoiceKind). Aktarım yolu AYNI eşlemeyi kullanıyor
+     * (fatura-muhasebelestirme.service.ts: `direction === 'OUT' ? 'SATIS' : 'ALIS'`), bu yüzden
+     * rawJson.channel değil satırın `direction` kolonu esas alınır — belgeye yazılan yön oradan türüyor.
+     */
+    const satirYonu = (row: any): 'ALIS' | 'SATIS' =>
+      (String(row?.direction || '').trim().toUpperCase() === 'OUT' ? 'SATIS' : 'ALIS');
     const capraz = new Map<string, { documentId: string; kaynak: string }>();
     const bekleyen = rows.filter((row: any) => !staleIds.has(row.id) && !row.documentId && ettnAl(row));
-    if (bekleyen.length) {
+    // GÜVENLİ KESTİRME: mükellef verilmemişse (uç tenant genelinde çağrılmışsa) çapraz eşleştirme HİÇ
+    //   çalıştırılmaz. Satırlar "aktarıldı" işaretlenmeden döner — yanlış bilgi vermekten iyidir.
+    if (!opts.taxpayerId && bekleyen.length) {
+      this.logger.warn(
+        `[efatura-inbox] taxpayerId verilmedi → ETTN çapraz eşleştirmesi ÇALIŞTIRILMADI `
+        + `(${bekleyen.length} satır "aktarıldı" işaretlenmeyecek). Mükellef seçip yeniden isteyin.`,
+      );
+    }
+    if (opts.taxpayerId && bekleyen.length) {
       const ettnler = [...new Set(bekleyen.map(ettnAl))].slice(0, 300);
       const cesitler = ettnler.flatMap((e: string) => [e, e.toUpperCase()]);
       const tpIdler = [...new Set(bekleyen.map((row: any) => String(row.taxpayerId || '')).filter(Boolean))];
+      const yonler = [...new Set(bekleyen.map(satirYonu))];
       try {
         const belgeler = await (this.prisma as any).invoiceAccountingDocument.findMany({
           where: {
             tenantId,
             ...(tpIdler.length ? { taxpayerId: { in: tpIdler } } : {}),
+            ...(yonler.length ? { invoiceKind: { in: yonler } } : {}),
             OR: [
               { sourceRefId: { in: cesitler } },
               ...cesitler.map((v) => ({ ocrData: { path: ['ettn'], equals: v } })),
             ],
           },
-          select: { id: true, source: true, sourceRefId: true, ocrData: true },
+          // taxpayerId + invoiceKind OKUNMAZSA anahtar kurulamaz → seçime eklendi.
+          select: { id: true, source: true, sourceRefId: true, ocrData: true, taxpayerId: true, invoiceKind: true },
           take: 600,
         });
         for (const b of belgeler) {
+          const belgeTp = String((b as any)?.taxpayerId || '').trim();
+          const belgeYon = String((b as any)?.invoiceKind || '').trim().toUpperCase();
+          // Mükellefi ya da yönü belirsiz belgeye BAĞLAMA (yanlış eşleşmektense hiç eşleşmesin).
+          if (!belgeTp || (belgeYon !== 'ALIS' && belgeYon !== 'SATIS')) continue;
           const anahtarlar = [String(b.sourceRefId || ''), String((b as any)?.ocrData?.ettn || '')]
             .map((x) => x.trim().toLowerCase()).filter(Boolean);
-          for (const a of anahtarlar) if (!capraz.has(a)) capraz.set(a, { documentId: String(b.id), kaynak: String(b.source || '') });
+          for (const a of anahtarlar) {
+            const k = caprazAnahtar(belgeTp, belgeYon, a);
+            if (!capraz.has(k)) capraz.set(k, { documentId: String(b.id), kaynak: String(b.source || '') });
+          }
         }
-      } catch { /* eşleştirme başarısızsa liste normal çalışsın */ }
+      } catch (err: any) {
+        this.logger.warn(`[efatura-inbox] ETTN çapraz eşleştirmesi başarısız: ${err?.message || err}`);
+      }
     }
     /** 'integration-parasut' → 'Paraşüt' gibi okunur kaynak adı. */
     const kaynakAdi = (kaynak: string): string => {
@@ -326,20 +421,12 @@ export class EFaturaSyncService {
       return sozluk[k] || (k ? k.toUpperCase() : 'başka kaynak');
     };
 
-    const channel = String(opts.channel || '').toUpperCase();
+    // BULGU 6: kırpılma bilgisi satırlara da yazılır — liste dizi döndüğü için (iki çağıran da dizi
+    //   bekliyor) tek yer burası; sessiz eksik kalmasın, API yanıtında iz kalsın.
+    const kirpikBilgi = listeKirpildi
+      ? { listeKirpildi: true, listeKirpildiBilgi: `Süzgece uyan satır ${limit} sınırını aştı; liste eksik.` }
+      : null;
     return rows
-      .filter((row: any) => {
-        const raw = row?.rawJson && typeof row.rawJson === 'object' ? row.rawJson : {};
-        if (channel && String(raw?.channel || '').toUpperCase() !== channel) return false;
-        if (periodStart && periodEnd) {
-          const rowDate = row.faturaDate ? new Date(row.faturaDate) : null;
-          const validRowDate = rowDate && !Number.isNaN(rowDate.getTime());
-          const dateMatches = validRowDate && rowDate >= periodStart && rowDate < periodEnd;
-          const rawPeriodMatches = String(raw?.period || '') === opts.period;
-          if (validRowDate ? !dateMatches : !rawPeriodMatches) return false;
-        }
-        return true;
-      })
       .slice(0, limit)
       .map((row: any) => {
         const linkedDocId = row.documentId && existingDocIds.has(String(row.documentId)) ? String(row.documentId) : null;
@@ -354,20 +441,25 @@ export class EFaturaSyncService {
           ? (partyTitleFromUbl(row.ublXmlRaw, 'SUPPLIER') || row.senderTitle)
           : row.senderTitle;
         if (staleIds.has(row.id) || missingOriginalDocument(row)) {
-          return { ...row, senderTitle, receiverTitle, documentId: null, isTransferred: false, processedAt: null, hasAccountingDocument: false };
+          return { ...row, ...kirpikBilgi, senderTitle, receiverTitle, documentId: null, isTransferred: false, processedAt: null, hasAccountingDocument: false };
         }
         // Başka entegratörden AKTARILMIŞ aynı fatura (ETTN eşleşmesi) → satır "Aktarıldı" görünür.
+        //   BULGU 5: arama anahtarı satırın MÜKELLEFİ + YÖNÜ + ETTN'i — başka mükellefin ya da ters
+        //   yöndeki belgeye bağlanmaz.
         if (!hasAccountingDocument) {
-          const bulunan = capraz.get(ettnAl(row));
+          const satirEttn = ettnAl(row);
+          const bulunan = satirEttn
+            ? capraz.get(caprazAnahtar(row.taxpayerId, satirYonu(row), satirEttn))
+            : undefined;
           if (bulunan) {
             return {
-              ...row, senderTitle, receiverTitle,
+              ...row, ...kirpikBilgi, senderTitle, receiverTitle,
               documentId: bulunan.documentId, isTransferred: true, hasAccountingDocument: true,
               baskaKaynaktanAktarildi: true, aktarimKaynagi: kaynakAdi(bulunan.kaynak),
             };
           }
         }
-        return { ...row, senderTitle, receiverTitle, documentId: linkedDocId || null, isTransferred: hasAccountingDocument, hasAccountingDocument };
+        return { ...row, ...kirpikBilgi, senderTitle, receiverTitle, documentId: linkedDocId || null, isTransferred: hasAccountingDocument, hasAccountingDocument };
       });
   }
 

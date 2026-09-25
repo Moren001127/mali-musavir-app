@@ -1043,7 +1043,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (r?.count) this.logger.log(`plan kapısı: ${r.count} placeholder kod boşaltıldı (mükellef ${taxpayerId})`);
   }
 
-  async list(tenantId: string, opts: { status?: string; limit?: number; taxpayerId?: string; period?: string }) {
+  async list(tenantId: string, opts: { status?: string; limit?: number; taxpayerId?: string; period?: string; asama?: string }) {
     // status='PENDING' frontend konvansiyonu = onaylanmamış belgeler (READY + NEEDS_REVIEW).
     // Schema status enum: NEEDS_REVIEW | READY | APPROVED | REJECTED
     // 2026-09-25 bulgu 11: burada gateExistingDocsIfNoPlan çağrısı vardı — SALT OKUMA isteği kalıcı
@@ -1058,18 +1058,49 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       return { status: s };
     })();
 
-    const docs = await (this.prisma as any).invoiceAccountingDocument.findMany({
+    // 2026-09-25 denetim bulgusu 10 — AŞAMA SÜZGECİ SUNUCUDA. Aktarım ve Arşivim ekranları durum
+    //   süzgeci GÖNDERMEDEN en yeni 300 belgeyi çekip aşamayı BELLEKTE süzüyordu. Yani 500 belgeli
+    //   bir dönemde ilk girilen 200 belge Arşivim'de HİÇ görünmüyordu — uyarı da çıkmıyordu.
+    //   Süzgeç artık SQL'de: 300'lük dilim doğru kümeden gelir. Tanımlar ön yüzdeki isArchived /
+    //   isWaitingTransfer ile birebir aynı (page.tsx) — iki yer ayrışmasın.
+    const ARSIV_DURUMLAR = ['POSTED', 'MANUAL_DONE'];
+    const AKTARIM_LUCA = ['QUEUED', 'POSTING', 'FAILED'];
+    const asama = String(opts.asama || '').toLowerCase();
+    const asamaFilter = asama === 'arsiv'
+      ? { lucaStatus: { in: ARSIV_DURUMLAR } }
+      : asama === 'aktarim'
+        ? {
+          AND: [
+            { NOT: { lucaStatus: { in: ARSIV_DURUMLAR } } },
+            { OR: [{ status: 'APPROVED' }, { lucaStatus: { in: AKTARIM_LUCA } }] },
+          ],
+        }
+        : {};
+
+    // Kırpılma tespiti için bir fazla satır çekilir: sınıra dayanıldıysa ekran bunu söyleyebilsin
+    //   (eskiden sessizdi → eksik liste tam sanılıyordu).
+    const istenen = Math.min(Math.max(opts.limit || 100, 1), 2000);
+    const bulunan = await (this.prisma as any).invoiceAccountingDocument.findMany({
       where: {
         tenantId,
         ...statusFilter,
+        ...asamaFilter,
         ...(opts.taxpayerId ? { taxpayerId: opts.taxpayerId } : {}),
         ...periodWhere(opts.period),
       },
       include: { lines: { orderBy: { orderNo: 'asc' } } },
       orderBy: { createdAt: 'desc' },
       // 2026-09-15: Gelen Faturalar dönemsiz (Mihsap Gelen Belgeler gibi) → tek mükellefin bütün bekleyenleri; tavan 2.000.
-      take: Math.min(Math.max(opts.limit || 100, 1), 2000),
+      take: istenen + 1,
     });
+    const listeKirpildi = Array.isArray(bulunan) && bulunan.length > istenen;
+    if (listeKirpildi) {
+      this.logger.warn(
+        `[documents] LİSTE KIRPILDI: süzgece uyan belge ${istenen} sınırını aştı `
+        + `(mükellef=${opts.taxpayerId || '-'} dönem=${opts.period || '-'} aşama=${asama || '-'} durum=${opts.status || '-'}). Liste EKSİK.`,
+      );
+    }
+    const docs = Array.isArray(bulunan) ? bulunan.slice(0, istenen) : [];
     // GÜVEN SKORU (iyileştirme #1): her belgeye deterministik güven ekle → müşavir yalnız "bakılmalı"
     //   olanları görsün, "güvenli"leri toplu onaylasın. Ekstra AI çağrısı YOK; mevcut sinyaller:
     //   doğrulama durumu + hesap satırı KAYNAĞI (öğrenilmiş mi) + boş kod/cari + uyarı.
@@ -1093,10 +1124,16 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     for (const tpId of tpIdler) {
       planSetByTp.set(tpId, await this.getPlanCodeSet(tenantId, tpId).catch(() => null));
     }
+    // Bulgu 10: kırpılma bilgisi satırlara yazılır — uç nokta DİZİ döndürüyor (ekran Array.isArray
+    //   bekliyor), tek yer burası. Ekran bunu görüp "liste eksik olabilir" bandı gösterir.
+    const kirpikBilgi = listeKirpildi
+      ? { listeKirpildi: true, listeKirpildiBilgi: `Süzgece uyan belge ${istenen} sınırını aştı; liste eksik.` }
+      : null;
     return docs.map((d: any) => {
       const masked = { ...d, lines: this.maskLinesByPlanForRead(d, planSetByTp.get(String(d.taxpayerId || '')) ?? null) };
       return {
         ...masked,
+        ...kirpikBilgi,
         guven: this.computeDocConfidence(masked),
         ...(isletmeTpler.has(String(d.taxpayerId || ''))
           ? { ocrData: { ...(d.ocrData || {}), isletme: isletmeWithBelgeDefaults(d) } }
@@ -6100,6 +6137,29 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     return { source: 'efatura-inbox', channel, direction: inboxDirection, fetched, added, updated, skipped, failed, providers: statuses };
   }
 
+  /**
+   * BULGU 15 (2026-09-25) — TEK DÖNEM KURALI. Inbox satırı istenen döneme ait mi?
+   *   - Fatura tarihi okunmuşsa karar TARİHE göre verilir (dönem başı dahil, dönem sonu hariç).
+   *   - Tarih okunamamışsa (faturaDate null) satırın çekildiği sorgunun etiketine bakılır: dönem metni
+   *     birebir eşit olabilir ("2026-08") ya da serbest tarih aralığı ("2026-08-01_2026-08-31") ayla
+   *     KESİŞİR (queryPeriodStart/queryPeriodEnd).
+   * Eskiden bu kural üç yerde farklı yazılmıştı: yardımcı kesişimi sayıyordu, asıl aktarım döngüsü
+   * yalnız dönem metni eşitliğine bakıyordu, iptal sayacı ise SQL'de metin eşitliği arıyordu. Sonuç:
+   * serbest aralıkla çekilen tarihsiz satır indiriliyor ama aktarılmıyor, "atlandı" sayacında bile
+   * görünmüyordu. Artık aktarım da, iptal sayacı da bu tek kuralı kullanıyor.
+   */
+  private inboxSatiriDonemde(row: any, donemBas: Date | null, donemBit: Date | null, donemEtiketi?: string | null): boolean {
+    if (!donemBas || !donemBit) return true;
+    const tarih = row?.faturaDate ? new Date(row.faturaDate) : null;
+    if (tarih && !Number.isNaN(tarih.getTime())) return tarih >= donemBas && tarih < donemBit;
+    const raw = row?.rawJson && typeof row.rawJson === 'object' ? (row.rawJson as any) : {};
+    if (donemEtiketi && String(raw.period || '') === String(donemEtiketi)) return true;
+    const basYmd = donemBas.toISOString().slice(0, 10);
+    const bitYmd = donemBit.toISOString().slice(0, 10);   // dönem sonu HARİÇ (sonraki ayın 1'i)
+    return !!raw.queryPeriodStart && !!raw.queryPeriodEnd
+      && String(raw.queryPeriodStart) < bitYmd && String(raw.queryPeriodEnd) >= basYmd;
+  }
+
   async importEfaturaInboxToAccounting(
     tenantId: string,
     userId: string | undefined,
@@ -6140,13 +6200,64 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       if (!Number.isFinite(year) || !Number.isFinite(month)) end.setUTCMonth(end.getUTCMonth() + 1);
       periodStart = start;
       periodEnd = end;
-      if (!opts.channel) where.faturaDate = { gte: start, lt: end };
+      // BULGU 6 (2026-09-25): dönem süzgeci ESKİDEN yalnız kanal seçilmemişse SQL'e giriyordu. Kanal
+      //   seçiliyse sorgu bütün dönemleri tarayıp "en yeni 1000" satırı alıyordu; çok e-Arşiv kesen
+      //   mükellefte o 1000 satırın içinde hiç e-Fatura kalmadığı için kullanıcı OUT_EFATURA seçip
+      //   Temmuz'u aktarmak isteyince HATA ALMADAN "0 belge" görüyordu. Artık dönem HER ZAMAN SQL'de
+      //   süzülür. Tarihi okunamamış (faturaDate null) satırlar dışarıda kalmasın diye OR'a alınır;
+      //   onların dönem kararı bellekte verilir (aşağıdaki tek dönem kuralı).
+      where.OR = [
+        { faturaDate: { gte: start, lt: end } },
+        { faturaDate: null },
+      ];
     }
-    const rows = await (this.prisma as any).eFaturaInbox.findMany({
-      where,
-      orderBy: { faturaDate: 'desc' },
-      take: Math.min(Math.max(Number(opts.limit || 500), 1), 1000),
-    });
+    // BULGU 15 — TEK DÖNEM KURALI: karar tek yerde (inboxSatiriDonemde). Eskiden bu yardımcı "tarih
+    //   aralığı ayla kesişiyorsa dönemde" derken asıl döngü yalnız dönem METNİ eşitliğine bakıyordu →
+    //   serbest tarih aralığıyla çekilen tarihsiz satır indiriliyor ama aktarılmıyor, "atlandı"
+    //   sayacında bile görünmüyordu (sessiz kayıp).
+    const rowInCurrentImportPeriod = (row: any) => this.inboxSatiriDonemde(row, periodStart, periodEnd, opts.period);
+    // BULGU 6 — SAYFALI ÇEKİM. Kanal (IN_EFATURA / OUT_EFATURA) rawJson içinde tutulduğu için SQL'e
+    //   taşınamıyor, bellekte süzülmek zorunda. KARAR: tek sorguda sabit tavan kadar satır çekmek
+    //   yerine sayfa sayfa ilerleyip HEDEF kadar kanal-eşleşen satır toplanır; böylece diğer kanalın
+    //   satırları hedefi yemiyor. Veri bitmeden durduysak (hedef ya da tarama tavanı) bunu sonuçta
+    //   AÇIKÇA bildiririz — sessiz eksik kalmaz.
+    const hedefSatir = Math.min(Math.max(Number(opts.limit || 500), 1), 1000);
+    const SAYFA_BOYU = 500;
+    const TARAMA_TAVANI = 20000;
+    const rows: any[] = [];
+    let taranan = 0;
+    let kanalDisi = 0;   // kanalı tutmadığı için alınmayan satır
+    let donemDisi = 0;   // dönemi tutmadığı için alınmayan satır
+    let sinirAsildi = false;
+    let sinirNotu: string | null = null;
+    const satirKanali = (row: any) => String((row?.rawJson && typeof row.rawJson === 'object' ? (row.rawJson as any).channel : '') || '').toUpperCase();
+    for (let atla = 0; ; atla += SAYFA_BOYU) {
+      if (atla >= TARAMA_TAVANI) {
+        sinirAsildi = true;
+        sinirNotu = `Tarama tavanına dayanıldı (${TARAMA_TAVANI} satır): ${channel} kanalında aktarılacak satır kalmış olabilir, Aktar'a tekrar basın.`;
+        break;
+      }
+      const sayfa: any[] = await (this.prisma as any).eFaturaInbox.findMany({
+        where,
+        // id ikinci sıralama: sayfalama kaymasın (aynı tarihli satırlar sabit sırada gelsin).
+        orderBy: [{ faturaDate: 'desc' }, { id: 'asc' }],
+        skip: atla,
+        take: SAYFA_BOYU,
+      });
+      taranan += sayfa.length;
+      for (const satir of sayfa) {
+        if (satirKanali(satir) !== channel) { kanalDisi++; continue; }
+        if (!rowInCurrentImportPeriod(satir)) { donemDisi++; continue; }
+        rows.push(satir);
+      }
+      if (sayfa.length < SAYFA_BOYU) break;                 // veri bitti, eksik yok
+      if (rows.length >= hedefSatir) {
+        sinirAsildi = true;
+        sinirNotu = `Bu turda en çok ${hedefSatir} satır aktarılır: ${channel} kanalında satır kalmış olabilir, Aktar'a tekrar basın.`;
+        break;
+      }
+    }
+    if (rows.length > hedefSatir) rows.length = hedefSatir;
     const referencedDocIds = [...new Set(rows.map((row: any) => String(row.documentId || '').trim()).filter(Boolean))];
     let existingDocIds = new Set<string>();
     const providerSource = (row: any) => {
@@ -6155,19 +6266,43 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     };
     const rowSourceRef = (row: any) => String(row?.uuid || row?.ettn || row?.faturaNo || '').trim();
     const existingDocsBySourceRef = new Map<string, any>();
-    // Belge NO ile de eşleştir: içe-alma yolları (Sorgula vs doğrudan çekim) farklı sourceRefId üretebilir;
-    //   aynı mükellefte aynı belge no = aynı fatura → aktarım ✓ görünür ve ÇİFT-aktarım önlenir.
+    // Aktarılan belgenin yönü (belge tarafındaki invoiceKind karşılığı) — döngüde de aynı dönüşüm kullanılır.
+    const belgeYonu: 'ALIS' | 'SATIS' = direction === 'OUT' ? 'SATIS' : 'ALIS';
+    const sadeceRakam = (v: any) => String(v ?? '').replace(/\D/g, '');
+    /** Inbox satırının satıcı VKN'si; kolon boşsa rawJson'daki değere düşer (liste yolları farklı yazıyor). */
+    const satirSaticiVkn = (row: any) => String(row?.senderVkn || (row?.rawJson && typeof row.rawJson === 'object' ? (row.rawJson as any).senderVkn : '') || '').trim();
+    // BULGU 4 (2026-09-25) — BELGE NO TEK BAŞINA KİMLİK DEĞİL. GİB belge numarası satıcı başına sayaçtır,
+    //   küresel tekil değildir: aynı numara farklı satıcılarda çıkar (canlı bulgu 2026-08-20 — YORGUN
+    //   NAKLİYAT Temmuz: GIB2026000000083 hem FEDAT AYDOĞDU hem EFE NAKLİYAT'ta; 5 çift = 5 kayıp fatura.
+    //   earsiv_faturalar tablosunda satıcı VKN anahtara eklenerek çözülmüş, BU yol dışarıda kalmıştı).
+    //   Anahtar artık YÖN + SATICI VKN + BELGE NO. Satıcı VKN'si yoksa anahtar KURULMAZ → belge-no
+    //   eşleşmesi hiç kullanılmaz, ETTN yoluna düşülür.
+    const belgeNoAnahtari = (yon: any, vkn: any, belgeNo: any) => {
+      const y = String(yon || '').trim().toUpperCase();
+      const v = sadeceRakam(vkn);
+      const n = String(belgeNo || '').trim().toUpperCase();
+      // VKN 10 / TCKN 11 hane: daha kısası gerçek kimlik değil → anahtar kurulmaz (belge-no yolu kapalı).
+      return y && v.length >= 10 && n ? `${y}::${v}::${n}` : '';
+    };
     const existingDocsByBelgeNo = new Map<string, any>();
     const indexDoc = (doc: any) => {
       existingDocIds.add(String(doc.id));
       const src = String(doc.source || '').toLowerCase();
       if (doc.sourceRefId) existingDocsBySourceRef.set(`${src}::${String(doc.sourceRefId).trim()}`, doc);
-      if (doc.belgeNo) existingDocsByBelgeNo.set(String(doc.belgeNo).trim().toUpperCase(), doc);
+      const anahtar = belgeNoAnahtari(doc.invoiceKind, doc.sellerVkn, doc.belgeNo);
+      if (!anahtar) return;                                  // satıcı VKN'si yok → belge no ile kimlik kurulamaz
+      const ilk = existingDocsByBelgeNo.get(anahtar);
+      if (!ilk) { existingDocsByBelgeNo.set(anahtar, doc); return; }
+      if (String(ilk.id) === String(doc.id)) return;          // aynı belge iki sorgudan geldi, sorun yok
+      // Aynı anahtarda ikinci belge: İLKİNİ KORU (eskiden son okunan kazanıyordu = rastgele) ve bildir.
+      this.logger.warn(`[BELGE-KIMLIK] Aynı anahtarda iki belge var (${anahtar}): ${ilk.id} korunuyor, ${doc.id} eşleştirmeye alınmadı.`);
     };
+    // Belge kimliği için sellerVkn + invoiceKind da okunur (anahtar bunlardan kurulur).
+    const belgeSecim = { id: true, source: true, sourceRefId: true, belgeNo: true, sellerVkn: true, invoiceKind: true };
     if (referencedDocIds.length) {
       const existingDocs = await (this.prisma as any).invoiceAccountingDocument.findMany({
         where: { tenantId, taxpayerId: opts.taxpayerId, id: { in: referencedDocIds } },
-        select: { id: true, source: true, sourceRefId: true, belgeNo: true },
+        select: belgeSecim,
       });
       existingDocs.forEach(indexDoc);
     }
@@ -6176,16 +6311,26 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (sourceRefs.length && sources.length) {
       const existingDocs = await (this.prisma as any).invoiceAccountingDocument.findMany({
         where: { tenantId, taxpayerId: opts.taxpayerId, source: { in: sources }, sourceRefId: { in: sourceRefs } },
-        select: { id: true, source: true, sourceRefId: true, belgeNo: true },
+        select: belgeSecim,
       });
       existingDocs.forEach(indexDoc);
     }
-    // Belge NO üzerinden mevcut belgeleri getir (uuid/sourceRefId tutmasa da eşleşsin).
+    // Belge NO üzerinden mevcut belgeleri getir (uuid/sourceRefId tutmasa da eşleşsin) — AMA sorguya
+    //   YÖN ve SATICI VKN de girer: aynı numaralı FARKLI satıcı faturası mevcut belgeye bağlanmasın.
     const belgeNos = [...new Set(rows.map((r: any) => String(r.faturaNo || '').trim()).filter(Boolean))];
-    if (belgeNos.length) {
+    const saticiVknAdaylari = [...new Set(rows
+      .flatMap((r: any) => { const ham = satirSaticiVkn(r); return [ham, sadeceRakam(ham)]; })
+      .filter((v: string) => v.replace(/\D/g, '').length >= 10))];
+    if (belgeNos.length && saticiVknAdaylari.length) {
       const byNoDocs = await (this.prisma as any).invoiceAccountingDocument.findMany({
-        where: { tenantId, taxpayerId: opts.taxpayerId, belgeNo: { in: belgeNos } },
-        select: { id: true, source: true, sourceRefId: true, belgeNo: true },
+        where: {
+          tenantId,
+          taxpayerId: opts.taxpayerId,
+          invoiceKind: belgeYonu,
+          belgeNo: { in: belgeNos },
+          sellerVkn: { in: saticiVknAdaylari },
+        },
+        select: belgeSecim,
       });
       byNoDocs.forEach(indexDoc);
     }
@@ -6198,22 +6343,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       }
       return runtimeConfigCache.get(key) || null;
     };
-    const rowInCurrentImportPeriod = (row: any) => {
-      if (!periodStart || !periodEnd) return true;
-      const rowDate = row.faturaDate ? new Date(row.faturaDate) : null;
-      const validRowDate = rowDate && !Number.isNaN(rowDate.getTime());
-      const raw = row.rawJson && typeof row.rawJson === 'object' ? row.rawJson : {};
-      const dateMatches = validRowDate && rowDate >= periodStart && rowDate < periodEnd;
-      // Serbest tarih aralığıyla sorgulanan satırlarda raw.period "from_to" biçimindedir — ay etiketiyle
-      //   birebir eşleşmez; queryPeriodStart/End ay ile KESİŞİYORSA satır bu dönemin importuna girer
-      //   (eskiden faturaDate'siz satır sessizce dışlanıyordu).
-      const startYmd = periodStart.toISOString().slice(0, 10);
-      const endYmd = periodEnd.toISOString().slice(0, 10);
-      const rawPeriodMatches = String(raw.period || '') === opts.period
-        || (!!raw.queryPeriodStart && !!raw.queryPeriodEnd
-          && String(raw.queryPeriodStart) < endYmd && String(raw.queryPeriodEnd) >= startYmd);
-      return validRowDate ? Boolean(dateMatches) : rawPeriodMatches;
-    };
+    // (rowInCurrentImportPeriod yukarıda, satırlar çekilmeden ÖNCE tanımlanıyor — bkz. BULGU 15.)
     const turmobBatchLookupCache = new Map<string, Promise<ProviderPayloadLookup | null>>();
     const turmobBatchLookupFor = (provider: string, cfg: RuntimeIntegrationConfig) => {
       const key = `${String(provider || '').toUpperCase()}::${channel}::${opts.period || ''}`;
@@ -6269,21 +6399,24 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     setImportStatus('running', { startedAt: new Date().toISOString() });
     for (const row of rows) {
       let raw = row.rawJson || {};
-      if (String(raw.channel || '').toUpperCase() !== channel) continue;
-      if (periodStart && periodEnd) {
-        const rowDate = row.faturaDate ? new Date(row.faturaDate) : null;
-        const validRowDate = rowDate && !Number.isNaN(rowDate.getTime());
-        const dateMatches = validRowDate && rowDate >= periodStart && rowDate < periodEnd;
-        const rawPeriodMatches = String(raw.period || '') === opts.period;
-        if (validRowDate ? !dateMatches : !rawPeriodMatches) continue;
-      }
+      // BULGU 15 — asıl döngü artık AYNI dönem kuralını kullanıyor (eskiden burada yalnız dönem metni
+      //   eşitliği aranıyordu: serbest tarih aralığıyla çekilen tarihsiz satır indirilip aktarılmıyor,
+      //   sayaçta bile görünmüyordu). Kanal + dönem süzgeci satırlar çekilirken uygulandığı için
+      //   buradakiler güvenlik kontrolüdür; yine de sayılır, sonuçta raporlanır.
+      if (String(raw.channel || '').toUpperCase() !== channel) { kanalDisi++; continue; }
+      if (!rowInCurrentImportPeriod(row)) { donemDisi++; continue; }
       processed++;
       if (processed % 3 === 1) setImportStatus('running'); // şeridi ilerlet (her ~3 belgede bir yeterli)
       const provider = String(row.entegrator || 'TURMOB_EFATURA');
       const runtimeCfg = (await runtimeConfigFor(provider)) || this.providerStubConfig(provider);
       const sourceRef = rowSourceRef(row);
+      // BULGU 4 — belge-no eşleşmesi artık YÖN + SATICI VKN + BELGE NO anahtarıyla. Satıcı VKN'si BOŞ
+      //   satırda anahtar kurulmaz → belge-no eşleşmesi HİÇ kullanılmaz; kimlik ETTN yolundan aranır
+      //   (createDocumentFromProviderXml), o da tutmazsa mevcut belgeyi ezmek yerine YENİ belge açılır.
+      const satirBelgeAnahtari = belgeNoAnahtari(belgeYonu, satirSaticiVkn(row), row.faturaNo);
       const existingBySourceRef = existingDocsBySourceRef.get(`${providerSource(row)}::${sourceRef}`)
-        || (row.faturaNo ? existingDocsByBelgeNo.get(String(row.faturaNo).trim().toUpperCase()) : null);
+        || (satirBelgeAnahtari ? existingDocsByBelgeNo.get(satirBelgeAnahtari) : null)
+        || null;
       const savedXml = String(row.ublXmlRaw || '').trim();
       const savedXmlLooksSynthetic = provider === 'TURMOB_EFATURA' && this.isSyntheticTurmobInboxXml(savedXml);
       // ORİJİNAL EKSİK = yalnız sağlam UBL XML YOKSA (sentetik/liste-özeti dahil). Görsel/stale
@@ -6484,7 +6617,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         if (errors.length < 10) errors.push({ id: row.id, faturaNo: row.faturaNo, message: e?.message || 'aktarim hatasi' });
       }
     }
-    setImportStatus('done', { finishedAt: new Date().toISOString() });
+    setImportStatus('done', { finishedAt: new Date().toISOString(), donemDisi, kanalDisi, taranan, sinirAsildi, sinirNotu });
+    // BULGU 6 + 15 — sessiz eksik yok: dönem/kanal dışı bırakılan satır ve sınır durumu günlüğe de yazılır.
+    if (donemDisi || sinirAsildi) {
+      this.logger.warn(`[AKTAR] ${channel} ${opts.period || '-'}: taranan ${taranan}, alınan ${rows.length}, dönem dışı ${donemDisi}, kanal dışı ${kanalDisi}${sinirNotu ? ` — ${sinirNotu}` : ''}`);
+    }
     // AKTAR → OKU (2026-09-13): aktarılan/okunmamış belgeler kalıcı kuyrukta AI ile okunur, sonra sınıflanır (yanıtı bekletmez).
     void this.aktarSonrasiOkumaKuyruga(tenantId, okunacakBelgeler, 'e-fatura aktar');
     // OTOMATİK EŞLEŞTİRME: aktarılan e-faturalara hesap kodlarını ("Kodları düzelt" ile AYNI:
@@ -6495,7 +6632,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       void this.reapplyAccountCodes(tenantId, opts.taxpayerId)
         .catch((e: any) => this.logger.warn(`Aktar sonrasi otomatik eslestirme hatasi: ${e?.message || e}`));
     }
-    return { processed, imported, alreadyQueued, skipped, failed, staleReset, iptalAtlanan, errors };
+    // BULGU 15 + 6: atlanan satırlar SESSİZ kalmıyor — dönem/kanal dışı sayıları, taranan satır ve
+    //   tarama/hedef sınırına dayanıldıysa gerekçesi sonuçta döner (eski alanlar aynen korunur).
+    return {
+      processed, imported, alreadyQueued, skipped, failed, staleReset, iptalAtlanan, errors,
+      aktarilacak: rows.length, taranan, donemDisi, kanalDisi, sinirAsildi,
+      ...(sinirNotu ? { sinirNotu } : {}),
+    };
   }
 
   async importFromMihsap(
@@ -8642,15 +8785,27 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   async iptalSayac(tenantId: string, q: { taxpayerId?: string; period?: string }) {
     if (!q?.taxpayerId) return { inbox: 0, belge: 0, toplam: 0, ornekler: [] };
     const where: any = { tenantId, taxpayerId: q.taxpayerId, isTransferred: false };
+    let donemBas: Date | null = null;
+    let donemBit: Date | null = null;
     if (q.period && /^\d{4}-\d{2}$/.test(q.period)) {
       const [y, m] = q.period.split('-').map((n) => parseInt(n, 10));
+      donemBas = new Date(Date.UTC(y, m - 1, 1));
+      donemBit = new Date(Date.UTC(y, m, 1));
+      // BULGU 15 — dönem kararı aktarımla AYNI yardımcıdan (inboxSatiriDonemde). SQL'de birebir
+      //   kurulamıyor: serbest tarih aralığıyla çekilen satırın rawJson.period değeri
+      //   "2026-08-01_2026-08-31" biçiminde olduğu için ay etiketiyle eşitlik TUTMAZ; kesişim
+      //   karşılaştırması da JSON alanı üzerinde güvenilir değil. Bu yüzden tarihsiz satırlar SQL'de
+      //   elenmiyor, dönem kararı bellekte veriliyor (eskiden sadece metin eşitliği arandığı için
+      //   serbest aralıkla çekilen iptal satırları sayaçta HİÇ görünmüyordu).
       where.OR = [
-        { faturaDate: { gte: new Date(Date.UTC(y, m - 1, 1)), lt: new Date(Date.UTC(y, m, 1)) } },
-        { AND: [{ faturaDate: null }, { rawJson: { path: ['period'], equals: q.period } }] },
+        { faturaDate: { gte: donemBas, lt: donemBit } },
+        { faturaDate: null },
       ];
     }
-    const rows: any[] = await (this.prisma as any).eFaturaInbox.findMany({ where, select: { id: true, faturaNo: true, rawJson: true, senderTitle: true, direction: true }, take: 2000 }).catch(() => []);
-    const iptal = rows.filter((r) => this.belgeDurumuEngelli(r.rawJson || {}).engelli);
+    const TAVAN = 2000;
+    const rows: any[] = await (this.prisma as any).eFaturaInbox.findMany({ where, select: { id: true, faturaNo: true, faturaDate: true, rawJson: true, senderTitle: true, direction: true }, take: TAVAN }).catch(() => []);
+    const iptal = rows.filter((r) => this.inboxSatiriDonemde(r, donemBas, donemBit, q.period)
+      && this.belgeDurumuEngelli(r.rawJson || {}).engelli);
     const belgeWhere: any = { tenantId, taxpayerId: q.taxpayerId, status: 'CANCELLED' };
     if (q.period) Object.assign(belgeWhere, periodWhere(q.period));
     const belge = await (this.prisma as any).invoiceAccountingDocument.count({ where: belgeWhere }).catch(() => 0);
@@ -8658,6 +8813,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       inbox: iptal.length,
       belge,
       toplam: iptal.length + belge,
+      // Tavana dayanıldıysa sayı eksik olabilir — sessiz kalmasın.
+      kirpildi: rows.length >= TAVAN,
       ornekler: iptal.slice(0, 10).map((r) => ({ id: r.id, faturaNo: r.faturaNo, taraf: r.senderTitle, durum: String(r.rawJson?.approvalStatus || r.rawJson?.belgeDurumu || ''), neden: this.belgeDurumuEngelli(r.rawJson || {}).neden })),
     };
   }
@@ -13671,12 +13828,32 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (!parsed) return;
     const source = cfg.provider === 'GIB_PORTAL' ? 'gib-portal-api' : `integration-${cfg.provider.toLowerCase()}`;
     const sourceRefId = payload.externalId || parsed.ettn || parsed.faturaNo || createHash('sha1').update(xml).digest('hex');
-    const stored = await this.buildProviderDocumentStorage(tenantId, taxpayer.id, cfg, xml, payload, parsed, source, sourceRefId);
+    // BULGU 4 (2026-09-25) — KİMLİK TEYİDİ BURADA DA ŞART. Bu fonksiyon aktarılmış belgenin görselini
+    //   yeniliyor: dosya alanlarını koşulsuz yazıyor ve ESKİ DOSYAYI DEPODAN SİLİYORDU (geri alınamaz).
+    //   Bağ (eFaturaInbox.documentId) yanlış kurulmuşsa yanlış belgenin dosyası eziliyordu —
+    //   createDocumentFromProviderXml'deki kapının aynısı gerekiyor. Sıra da düzeltildi: dosya artık
+    //   teyitten SONRA üretiliyor, yoksa teyitsiz durumda depoya sahipsiz nesne yükleniyordu.
     const current = await (this.prisma as any).invoiceAccountingDocument.findFirst({
       where: { id: documentId, tenantId, taxpayerId: taxpayer.id },
-      select: { s3Key: true, source: true },
+      select: { s3Key: true, source: true, sourceRefId: true, ocrData: true },
     });
     if (!current) return;
+    const kucuk = (v: any) => String(v ?? '').trim().toLowerCase();
+    const belgeNoKucuk = kucuk(parsed.faturaNo);
+    const ettnKucuk = kucuk(parsed.ettn);
+    const mevcutKimlikler = new Set([kucuk((current as any)?.ocrData?.ettn), kucuk(current.sourceRefId)].filter(Boolean));
+    const kimlikTeyitli = [ettnKucuk, kucuk(payload.externalId)]
+      .filter(Boolean)
+      .filter((k) => k === ettnKucuk || k !== belgeNoKucuk) // belge NO'sundan türemiş "kimlik" teyit sayılmaz
+      .some((k) => mevcutKimlikler.has(k));
+    if (!kimlikTeyitli) {
+      this.logger.warn(
+        `[BELGE-KIMLIK] ${parsed.faturaNo || sourceRefId}: belge ${documentId} ile kimlik TEYİT EDİLEMEDİ `
+        + '→ görsel yenilenmiyor, eski dosya silinmiyor (yanlış belgenin dosyası ezilmesin).',
+      );
+      return;
+    }
+    const stored = await this.buildProviderDocumentStorage(tenantId, taxpayer.id, cfg, xml, payload, parsed, source, sourceRefId);
     await (this.prisma as any).invoiceAccountingDocument.update({
       where: { id: documentId },
       data: {
@@ -13687,7 +13864,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       },
     });
     if (current.s3Key && current.s3Key !== stored.s3Key && this.s3NesnesiSilinebilir((current as any).source, current.s3Key)) {
-      this.storage.deleteObject(current.s3Key).catch(() => {});
+      this.storage.deleteObject(current.s3Key)
+        .catch((e: any) => this.logger.warn(`Eski belge dosyası silinemedi (${current.s3Key}): ${e?.message || e}`));
     }
   }
 
@@ -13763,11 +13941,34 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       include: { lines: { orderBy: { orderNo: 'asc' } } },
     });
     if (existing) {
-      const stored = await this.buildProviderDocumentStorage(tenantId, taxpayer.id, cfg, xml, {
-        ...payload,
-        xml,
-        externalId: sourceRefId,
-      }, parsed, source, sourceRefId);
+      // BULGU 4 (2026-09-25) — MEVCUT BELGEYE YAZMAK KİMLİK TEYİDİNE BAĞLI. Eskiden yön (invoiceKind),
+      //   kimlik (source/sourceRefId) ve dosya alanları (s3Key/originalName/mimeType/sizeBytes)
+      //   shouldRewriteAccounting şartının DIŞINDA, HER ZAMAN güncelleniyordu; eski dosya da depodan
+      //   siliniyordu (geri alınamaz). Belge eşleşmesi yalnız belge NO'suna dayanabildiği için aynı
+      //   numaralı FARKLI satıcı faturası mevcut belgenin dosyasını ve yönünü eziyordu. Artık bu
+      //   alanlara yalnız AYNI fatura olduğu KESİN ise dokunulur: gelen ETTN (ya da entegratörün dış
+      //   kimliği) mevcut belgenin kayıtlı kimliğiyle birebir tutmalı. Belge NO'sundan türemiş "kimlik"
+      //   teyit SAYILMAZ. sourceRefId de bu kapının içinde: teyitsiz yazılırsa belge sahte bir kimlik
+      //   kazanır ve bir sonraki çekimde "teyitli" görünüp dosyayı yine ezer.
+      const kucuk = (v: any) => String(v ?? '').trim().toLowerCase();
+      const belgeNoKucuk = kucuk(parsed.faturaNo);
+      const ettnKucuk = kucuk(parsed.ettn);
+      const mevcutKimlikler = new Set([kucuk((existing as any)?.ocrData?.ettn), kucuk(existing.sourceRefId)].filter(Boolean));
+      const kimlikTeyitli = [ettnKucuk, kucuk(payload.externalId)]
+        .filter(Boolean)
+        .filter((k) => k === ettnKucuk || k !== belgeNoKucuk)
+        .some((k) => mevcutKimlikler.has(k));
+      if (!kimlikTeyitli) {
+        this.logger.warn(`[BELGE-KIMLIK] ${parsed.faturaNo || sourceRefId}: mevcut belge ${existing.id} ile kimlik (ETTN / dış kimlik) TEYİT EDİLEMEDİ → yön, kimlik ve dosya alanlarına dokunulmuyor, eski dosya silinmiyor.`);
+      }
+      // Teyit yoksa dosya YENİDEN YÜKLENMEZ — yoksa depoda sahipsiz nesne kalırdı.
+      const stored = kimlikTeyitli
+        ? await this.buildProviderDocumentStorage(tenantId, taxpayer.id, cfg, xml, {
+          ...payload,
+          xml,
+          externalId: sourceRefId,
+        }, parsed, source, sourceRefId)
+        : null;
       const total = this.providerDocumentTotal(parsed, direction);
       // skipMatching'de mevcut belgenin hesap satırlarına DOKUNMA (yalnız görsel/depolama tazelenir).
       const shouldRewriteAccounting = !skipMatching && String(existing.status || '').toUpperCase() !== 'APPROVED';
@@ -13820,14 +14021,17 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         return tx.invoiceAccountingDocument.update({
           where: { id: existing.id },
           data: {
-            source,
-            sourceRefId,
             documentType: parsed.documentType === 'E_SMM' ? 'E_SMM' : (payload.providerDocType || this.documentTypeFromProviderXml(xml)),
-            invoiceKind: direction,
-            originalName: stored.originalName,
-            mimeType: stored.mimeType,
-            sizeBytes: stored.buffer.length,
-            s3Key: stored.s3Key,
+            // BULGU 4: kimlik (source/sourceRefId), YÖN ve DOSYA alanları yalnız kimlik teyitliyse yazılır.
+            ...(stored ? {
+              source,
+              sourceRefId,
+              invoiceKind: direction,
+              originalName: stored.originalName,
+              mimeType: stored.mimeType,
+              sizeBytes: stored.buffer.length,
+              s3Key: stored.s3Key,
+            } : {}),
             ...(shouldRewriteAccounting ? {
               currency: parsed.paraBirimi || 'TL',
               belgeNo: parsed.faturaNo || null,
@@ -13863,8 +14067,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           include: { lines: { orderBy: { orderNo: 'asc' } } },
         });
       });
-      if (existing.s3Key && existing.s3Key !== stored.s3Key && this.s3NesnesiSilinebilir((existing as any).source, existing.s3Key)) {
-        this.storage.deleteObject(existing.s3Key).catch(() => {});
+      // BULGU 4: eski dosya YALNIZ kimlik teyitliyken (stored dolu) silinir. Tek geri alınamaz zarar buydu.
+      if (stored && existing.s3Key && existing.s3Key !== stored.s3Key && this.s3NesnesiSilinebilir((existing as any).source, existing.s3Key)) {
+        this.storage.deleteObject(existing.s3Key)
+          .catch((e: any) => this.logger.warn(`Eski belge dosyası silinemedi (${existing.s3Key}): ${e?.message || e}`));
       }
       if (shouldRewriteAccounting) {
         // Oto-eşleştirme (KDV/cari/gider) + doğrulama — aktarılmış belge yenilenince de kodlansın.

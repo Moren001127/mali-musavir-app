@@ -90,12 +90,16 @@ export class FaturaMuhasebelestirmeController {
     @Query('taxpayerId') taxpayerId?: string,
     @Query('period') period?: string,
     @Query('limit') limit?: string,
+    // 2026-09-25 bulgu 10: aşama süzgeci ('arsiv' | 'aktarim') sunucuda uygulanır; ekran artık eksik
+    //   küme üzerinde süzmüyor. Boş gelirse eski davranış (tüm aşamalar) korunur.
+    @Query('asama') asama?: string,
   ) {
     return this.service.list(req.user.tenantId, {
       status,
       taxpayerId,
       period,
       limit: limit ? parseInt(limit, 10) : undefined,
+      asama,
     });
   }
 
@@ -682,8 +686,16 @@ export class FaturaMuhasebelestirmeController {
   /** EFatura inbox listesi */
   @Get('efatura-inbox')
   efaturaInbox(@Req() req: any, @Query() q: any) {
+    // BULGU 5 (2026-09-25): MÜKELLEF ZORUNLU. Mükellef verilmezse liste tenant genelinde geliyor ve
+    //   aynı ETTN'li belgeler mükellefler arasında karışabiliyordu (A'nın alış satırı B'nin satış
+    //   belgesine bağlanıp "Aktarıldı" görünüyor → fatura HİÇ aktarılmıyor; ayrıca başka mükellefin
+    //   belgesi açılıyor). Servis tarafında da güvenli kestirme var (mükellef yoksa çapraz eşleştirme
+    //   çalışmaz); uç da kapatıldı. Mevcut çağıranlar zaten mükellef gönderiyor:
+    //   apps/web .../fatura-merkezi/page.tsx ve moren-ai/tool-executor.service.ts (taxpayerId zorunlu).
+    const taxpayerId = String(q?.taxpayerId || '').trim();
+    if (!taxpayerId) throw new BadRequestException('Mükellef seçilmeli (taxpayerId zorunlu).');
     return (this.eFaturaSyncService as any).listInbox
-      ? (this.eFaturaSyncService as any).listInbox(req.user.tenantId, q)
+      ? (this.eFaturaSyncService as any).listInbox(req.user.tenantId, { ...q, taxpayerId })
       : [];
   }
 
