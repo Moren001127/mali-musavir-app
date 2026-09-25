@@ -146,6 +146,14 @@ export class FaturaMuhasebelestirmeController {
       : result;
   }
 
+  /** Mikro e-Portal oturumu — ofisteki Chrome'daki çerezi eklenti portala verir, portal buraya gönderir.
+   *  (Mikro girişi Cloudflare yüzünden sunucudan yapılamıyor; girişten sonraki işler sunucudan yürür.) */
+  @Roles('ADMIN', 'STAFF')
+  @Post('integrations/mikro-oturum')
+  saveMikroSession(@Req() req: any, @Body() body: any) {
+    return this.service.saveMikroSession(req.user.tenantId, { cookie: String(body?.cookie || '') });
+  }
+
   /** Talimat ver/kaldır — her gece otomatik fetch. */
   @Roles('ADMIN', 'STAFF')
   @Post('integrations/talimat')

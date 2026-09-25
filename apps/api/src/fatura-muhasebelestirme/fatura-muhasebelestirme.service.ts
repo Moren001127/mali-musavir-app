@@ -363,6 +363,9 @@ type RuntimeIntegrationConfig = {
   accountId: string;
   note: string;
   taxpayerId?: string;
+  /** Mikro e-Portal: ofisteki Chrome'dan eklentiyle gelen oturum çerezi (çözülmüş) ve alınma zamanı. */
+  mikroCookie?: string;
+  mikroCookieAt?: string;
 };
 
 type ProviderInvoicePayload = {
@@ -474,6 +477,12 @@ const MIKRO_FIRMBOX_URL = 'https://firma.myefatura.com.tr/EFatura/Firmbox/Firmbo
  *   inbox/index · inbox/detail · outbox/index · outbox/detail · earchive/index · earchive/list · earchive/detail
  */
 const MIKRO_EPORTAL_URL = 'https://eportal.mikrogrup.com';
+// Kullanıcıya yapılacak işi söyleyen mesajlar (eskisi "Mikro IP'mize izin vermeli" diyordu — yanıltıcıydı).
+const MIKRO_OTURUM_YOK_MESAJI =
+  'Mikro oturumu yok. Chrome\'da eportal.mikrogrup.com adresine bir kez giriş yapın, sonra tekrar sorgulayın — '
+  + 'Moren eklentisi oturumu otomatik alır. (Mikro girişi güvenlik duvarı yüzünden sunucudan yapılamıyor.)';
+const MIKRO_OTURUM_DUSTU_MESAJI =
+  'Mikro oturumu düşmüş. Chrome\'da eportal.mikrogrup.com adresine tekrar giriş yapın, sonra yeniden sorgulayın.';
 const GOODS_ACCOUNT_PREFIXES = ['150', '151', '152', '153', '157'];
 const EXPENSE_ACCOUNT_PREFIXES = ['7'];
 const SALES_ACCOUNT_PREFIXES = ['600', '601', '602'];
@@ -9725,6 +9734,26 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       tryDecrypt(scoped.encryptedApiSecret) ||
       tryDecrypt(globalScoped?.encryptedApiSecret) ||
       (catalog.provider === 'PARASUT' ? String(process.env.PARASUT_CLIENT_SECRET || '').trim() : '');
+    let accountId = String(scoped.accountId || '').trim();
+    // MİKRO OTURUMU (2026-09-26): e-Portal girişi Cloudflare yüzünden SUNUCUDAN yapılamıyor (yalnız giriş
+    //   ucu korumalı; gerçek tarayıcı + ofis IP'si şart). Oturumu ofisteki Chrome açar, eklenti çerezi
+    //   portala verir, portal buraya kaydeder (saveMikroSession). ESKİDEN bu alan hiç taşınmıyordu →
+    //   sunucu mikroCookie'yi okuyor ama hep boş görüyordu.
+    let mikroCookie: string | undefined;
+    let mikroCookieAt: string | undefined;
+    if (catalog.provider === 'MIKRO') {
+      const oturumlar: any[] = Array.isArray(config.mikroOturumlari) ? config.mikroOturumlari : [];
+      const secilen =
+        (accountId ? oturumlar.find((o) => (o?.hesaplar || []).some((h: any) => h?.guid === accountId)) : null)
+        || (oturumlar.length === 1 ? oturumlar[0] : null);
+      if (secilen) {
+        mikroCookie = tryDecrypt(secilen.encryptedCookie) || undefined;
+        mikroCookieAt = String(secilen.at || '') || undefined;
+        if (!accountId && Array.isArray(secilen.hesaplar) && secilen.hesaplar.length === 1) {
+          accountId = String(secilen.hesaplar[0]?.guid || '');
+        }
+      }
+    }
     return {
       provider: catalog.provider,
       label: scoped.label || config.label || catalog.label,
@@ -9734,9 +9763,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       apiKey,
       apiSecret,
       senderVkn: String(scoped.senderVkn || '').trim(),
-      accountId: String(scoped.accountId || '').trim(),
+      accountId,
       note: scoped.isActive === false ? '__inactive__' : String(scoped.note || '').trim(),
       taxpayerId,
+      mikroCookie,
+      mikroCookieAt,
     };
   }
 
@@ -13275,10 +13306,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       });
       const loginTxt = await loginRes.text();
       if (loginRes.status === 403) {
-        throw new Error(
-          'Mikro e-Portal girişi sunucu IP\'sinden engelleniyor (Cloudflare 403). Giriş, ofisteki ajanın açtığı oturumla yapılmalı '
-          + '(ajan çerezi gönderince liste ve belge indirme sunucudan çalışıyor) ya da Mikro sunucu IP\'mize izin vermeli.',
-        );
+        // 2026-09-26 ölçüm: Cloudflare YALNIZ giriş ucunu koruyor ve gerçek tarayıcı + ev/ofis IP'si istiyor
+        //   (Chromium bile Türkiye VPS'inden 403). Girişten sonraki uçlar sunucudan sorunsuz çalışıyor.
+        throw new Error(MIKRO_OTURUM_YOK_MESAJI);
       }
       let loginJson: any = null;
       try { loginJson = JSON.parse(loginTxt); } catch { /* HTML dönebilir */ }
@@ -13301,7 +13331,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       if (!guid) {
         throw new Error(
           accRes.status === 302
-            ? 'Mikro e-Portal oturumu düşmüş (giriş sayfasına yönlendirildi) — ajanın yeni oturum açması gerekiyor.'
+            ? MIKRO_OTURUM_DUSTU_MESAJI
             : 'Mikro e-Portal: firma listesi çözülemedi (/accounts).',
         );
       }
@@ -13325,7 +13355,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     let toplamSayfa = 1;
     for (let sayfa = 1; sayfa <= toplamSayfa && kept < opts.limit; sayfa++) {
       const r = await go(`/cp/${guid}/${modul}/${listeUcu}?${suzgec(sayfa)}`);
-      if (r.status === 302) throw new Error('Mikro e-Portal oturumu düştü — ajanın yeni oturum açması gerekiyor.');
+      if (r.status === 302) throw new Error(MIKRO_OTURUM_DUSTU_MESAJI);
       const t = await r.text();
       if (!r.ok) throw new Error(`Mikro e-Portal liste hatası: HTTP ${r.status} ${t.slice(0, 160).replace(/\s+/g, ' ')}`);
       let j: any; try { j = JSON.parse(t); } catch { throw new Error('Mikro e-Portal liste yanıtı JSON değil (oturum düşmüş olabilir).'); }
@@ -13380,14 +13410,95 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     return payloads;
   }
 
-  /** Ofis ajanının bıraktığı Mikro oturum çerezi (integration_connections.config.taxpayers[tp].mikroCookie).
-   *  40 dakikadan eskiyse kullanılmaz — düşmüş oturumla boşuna istek atılmasın. */
+  /** Ofisteki Chrome'dan eklentiyle gelen Mikro oturum çerezi (resolveRuntimeConfig doldurur).
+   *  ESKİDEN 40 dakikadan eski çerez hiç denenmiyordu — keyfi bir sınırdı. Artık her zaman denenir;
+   *  oturum gerçekten düşmüşse Mikro giriş sayfasına yönlendirir (302) ve kullanıcıya net mesaj gider. */
   private mikroOturumCerezi(cfg: RuntimeIntegrationConfig): string | null {
-    const cerez = String((cfg as any).mikroCookie || '').trim();
-    const ne = Date.parse(String((cfg as any).mikroCookieAt || ''));
-    if (!cerez) return null;
-    if (Number.isFinite(ne) && Date.now() - ne > 40 * 60 * 1000) return null;
-    return cerez;
+    const cerez = String(cfg.mikroCookie || '').trim();
+    return cerez || null;
+  }
+
+  /**
+   * Mikro e-Portal oturumunu kaydeder (portal sayfası → Chrome eklentisi → buraya).
+   * Çerez önce sunucudan /accounts ile DOĞRULANIR: gerçekten açık oturum değilse kaydedilmez.
+   * Cloudflare çerezleri (cf_*, __cf*) atılır — tarayıcının IP/kimliğine bağlılar, sunucuda işe yaramaz;
+   * girişten sonraki uçlar zaten Cloudflare'e takılmıyor (2026-09-26 ölçüldü).
+   */
+  async saveMikroSession(tenantId: string, input: { cookie?: string }) {
+    const ham = String(input?.cookie || '');
+    const parcalar = ham.split(';').map((p) => p.trim()).filter((p) => p.includes('='));
+    const temiz = parcalar.filter((p) => !/^(cf_|__cf)/i.test(p.split('=')[0].trim())).join('; ');
+    if (!temiz) return { ok: false, neden: 'cerez-yok', mesaj: 'Chrome\'da Mikro oturum çerezi bulunamadı — önce eportal.mikrogrup.com\'a giriş yapın.' };
+
+    const row = await (this.prisma as any).integrationConnection.findUnique({
+      where: { tenantId_provider: { tenantId, provider: 'MIKRO' } },
+      select: { id: true, config: true },
+    });
+    if (!row) return { ok: false, neden: 'entegrator-yok', mesaj: 'Önce Entegratörler ekranından Mikro tanımlayın.' };
+
+    // Doğrulama: /accounts oturum açıksa firma bağlantılarını (/cp/{guid}/) içerir; değilse giriş sayfasına yönlendirir.
+    let html = '';
+    try {
+      // Çekimle AYNI çıkış (Türkiye vekili) — girişten sonraki uçların oradan geçtiği 2026-09-26'da ölçüldü.
+      const r = await this.trFetch(`${MIKRO_EPORTAL_URL}/accounts`, {
+        redirect: 'manual',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0 Safari/537.36',
+          Accept: 'text/html, */*',
+          Cookie: temiz,
+        },
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (r.status >= 300 && r.status < 400) {
+        return { ok: false, neden: 'oturum-kapali', mesaj: 'Chrome\'daki Mikro oturumu kapalı ya da düşmüş — eportal.mikrogrup.com\'a tekrar giriş yapın.' };
+      }
+      html = await r.text();
+    } catch (e: any) {
+      return { ok: false, neden: 'dogrulanamadi', mesaj: `Mikro oturumu doğrulanamadı: ${String(e?.message || e).slice(0, 120)}` };
+    }
+    const guidler = [...new Set([...html.matchAll(/\/cp\/([0-9a-f-]{36})\//gi)].map((m) => m[1].toLowerCase()))];
+    if (!guidler.length) {
+      return { ok: false, neden: 'firma-yok', mesaj: 'Mikro oturumu açık görünüyor ama firma listesi okunamadı.' };
+    }
+    // Her firma bağlantısının çevresindeki metin (firma adı eşleştirmesi için; en iyi çaba)
+    const hesaplar = guidler.map((guid) => {
+      const ix = html.toLowerCase().indexOf(`/cp/${guid}/`);
+      const metin = html.slice(Math.max(0, ix - 400), ix + 400).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300);
+      return { guid, metin };
+    });
+
+    const config: any = { ...((row.config || {}) as any) };
+    const eski: any[] = Array.isArray(config.mikroOturumlari) ? config.mikroOturumlari : [];
+    // Aynı firmaları kapsayan eski oturumu değiştir (aynı hesaba yeniden giriş), yoksa ekle
+    const kalan = eski.filter((o) => !(o?.hesaplar || []).some((h: any) => guidler.includes(String(h?.guid || '').toLowerCase())));
+    config.mikroOturumlari = [
+      { encryptedCookie: encrypt(temiz), at: new Date().toISOString(), hesaplar },
+      ...kalan,
+    ].slice(0, 10);
+
+    // Firma kimliği boş olan mükellef kayıtlarını ada göre eşle (tek firmalı oturumda doğrudan)
+    const eslesen: string[] = [];
+    const taxpayers = config.taxpayers || {};
+    const idler = Object.keys(taxpayers).filter((k) => k !== 'global' && !String(taxpayers[k]?.accountId || '').trim());
+    if (idler.length) {
+      const tps = await (this.prisma as any).taxpayer.findMany({ where: { id: { in: idler } }, select: { id: true, companyName: true } });
+      const sade = (s: string) => String(s || '').toLocaleUpperCase('tr').replace(/[^A-ZÇĞİÖŞÜ0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+      for (const tp of tps) {
+        const ilkIki = sade(tp.companyName).split(' ').filter((w) => w.length > 2).slice(0, 2).join(' ');
+        const bulunan = hesaplar.length === 1
+          ? hesaplar[0]
+          : hesaplar.find((h) => ilkIki && sade(h.metin).includes(ilkIki));
+        if (bulunan) {
+          taxpayers[tp.id] = { ...taxpayers[tp.id], accountId: bulunan.guid };
+          eslesen.push(tp.companyName);
+        }
+      }
+      config.taxpayers = taxpayers;
+    }
+
+    await (this.prisma as any).integrationConnection.update({ where: { id: row.id }, data: { config } });
+    this.logger.log(`[MIKRO] oturum kaydedildi: ${hesaplar.length} firma, eşleşen mükellef ${eslesen.length}`);
+    return { ok: true, firmaSayisi: hesaplar.length, eslesen };
   }
 
   private static readonly mikroSessions = new Map<string, { sid: string; ts: number }>();

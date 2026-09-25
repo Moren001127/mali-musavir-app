@@ -6,6 +6,36 @@ import { api } from '@/lib/api';
 import { toast } from 'sonner';
 import { isletmeRef, ISLETME_ISLEM_TURU, ISLETME_KDV_ORAN, defaultBelgeTuruKod, normalizeDocumentType, getKayitAltList, defaultKayitAltKod, kayitAltKisaAd, isletmeAutoKayitTuru, isletmeAutoKayitAltKod, KURUM_TURU_SECENEKLERI, DEFTER_TURU_ETIKETLERI, kurumTuruEtiketi } from '@mali-musavir/shared';
 
+// MİKRO e-PORTAL OTURUMU (2026-09-26): Mikro girişi güvenlik duvarı (Cloudflare) yüzünden SUNUCUDAN
+//   yapılamıyor — yalnız gerçek tarayıcı + ofis IP'si geçiyor. Girişten sonraki işler (liste, belge)
+//   sunucudan yürüyor. Bu yüzden oturumu kullanıcının Chrome'u açar; Moren eklentisi (portal-kopru.js)
+//   tarayıcıdaki çerezi verir, biz de kullanıcının kendi portal oturumuyla sunucuya iletiriz.
+//   Eklenti yoksa ya da Mikro'ya girilmemişse sessizce geçer; sunucu yapılacak işi söyleyen mesajı döner.
+async function mikroOturumuTazele(): Promise<{ durum: 'gonderildi' | 'eklenti-yok' | 'oturum-yok' | 'hata'; mesaj?: string }> {
+  if (typeof window === 'undefined') return { durum: 'eklenti-yok' };
+  const istekNo = `m${Date.now()}${Math.random().toString(36).slice(2, 7)}`;
+  const cevap: any = await new Promise((resolve) => {
+    let zaman: ReturnType<typeof setTimeout> | null = null;
+    const dinle = (e: MessageEvent) => {
+      if (e.source !== window || e.data?.type !== 'moren-mikro-cerez-cevap' || e.data?.istekNo !== istekNo) return;
+      window.removeEventListener('message', dinle);
+      if (zaman) clearTimeout(zaman);
+      resolve(e.data);
+    };
+    zaman = setTimeout(() => { window.removeEventListener('message', dinle); resolve(null); }, 2500);
+    window.addEventListener('message', dinle);
+    window.postMessage({ type: 'moren-mikro-cerez-iste', istekNo }, window.location.origin);
+  });
+  if (!cevap) return { durum: 'eklenti-yok' };
+  if (!cevap.ok || !cevap.cerez) return { durum: 'oturum-yok', mesaj: cevap.hata || undefined };
+  try {
+    const r: any = await api.post('/fatura-muhasebelestirme/integrations/mikro-oturum', { cookie: cevap.cerez });
+    return r?.data?.ok ? { durum: 'gonderildi' } : { durum: 'oturum-yok', mesaj: r?.data?.mesaj };
+  } catch (e: any) {
+    return { durum: 'hata', mesaj: e?.message };
+  }
+}
+
 // Entegratör "Sorgula/Çek" sonucunu kullanıcıya GÖSTER. Eskiden onSuccess sadece "çekiliyor" diyordu;
 // backend providers[].reason ("yetkiniz yok" gibi) ve created/fetched sayılarını dönüyor ama yutuluyordu.
 function showFetchResult(d: any) {
@@ -2847,15 +2877,26 @@ function ScreenSorgu({ taxpayerId, period, source, onOpenEntegrator }: { taxpaye
     return () => { document.removeEventListener('mousedown', kapat); document.removeEventListener('keydown', esc); };
   }, [provMenuAcik]);
   const efaturaFetchMut = useMutation({
-    mutationFn: (v: { provider: string }) => api.post('/fatura-muhasebelestirme/efatura-sync', {
-      taxpayerId,
-      direction: efaturaDirection,
-      channel: efaturaChannel,
-      period: donem,
-      ...(rangeFrom && rangeTo ? { dateFrom: rangeFrom, dateTo: rangeTo } : {}),
-      providers: [v.provider],
-      limit: 2000,
-    }),
+    mutationFn: async (v: { provider: string }) => {
+      // Mikro: sorgudan hemen önce Chrome'daki e-Portal oturumunu tazele (bkz. mikroOturumuTazele)
+      if (v.provider === 'MIKRO') {
+        const m = await mikroOturumuTazele();
+        if (m.durum === 'eklenti-yok') {
+          toast.warning('Moren Chrome eklentisi bulunamadı ya da eski sürüm — Mikro için eklentinin 2.5.0 sürümü gerekli (chrome://extensions → Yenile).', { duration: 9000 });
+        } else if (m.durum === 'oturum-yok' && m.mesaj) {
+          toast.warning(m.mesaj, { duration: 9000 });
+        }
+      }
+      return api.post('/fatura-muhasebelestirme/efatura-sync', {
+        taxpayerId,
+        direction: efaturaDirection,
+        channel: efaturaChannel,
+        period: donem,
+        ...(rangeFrom && rangeTo ? { dateFrom: rangeFrom, dateTo: rangeTo } : {}),
+        providers: [v.provider],
+        limit: 2000,
+      });
+    },
     onSuccess: (r: any) => {
       const data = r?.data || null;
       setEfaturaSonSorguAt(Date.now());
@@ -6106,8 +6147,14 @@ function ScreenEntegrator({ taxpayerId, period }: { taxpayerId: string; period: 
     onError: (e: any) => toast.error('Kaydedilemedi: ' + (e?.response?.data?.message || e?.message || 'hata')),
   });
   const fetchMut = useMutation({
-    mutationFn: (prov: string) =>
-      api.post('/fatura-muhasebelestirme/integrations/fetch', { taxpayerId: taxpayerId || undefined, providers: [prov], direction: 'ALIS', donem: period }),
+    mutationFn: async (prov: string) => {
+      if (prov === 'MIKRO') {
+        const m = await mikroOturumuTazele();
+        if (m.durum === 'eklenti-yok') toast.warning('Moren Chrome eklentisi bulunamadı ya da eski sürüm — Mikro için 2.5.0 gerekli (chrome://extensions → Yenile).', { duration: 9000 });
+        else if (m.durum === 'oturum-yok' && m.mesaj) toast.warning(m.mesaj, { duration: 9000 });
+      }
+      return api.post('/fatura-muhasebelestirme/integrations/fetch', { taxpayerId: taxpayerId || undefined, providers: [prov], direction: 'ALIS', donem: period });
+    },
     onSuccess: (r: any) => { showFetchResult(r?.data); qc.invalidateQueries({ queryKey: ['fm2'] }); },
     onError: (e: any) => toast.error('Sorgu başarısız: ' + (e?.response?.data?.message || e?.message || 'hata')),
   });
