@@ -4,8 +4,31 @@
 ofis adından türeyen ve halka açık bir bilgi. Bu yolla `agent/luca/credential` ucu **Luca kullanıcı adı
 ve parolasını açık metin** döndürüyor. (Denetim bulgusu 01, 25 Eylül 2026.)
 
-**Durum:** Sunucu tarafı hazır (`68e901b`). Kısa ad yolu hâlâ **kabul ediliyor** — ajanlarınız dursun
-diye kapatmadım. Bu yönergedeki adımlar bitince tek satırlık bir değişiklikle kapatacağım.
+**Durum: GEÇİŞ BİTTİ — kısa ad yolu 25 Eylül 2026'da CANLIDA KAPATILDI.**
+
+Aşağıdaki adımlara artık gerek yok; kayıt için bırakıldı. Ne oldu:
+
+| Kurulum | Eski anahtar | Şimdi | Nasıl geçti |
+|---|---|---|---|
+| `vps-radore-luca` | kısa ad (23 hane) | gerçek (32 hane) | VPS'te `/home/luca/agent/config.json` |
+| `vps-radore-luca-operator` | kısa ad | gerçek | VPS'te `/home/luca/agent-operator/config.json` |
+| **`hgs` (bu bilgisayar)** | kısa ad | gerçek | `hgs-agent/.env` — **en son bulunan kullanıcıydı** |
+| `mihsap` eklentisi (DEV-moxegoee) | kısa ad (önbellek) | gerçek | portal her ekranda kendiliğinden itiyor |
+
+**Kapatma ölçütü nasıl doğrulandı:** Uç bazında kaynak etiketi eklendi; kayıt "ESKİ YOL … kaynak:
+agent-events:ping/hgs/cihazsiz" deyince son kullanıcı adıyla ortaya çıktı. HGS geçirildikten sonra
+dört yoklayıcı da **0–19 saniye arayla** çağırıyordu ve `AGENT-TOKEN` uyarı sayısı **sıfırdı** — yani
+sessizlik trafik yokluğundan değildi. Ondan sonra kapatıldı.
+
+**Bir bilgisayar hâlâ kısa ad sunarsa ne olur:** `401` alır ve kayda şu satır düşer:
+`[AGENT-TOKEN] REDDEDİLDİ: … kaynak: <modül>`. Tarayıcı eklentisi portal açılır açılmaz gerçek
+anahtarı alıp kendi kendine düzelir. Yerel ajan/HGS gibi dosyadan okuyan kurulumlarda anahtarı elle
+değiştirmek gerekir (aşağıdaki adımlar).
+
+**Acil durumda yolu geçici açma:** sunucuda `AGENT_TOKEN_ALLOW_TENANT_ID=1` + yeniden başlatma.
+Yerelde (`NODE_ENV` production değil) yol zaten açıktır, geliştirme etkilenmez.
+
+**Yedekler:** `hgs-agent/.env.eski-anahtar.yedek`, VPS'te `config.json.eski-anahtar.yedek`.
 
 **Ne kadar sürer:** Bilgisayar başına 3-5 dakika. Tarayıcı eklentisi için hiçbir şey yapmanıza gerek yok.
 

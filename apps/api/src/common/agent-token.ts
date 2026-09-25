@@ -94,12 +94,48 @@ export async function resolveTenantFromAgentToken(
   //   Kısa ad gizli değil — tenant.slug ofis adından türer ve `GET luca/agent/me/token` onu token
   //   olarak dağıtıyor; bu yolla `GET agent/luca/credential` Luca parolasını açık döndürüyor.
   //
-  //   GEÇİŞ NOTU (sahip kararı, kademeli): yerel ajan ve tarayıcı eklentisi ŞU AN kısa adla
-  //   çalışıyor. Yol hemen kapatılırsa Luca otomasyonu durur. Bu yüzden şimdilik kabul edilmeye
-  //   devam ediyor ama HER KULLANIM KAYDA GEÇİYOR. Ajanlar gerçek anahtara geçtikten sonra
-  //   aşağıdaki blok `if (!allowLegacyLookup) throw ...` ile kapatılacak — o an tek satırlık iş.
+  //   GEÇİŞ TAMAMLANDI — 2026-09-25, kısa ad yolu CANLIDA KAPALI.
+  //     Kapatma ölçütü (yönergede yazılıydı): sunucu yeniden başladıktan sonra hiç "ESKİ YOL"
+  //     satırı çıkmaması. Ölçüm yapıldı: dört yoklayıcı (vps-radore-luca, vps-radore-luca-operator,
+  //     hgs, DEV-moxegoee-O514TN eklentisi) 0–19 saniye arayla çağırıyordu ve uyarı sayısı SIFIRDI —
+  //     yani sessizlik trafik yokluğundan değil, hepsinin gerçek anahtara geçmesindendi.
+  //     Son geçen HGS ajanıydı (anahtarı 23 karakterlik ofis kısa adıydı, 32 karakterlik gerçek
+  //     anahtara çevrildi; yedek: hgs-agent/.env.eski-anahtar.yedek).
+  //
+  //   AÇMA DÜĞMESİ: `AGENT_TOKEN_ALLOW_TENANT_ID=1`. Uzun süre kapalı kalmış bir bilgisayar
+  //     önbelleğindeki kısa adla gelirse 401 alır; portal açılır açılmaz eklentiye gerçek anahtar
+  //     itilir (panel düzeni her ekranda tazeliyor) ve kendi kendine düzelir. Acil durumda bu
+  //     değişkenle yol geçici açılır. Yerelde (NODE_ENV != production) yol zaten açık.
+  if (!allowLegacyLookup) {
+    legacyEskiYolReddedildi(tenant.id, opts.kaynak || 'bilinmiyor');
+    throw new UnauthorizedException('Invalid agent token');
+  }
   legacyEskiYolKullanimi(presented, tenant.id, opts.kaynak || 'bilinmiyor');
   return tenant.id;
+}
+
+/**
+ * REDDEDİLEN eski yol — 2026-09-25 kapatmadan sonra.
+ *
+ * Kapatmanın sessiz 401 üretmesi teşhisi imkânsızlaştırırdı ("Luca çalışmıyor" deyip
+ * sebebini bulamazdık). Bu yüzden her ret KAYNAK etiketiyle kayda geçer: hangi modülün,
+ * hangi ofis adına kısa ad sunduğu tek satırda görünür. Gürültü olmasın diye kaynak
+ * başına en çok 5 satır basılır.
+ */
+const redSayac = new Map<string, number>();
+const EN_FAZLA_RED_SATIRI = 5;
+
+function legacyEskiYolReddedildi(tenantId: string, kaynak: string) {
+  const adet = (redSayac.get(kaynak) || 0) + 1;
+  redSayac.set(kaynak, adet);
+  if (adet > EN_FAZLA_RED_SATIRI) return;
+  // eslint-disable-next-line no-console
+  console.warn(
+    `[AGENT-TOKEN] REDDEDİLDİ: ofis kısa adı anahtar olarak sunuldu (ofis ${tenantId}, kaynak: ${kaynak}). `
+    + `Kısa ad yolu 2026-09-25'te kapatıldı. Çözüm: o kurulumun anahtarını AGENT_INGEST_TOKENS'taki `
+    + `gerçek anahtarla değiştirin (portal açılınca tarayıcı eklentisi kendi kendine alır). `
+    + `Acil durumda geçici açma: AGENT_TOKEN_ALLOW_TENANT_ID=1.`,
+  );
 }
 
 /**
