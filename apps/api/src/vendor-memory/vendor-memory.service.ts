@@ -1012,13 +1012,15 @@ Yanlış ipucuna uyup yanlış karar vermek, ipucu olmamasından DAHA KÖTÜDÜR
       _count: { _all: true },
     });
 
-    // VKN → [{ ad, adet }]
-    const vknAdaylar = new Map<string, { ad: string; adet: number }[]>();
+    // VKN → [{ ad (sade), ham (DB'deki birebir değer), adet }]
+    // HAM değer şart: güncelleme `vendorName: { in: [...] }` ile eşleşir; sade edilmiş ad
+    // ("[AZURE] X" → "X", çift boşluk tekleşmiş) DB'dekiyle tutmaz ve satır sessizce atlanır.
+    const vknAdaylar = new Map<string, { ad: string; ham: string; adet: number }[]>();
     for (const g of gruplar) {
       const vkn = sade(g.sellerVkn); const ad = sade(g.vendorName);
       if (!vkn || !ad) continue;
       if (!vknAdaylar.has(vkn)) vknAdaylar.set(vkn, []);
-      vknAdaylar.get(vkn)!.push({ ad, adet: g._count._all });
+      vknAdaylar.get(vkn)!.push({ ad, ham: String(g.vendorName), adet: g._count._all });
     }
 
     let incelenen = 0; let defterGuncel = 0; let belgeGuncel = 0; let atlanan = 0;
@@ -1036,9 +1038,22 @@ Yanlış ipucuna uyup yanlış karar vermek, ipucu olmamasından DAHA KÖTÜDÜR
         select: { id: true, firmaUnvan: true, cariKaynak: true },
       }).catch(() => null);
 
+      // Defterdeki kayıt GÜVENİLİRSE aday havuzuna katılır — ayrı bir "defter kazanır" kuralı
+      // yerine aynı yazım ölçütlerinden geçsin. Gerçek vaka: ARS OTOMOBİL'in defter kaydı
+      // "...TIC.LTD.STI" (Türkçesi düşmüş) ayrıcalıklı olduğu için belgelerdeki doğru
+      // "...TİC. LTD. ŞTİ" yazımını eziyordu. Güvenilirlik şartı: ya şirket eki taşısın ya da
+      // belgelerdeki adlarla örtüşsün — TT MOBİL'in kaydı "Değerli Hissettirir" (fişteki slogan)
+      // aksi halde gerçek ünvanın yerine geçiyordu. adet:0 → sıklık avantajı almaz.
+      const defterAdi = sade(defter?.firmaUnvan);
+      const defterGuvenilir = !!defterAdi && (
+        /\b(?:LTD|ŞTİ|STI|A\.?Ş|AŞ|ANONİM|ANONIM|ŞİRKET|SIRKET|LİMİTED|LIMITED|KOLL|KOM)\b/i.test(defterAdi)
+        || temiz.some((a) => katla(a.ad).includes(katla(defterAdi)) || katla(defterAdi).includes(katla(a.ad)))
+      );
+      const havuz = defterGuvenilir ? [...temiz, { ad: defterAdi, ham: defterAdi, adet: 0 }] : temiz;
+
       // Yalnız yazım farkıyla ayrışanları TEK aday say ("Turkcell ... A.S." = "TURKCELL ... A.Ş.").
       const yazimGruplari = new Map<string, { ad: string; adet: number }[]>();
-      for (const a of temiz) {
+      for (const a of havuz) {
         const k = katla(a.ad);
         if (!yazimGruplari.has(k)) yazimGruplari.set(k, []);
         yazimGruplari.get(k)!.push(a);
@@ -1078,18 +1093,7 @@ Yanlış ipucuna uyup yanlış karar vermek, ipucu olmamasından DAHA KÖTÜDÜR
         continue;
       }
 
-      // 3) Defterdeki kayıt yalnız DAHA TAM ise öne geçer (UBL'den gelen resmî yazım). Güvenilirlik
-      // şartı: ya şirket eki taşısın ya da belgelerdeki adlarla örtüşsün — TT MOBİL'in defter kaydı
-      // "Değerli Hissettirir" (fişteki slogan) aksi halde gerçek ünvanın yerine geçiyordu. Defter
-      // adı seçilenden KISAysa (FİLE MARKET: "... ANONİM" vs "... ANONİM ŞİRKETİ") belge adı kalır.
-      const defterAdi = sade(defter?.firmaUnvan);
-      const defterGuvenilir = !!defterAdi && (
-        /\b(?:LTD|ŞTİ|STI|A\.?Ş|AŞ|ANONİM|ANONIM|ŞİRKET|SIRKET|LİMİTED|LIMITED|KOLL|KOM)\b/i.test(defterAdi)
-        || temsilciler.some((t) => katla(t.ad).includes(katla(defterAdi)) || katla(defterAdi).includes(katla(t.ad)))
-      );
-      if (defterGuvenilir && katla(defterAdi).includes(katla(resmi))) resmi = defterAdi;
-
-      const farkliBelgeAdlari = adaylar.filter((a) => a.ad !== resmi);
+      const farkliBelgeAdlari = adaylar.filter((a) => a.ham !== resmi);
       const defterFarkli = !defter || sade(defter.firmaUnvan) !== resmi;
       if (!farkliBelgeAdlari.length && !defterFarkli) continue;
 
@@ -1112,7 +1116,7 @@ Yanlış ipucuna uyup yanlış karar vermek, ipucu olmamasından DAHA KÖTÜDÜR
         belgeGuncel += adet;
         if (!opts.dryRun) {
           await (this.prisma as any).invoiceAccountingDocument.updateMany({
-            where: { tenantId, invoiceKind: 'ALIS', sellerVkn: vkn, vendorName: { in: farkliBelgeAdlari.map((a) => a.ad) } },
+            where: { tenantId, invoiceKind: 'ALIS', sellerVkn: vkn, vendorName: { in: farkliBelgeAdlari.map((a) => a.ham) } },
             data: { vendorName: resmi },
           }).catch(() => null);
         }
