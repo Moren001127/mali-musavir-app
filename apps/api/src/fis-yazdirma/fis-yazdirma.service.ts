@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { fisGorselOlcusu, fisleriSutunlaraBol } from './fis-olcu';
 import { MihsapService } from '../mihsap/mihsap.service';
@@ -957,21 +957,33 @@ export class FisYazdirmaService {
     return { claimed: result.count > 0 };
   }
 
-  /** Yazdirma bittikten sonra agent bunu cagirir. */
+  /**
+   * Yazdirma bittikten sonra agent bunu cagirir.
+   *
+   * 2026-09-25 (portal denetimi bulgu 23): `tenantId` parametre olarak ALINIYOR ama gövdede
+   * HİÇ KULLANILMIYORDU — A ofisinin ajanı B ofisinin çıktısını "yazdırıldı"/"hata" yapabiliyordu.
+   * Veri okunmuyordu, yalnız durum bozuluyordu: B ofisi çıktıyı yazdırılmış sanıp bir daha
+   * göndermiyordu. Aynı dosyadaki `claimPrint` (945) doğru kalıbı zaten kullanıyor.
+   */
   async completePrint(
     tenantId: string,
     outputId: string,
     success: boolean,
     errorMessage?: string,
   ) {
-    return (this.prisma as any).fisYazdirmaOutput.update({
-      where: { id: outputId },
+    const sonuc = await (this.prisma as any).fisYazdirmaOutput.updateMany({
+      where: { id: outputId, tenantId },
       data: {
         printStatus: success ? 'DONE' : 'FAILED',
         printedAt: success ? new Date() : null,
         printError: success ? null : (errorMessage || 'Bilinmeyen hata').slice(0, 500),
       },
     });
+    if (sonuc.count === 0) {
+      this.logger.warn(`[OFIS-KORUMA] completePrint: ${outputId} bu ofise ait degil, durum degistirilmedi.`);
+      throw new NotFoundException('Ciktiyi bulunamadi');
+    }
+    return (this.prisma as any).fisYazdirmaOutput.findFirst({ where: { id: outputId, tenantId } });
   }
 
   async setOutputPrinted(

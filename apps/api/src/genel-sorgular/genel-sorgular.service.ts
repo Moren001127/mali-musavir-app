@@ -188,24 +188,39 @@ export class GenelSorgularService {
       });
       lucaKayitlari.push(...parca);
     }
-    // Anahtar: mükellef::faturaNo::vkn ve mükellef::faturaNo (VKN'siz yedek)
+    // 2026-09-25 (portal denetimi bulgu 47) — SATICI VKN'Sİ ARTIK GERÇEKTEN AYIRT EDİYOR.
+    //   Eski kod anahtara VKN'yi katıyordu AMA yanına koşulsuz bir "numara-only" yedek anahtar
+    //   da ekliyordu ve sorgu tarafı HER ZAMAN ona da bakıyordu. Sonuç: VKN eşleştirmede
+    //   hiçbir işe yaramıyordu. Aynı mükellefte aynı fatura numarasının 3-5 ayrı satıcıda
+    //   çıktığı biliniyor; bu durumda BİR satıcının faturası kayıtlıysa DİĞERLERİ de
+    //   "kayıtlı" sayılıp listeden düşüyordu — eksik fatura sessizce gizleniyordu.
+    //   Fatura Merkezi'nde `3bdf1ed` ile çözülen bulgunun kardeşi.
+    //   Yeni kural: VKN VARSA yalnız tam anahtar; VKN YOKSA (Luca kaydında boş) yedek anahtar.
     const gorselli = new Set<string>();
     const kayitli = new Set<string>();
+    const vknsizKayit = new Set<string>();   // Luca kaydında satıcı VKN'si yok — eşleşme numaraya düşer
+    const vknsizGorselli = new Set<string>();
     for (const k of lucaKayitlari) {
       const vkn = String(k.saticiVergiNo || '').trim();
-      const anahtarlar = [`${k.taxpayerId}::${k.faturaNo}::${vkn}`, `${k.taxpayerId}::${k.faturaNo}::`];
-      for (const a of anahtarlar) {
-        kayitli.add(a);
-        if (k.pdfStorageKey || k.htmlStorageKey) gorselli.add(a);
+      const gorselVar = !!(k.pdfStorageKey || k.htmlStorageKey);
+      if (vkn) {
+        const tam = `${k.taxpayerId}::${k.faturaNo}::${vkn}`;
+        kayitli.add(tam);
+        if (gorselVar) gorselli.add(tam);
+      } else {
+        const kisa = `${k.taxpayerId}::${k.faturaNo}::`;
+        vknsizKayit.add(kisa);
+        if (gorselVar) vknsizGorselli.add(kisa);
       }
     }
     const rows = [];
     let lucaVar = 0;
     for (const d of dvd) {
-      const tam = `${d.taxpayerId}::${d.faturaNo}::${d.saticiVkn}`;
+      const tam = `${d.taxpayerId}::${d.faturaNo}::${String(d.saticiVkn || '').trim()}`;
       const kisa = `${d.taxpayerId}::${d.faturaNo}::`;
-      const varMi = kayitli.has(tam) || kayitli.has(kisa);
-      const gorselVarMi = gorselli.has(tam) || gorselli.has(kisa);
+      // Yedek anahtar YALNIZ Luca kaydında VKN yoksa devreye girer (bulgu 47).
+      const varMi = kayitli.has(tam) || vknsizKayit.has(kisa);
+      const gorselVarMi = gorselli.has(tam) || vknsizGorselli.has(kisa);
       if (varMi && gorselVarMi) { lucaVar++; continue; }
       rows.push({
         taxpayerId: d.taxpayerId, taxpayer: d.taxpayer, donem: d.donem, sorguTarihi: d.sorguTarihi,

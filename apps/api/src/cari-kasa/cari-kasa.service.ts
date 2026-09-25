@@ -434,6 +434,20 @@ export class CariKasaService {
     };
   }
 
+  /**
+   * Mükellef BU ofise mi ait? (denetim bulgusu 12)
+   * Kayıt yazan her yol bunu çağırmalı — aksi hâlde başka ofisin mükellefine bağlı
+   * hareket oluşur ve listede o ofisin unvanı/vergi numarası görünür.
+   */
+  private async mukellefiDogrula(tenantId: string, taxpayerId: string) {
+    const tp = await (this.prisma as any).taxpayer.findFirst({
+      where: { id: taxpayerId, tenantId },
+      select: { id: true },
+    });
+    if (!tp) throw new NotFoundException('Mükellef bulunamadı');
+    return tp;
+  }
+
   async createTahsilat(
     tenantId: string,
     data: {
@@ -454,6 +468,12 @@ export class CariKasaService {
     if (Number(data.tutar) <= 0) {
       throw new BadRequestException('Tahsilat tutarı pozitif olmalı');
     }
+    // 2026-09-25 (portal denetimi bulgu 12) — MÜKELLEF SAHİPLİĞİ.
+    //   Hesap titizce doğrulanıyordu ama mükellef HİÇ doğrulanmıyordu: A ofisinin kimliğiyle
+    //   B ofisinin mükellefine bağlı hareket yazılabiliyordu. `listHareketler` kaydı
+    //   `include: { taxpayer: ... }` ile döndürdüğü için A ofisi ekranında B ofisinin
+    //   mükellef unvanı ve vergi numarası görünüyordu. Doğru kalıp banka-takip.service.ts:49.
+    await this.mukellefiDogrula(tenantId, data.taxpayerId);
     // Hesap, Kişisel Bütçe'nin tahsilata açık hesaplarından biri olmalı.
     // Rastgele bir kimlik gönderilirse tahsilat sahipsiz bir hesaba yazılırdı.
     const secilebilir = await this.tahsilatHesaplari(tenantId);
@@ -498,6 +518,17 @@ export class CariKasaService {
   ) {
     if (!data.taxpayerId || data.tutar == null || !data.donem) {
       throw new BadRequestException('taxpayerId, tutar, donem zorunlu');
+    }
+    // Denetim bulgusu 12: ne mükellef ne hizmet doğrulanıyordu.
+    await this.mukellefiDogrula(tenantId, data.taxpayerId);
+    if (data.hizmetId) {
+      const hizmet = await (this.prisma as any).cariHizmet
+        .findFirst({ where: { id: data.hizmetId, tenantId }, select: { id: true, taxpayerId: true } })
+        .catch(() => null);
+      if (!hizmet) throw new NotFoundException('Hizmet bulunamadı');
+      if (hizmet.taxpayerId && hizmet.taxpayerId !== data.taxpayerId) {
+        throw new BadRequestException('Seçilen hizmet bu mükellefe ait değil');
+      }
     }
     return (this.prisma as any).cariHareket.create({
       data: {

@@ -1,0 +1,71 @@
+BULGU 03 — KDV Kontrol görsel onayı: nesne anahtarının ofis bağı doğrulanmıyor
+KİLİTLİ MODÜL (apps/api/src/kdv-control/kdv-control.service.ts) — UYGULANMADI, onay bekliyor.
+
+════════════════════════════════════════════════════════════════════════════════
+CANLI ÖLÇÜM (25 Eylül 2026, salt okuma)
+════════════════════════════════════════════════════════════════════════════════
+
+  receipt_images TOPLAM: 15.168 kayıt
+  anahtar öneki dağılımı: "mihsap:" → 15.168  (BAŞKA ÖNEK YOK)
+  tenant kimlikleri: cmnq9wt430001rgrxvdpv57jz · cmnq9zz8y000frgrx2pck1pzh
+
+  Yani canlıdaki görsellerin TAMAMI `mihsap://<id>` biçiminde ve bunlar
+  `confirmImageUpload`'dan GEÇMİYOR — o uç `storage.getObjectMeta()` ile gerçek bir
+  S3 HeadObject yapıyor, `mihsap://` anahtarı orada null döner ve istek reddedilir.
+  Demek ki elle yükleme yolu canlıda hiç kullanılmamış.
+
+  Denetimin önerdiği "ucuz ara çözüm" (`s3Key` `${tenantId}/` ile başlasın) İLK BAKIŞTA
+  yanlış göründü — hiçbir canlı kayıt öyle başlamıyor. Ama anahtarı ÜRETEN yola bakınca
+  doğru olduğu anlaşıldı:
+
+    kdv-control.service.ts:1415 → storage.getPresignedUploadUrl(tenantId, sessionId, ...)
+    storage.service.ts:48       → const s3Key = `${tenantId}/${taxpayerId}/${uuid}.${ext}`
+                                   (buradaki "taxpayerId" argümanı aslında sessionId)
+
+  Yani bu uç için gerçekten issue edilen anahtar: `${tenantId}/${sessionId}/${uuid}.${ext}`
+  Guard yalnız `confirmImageUpload`'ı etkiler; `mihsap://` kayıtları bu yoldan geçmediği
+  için etkilenmez.
+
+════════════════════════════════════════════════════════════════════════════════
+ÖNERİLEN YAMA — denetimin önerisinden DAHA SIKI (oturuma da bağlar)
+════════════════════════════════════════════════════════════════════════════════
+
+   async confirmImageUpload(
+     sessionId: string,
+     tenantId: string,
+     dto: { s3Key: string; originalName: string; mimeType: string },
+   ) {
+     const session = await this.findSession(sessionId, tenantId);
+     this.assertSessionUnlocked(session);
++    // 2026-09-25 (portal denetimi bulgu 03): anahtarın yalnız VARLIĞINA bakılıyordu,
++    //   KİMİN olduğuna bakılmıyordu. Anahtarların çoğunda randomUUID() var (tahmin
++    //   edilemez) ama e-Arşiv tarafı TAMAMEN KURALA BAĞLI ve rastgelelik yok:
++    //     ${tenantId}/earsiv/${taxpayerId}/${donem}/${yon}-${kaynak}/${faturaNo}.pdf
++    //   Yani hedef anahtar önceden bilinebiliyor ve başka ofisin belgesi bu oturuma
++    //   bağlanabiliyordu. Bu ucun KENDİ presign'ı `${tenantId}/${sessionId}/` üretiyor
++    //   (storage.service.ts:48), o yüzden kapı hem ofise hem OTURUMA bağlanıyor.
++    const beklenenOnek = `${tenantId}/${sessionId}/`;
++    if (!String(dto.s3Key || '').startsWith(beklenenOnek)) {
++      this.logger.warn(
++        `[OFIS-KORUMA] confirmImageUpload: bu oturuma ait olmayan anahtar reddedildi ` +
++        `(${String(dto.s3Key).slice(0, 60)}); beklenen onek: ${beklenenOnek}`,
++      );
++      throw new BadRequestException('Gorsel anahtari bu oturuma ait degil');
++    }
+     const meta = await this.storage.getObjectMeta(dto.s3Key);
+     if (!meta) throw new BadRequestException('Görsel S3\'e henüz yüklenmemiş');
+
+════════════════════════════════════════════════════════════════════════════════
+RİSK DEĞERLENDİRMESİ
+════════════════════════════════════════════════════════════════════════════════
+
+  Kırma riski: DÜŞÜK. Guard yalnız `confirmImageUpload`'ı etkiler; o ucun kendi presign'ı
+  zaten `${tenantId}/${sessionId}/` üretiyor. Canlıda bu yoldan gelmiş tek kayıt yok.
+
+  Kalan risk: Presign'i alıp BAŞKA bir oturumda onaylamak artık mümkün değil — bu ek bir
+  sıkılaştırma. Eğer bir yerde "presign'i A oturumunda al, B oturumunda onayla" gibi
+  meşru bir akış varsa bu guard onu keser. Kodda böyle bir akış BULUNAMADI ama elle
+  yükleme canlıda hiç kullanılmadığı için ölçümle doğrulanamadı.
+
+  Daha gevşek seçenek: yalnız `${tenantId}/` denetlenir (denetimin önerisi). Oturum bağı
+  kurulmaz ama aynı ofis içindeki akışları kesme riski sıfırlanır.

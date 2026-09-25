@@ -604,17 +604,26 @@ B ofisinin mükellefine bağlı kayıt; `listHareketler` `include: { taxpayer: {
 
 Doğru kalıp `banka-takip.service.ts:49-56`'da zaten var.
 
+**UYGULANDI (2026-09-25):** Ortak `mukellefiDogrula()` eklendi; `createTahsilat` ve
+`createManuelTahakkuk` çağırıyor. Manuel tahakkukta ayrıca HİZMET doğrulanıyor: hizmet bu ofise
+ait olmalı ve `hizmet.taxpayerId` doluysa seçilen mükellefle aynı olmalı (ofis içi karışma).
+
 ## 14. Ekstre başka mükellefin hesabına bağlanabiliyor — **DOĞRULANDI**
 
 `banka-takip.service.ts:119-140`: iki kontrol de doğru ama **aralarındaki bağ kurulmuyor** —
 `bankaHesap.findFirst({ where: { id, tenantId } })` içinde `taxpayerId` yok. Ofis içi mükellef karışması.
 **Tek satırlık düzeltme:** `where: { id, tenantId, taxpayerId: data.taxpayerId }`.
 
+**UYGULANDI** — Faz A turunda kapatılmıştı (`banka-takip.service.ts:153-158`).
+
 ## 23. Fiş yazdırma: başka ofisin çıktı durumu değiştirilebiliyor — **DOĞRULANDI**
 
 `fis-yazdirma.service.ts:961-975` `completePrint` `tenantId`'yi parametre alıyor ama **gövdede hiç
 kullanmıyor**. Aynı dosyada üç doğru örnek var (`claimPrint` 945, `getOutput`, `setOutputPrinted`).
 Veri okunmuyor, yalnız durum bozuluyor.
+
+**UYGULANDI (2026-09-25):** `update` → koşullu `updateMany({ where: { id, tenantId } })`; eşleşme
+yoksa `[OFIS-KORUMA]` kaydı + 404. Yabancı ofis artık durumu değiştiremiyor.
 
 ## 03. KDV kontrol: yabancı belge bağlanabiliyor — **DOĞRULANDI (rapordaki "Yüksek" abartılı, gerçekçisi Orta)**
 
@@ -626,6 +635,17 @@ bağlı (`${tenantId}/earsiv/${taxpayerId}/${donem}/${yon}-${kaynak}/${faturaNo}
 Sömürü için portalda geçerli hesap **ve** hedef anahtarın önceden bilinmesi gerekiyor.
 
 **Ucuz ara çözüm:** Onayda `dto.s3Key`'in `${tenantId}/` ile başladığını denetle.
+
+**DURUM: UYGULANMADI — KDV Kontrol KİLİTLİ MODÜL.** Canlı ölçüm (salt okuma): `receipt_images`
+tablosunda **15.168 kayıt var ve TAMAMI `mihsap://<id>` biçiminde** — tek bir S3 yollu anahtar yok.
+Bu kayıtlar `confirmImageUpload`'dan GEÇMİYOR (o uç gerçek S3 `HeadObject` yapıyor, `mihsap://`
+anahtarı orada null döner). Yani elle yükleme yolu canlıda hiç kullanılmamış.
+
+Önerinin doğruluğu anahtarı ÜRETEN yoldan teyit edildi: `kdv-control.service.ts:1415` →
+`storage.getPresignedUploadUrl(tenantId, sessionId, …)` → `storage.service.ts:48`
+`${tenantId}/${taxpayerId}/${uuid}.${ext}` (buradaki "taxpayerId" argümanı aslında sessionId).
+Yani bu uç için issue edilen anahtar `${tenantId}/${sessionId}/…` — öneri geçerli ve oturuma da
+bağlanabilir. Yama `KDV-BULGU03-ONERILEN-YAMA.patch` dosyasında, risk değerlendirmesiyle.
 
 ## 47. Genel sorgulamalarda eksik fatura gizleniyor — **DOĞRULANDI**
 
@@ -645,6 +665,18 @@ kod "VKN olsa da" düşüyor.
 **Bu, Fatura Merkezi'nde `3bdf1ed` ile çözülen bulgunun birebir kardeşi.** Canlı ölçümde aynı mükellefte
 aynı numaranın 3-5 ayrı satıcıda çıktığı biliniyor. Fark: orada fatura siliniyordu, burada **eksik fatura
 gizleniyor** — ikisi de sessiz.
+
+**UYGULANDI (2026-09-25):** Yedek anahtar artık YALNIZ Luca kaydında satıcı VKN'si yoksa devreye
+giriyor. VKN varsa tam anahtar aranıyor.
+
+**CANLI ÖLÇÜM:** 2.470 ALIŞ kaydının **609'unda satıcı VKN'si boş** (yedek anahtar onlar için
+çalışmaya devam ediyor). Çakışma gerçek: aynı mükellefte aynı fatura numarasının farklı satıcıda
+çıktığı **10 grup** var; `GIB2026000000161` **3 ayrı satıcıda**.
+
+**DÜZELTME ÖNCESİ/SONRASI CANLI KARŞILAŞTIRMA:** Gerçek `eksikGorseller()` iki kodla da çalıştırıldı —
+sonuç **birebir aynı** (23 LUCA_YOK satırı). Bugünkü DVD verisinde çakışan numaralar zaten Luca'da
+hiç yok, o yüzden fark oluşmuyor. Yani düzeltme **bugün bir şey değiştirmiyor**; çakışma denk
+geldiğinde eksik faturanın gizlenmesini önlüyor. Yanlış alarm patlaması da YOK.
 
 ---
 
