@@ -418,7 +418,14 @@ const INTEGRATOR_CATALOG = [
 ] as const;
 
 const PROVIDER_DEFAULT_BASE_URL: Record<string, string> = {
-  UYUMSOFT: 'http://efatura.uyumsoft.com.tr/Services/BasicIntegration',
+  // ⚠️ ESKİDEN 'http://efatura.uyumsoft.com.tr/Services/BasicIntegration' YAZIYORDU (2026-09-25'e kadar).
+  //   Uyumsoft portalı uyum.com.tr'ye taşıdı (edonusum.uyum.com.tr) ve web servisini de yeni adrese aldı.
+  //   ESKİ adres AYAKTA ve cevap veriyor ama yeni platformdaki kullanıcıyı TANIMIYOR → her istek
+  //   "Bu sisteme erişmek için gerekli yetkiniz yok, Kullanıcı: X, Ip: Y" ile reddediliyordu. Bu mesaj
+  //   yanıltıcı: UYDURMA bir kullanıcı adıyla da BİREBİR aynı çıkıyor, yani "yetki/IP" demek değil,
+  //   "bu kullanıcıyı tanımıyorum" demek. CANLI KANIT (SULTAN OSMAN, 2026-09-25): eski adres HTTP 500
+  //   ret, yeni adres HTTP 200 + faturalar. https:// YOK (404) — düz http, Türkiye vekilinden geçer.
+  UYUMSOFT: 'http://edonusumapi.uyum.com.tr/Services/BasicIntegration',
   IZIBIZ: 'https://efaturaws.izibiz.com.tr/EInvoiceWS',
   FORIBA: 'https://api.fitbulut.com/servis',
   PARASUT: 'https://api.parasut.com/v4',
