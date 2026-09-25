@@ -266,3 +266,57 @@ html[data-theme='D'] body [data-panel-main] :is([data-gelir-vergi], [data-gelir-
 html[data-theme='D'] body [data-panel-main] :is([data-gelir-vergi], [data-gelir-stok]) [data-report-row='group'] > td { border-top: 1px solid #e4e2df !important; }
 html[data-theme='D'] body [data-panel-main] :is([data-gelir-vergi], [data-gelir-stok]) [data-report-row='total'] > td { border-top: 1px solid #cfccc7 !important; }
 html[data-theme='D'] body [data-panel-main] :is([data-gelir-vergi], [data-gelir-stok]) [data-report-row='final'] > td { border-top: 2px solid #b0a99e !important; border-bottom: 1px solid #e0ded9 !important; }
+
+/* ── J. TAM IZGARA (2026-09-25, Muzaffer Bey) ────────────────────────────────────────────────────
+   "bazı yerler kalın çizgi, bazı yerler görünmüyor bile — bütün çerçeveyi belirgin tablo olacak
+   şekilde yap". Sorun tutarsızlıktı: sonuç satırının üstü 2px, ara toplam 1px koyu, ayrıntı satırı
+   en açık ton, bazı hücrelerde hiç çizgi yok. Artık HER HÜCRENİN DÖRT KENARI AYNI: 1px #d5d2cd.
+   Kalın çizgi kalmadı; ara toplam ve sonuç satırı yalnız KALIN YAZI ile ayrışıyor. */
+html[data-theme='D'] body [data-panel-main] [data-gelir-report] table { border-collapse: collapse !important; }
+html[data-theme='D'] body [data-panel-main] [data-gelir-report] table :is(thead th, tbody td, tfoot td) {
+  border: 1px solid #d5d2cd !important;
+}
+/* Kalın/karışık kenarların hepsi sıfırlanır — kademe artık yazıdan okunur */
+html[data-theme='D'] body [data-panel-main] [data-gelir-report] :is([data-report-row='group'], [data-report-row='total'], [data-report-row='final'], [data-report-row='manual'], [data-report-row='detail']) > td {
+  border: 1px solid #d5d2cd !important;
+}
+html[data-theme='D'] body [data-panel-main] [data-gelir-report] [data-report-row='total'] > td { font-weight: 700 !important; }
+html[data-theme='D'] body [data-panel-main] [data-gelir-report] [data-report-row='final'] > td { font-weight: 750 !important; }
+/* Kartın kendi çerçevesi de aynı tonda ve tek kat */
+html[data-theme='D'] body [data-panel-main] [data-gelir-report] { border: 1px solid #d5d2cd !important; }
+
+/* ── J. TAM IZGARA (2026-09-25, Muzaffer Bey) ────────────────────────────────────────────────────
+   "bazı yerler kalın çizgi, bazı yerler görünmüyor bile — bütün çerçeveyi belirgin tablo olacak
+   şekilde yap". Sorun tutarsızlıktı: sonuç satırının üstü 2px, ara toplam 1px koyu, ayrıntı satırı
+   en açık ton, bazı hücrelerde hiç çizgi yok. Artık HER HÜCRENİN DÖRT KENARI AYNI: 1px #d5d2cd.
+   Kalın çizgi kalmadı; ara toplam ve sonuç satırı yalnız KALIN YAZI ile ayrışıyor. */
+html[data-theme='D'] body [data-panel-main] [data-gelir-vergi] table { border-collapse: collapse !important; }
+html[data-theme='D'] body [data-panel-main] [data-gelir-vergi] table :is(thead th, tbody td, tfoot td) {
+  border: 1px solid #d5d2cd !important;
+}
+/* Kalın/karışık kenarların hepsi sıfırlanır — kademe artık yazıdan okunur */
+html[data-theme='D'] body [data-panel-main] [data-gelir-vergi] :is([data-report-row='group'], [data-report-row='total'], [data-report-row='final'], [data-report-row='manual'], [data-report-row='detail']) > td {
+  border: 1px solid #d5d2cd !important;
+}
+html[data-theme='D'] body [data-panel-main] [data-gelir-vergi] [data-report-row='total'] > td { font-weight: 700 !important; }
+html[data-theme='D'] body [data-panel-main] [data-gelir-vergi] [data-report-row='final'] > td { font-weight: 750 !important; }
+/* Kartın kendi çerçevesi de aynı tonda ve tek kat */
+html[data-theme='D'] body [data-panel-main] [data-gelir-vergi] { border: 1px solid #d5d2cd !important; }
+
+/* ── J. TAM IZGARA (2026-09-25, Muzaffer Bey) ────────────────────────────────────────────────────
+   "bazı yerler kalın çizgi, bazı yerler görünmüyor bile — bütün çerçeveyi belirgin tablo olacak
+   şekilde yap". Sorun tutarsızlıktı: sonuç satırının üstü 2px, ara toplam 1px koyu, ayrıntı satırı
+   en açık ton, bazı hücrelerde hiç çizgi yok. Artık HER HÜCRENİN DÖRT KENARI AYNI: 1px #d5d2cd.
+   Kalın çizgi kalmadı; ara toplam ve sonuç satırı yalnız KALIN YAZI ile ayrışıyor. */
+html[data-theme='D'] body [data-panel-main] [data-gelir-stok] table { border-collapse: collapse !important; }
+html[data-theme='D'] body [data-panel-main] [data-gelir-stok] table :is(thead th, tbody td, tfoot td) {
+  border: 1px solid #d5d2cd !important;
+}
+/* Kalın/karışık kenarların hepsi sıfırlanır — kademe artık yazıdan okunur */
+html[data-theme='D'] body [data-panel-main] [data-gelir-stok] :is([data-report-row='group'], [data-report-row='total'], [data-report-row='final'], [data-report-row='manual'], [data-report-row='detail']) > td {
+  border: 1px solid #d5d2cd !important;
+}
+html[data-theme='D'] body [data-panel-main] [data-gelir-stok] [data-report-row='total'] > td { font-weight: 700 !important; }
+html[data-theme='D'] body [data-panel-main] [data-gelir-stok] [data-report-row='final'] > td { font-weight: 750 !important; }
+/* Kartın kendi çerçevesi de aynı tonda ve tek kat */
+html[data-theme='D'] body [data-panel-main] [data-gelir-stok] { border: 1px solid #d5d2cd !important; }
