@@ -3603,6 +3603,10 @@ function ScreenSorgu({ taxpayerId, period, source, onOpenEntegrator }: { taxpaye
                   <th>Tür</th>
                   <th className={`num sortable${sirala.k === 'tutar' ? ' sorted' : ''}`} onClick={() => siralaTikla('tutar')} title="Tutara göre sırala">Tutar <span className="sq-sort">{siralaOk('tutar')}</span></th>
                   <th>Onay</th>
+                  {/* AKTARIM DURUMU GERİ (Muzaffer Bey 2026-09-26: "aktarım durumunu niye göstermiyor"). 23 Eylül'deki
+                      "muhasebe aktarım kısmını kaldır durum kalsın" sözü sütunun TAMAMEN kaldırılması diye uygulanmıştı;
+                      aktarım durumu (✓ aktarıldı · kaynak / ⏳ kuyrukta / — inemedi) satırda görünmeli. */}
+                  <th className="center">Aktarım</th>
                 </tr>
               </thead>
               <tbody>
@@ -3623,14 +3627,15 @@ function ScreenSorgu({ taxpayerId, period, source, onOpenEntegrator }: { taxpaye
                     <td><span className="sq-pill gray">{r.invoiceProfile || 'e-Fatura'}</span></td>
                     <td className="num">{r.toplam != null ? fmtMoney(r.toplam) : '—'}</td>
                     <td><span className={`sq-onay ${onay.k}`} title={String(approvalRaw || '') || undefined}>{onay.l}</span></td>
+                    <td className="center"><span className={`sq-akt ${akt.k}`} title={akt.t}>{akt.l}</span></td>
                   </tr>
                 ))}
                 {!efaturaSuz.length && (
                   (efaturaInboxQ.isLoading || (efaturaInboxQ.isFetching && !efaturaInboxQ.data))
                     // İLK YÜKLEME (kullanıcı bulgusu #10): ekran ÖNCE boş "sorgu satırı yok" flaşlıyordu →
                     //   veri gelene kadar boş mesaj yerine yükleniyor göster; mükellef/dönem değişince de böyle.
-                    ? <tr><td colSpan={8} className="emptyrow loadingrow">Faturalar yükleniyor…</td></tr>
-                    : <tr><td colSpan={8} className="emptyrow">{
+                    ? <tr><td colSpan={9} className="emptyrow loadingrow">Faturalar yükleniyor…</td></tr>
+                    : <tr><td colSpan={9} className="emptyrow">{
                       !taxpayerId
                         ? 'Önce mükellef seç.'
                         : efaturaRows.length
@@ -10175,7 +10180,8 @@ const CSS = `
 #fm-root .fm2 .sourcetable tr.done td{opacity:.7}
 #fm-root .fm2 .sourcetable tr.sel td{background:#effaf8;opacity:1}
 #fm-root .fm2 .sourcetable tr.blocked td{background:#fff;color:#94a3b8}
-/* Aktarım sütunu kalktı → son sütun Onay/Görsel; "son sütun ortalanır" kuralı bozmasın */
+/* e-Arşiv'de son sütun Onay/Görsel → "son sütun ortalanır" kuralı bozmasın. e-Fatura'da Aktarım sütunu
+   2026-09-26'da geri geldi; o hücre td.center taşıdığı için ortalanır (aşağıdaki kural sonra gelir). */
 #fm-root .fm2 .sourcetable th:last-child,#fm-root .fm2 .sourcetable td:last-child{text-align:left}
 #fm-root .fm2 .sourcetable th.center,#fm-root .fm2 .sourcetable td.center{text-align:center}
 
