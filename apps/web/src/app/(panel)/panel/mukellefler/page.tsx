@@ -445,13 +445,10 @@ export default function MukelleflerPage() {
         })}
       </div>
 
-      {/* AŞAMA SAYAÇLARI — takvim nabzı + akan renk yelpazesi (karar 2026-09-25); tıklanınca süzer */}
+      {/* AŞAMA SAYAÇLARI — dağılım halkası + pastel gradyan sayaçlar (karar 2026-09-25); tıklanınca süzer */}
       <AsamaSayaclari
         kartlar={stageCards}
         toplam={counts.total}
-        yil={year}
-        ay={month}
-        donemEtiketi={beyannameDonemiStr}
         secili={filter === 'islenmedi' || filter === 'beyanname-verilmedi' ? 'all' : filter}
         onSec={(key) => {
           const next: FilterKey = filter === key && key !== 'all' ? 'all' : key;

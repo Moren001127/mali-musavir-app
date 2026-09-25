@@ -3,23 +3,21 @@
 import { CheckCircle2, FileCheck2, Inbox, ScanSearch, Settings2, Upload, Users, type LucideIcon } from 'lucide-react';
 
 /*
- * Aylık Takip — aşama sayaçları: TAKVİM NABZI + AKAN RENK YELPAZESİ
- * (Muzaffer Bey'in seçimi, 2026-09-25; önceki "dağılım çubuğu + lejant" hâli değişti).
+ * Aylık Takip — aşama sayaçları: DAĞILIM HALKASI + PASTEL GRADYAN SAYAÇLAR
+ * (Muzaffer Bey'in seçimi, 2026-09-25 — "pastel gradyan", I taslağı 2 numara).
  *
- * SOLDA geri sayım kartı: beyanname son gününe kalan süreyi gösterir ve RENGİ GÜNE GÖRE DEĞİŞİR
- *   (rahat → planda → yaklaşıyor → bugün son). İçinde ayın günleri şerit hâlinde: geçen günler soluk,
- *   bugün beyaz, kalan günler yarı saydam. Arkada dev soluk rakam derinlik verir; son iki günde
- *   durum noktası yavaşça atar. Altında "X / Y verildi" ve ilerleme çubuğu.
- * SAĞDA yalnız BEKLEYEN aşamalar; verilenler kartta özetlendiği için listede tekrar edilmez.
- *   Kutular soldan sağa akan tek renk yelpazesi (kehribar → turkuaz → gök → kurşuni → çivit);
- *   arkalarından geçen degrade ray akışı görünür kılar. Kutuya tıklayınca liste süzülür.
+ * SOLDA yalnız GRAFİK: halka, takipteki bütün mükellefi dilim dilim gösterir (verildi + bekleyen
+ *   aşamalar). Üzerinde etiket YOK — dilim renkleri sağdaki sayaçlarla birebir aynı olduğu için
+ *   lejant gerekmiyor. Ortada teslim oranı. Halkaya tıklanınca süzgeç sıfırlanır.
+ *   "SON GÜN / beyanname adı / tarih / geri sayım" yazıları KALDIRILDI (kullanıcı isteği).
+ * SAĞDA yalnız BEKLEYEN aşamalar, yatay düzende: ikon solda, rakamla çubuk yan yana, ad üstte.
+ *   Kutu zemini kendi renginin AÇIK tonundan KOYU tonuna geçer (beyaza solmaz) — yazılar koyu.
+ *   ÇUBUK toplam payı değil, EN YOĞUN AŞAMAYA göre doludur: yığılmanın nerede olduğu görünsün
+ *   ve kutular boş durmasın diye. Toplam payı sağ üstteki yüzde etiketinde yazar.
  *
- * SON GÜN: bu sayfada YALNIZ KDV takip edilir → dönemi takip eden ayın 28'i (mevzuat 2026-09-25
- *   doğrulandı). Hafta sonuna denk gelirse ilk iş gününe kayar (resmi tatiller burada hesaplanmaz —
- *   GİB duyurusuyla süre uzayabilir).
- *
- * Reddedilenler: dolu gradyan KPI kart · iş akışı şeridi · halka sayaçlar · sol şeritli düz kutular ·
- *   dağılım çubuğu + lejant (eski hâli) · huni · nokta ızgarası.
+ * Reddedilenler: dolu gradyan KPI kart · takvim nabzı / geri sayım kartı · iş akışı şeridi ·
+ *   dağılım çubuğu + lejant · huni · nokta ızgarası · renkten BEYAZA solan yıkama ·
+ *   dolu gradyan (beyaz yazı) · akan tek şerit.
  */
 
 export type SayacAnahtari = 'all' | 'evrak-gelmedi' | 'yukleme-bekliyor' | 'islem-bekliyor' | 'kontrol-bekliyor' | 'beyanname-bekliyor' | 'verildi';
@@ -41,33 +39,24 @@ export interface AsamaSayaclariProps {
   toplam: number;
   secili: SayacAnahtari;
   onSec: (k: SayacAnahtari) => void;
-  /** İşlem ayı (beyannamelerin VERİLDİĞİ ay) — son gün bu aydan hesaplanır. */
-  yil: number;
-  ay: number; // 1-12
-  /** Beyanname dönemi etiketi ("Ağustos 2026") — kartın alt satırında yazar. */
-  donemEtiketi: string;
 }
 
 const yuzde = (n: number, toplam: number) => (toplam > 0 ? Math.round((n / toplam) * 100) : 0);
 
-const AY_ADLARI = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
-const GUN_ADLARI = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
+/** Halka ölçüleri — SVG 98×98, kalınlık 12. */
+const HALKA_R = 38;
+const HALKA_CEVRE = 2 * Math.PI * HALKA_R;
+const DILIM_BOSLUK = 1.6; // dilimler birbirine girmesin diye
 
-/** Hafta sonuna denk gelen son günü ilk iş gününe kaydırır (resmi tatil hesaplanmaz). */
-function isGununeKaydir(d: Date): Date {
-  const g = new Date(d);
-  while (g.getDay() === 0 || g.getDay() === 6) g.setDate(g.getDate() + 1);
-  return g;
-}
-
-/** KDV beyannamesi son günü: dönemi takip eden ayın 28'i (bu sayfada YALNIZ KDV takip edilir). */
-function sonGunBul(yil: number, ay: number) {
-  const bugun = new Date();
-  bugun.setHours(0, 0, 0, 0);
-  const tarih = isGununeKaydir(new Date(yil, ay - 1, 28));
-  const kalan = Math.round((tarih.getTime() - bugun.getTime()) / 86_400_000);
-  return { ad: 'KDV BEYANNAMESİ', tarih, kalan, gecti: kalan < 0 };
-}
+/** tone → halka dilimi için degrade id'si (sayaç renkleriyle birebir aynı aile). */
+const TON_GRADYAN: Record<string, string> = {
+  green: 'atgVerildi',
+  amber: 'atgAmber',
+  teal: 'atgTeal',
+  blue: 'atgBlue',
+  violet: 'atgViolet',
+  indigo: 'atgIndigo',
+};
 
 export function AsamaSayaclari(p: AsamaSayaclariProps) {
   const [toplamKarti, ...asamalar] = p.kartlar;
@@ -76,16 +65,22 @@ export function AsamaSayaclari(p: AsamaSayaclariProps) {
   const verildiSayi = verildi?.count ?? 0;
   const verildiYuzde = yuzde(verildiSayi, p.toplam);
 
-  const sonGun = sonGunBul(p.yil, p.ay);
-  const aciliyet = sonGun.gecti ? 'gecti' : sonGun.kalan <= 0 ? 'kritik' : sonGun.kalan <= 2 ? 'yaklas' : sonGun.kalan <= 7 ? 'normal' : 'rahat';
-  const durumYazi = sonGun.gecti ? 'SÜRE DOLDU' : sonGun.kalan === 0 ? 'BUGÜN SON' : sonGun.kalan <= 2 ? 'YAKLAŞIYOR' : sonGun.kalan <= 7 ? 'PLANDA' : 'RAHAT';
-  const nabizVar = aciliyet === 'kritik' || aciliyet === 'yaklas' || aciliyet === 'gecti';
+  // Halka dilimleri: önce verilenler, sonra bitişe en yakın aşamadan başlayarak bekleyenler.
+  const dilimVeri = [
+    { anahtar: 'verildi' as SayacAnahtari, sayi: verildiSayi },
+    ...[...bekleyenler].reverse().map((k) => ({ anahtar: k.key, sayi: k.count })),
+  ];
+  let yurunen = 0;
+  const dilimler = dilimVeri.map((d) => {
+    const uzunluk = p.toplam > 0 ? (d.sayi / p.toplam) * HALKA_CEVRE : 0;
+    const goster = Math.max(0, uzunluk - DILIM_BOSLUK);
+    const kaydir = -(yurunen + DILIM_BOSLUK / 2);
+    yurunen += uzunluk;
+    return { anahtar: d.anahtar, sayi: d.sayi, goster, kaydir };
+  }).filter((d) => d.goster > 0.2);
 
-  // Ay şeridi: işlem ayının günleri; bugün ve son gün işaretli.
-  const ayGunSayisi = new Date(p.yil, p.ay, 0).getDate();
-  const bugunD = new Date();
-  const buAydaMiyiz = bugunD.getFullYear() === p.yil && bugunD.getMonth() + 1 === p.ay;
-  const bugunGunu = buAydaMiyiz ? bugunD.getDate() : sonGun.gecti ? ayGunSayisi : 0;
+  // Çubuklar en yoğun aşamaya göre dolar (toplam payı değil).
+  const enYogun = Math.max(1, ...bekleyenler.map((k) => k.count));
 
   const ortak = (k: SayacKarti) => {
     const aktif = p.secili === k.key;
@@ -101,53 +96,57 @@ export function AsamaSayaclari(p: AsamaSayaclariProps) {
 
   return (
     <div className="at-nabiz" data-at-sayac>
-      {/* ── SOL: güne göre renk değiştiren geri sayım ── */}
-      <div className="at-sayac" data-aciliyet={aciliyet}>
-        <span className="at-sayac-hayalet" aria-hidden>{sonGun.gecti ? '!' : sonGun.kalan}</span>
-        <div className="at-sayac-ust">
-          <span className="at-sayac-k">{sonGun.ad} · SON GÜN</span>
-          <span className={`at-sayac-durum${nabizVar ? ' at-nabiz-at' : ''}`}><i aria-hidden />{durumYazi}</span>
-        </div>
+      {/* ── SOL: yalnız grafik — takipteki mükellefin aşama dağılımı ── */}
+      <button
+        {...ortak(toplamKarti)}
+        className="at-grafik"
+        title={`Takipteki ${p.toplam} mükellefin ${verildiSayi} tanesi verildi — süzgeci sıfırla`}
+      >
+        <span className="at-halka">
+          <svg width="98" height="98" viewBox="0 0 98 98" aria-hidden>
+            <defs>
+              <linearGradient id="atgVerildi" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#5b8fc7" /><stop offset="1" stopColor="#1b3a5c" /></linearGradient>
+              <linearGradient id="atgAmber" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#fb923c" /><stop offset="1" stopColor="#c2410c" /></linearGradient>
+              <linearGradient id="atgTeal" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#2dd4bf" /><stop offset="1" stopColor="#0f766e" /></linearGradient>
+              <linearGradient id="atgBlue" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#60a5fa" /><stop offset="1" stopColor="#1d4ed8" /></linearGradient>
+              <linearGradient id="atgViolet" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#94a3b8" /><stop offset="1" stopColor="#475569" /></linearGradient>
+              <linearGradient id="atgIndigo" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#4ade80" /><stop offset="1" stopColor="#15803d" /></linearGradient>
+            </defs>
+            <circle cx="49" cy="49" r={HALKA_R} fill="none" stroke="#edf1f6" strokeWidth="12" />
+            {dilimler.map((d) => (
+              <circle
+                key={d.anahtar}
+                cx="49" cy="49" r={HALKA_R} fill="none" strokeWidth="12"
+                stroke={`url(#${TON_GRADYAN[STAGE_CARD_META[d.anahtar].tone] ?? 'atgVerildi'})`}
+                strokeDasharray={`${d.goster.toFixed(1)} ${(HALKA_CEVRE - d.goster).toFixed(1)}`}
+                strokeDashoffset={d.kaydir.toFixed(1)}
+              />
+            ))}
+          </svg>
+          <b className="at-halka-ic">%{verildiYuzde}</b>
+        </span>
+      </button>
 
-        <div className="at-sayac-g">
-          {sonGun.gecti ? <b>Süre doldu</b> : sonGun.kalan === 0 ? <b>Bugün</b> : <><b>{sonGun.kalan}</b><span>gün kaldı</span></>}
-        </div>
-        <div className="at-sayac-t">
-          {sonGun.tarih.getDate()} {AY_ADLARI[sonGun.tarih.getMonth()]} {GUN_ADLARI[sonGun.tarih.getDay()]} · {p.donemEtiketi} dönemi
-        </div>
-
-        <div className="at-sayac-ay" role="img" aria-label={`${AY_ADLARI[p.ay - 1]} ayı ilerlemesi`}>
-          {Array.from({ length: ayGunSayisi }, (_, i) => {
-            const gun = i + 1;
-            const durum = gun === bugunGunu ? 'bugun' : gun < bugunGunu ? 'gecti' : 'kalan';
-            return <span key={gun} data-gun={durum} data-son={gun === sonGun.tarih.getDate() ? 'true' : undefined} />;
-          })}
-        </div>
-
-        <div className="at-sayac-ayrac" />
-        <button {...ortak(toplamKarti)} className="at-sayac-oran">
-          <span><b>{verildiSayi}</b> / {p.toplam} verildi</span>
-          <em>%{verildiYuzde}</em>
-        </button>
-        <div className="at-sayac-cizgi"><i style={{ width: `${verildiYuzde}%` }} /></div>
-      </div>
-
-      {/* ── SAĞ: bekleyen aşamalar, akan renk yelpazesi ── */}
-      <div className="at-bekleyen">
-        <div className="at-bekleyen-ray">
-          <div className="at-bekleyen-kutular">
-            {bekleyenler.map((k, i) => (
-              <button key={k.key} {...ortak(k)} className="at-asama">
+      {/* ── SAĞ: bekleyen aşamalar — pastel gradyan zemin ── */}
+      <div className="at-asamalar">
+        {bekleyenler.map((k) => {
+          const Icon = STAGE_CARD_META[k.key].icon;
+          return (
+            <button key={k.key} {...ortak(k)} className="at-asama">
+              <span className="at-asama-ik" aria-hidden><Icon size={17} strokeWidth={2} /></span>
+              <span className="at-asama-govde">
                 <span className="at-asama-ust">
-                  <span className="at-asama-no">{i + 1}</span>
+                  <span className="at-asama-ad">{k.label}</span>
                   <small>%{yuzde(k.count, p.toplam)}</small>
                 </span>
-                <b className="at-asama-say">{k.count}</b>
-                <span className="at-asama-ad">{k.label}</span>
-              </button>
-            ))}
-          </div>
-        </div>
+                <span className="at-asama-alt">
+                  <b>{k.count}</b>
+                  <span className="at-asama-bar"><i style={{ width: `${Math.round((k.count / enYogun) * 100)}%` }} /></span>
+                </span>
+              </span>
+            </button>
+          );
+        })}
       </div>
     </div>
   );
