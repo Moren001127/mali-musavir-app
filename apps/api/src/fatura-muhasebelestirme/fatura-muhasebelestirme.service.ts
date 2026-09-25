@@ -434,8 +434,8 @@ const PROVIDER_DEFAULT_BASE_URL: Record<string, string> = {
   PARASUT: 'https://api.parasut.com/v4',
   // ⚠️ ESKİDEN 'https://apidocs.mikro.com.tr' YAZIYORDU — orası DOKÜMAN sitesi, API DEĞİL; bu yüzden
   //   Mikro hiç çalışmadı, genel REST denemesine düşüp hata veriyordu. Doğrusu Firmbox web servisi.
-  // VARSAYILAN = e-PORTAL. (Kısa süre Firmbox yazıldı ama o altyapı bu hesapları tanımıyor: 2005 =
-  //   "kullanıcı bilgisi sistemde bulunamadı". Firmbox'a düşmek için baseUrl'e AÇIKÇA Firmbox.asmx yazılmalı.)
+  // 2026-09-26: Firmbox'ın bu hesapları "tanımadığı" (2005) sanılmıştı — ASIL KÖK kullanıcı adının yalnız e-posta
+  //   gitmesiydi; doğrusu "tx:{VKN}:br:efatura:ad:{e-posta}". Artık ÖNCE web servisi (Firmbox), olmazsa e-Portal.
   MIKRO: 'https://eportal.mikrogrup.com',
   ELOGO: 'https://pb.elogo.com.tr/postboxservice.svc',
   LOGO_ISBASI: 'https://api.isbasi.com',
@@ -452,7 +452,7 @@ export const PROVIDER_AUTH_HINTS: Record<string, string> = {
   IZIBIZ: "Izibiz kullanici ve sifre, opsiyonel test/canli URL.",
   FORIBA: "Sovos Foriba bulut API icin kullanici ve sifre. URL Sovos tarafindan verilir.",
   PARASUT: "Parasut OAuth2: client_id (apiKey), client_secret (apiSecret), kullanici, sifre ve Firma No gerekir.",
-  MIKRO: "Mikro (e-Mikro / Mikrogrup e-Portal): e-Portal'a girdiğiniz e-posta ve parolayı yazın. Servis adresi otomatik dolar (Firmbox). Giriş 'yetkiniz yok' derse Mikro'dan web servis erişimi açtırılması gerekir.",
+  MIKRO: "Mikro (e-Mikro / Paraşüt / Zirve ortak altyapı): e-Portal'a girdiğiniz e-posta ve parolayı yazın. Web servis kullanıcı kodu (tx:VKN:br:efatura:ad:) mükellefin VKN'sinden otomatik oluşturulur. 'Hesap durumu uygun değil' derse Mikro'dan bu firmaya web servis erişimi açılmasını isteyin; o zamana kadar Chrome'da e-Portal'a girerek tarayıcı oturumuyla çekilir.",
   ELOGO: "eLogo web servis: Kullanıcı adı = eLogo panelindeki WEB SERVİS KULLANICI KODU (örn 3961368714), Şifre = web servis şifresi. Servis adresi otomatik (pb.elogo.com.tr). SMS gitmez.",
   LOGO_ISBASI: "Logo Isbasi API anahtari. developers.isbasi.com adresinden alin.",
   KOLAYSOFT: "Kolaysoft kullanici ve sifresi. Servis URL hesabiniza ozeldir.",
@@ -13140,14 +13140,34 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (!cfg.username || !cfg.password) {
       throw new Error('Mikro (e-Portal) kullanıcı adı ve şifresi gerekli');
     }
-    // ÖNCE e-PORTAL: mükellefin hesabı burada. Firmbox yolu (aşağısı) yalnız baseUrl'de AÇIKÇA
-    //   Firmbox.asmx yazılmışsa kullanılır — o altyapı bu hesabı tanımıyor (2005).
-    if (!/Firmbox\.asmx/i.test(String(cfg.baseUrl || ''))) {
-      return this.fetchMikroEportalInvoices(cfg, opts);
+    // SIRA (2026-09-26): ÖNCE WEB SERVİSİ (Firmbox), olmazsa tarayıcı oturumu (e-Portal).
+    //   ESKİDEN tersiydi: Firmbox "2005 — kullanıcı bulunamadı" dediği için "bu hesabı tanımıyor" sanılmış
+    //   ve varsayılan yol tarayıcıya çevrilmişti. ASIL KÖK: kullanıcı adı yalnız e-posta gidiyordu. Mikro/
+    //   Paraşüt/Zirve ortak altyapısında web servis kullanıcı adı "tx:{VKN}:br:efatura:ad:{e-posta}"
+    //   (entegratör şifre rehberi, WinIceberg). Ölçüm: yalnız e-posta → 2005 "Sistem hatası" (ad ayrıştırılamıyor);
+    //   birleşik biçim → 2005 "Hesap durumu uygun değil" (ad ayrıştırılıp kimlik kontrolüne geçiliyor).
+    //   DİKKAT: ikinci mesaj da GENEL — uydurma kimlik de aynısını alıyor; yani yanlış şifre ya da web servisi
+    //   kapalı hesap olabilir. Kesin sonuç gerçek şifreyle ilk sorguda belli olur.
+    const vkn = String(opts.taxpayer?.taxNumber || cfg.senderVkn || '').replace(/\D/g, '');
+    const firmboxKullanici = this.mikroFirmboxKullanici(cfg.username, vkn);
+    const atla = FaturaMuhasebelestirmeService.mikroFirmboxAtla.get(firmboxKullanici);
+    if (atla && Date.now() - atla.ts < 6 * 60 * 60 * 1000) {
+      // Web servisi yakın zamanda reddetti — her sorguda tekrar deneyip hesabı yormayalım (6 saat).
+      return this.mikroEportalYedek(cfg, opts, atla.neden);
     }
-    const endpoint = String(cfg.baseUrl || '').trim() || MIKRO_FIRMBOX_URL;
+    const endpoint = /Firmbox\.asmx/i.test(String(cfg.baseUrl || '')) ? String(cfg.baseUrl).trim() : MIKRO_FIRMBOX_URL;
 
-    const sessionId = await this.mikroLogin(endpoint, cfg.username, cfg.password);
+    let sessionId: string;
+    try {
+      sessionId = await this.mikroLogin(endpoint, firmboxKullanici, cfg.password);
+    } catch (e: any) {
+      const neden = String(e?.message || e);
+      FaturaMuhasebelestirmeService.mikroFirmboxAtla.set(firmboxKullanici, { ts: Date.now(), neden });
+      this.logger.warn(`[MIKRO] web servisi girişi reddetti (${neden.slice(0, 160)}) — tarayıcı oturumu yoluna geçiliyor`);
+      return this.mikroEportalYedek(cfg, opts, neden);
+    }
+    FaturaMuhasebelestirmeService.mikroFirmboxAtla.delete(firmboxKullanici);
+    this.logger.log(`[MIKRO] web servisi girişi BAŞARILI (${opts.period.donem})`);
 
     try {
       const channel = String(opts.channel || (opts.direction === 'SATIS' ? 'OUT_EFATURA' : 'IN_EFATURA')).toUpperCase();
@@ -13223,7 +13243,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     } catch (err: any) {
       // Oturum düştüyse önbelleği temizle → sonraki çekim yeniden giriş yapsın.
       if (/login|session|oturum|expired|yetki/i.test(String(err?.message || ''))) {
-        FaturaMuhasebelestirmeService.mikroSessions.delete(`${endpoint}|${cfg.username}`);
+        FaturaMuhasebelestirmeService.mikroSessions.delete(`${endpoint}|${firmboxKullanici}`); // mikroLogin önbellek anahtarıyla aynı
       }
       throw err;
     }
@@ -13502,6 +13522,37 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   }
 
   private static readonly mikroSessions = new Map<string, { sid: string; ts: number }>();
+  /** Web servisi (Firmbox) girişi reddedilen hesaplar — 6 saat boyunca doğrudan tarayıcı yoluna gidilir. */
+  private static readonly mikroFirmboxAtla = new Map<string, { ts: number; neden: string }>();
+
+  /** Mikro/Paraşüt/Zirve ortak web servis kullanıcı adı: "tx:{VKN}:br:efatura:ad:{e-posta}".
+   *  Kullanıcı Entegratörler ekranına tam kodu ("tx:" ile başlayan) yazdıysa olduğu gibi kullanılır. */
+  private mikroFirmboxKullanici(eposta: string, vkn: string): string {
+    const e = String(eposta || '').trim();
+    if (/^tx:/i.test(e)) return e;
+    return vkn ? `tx:${vkn}:br:efatura:ad:${e}` : e;
+  }
+
+  /** Web servisi olmadıysa tarayıcı oturumu (e-Portal) yedeği; ikisi de olmazsa İKİ sebebi de söyler. */
+  private async mikroEportalYedek(
+    cfg: RuntimeIntegrationConfig,
+    opts: { taxpayer: any; direction: 'ALIS' | 'SATIS'; period: { donem: string; startDate: string; endDate: string }; limit: number; channel?: string;
+            onPayload?: (p: ProviderInvoicePayload) => Promise<void>; skipExistingExternalIds?: Set<string> },
+    firmboxNedeni: string,
+  ): Promise<ProviderInvoicePayload[]> {
+    try {
+      return await this.fetchMikroEportalInvoices(cfg, opts);
+    } catch (e: any) {
+      const hesapDurumu = /Hesap durumu uygun değil/i.test(firmboxNedeni);
+      throw new Error(
+        (hesapDurumu
+          ? 'Mikro web servisi girişi kabul etmedi ("Hesap durumu uygun değil"). Entegratörler\'deki Mikro şifresi portal şifresiyle aynıysa, '
+            + 'Mikro\'dan bu firmaya WEB SERVİS erişimi açılmasını isteyin — açılınca tarayıcıya gerek kalmadan çalışır.'
+          : `Mikro web servisi girişi başarısız: ${firmboxNedeni.slice(0, 180)}`)
+        + ` · Yedek yol (tarayıcı oturumu): ${String(e?.message || e)}`,
+      );
+    }
+  }
 
   /** Mikro Firmbox oturumu — kullanıcı bazında önbellekli (~8 dk); her çekimde yeniden giriş yapıp
    *  hesabı hatalı-giriş kilidine sokmamak için sessionId tekrar kullanılır. */
