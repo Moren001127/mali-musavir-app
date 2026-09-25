@@ -211,6 +211,67 @@ function ok(cond, msg) { if (!cond) { failed++; console.error(`  ✗ ${msg}`); }
     }
   }
 
+  console.log('\n4) BULGU 03 — KDV görsel onayı yabancı anahtarı reddediyor');
+  {
+    const { KdvControlService } = require(path.join(ROOT, 'apps/api/src/kdv-control/kdv-control.service.ts'));
+    const kur = () => {
+      const yazilan = [];
+      const svc = Object.create(KdvControlService.prototype);
+      svc.logger = { warn() {}, log() {}, error() {}, debug() {} };
+      svc.prisma = { receiptImage: { create: async (a) => { yazilan.push(a.data); return { id: 'img1', ...a.data }; } } };
+      svc.storage = { getObjectMeta: async () => ({ sizeBytes: 1234, contentType: 'image/jpeg' }) };
+      svc.findSession = async () => ({ id: 's1', tenantId: 't1' });
+      svc.assertSessionUnlocked = () => {};
+      svc.runOcrForImage = async () => {};
+      return { svc, yazilan };
+    };
+
+    // (a) e-Arşiv kural tabanlı anahtarı (tahmin edilebilir) — REDDEDİLMELİ
+    {
+      const { svc, yazilan } = kur();
+      let hata = null;
+      try {
+        await svc.confirmImageUpload('s1', 't1', {
+          s3Key: 't2/earsiv/tpX/2026-08/alis-luca/GIB2026000000161.pdf',
+          originalName: 'x.pdf', mimeType: 'application/pdf',
+        });
+      } catch (e) { hata = e; }
+      ok(!!hata, 'başka ofisin kural tabanlı e-Arşiv anahtarı reddedildi');
+      ok(yazilan.length === 0, `hiç kayıt yazılmadı (gelen: ${yazilan.length}) — eski kodda bağlanıyordu`);
+    }
+
+    // (b) AYNI ofis ama BAŞKA oturum — reddedilmeli (oturum bağı)
+    {
+      const { svc, yazilan } = kur();
+      let hata = null;
+      try {
+        await svc.confirmImageUpload('s1', 't1', { s3Key: 't1/BASKA-OTURUM/abc.jpg', originalName: 'x.jpg', mimeType: 'image/jpeg' });
+      } catch (e) { hata = e; }
+      ok(!!hata && yazilan.length === 0, 'aynı ofiste bile başka oturumun anahtarı reddedildi');
+    }
+
+    // (c) Presign'in GERÇEKTEN ürettiği biçim — geçmeli
+    {
+      const { svc, yazilan } = kur();
+      const img = await svc.confirmImageUpload('s1', 't1', {
+        s3Key: 't1/s1/0f9b2c3d-4e5f-6071-8293-a4b5c6d7e8f9.jpg',
+        originalName: 'fis.jpg', mimeType: 'image/jpeg',
+      });
+      ok(yazilan.length === 1 && img && img.id === 'img1', 'kendi oturumunun anahtarı geçiyor (işlev bozulmadı)');
+      ok(yazilan[0].sizeBytes === 1234, 'S3 üstverisi kaydediliyor');
+    }
+
+    // (d) mihsap:// biçimi — canlıdaki 15.168 kaydın biçimi; bu uçtan zaten geçmiyor
+    {
+      const { svc, yazilan } = kur();
+      let hata = null;
+      try {
+        await svc.confirmImageUpload('s1', 't1', { s3Key: 'mihsap://cmo1fferl006xcaoqegqn5mc0', originalName: 'x.jpg', mimeType: 'image/jpeg' });
+      } catch (e) { hata = e; }
+      ok(!!hata && yazilan.length === 0, 'mihsap:// anahtarı bu uçtan geçmiyor (zaten geçmiyordu)');
+    }
+  }
+
   if (failed) { console.error(`\nsahiplik-regression: ${failed} BAŞARISIZ`); process.exit(1); }
   console.log('\nsahiplik-regression ok');
 })().catch((e) => { console.error(`beklenmeyen hata: ${(e && e.stack) || e}`); process.exit(1); });

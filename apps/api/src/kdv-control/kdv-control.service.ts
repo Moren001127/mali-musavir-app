@@ -1476,6 +1476,23 @@ export class KdvControlService implements OnApplicationBootstrap {
   ) {
     const session = await this.findSession(sessionId, tenantId);
     this.assertSessionUnlocked(session);
+    // 2026-09-25 (portal denetimi bulgu 03) — ANAHTARIN KİMİN OLDUĞU DENETLENİYOR.
+    //   Eskiden yalnız nesnenin VARLIĞINA bakılıyordu. Anahtarların çoğunda randomUUID() var
+    //   (tahmin edilemez) ama e-Arşiv tarafı TAMAMEN KURALA BAĞLI ve rastgelelik yok:
+    //     ${tenantId}/earsiv/${taxpayerId}/${donem}/${yon}-${kaynak}/${faturaNo}.pdf
+    //   Yani hedef anahtar önceden bilinebiliyor ve başka ofisin belgesi bu oturuma
+    //   bağlanabiliyordu. Bu ucun KENDİ presign'ı `${tenantId}/${sessionId}/` üretiyor
+    //   (bu dosyada ~1415 → storage.service.ts:48), o yüzden kapı hem ofise hem OTURUMA bağlanıyor.
+    //   Canlı ölçüm (25.09.2026): receipt_images'taki 15.168 kaydın TAMAMI `mihsap://` biçiminde
+    //   ve bu uçtan GEÇMİYOR (burada gerçek S3 HeadObject yapılıyor) — mevcut akışlar etkilenmiyor.
+    const beklenenOnek = `${tenantId}/${sessionId}/`;
+    if (!String(dto.s3Key || '').startsWith(beklenenOnek)) {
+      this.logger.warn(
+        '[OFIS-KORUMA] confirmImageUpload: bu oturuma ait olmayan anahtar reddedildi ' +
+          `(${String(dto.s3Key).slice(0, 60)}); beklenen onek: ${beklenenOnek}`,
+      );
+      throw new BadRequestException('Görsel anahtarı bu oturuma ait değil');
+    }
     const meta = await this.storage.getObjectMeta(dto.s3Key);
     if (!meta) throw new BadRequestException('Görsel S3\'e henüz yüklenmemiş');
 

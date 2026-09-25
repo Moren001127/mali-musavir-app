@@ -645,7 +645,10 @@ anahtarı orada null döner). Yani elle yükleme yolu canlıda hiç kullanılmam
 `storage.getPresignedUploadUrl(tenantId, sessionId, …)` → `storage.service.ts:48`
 `${tenantId}/${taxpayerId}/${uuid}.${ext}` (buradaki "taxpayerId" argümanı aslında sessionId).
 Yani bu uç için issue edilen anahtar `${tenantId}/${sessionId}/…` — öneri geçerli ve oturuma da
-bağlanabilir. Yama `KDV-BULGU03-ONERILEN-YAMA.patch` dosyasında, risk değerlendirmesiyle.
+bağlanabilir. **UYGULANDI (2026-09-25, Muzaffer Bey onayıyla — kilitli modül):** Kapı hem ofise hem OTURUMA
+bağlandı: `s3Key` `${tenantId}/${sessionId}/` ile başlamıyorsa `[OFIS-KORUMA]` kaydı + red.
+Denetimin önerisinden sıkı; presign'ın zaten ürettiği biçim olduğu için mevcut akış etkilenmiyor.
+Gerekçe ve risk değerlendirmesi `KDV-BULGU03-ONERILEN-YAMA.patch` dosyasında.
 
 ## 47. Genel sorgulamalarda eksik fatura gizleniyor — **DOĞRULANDI**
 
