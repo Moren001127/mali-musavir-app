@@ -311,6 +311,25 @@ sonraki adım çalışmıyor. (2) `eksikDegiskenler()` eklendi: `send_whatsapp_t
 (ya da boşluktan ibaretse) gönderim yapılmıyor, `[OTOMASYON-GONDERIM-ENGELI]` kaydı düşüyor.
 SIFIR geçerli değer sayılıyor, eksik değil.
 
+**DEPLOY SONRASI CANLI ÖLÇÜM — raporun örneği şu an oluşamıyor.** Sekiz aktif otomasyonun
+**hiçbirinde `send_*` adımı yok**; gönderim kapısı şimdilik ÖNLEYİCİ. Adım listeleri:
+`create_pending_action` · `get_taxpayer→create_pending_action` ·
+`fetch_invoices_for_period→backup_to_drive` · `fetch_kdv_from_luca` ·
+`generate_fis_word_from_invoices→print_word_output→create_pending_action` · `set_monthly_status` ·
+`get_kdv_summary→branch_if`. Son 20 kısmi koşuda patlayan adımlar:
+`generate_fis_word_from_invoices` 16, `fetch_invoices_for_period` 4.
+
+"Dur" kuralının iki canlı akışa etkisi:
+- **Fiş Word raporu** (233 koşu / 99 hata): üretim patlayınca artık boş çıktı yazdırılmıyor ve
+  yanıltıcı görev açılmıyor — iyileşme.
+- **Evraklar Hazır → Fatura Çek & Drive Yedekle** (249 koşu / 48 hata): çekim patlayınca Drive
+  yedeği de durmuş oluyordu. Bu istenmeyen bir yan etkiydi; Muzaffer Bey'in onayıyla o tek adıma
+  `onError: 'continue'` işaretlendi (`scripts/otomasyon-onerror-isaretle.cjs`, 1 otomasyon 1 adım).
+
+Aktif otomasyonların hepsi `failurePolicy: 'notify'` — hiçbiri kendiliğinden duraklayamaz.
+`failure` ve `partial` sayaç/bildirim/duraklatma yollarında aynı işlendiği için bu yönde
+davranış değişmedi.
+
 ## 41(a). Kısmi mesaj teslimi "başarılı" görünüyor — **DOĞRULANDI**
 
 `whatsapp.controller.ts:1240-1266`: bir numara tutarsa `delivered = true` → **tam başarı**; hatalar
