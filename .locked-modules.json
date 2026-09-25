@@ -17,12 +17,12 @@
       "lockedBy": "muzaffer"
     },
     "apps/api/public/agent-runtime.js": {
-      "sha256": "e40625927b0abc4902f989656d3c7cc96566908545586debaf251a112fee93ac",
+      "sha256": "c50662c3991b2172cafc7f40e82f8823998b51ce9f401bd018b8090b8320c86f",
       "reason": "Moren Agent v1.36.64 - log denetim uyarilari + Claude Vision maliyet optimizasyonu",
       "lockedBy": "muzaffer"
     },
     "apps/web/public/moren-agent.js": {
-      "sha256": "e40625927b0abc4902f989656d3c7cc96566908545586debaf251a112fee93ac",
+      "sha256": "c50662c3991b2172cafc7f40e82f8823998b51ce9f401bd018b8090b8320c86f",
       "reason": "Moren Agent v1.36.64 (web ayna kopya) - log denetim uyarilari + Claude Vision maliyet optimizasyonu",
       "lockedBy": "muzaffer"
     },
@@ -42,7 +42,7 @@
       "lockedBy": "muzaffer"
     },
     "apps/api/src/mizan/mizan.service.ts": {
-      "sha256": "65585981c133fb27ffa3bec05653d2091ee95f40dee11b266265a1c894715e12",
+      "sha256": "788a383bf92f9eb5780028cc8c3596114a82b204aa9afffc0a4aa45771a11e92",
       "reason": "Mizan service — Luca import logic",
       "lockedBy": "muzaffer"
     },
@@ -52,7 +52,7 @@
       "lockedBy": "muzaffer"
     },
     "apps/api/src/earsiv/earsiv.service.ts": {
-      "sha256": "4e1f21221ff9be2dfac2d8d0814d0cd8410b5448216a5545d56cee61f4afc3f8",
+      "sha256": "70238329062cf5975b40fb70317cdf39bf6a1c4a10c8971ed98668fd69c861e3",
       "reason": "E-Arsiv service — uploadFaturasToMihsap",
       "lockedBy": "muzaffer"
     }

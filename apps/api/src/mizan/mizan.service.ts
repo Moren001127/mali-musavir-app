@@ -332,26 +332,31 @@ export class MizanService {
     }
 
     // Veri elde; ancak ŞİMDİ eskiyi silip yenisini kur.
-    if (existing) {
-      await (this.prisma as any).mizan.delete({ where: { id: existing.id } });
-    }
-
-    const mizan = await (this.prisma as any).mizan.create({
-      data: {
-        tenantId: params.tenantId,
-        taxpayerId: params.taxpayerId,
-        donem: params.donem,
-        donemTipi: params.donemTipi || 'AYLIK',
-        kaynak: 'LUCA',
-        status: 'PENDING',
-        createdBy: params.createdBy || null,
-      },
-    });
-
-    try {
-      await (this.prisma as any).mizanHesap.createMany({
+    //
+    // 2026-09-25 (portal denetimi bulgu 10c) — SİL + OLUŞTUR + SATIRLAR TEK İŞLEMDE.
+    //   Eskiden üçü ayrı ayrı yapılıyordu: eski mizan silinip yeni başlık yazıldıktan SONRA
+    //   hesap satırları yazılıyordu. Satır yazımı patlarsa (bağlantı koptu, kısıt hatası)
+    //   eski mizan GİTMİŞ, yerine boş/FAILED bir kabuk kalmış oluyordu — ve `rawExcelKey`
+    //   hiçbir yolda doldurulmadığı için geri getirilemiyordu. Artık ya hepsi olur ya hiçbiri.
+    //   Satırlar bu noktada zaten bellekte ayrıştırılmış durumda, işlem kısa sürer.
+    const mizan = await (this.prisma as any).$transaction(async (tx: any) => {
+      if (existing) {
+        await tx.mizan.delete({ where: { id: existing.id } });
+      }
+      const yeni = await tx.mizan.create({
+        data: {
+          tenantId: params.tenantId,
+          taxpayerId: params.taxpayerId,
+          donem: params.donem,
+          donemTipi: params.donemTipi || 'AYLIK',
+          kaynak: 'LUCA',
+          status: 'PENDING',
+          createdBy: params.createdBy || null,
+        },
+      });
+      await tx.mizanHesap.createMany({
         data: rows.map((r) => ({
-          mizanId: mizan.id,
+          mizanId: yeni.id,
           hesapKodu: r.hesapKodu,
           hesapAdi: r.hesapAdi,
           seviye: r.seviye,
@@ -362,7 +367,10 @@ export class MizanService {
           rowIndex: r.rowIndex,
         })),
       });
+      return yeni;
+    });
 
+    try {
       await (this.prisma as any).mizan.update({
         where: { id: mizan.id },
         data: { status: 'READY' },

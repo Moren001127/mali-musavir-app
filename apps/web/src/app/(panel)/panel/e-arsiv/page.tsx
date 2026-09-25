@@ -101,6 +101,13 @@ function cleanJobReason(line: string): string {
     .replace(/^hata\s*:?\s*/i, '')
     .trim();
 
+  // BOZUK ARŞİV "fatura yok" DEĞİLDİR (2026-09-25) — sunucu mesajı "fatura bulunamadı"
+  // ifadesi taşıdığı için aşağıdaki kalıba düşüyor ve ekranda "bu dönem fatura yok" gibi
+  // görünüyordu. Kullanıcı tekrar çekmediği için o dönem sessizce eksik kalıyordu.
+  // Bu kontrol aşağıdakinden ÖNCE olmalı.
+  if (/ZIP_BOZUK/i.test(text)) {
+    return 'Dosya okunamadı: Luca\'dan gelen arşivdeki faturalar açılamadı (bu "fatura yok" demek DEĞİL) — tekrar çekin';
+  }
   if (/fatura\s+bulunamad[ıi]|fatura\s+yok|kay[ıi]tl[ıi]\s+fatura\s+yok|NO_FATURA/i.test(text)) {
     return 'Fatura yok: bu dönem için kayıtlı fatura bulunamadı';
   }
@@ -396,6 +403,10 @@ export default function EarsivPage() {
   useEffect(() => {
     if (lucaJobIds.length === 0) return;
     let done = 0, failed = 0, nofatura = 0, cancelled = 0, running = 0, pending = 0;
+    // EKSİK UYARILARI (2026-09-25) — sunucu "⚠️ EKSİK: Luca'da N belge görünüyordu ama portala
+    // M fatura işlendi" satırını iş günlüğüne yazıyor, ama günlük 15 sn sonra siliniyordu ve
+    // uyarı kullanıcıya HİÇ ulaşmıyordu. Burada toplanıp özet satırında KALICI gösterilir.
+    const eksikler: string[] = [];
     const liveLogLines: string[] = [];
     let activeJobIdLocal: string | null = null;
     let activeJobLastTs = 0;
@@ -409,7 +420,16 @@ export default function EarsivPage() {
       // [META] satırlarını filtrele — kullanıcıya gösterme
       const lines = getVisibleJobLines(errorLog);
       const lastLine = lines[lines.length - 1] || '';
-      const isNoFatura = /fatura bulunamadı|NO_FATURA|fatura yok/i.test(lastLine) || job?.noFatura === true;
+      // ZIP_BOZUK "fatura yok" sayılmaz (2026-09-25) — sessiz eksik dönem oluşturuyordu.
+      const isNoFatura = !/ZIP_BOZUK/i.test(errorLog)
+        && (/fatura bulunamadı|NO_FATURA|fatura yok/i.test(lastLine) || job?.noFatura === true);
+      for (const l of lines) {
+        if (/^\s*⚠/.test(l) && /eksik/i.test(l)) {
+          const kim = meta?.mukellef ? `${meta.mukellef}: ` : '';
+          const temiz = l.replace(/^\[\d{2}:\d{2}:\d{2}\]\s*/, '').trim();
+          if (!eksikler.some((x) => x.endsWith(temiz))) eksikler.push(kim + temiz);
+        }
+      }
 
       if ((job?.status === 'done' || job?.status === 'failed') && isNoFatura) {
         nofatura++;
@@ -462,7 +482,10 @@ export default function EarsivPage() {
     const tamamlanan = done + failed + nofatura + cancelled;
     if (tamamlanan === lucaJobIds.length) {
       // Hepsi bitti — özet göster
-      setLucaStatus(`Tamamlandi - ${done} basarili / ${nofatura} fatura yok / ${failed} hata / ${cancelled} iptal`);
+      setLucaStatus(
+        `Tamamlandi - ${done} basarili / ${nofatura} fatura yok / ${failed} hata / ${cancelled} iptal`
+        + (eksikler.length ? `  ⚠ ${eksikler.join(' · ')}` : ''),
+      );
       // Liste tazeleme: iş "done" olduğunda faturalar DB'ye biraz SONRA yazılabiliyor (ZIP parse+store).
       //   Tek refetch erken kalıp liste boş görünüyordu → kullanıcı elle yenilemek zorundaydı ("yenileyince
       //   geliyor"). BİRKAÇ GECİKMELİ refetch ile geç-yazılan faturalar otomatik gelir, elle yenileme gerekmez.
@@ -473,7 +496,8 @@ export default function EarsivPage() {
         setLucaJobId(null);
         setLucaJobIds([]);
         setLucaJobMeta({});
-        setLucaStatus('');
+        // Eksik uyarısı varsa özet satırı EKRANDA KALIR — 15 sn'lik temizlik onu silmez.
+        setLucaStatus((onceki) => (/⚠/.test(onceki) ? onceki : ''));
         setLucaLogLines([]);
         setActiveJobId(null);
       }, 15000));
@@ -1017,7 +1041,15 @@ export default function EarsivPage() {
                 // [META] satırlarını UI'da gösterme
                 const lines = getVisibleJobLines(errorLog);
                 const lastLine = lines[lines.length - 1] || '';
-                const isNoFatura = /fatura bulunamadı|NO_FATURA|fatura yok/i.test(lastLine) || job?.noFatura === true;
+                // ZIP_BOZUK "fatura yok" sayılmaz (2026-09-25) — sessiz eksik dönem oluşturuyordu.
+                const isNoFatura = !/ZIP_BOZUK/i.test(errorLog)
+                  && (/fatura bulunamadı|NO_FATURA|fatura yok/i.test(lastLine) || job?.noFatura === true);
+                // EKSİK UYARISI "Tamamlandı" işte de görünsün (2026-09-25): sunucu
+                // "⚠️ EKSİK: Luca'da N belge görünüyordu ama portala M fatura işlendi" satırını
+                // iş günlüğüne yazıyordu, ama ekran bunu yalnız çalışan/başarısız işlerde
+                // gösteriyordu. İş "done" olunca sadece rozet kalıyor ve 15 sn sonra günlük
+                // tamamen siliniyordu → eksik veri hiç fark edilmiyordu.
+                const eksikUyarisi = lines.filter((l: string) => /^\s*⚠/.test(l)).pop() || '';
                 const status = job?.status || 'pending';
                 const failureReason = getJobFailureReason(lines, status, isNoFatura);
                 const isActiveRow = id === activeJobId;
@@ -1084,6 +1116,16 @@ export default function EarsivPage() {
                     {(status === 'running' || status === 'pending') && lastLine && (
                       <div className="text-[11px] truncate font-mono" style={portalStyle({ color: 'rgba(250,250,249,0.55)', maxWidth: 360 })}>
                         {lastLine}
+                      </div>
+                    )}
+                    {/* EKSİK UYARISI — "Tamamlandı" işlerde de görünür (2026-09-25). */}
+                    {status === 'done' && eksikUyarisi && (
+                      <div
+                        className="text-[11px] truncate"
+                        title={eksikUyarisi}
+                        style={portalStyle({ color: '#fbbf24', maxWidth: 420, fontWeight: 600 })}
+                      >
+                        {eksikUyarisi}
                       </div>
                     )}
                     {((status === 'failed') || isNoFatura) && failureReason && (

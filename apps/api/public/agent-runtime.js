@@ -4464,12 +4464,25 @@
                     await log(`ℹ[fişkes-sonrası] popupUrl=${purl} popupMetin=${m1.slice(0, 350)}`);
                     await log(`ℹ[fişkes-sonrası] enKalabalık tr=${enBuyukTr} url=${u2} metin=${m2.slice(0, 350)}`);
                   } catch {}
+                  // ÇİFT FİŞ KAPISI (2026-09-25) — Bilanço yoluyla EŞİTLENDİ.
+                  // Eskiden commit sinyali görülmezse burada `throw` ediliyordu → iş /fail →
+                  // sunucu belgeleri FAILED yapıyor → ekranda "tekrar dene" AÇILIYOR. Oysa
+                  // yükleme yapılmış ve fiş KESİLMİŞ OLABİLİR; tekrar gönderilince Luca'da
+                  // İKİNCİ FİŞ oluşuyor (aynı fatura deftere iki kez, KDV ve mizan şişiyor).
+                  // Bilanço yolunda bu karar zaten doğruydu ve gerekçesi luca.service.ts:560-565'te
+                  // yazılı; İşletme yolu o korumanın dışında kalmıştı. Artık iki yol da:
+                  // /done + fisBasari:false → belge "Aktarıldı · teyit gerekli", tekrar-dene KAPALI.
+                  const fisMetin = ok ? '' : `İşletme Fiş Kes commit sinyali yok (yükleme tr=${postTr}, sonra tr=${liveTr})`;
+                  await fetch(API + `/agent/luca/jobs/${job.id}/done`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
+                    body: JSON.stringify({ recordCount: p.totalCount || 0, fisBasari: !!ok, fisMetin, beklenenSatir: p.totalCount || 0 }),
+                  }).catch(() => {});
                   if (ok) {
-                    await fetch(API + `/agent/luca/jobs/${job.id}/done`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN }, body: JSON.stringify({ recordCount: p.totalCount || 0 }) }).catch(() => {});
                     setStatus('Luca: İşletme fişi OLUŞTURULDU');
                     await log(`✅ İşletme ${p.direction === 'SATIS' ? 'Gelir' : 'Gider'} fişi Luca'da OLUŞTURULDU (HIZLI FİŞ → Fiş Kes → onay).`);
                   } else {
-                    throw new Error(`İşletme Fiş Kes doğrulanamadı (yükleme tr=${postTr}, sonra tr=${liveTr}). Yükleme oldu ama Fiş Kes commit sinyali yok.`);
+                    setStatus('Luca: teyit gerekli');
+                    await log(`⚠ İşletme Fiş Kes commit sinyali görülmedi (yükleme tr=${postTr}, sonra tr=${liveTr}). Fiş KESİLMİŞ OLABİLİR — belge "Aktarıldı · teyit gerekli" işaretlendi. Luca'da Fiş Listesi'nden kontrol edin; TEKRAR GÖNDERMEYİN (çift fiş riski).`);
                   }
                 } catch (e) {
                   await log(`✗ İşletme finalize hata: ${(e && e.message) || e}`);
@@ -8006,9 +8019,25 @@
     // iletilir; backend portala kaydedilenle karşılaştırıp eksik varsa uyarı verir.
     try {
       const secimSayisi = fdoc.querySelectorAll('.sec').length;
-      if (Number.isFinite(secimSayisi) && secimSayisi >= 0) {
-        __earsivBulunanToplam = secimSayisi;
-        await log(`📊 İndirilecek belge sayısı: ${secimSayisi} (mutabakat için kaydedildi)`);
+      // SAYFALAMA KAPISI (2026-09-25) — mutabakat sayısı olarak TABLODAKİ satır gönderiliyordu.
+      // Luca listesi sayfalıysa tabloda yalnız 1. sayfa görünür; bu sürüm de yalnız onu indiriyor.
+      // Tablodaki sayı gönderilince sunucudaki "eksik belge" kontrolü ASLA tetiklenmiyordu:
+      // portal 25 fatura kaydediyor, ajan "25 bulundu" diyor, iş "Tamamlandı" bitiyordu —
+      // oysa Luca'da 30 fatura vardı. Artık Luca'nın kendi TOPLAM sayısı esas alınır; böylece
+      // eksik kalan faturalar sunucu tarafında uyarı üretir ve sessiz kayıp olmaz.
+      let lucaToplam = null;
+      try {
+        const bt = (fdoc.body?.innerText || '').match(/(\d+)\s*adet\s*fatura\s*bulundu/i);
+        if (bt) lucaToplam = parseInt(bt[1], 10);
+      } catch {}
+      const mutabakat = (Number.isFinite(lucaToplam) && lucaToplam > secimSayisi) ? lucaToplam : secimSayisi;
+      if (Number.isFinite(mutabakat) && mutabakat >= 0) {
+        __earsivBulunanToplam = mutabakat;
+        if (mutabakat > secimSayisi) {
+          await log(`📊 Luca'da TOPLAM ${mutabakat} fatura var, tabloda ${secimSayisi} görünüyor (sayfalama) — mutabakat ${mutabakat} olarak bildirildi; eksik kalan ${mutabakat - secimSayisi} fatura sunucuda UYARI üretecek.`);
+        } else {
+          await log(`📊 İndirilecek belge sayısı: ${mutabakat} (mutabakat için kaydedildi)`);
+        }
       }
     } catch {}
 
