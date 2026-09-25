@@ -465,6 +465,9 @@ export class EarsivService {
       );
     }
 
+    // Gelen faturalarin FATURA TARIHINE gore donem dagilimi — "Eylul sorguladim, neden
+    // Agustos faturalari da geldi?" sorusunun cevabi (bkz. asagidaki dagilim uyarisi).
+    const donemDagilimi = new Map<string, number>();
     let inserted = 0;   // gerçekten YENİ eklenen
     let duplicate = 0;  // önceden vardı, atlandı (mükerrer önleme)
     let skipped = 0;    // hata nedeniyle atlandı
@@ -500,6 +503,7 @@ export class EarsivService {
           );
         }
         const fDonem = donemFromTarih(f.faturaTarihi);
+        donemDagilimi.set(fDonem, (donemDagilimi.get(fDonem) || 0) + 1);
         // MÜKERRER KONTROLÜ — ÖNCELİK BENZERSİZ ETTN (UUID).
         // ESKİ HATA: mükerrer kontrolü yalnızca faturaNo'ya bakıyordu. Parser bazı
         // faturalara boş / 'BILINMIYOR' / tekrarlı no üretince, FARKLI faturalar aynı
@@ -768,6 +772,25 @@ export class EarsivService {
     if (skipped > 0) {
       uyarilar.push(`⚠️ ${skipped} fatura hata nedeniyle atlandı.${errors.length ? ' İlk: ' + errors[0] : ''}`);
     }
+    // DÖNEM DAĞILIMI (2026-09-25) — sahip sordu: "Eylül'ü seçtiğim hâlde niye Ağustos'u da
+    // sorguluyor?" Sorgu gerçekten yalnız seçili ay yapılıyor; ama Luca'nın e-Arşiv ekranı
+    // faturayı KENDİ tarihine göre değil, sisteme düştüğü tarihe göre listeliyor. Bu yüzden
+    // Eylül aralığında Ağustos'ta kesilmiş faturalar da geliyor ve portal onları (doğru
+    // biçimde) kendi dönemlerine yazıyor. Canlı örnek: 46 fatura geldi → 21'i 2026-09,
+    // 25'i 2026-08. Kullanıcı ekranda 21 görüp "46 nerede?" diye düşünüyordu.
+    // Artık dağılım iş günlüğüne yazılır; başka döneme yazılan varsa açıkça söylenir.
+    if (donemDagilimi.size > 1) {
+      const satir = [...donemDagilimi.entries()].sort()
+        .map(([d, n]) => `${d}: ${n}`).join(' · ');
+      const baskaDonem = [...donemDagilimi.entries()].filter(([d]) => d !== jobDonem)
+        .reduce((t, [, n]) => t + n, 0);
+      uyarilar.push(
+        `ℹ️ Gelen ${parsed.length} faturanın tarihleri birden çok döneme ait — ${satir}. `
+        + `${baskaDonem} fatura ${jobDonem} dışındaki kendi dönemine yazıldı (Luca listesi faturayı `
+        + `sisteme düştüğü tarihe göre veriyor; bu normaldir, kayıp değildir).`,
+      );
+    }
+    meta.donemDagilimi = Object.fromEntries(donemDagilimi);
     meta.bulunan = bulunan;
     meta.distinctParsed = distinctParsed;
     meta.savedDistinct = savedDistinct;

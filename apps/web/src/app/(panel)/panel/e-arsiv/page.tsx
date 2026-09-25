@@ -291,7 +291,16 @@ export default function EarsivPage() {
   const rowsPerMode = useMemo(() => modeArr.map((m, i) => ({
     mode: m,
     rows: ((queries[i]?.data as any)?.rows ?? []) as EarsivFatura[],
-  })), [modeArr, queries.map((q) => q.data).join('|')]);  // eslint-disable-line react-hooks/exhaustive-deps
+    // LİSTE YENİLENMEME HATASI (2026-09-25) — bağımlılık `queries.map(q => q.data).join('|')`
+    // idi. `q.data` bir NESNE olduğu için join() onu her seferinde aynı "[object Object]"
+    // metnine çeviriyordu → veri yenilense bile bağımlılık DEĞİŞMİYOR, memo eski satırları
+    // döndürüyordu. Sonuç: Luca'dan çekim bitiyor, sorgu gerçekten yenileniyor, yeni veri
+    // geliyor ama EKRAN ESKİ LİSTEYİ gösteriyordu; kullanıcı sayfayı elle yenilemek zorunda
+    // kalıyordu (memo o zaman sıfırdan hesaplanıyor). `dataUpdatedAt` her çekimde değişen bir
+    // zaman damgası olduğu için doğru bağımlılıktır.
+    // NOT: veri yazımında gecikme YOK (canlı ölçüm: 14 işin hepsinde +0 sn) — sorun tazeleme
+    // penceresi değil, tam olarak buydu.
+  })), [modeArr, queries.map((q: any) => q.dataUpdatedAt).join('|')]);  // eslint-disable-line react-hooks/exhaustive-deps
   // Birleşik satır listesi (her satıra hangi mod'tan geldiği eklenir)
   const rows = useMemo(() => rowsPerMode.flatMap(({ mode: m, rows: rs }) =>
     rs.map((r) => ({ ...r, _mode: m } as EarsivFatura & { _mode: Mode }))
