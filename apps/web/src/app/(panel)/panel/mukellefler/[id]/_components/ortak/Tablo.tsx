@@ -28,9 +28,9 @@ export function BosDurum({ icon: Icon, title, text, renk = MUTED, children }: { 
 /** Sekme başlık bandı: 14/700 başlık + 11.5 açıklama, sağda eylemler. */
 export function SekmeBasligi({ title, text, children }: { title: string; text?: string; children?: React.ReactNode }) {
   return (
-    <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+    <div className="mb-2.5 flex flex-wrap items-center justify-between gap-3">
       <div className="min-w-0">
-        <h3 className="text-[14px] font-bold leading-5" style={portalStyle({ color: TEXT })}>{title}</h3>
+        <h3 className="text-[13.5px] font-bold leading-5" style={portalStyle({ color: TEXT })}>{title}</h3>
         {text && <p className="mt-0.5 text-[11.5px]" style={portalStyle({ color: MUTED })}>{text}</p>}
       </div>
       {children && <div className="flex flex-wrap items-center gap-2">{children}</div>}
@@ -42,7 +42,7 @@ export function SekmeBasligi({ title, text, children }: { title: string; text?: 
 export function TabloSarmal({ children, maxHeight, minWidth = 760 }: { children: React.ReactNode; maxHeight?: number; minWidth?: number }) {
   return (
     <div data-review-table className="overflow-auto" style={portalStyle({ border: `1px solid ${TABLO_CIZGI}`, borderRadius: 8, background: 'rgba(0,0,0,0.12)', maxHeight })}>
-      <table className="w-full" style={portalStyle({ borderCollapse: 'collapse', minWidth })}>
+      <table className="w-full [&_tbody_tr:hover]:bg-white/[0.035] [&_tbody_tr:last-child_td]:border-b-0" style={portalStyle({ borderCollapse: 'collapse', minWidth })}>
         {children}
       </table>
     </div>
@@ -65,9 +65,9 @@ export function Td({ children, right, center, muted, tabular, className = '', st
 export function GrupSatiri({ ad, sayi, colSpan, ek }: { ad: string; sayi?: number; renk?: string; colSpan: number; ek?: React.ReactNode }) {
   return (
     <tr data-review-group style={portalStyle({ background: GRUP_ZEMIN })}>
-      <td colSpan={colSpan} style={portalStyle({ ...HUCRE, height: 38, borderTop: GRUP_CIZGI, borderBottom: GRUP_CIZGI })}>
+      <td colSpan={colSpan} style={portalStyle({ ...HUCRE, height: 30, borderTop: GRUP_CIZGI, borderBottom: GRUP_CIZGI })}>
         <div className="flex items-center gap-2.5">
-          <span className="text-[12.5px] font-bold uppercase" style={portalStyle({ color: 'rgba(250,250,249,0.80)', letterSpacing: '.06em' })}>{ad}</span>
+          <span className="text-[11px] font-extrabold uppercase" style={portalStyle({ color: 'rgba(250,250,249,0.80)', letterSpacing: '.06em' })}>{ad}</span>
           {sayi != null && <span className="text-[12px] font-medium tabular-nums" style={portalStyle({ color: FAINT })}>{sayi}</span>}
           {ek}
         </div>

@@ -266,25 +266,37 @@ export function BeyannamelerTab({ taxpayerId }: { taxpayerId: string }) {
       </SekmeBasligi>
 
       {/* Toplu işlemler — ÜSTTE, her zaman görünür (seçim yoksa soluk) */}
-      <div className="flex flex-wrap items-center gap-1.5 border-y py-2" style={portalStyle({ borderColor: HAIR })}>
+      {/* Seçim yokken yedi soluk düğme yan yana duruyor, iki satıra taşıyordu (2026-09-25).
+          Artık düğmeler yalnız seçim varken çıkıyor; boştayken tek satır ipucu kalıyor. */}
+      <div
+        className="flex flex-wrap items-center gap-1.5 border-y py-2"
+        style={portalStyle({ borderColor: HAIR })}
+        data-secim={selectedTableRows.length > 0 ? 'var' : 'yok'}
+      >
         <span className="mr-1 text-[11.5px] font-medium tabular-nums" style={portalStyle({ color: selectedTableRows.length ? TEXT : MUTED })}>
           {selectedTableRows.length} seçili
         </span>
+        {selectedTableRows.length === 0 && (
+          <span className="text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.38)' })}>
+            Satırları seçin — e-posta, SMS, WhatsApp, yazdırma ve indirme işlemleri burada çıkar.
+          </span>
+        )}
+        {selectedTableRows.length > 0 && (<>
         <BeyanBulkActionButton
           icon={Mail}
-          label="Seçili Beyann. / Tahakk. E-Posta Gönder"
+          label="E-posta"
           disabled={selectedTableRows.length === 0}
           onClick={() => selectedTableRows[0] ? sendEmail(selectedTableRows[0].row) : toast.warning('Seçili kayıt yok')}
         />
         <BeyanBulkActionButton
           icon={Mail}
-          label="Seçilenlere Gönder"
+          label="Mükellefe gönder"
           disabled={selectedUniqueRows.length === 0}
           onClick={() => selectedUniqueRows[0] ? sendEmail(selectedUniqueRows[0]) : toast.warning('Seçili kayıt yok')}
         />
         <BeyanBulkActionButton
           icon={MessageSquareText}
-          label="Seçili Tahakk. SMS Gönder"
+          label="SMS"
           disabled={selectedTableRows.length === 0}
           onClick={() => {
             const target = selectedTableRows.find((item) => item.kind === 'tahakkuk')?.row || selectedUniqueRows[0];
@@ -293,28 +305,29 @@ export function BeyannamelerTab({ taxpayerId }: { taxpayerId: string }) {
         />
         <BeyanBulkActionButton
           icon={MessageCircle}
-          label="WhatsApp Gönder"
+          label="WhatsApp"
           disabled={selectedUniqueRows.length === 0}
           onClick={() => selectedUniqueRows[0] ? sendWhatsapp(selectedUniqueRows[0]) : toast.warning('Seçili kayıt yok')}
         />
         <BeyanBulkActionButton
           icon={Printer}
-          label="Seçilenleri Yazdır"
+          label="Yazdır"
           disabled={selectedTableRows.length === 0}
           onClick={() => selectedTableRows[0] ? openDoc(selectedTableRows[0].row, selectedTableRows[0].kind) : toast.warning('Seçili kayıt yok')}
         />
         <BeyanBulkActionButton
           icon={Download}
-          label={`Seçilenleri İndir (${selectedTableRows.length})`}
+          label={`İndir (${selectedTableRows.length})`}
           disabled={selectedTableRows.length === 0}
           onClick={() => selectedTableRows.forEach((item) => void downloadDocument(item))}
         />
         <BeyanBulkActionButton
           icon={X}
-          label="Seçimi Temizle"
+          label="Temizle"
           disabled={selectedDocKeys.size === 0}
           onClick={() => setSelectedDocKeys(new Set())}
         />
+      </>)}
       </div>
 
       <TabloSarmal maxHeight={560} minWidth={960}>

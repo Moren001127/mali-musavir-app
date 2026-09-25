@@ -115,16 +115,19 @@ export function BilgilerTab({
     if (section === 'musteri') {
       return (
         <div className="space-y-6">
-          <FormGrup baslik="Kimlik" aciklama="Tip, unvan ve vergi numarası">
-            <Satir etiket="Mükellef tipi" genis>
+          {/* Kimlik + sicil TEK grup: ayrı gruplar alan akışını kesip her grubun sonunda boş hücre bırakıyordu.
+              Üç sütunda hem firmada hem şahısta 12 hücre = dört tam satır. */}
+          <FormGrup baslik="Kimlik ve sicil" aciklama="tip, unvan, vergi numarası ve sicil bilgileri">
+            <Satir etiket="Mükellef tipi">
               <Secici
                 value={taxpayerKindFromForm(form)}
                 onChange={(v) => applyTaxpayerKind(v as TaxpayerKind, setForm)}
                 options={TAXPAYER_KIND_OPTIONS}
+                boy="kucuk"
               />
             </Satir>
             {tuzel ? (
-              <Satir etiket="Şirket adı" zorunlu genis>
+              <Satir etiket="Şirket adı" zorunlu iki>
                 <AlanGirdi value={form.companyName} onChange={alan('companyName')} required autoComplete="organization" />
               </Satir>
             ) : (
@@ -147,7 +150,7 @@ export function BilgilerTab({
               />
             </Satir>
             {!tuzel && (
-              <Satir etiket="Vergi kimlik no" ipucu="Varsa, 10 hane. Z raporu / ÖKC fişi ve bazı faturalarda TCKN yerine bu numara yazar; sahiplik kontrolünde ikisi de kabul edilir.">
+              <Satir etiket="Vergi kimlik no" ipucu="Varsa 10 hane; ÖKC fişinde TCKN yerine bu yazabilir.">
                 <AlanGirdi
                   inputMode="numeric"
                   value={form.vergiKimlikNo}
@@ -162,12 +165,9 @@ export function BilgilerTab({
             <Satir etiket="İşe başlama">
               <AlanGirdi type="date" value={form.startDate} onChange={alan('startDate')} />
             </Satir>
-            <Satir etiket="İşi bırakma" ipucu="Boş bırakılırsa mükellef faal sayılır.">
+            <Satir etiket="İşi bırakma" ipucu="Boşsa mükellef faal sayılır.">
               <AlanGirdi type="date" value={form.endDate} onChange={alan('endDate')} />
             </Satir>
-          </FormGrup>
-
-          <FormGrup baslik="Sicil ve faaliyet" aciklama="Ticaret sicili, MERSİS, oda ve NACE">
             <Satir etiket="Ticaret sicil no">
               <AlanGirdi value={form.ticaretSicilNo} onChange={alan('ticaretSicilNo')} />
             </Satir>
@@ -186,10 +186,10 @@ export function BilgilerTab({
           </FormGrup>
 
           <FormGrup baslik="Adres ve görsel">
-            <Satir etiket="Adres" genis hizala="ust">
+            <Satir etiket="Adres" iki hizala="ust">
               <AlanMetin rows={2} value={form.address} onChange={alan('address')} />
             </Satir>
-            <Satir etiket="Logo adresi" genis ipucu="Kartta ve mükellef portalında gösterilir.">
+            <Satir etiket="Logo adresi" ipucu="Kartta ve mükellef portalında gösterilir.">
               <AlanGirdi value={form.logoUrl} onChange={alan('logoUrl')} placeholder="https://…" />
             </Satir>
           </FormGrup>

@@ -4,13 +4,14 @@ import { portalStyle } from '@/lib/portal-theme';
 import React from 'react';
 import Link from 'next/link';
 import { AlertTriangle, ArrowLeft, ChevronDown, ChevronLeft, ChevronRight, Loader2, Save, Trash2 } from 'lucide-react';
-import { ALTIN_DUGME, AMBER, CARD, FAINT, GREEN, LINE, MUTED, NOTR_DUGME, R_ALAN, RED, TEXT, displayName, kartZemin } from '../_lib/tema';
+import { ALTIN_DUGME, AMBER, CARD, FAINT, GREEN, LINE, MUTED, NOTR_DUGME, R_ALAN, RED, STEEL, TEXT, displayName, kartZemin } from '../_lib/tema';
 import { taxpayerKindLabel, type TaxpayerKind } from '../_lib/form';
 
 export type CardNav = { index: number; total: number; prev: any; next: any };
 
 /**
  * Kompakt tek bant başlık: ← · avatar (baş harf + doluluk %) · ad 18px · Aktif/Pasif · tür rozeti
+ * Zemin 2026-09-25'te altın radialden ÇELİK MAVİ radiale alındı (altın geçiş beyaz temada bej→yeşil çıkıyordu).
  * alt satır: VKN · vergi dairesi · sıra; sağda Önceki/Sonraki + Kaydet (sayfadaki TEK altın dolgu).
  * Eksikler ince amber şerit olarak altta. Yapışkan değil.
  */
@@ -59,7 +60,7 @@ export function KartBasligi({
 }) {
   const durumRenk = isTaxpayerActive ? GREEN : RED;
   return (
-    <header data-review-heading className="overflow-hidden" style={portalStyle(kartZemin())}>
+    <header data-review-heading className="overflow-hidden" style={portalStyle(kartZemin(STEEL))}>
       <div className="flex flex-wrap items-center gap-3 px-4 py-3">
         <Link
           href="/panel/mukellef-listesi"

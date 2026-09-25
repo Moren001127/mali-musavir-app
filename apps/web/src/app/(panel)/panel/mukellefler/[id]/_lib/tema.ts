@@ -94,9 +94,11 @@ export const NOTR_DUGME: CSSProperties = { background: 'rgba(255,255,255,0.04)',
 // ── Tablo (gerçek <table>) ──
 // v2 (2026-09-14): SAKİN tablo — altın yok; tam çizgili, nötr başlık bandı, nötr grup satırı.
 export const TABLO_CIZGI = 'rgba(255,255,255,0.12)';
-export const HUCRE: CSSProperties = { border: `1px solid ${TABLO_CIZGI}`, padding: '0 12px', height: 44, verticalAlign: 'middle', fontSize: 13.5 };
-export const HUCRE_BASLIK: CSSProperties = { ...HUCRE, height: 40, fontSize: 12, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: 'rgba(250,250,249,0.62)', textAlign: 'left', whiteSpace: 'nowrap', background: 'rgba(255,255,255,0.055)' };
-export const GRUP_ZEMIN = 'rgba(255,255,255,0.035)';
+/** Hücre ayracı: YALNIZ yatay. 2026-09-25'e kadar her hücrenin dört yanı çizgiliydi, tablo ızgara gibi görünüyordu. */
+export const HUCRE_AYRAC = 'rgba(255,255,255,0.07)';
+export const HUCRE: CSSProperties = { borderBottom: `1px solid ${HUCRE_AYRAC}`, padding: '0 12px', height: 38, verticalAlign: 'middle', fontSize: 13 };
+export const HUCRE_BASLIK: CSSProperties = { ...HUCRE, height: 32, fontSize: 10.5, fontWeight: 800, letterSpacing: '.09em', textTransform: 'uppercase', color: 'rgba(250,250,249,0.55)', textAlign: 'left', whiteSpace: 'nowrap', background: 'rgba(255,255,255,0.05)', borderBottom: `1px solid ${TABLO_CIZGI}` };
+export const GRUP_ZEMIN = 'rgba(255,255,255,0.045)';
 export const GRUP_CIZGI = `1px solid ${TABLO_CIZGI}`;
 
 // ── Form alanları (40px, 8px köşe) ──

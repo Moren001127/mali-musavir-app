@@ -105,6 +105,7 @@ export function Satir({
   zorunlu,
   ipucu,
   genis,
+  iki,
   hizala = 'orta',
   children,
   htmlFor,
@@ -115,6 +116,8 @@ export function Satir({
   ipucu?: React.ReactNode;
   /** Izgarada tüm sütunları kaplar. */
   genis?: boolean;
+  /** Izgarada iki sütun kaplar (uzun unvan, adres gibi). */
+  iki?: boolean;
   /** Çok satırlı alanlarda etiketi üste hizala. */
   hizala?: 'orta' | 'ust';
   children: React.ReactNode;
@@ -125,7 +128,7 @@ export function Satir({
   // etiketle alanı birbirinden koparıyordu. Etiket üstte olunca üç sütun sığıyor, ikisi yan yana okunuyor.
   // `hizala` artık görünümü etkilemiyor; çağrı yerleri kırılmasın diye kabul edilmeye devam ediyor.
   return (
-    <div className={`flex min-w-0 flex-col gap-1.5 ${genis ? 'md:col-span-full' : ''}`}>
+    <div className={`flex min-w-0 flex-col gap-1.5 ${genis ? 'md:col-span-full' : iki ? 'xl:col-span-2' : ''}`}>
       <Etiket
         {...(htmlFor ? { htmlFor } : {})}
         className="flex items-center gap-1.5 text-[11.5px] font-semibold leading-[15px]"
