@@ -7142,6 +7142,29 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
 
   async update(tenantId: string, id: string, body: UpdateDocumentInput, userId?: string) {
     const before = await this.get(tenantId, id);
+
+    // 2026-09-25 (doğrulama sırasında bulundu; denetim listesinde yoktu) — AKTARILMIŞ BELGE KORUMASI.
+    //   update() lucaStatus'a hiç bakmıyordu: Luca'ya gitmiş belgenin tutarı, VKN'si, yönü, belge no'su
+    //   ya da mükellefi değiştirilebiliyordu → portal kaydı ile Luca'daki fiş sessizce ayrışır, mutabakat
+    //   bozulur. remove()/reopen() bu korumayı zaten yapıyor; bu yol dışarıda kalmıştı.
+    if (['POSTED', 'POSTING'].includes(String((before as any).lucaStatus || ''))) {
+      const kilitli = ['taxpayerId', 'invoiceKind', 'totalAmount', 'belgeNo', 'seriNo', 'sellerVkn', 'buyerVkn', 'faturaTarihi', 'status'];
+      const denenen = kilitli.filter((k) => k in (body as any));
+      if (denenen.length) {
+        throw new BadRequestException(
+          `Bu belge Luca'ya aktarılmış/aktarılıyor — şu alanlar değiştirilemez: ${denenen.join(', ')}. `
+          + 'Düzeltme gerekiyorsa önce "Geri Al" yapın (Luca\'daki fiş elle düzeltilir).',
+        );
+      }
+    }
+    // Onay YALNIZ approve() üzerinden verilir. Gövdeden status='APPROVED' yazmak mükerrer, demirbaş,
+    //   denge ve aktarım kapılarının TAMAMINI atlatıyordu.
+    if (String((body as any).status || '').toUpperCase() === 'APPROVED' && String(before.status || '') !== 'APPROVED') {
+      throw new BadRequestException(
+        'Belge bu yoldan onaylanamaz — "Onayla" işlemini kullanın (mükerrer/demirbaş/denge kontrolleri oradan geçer).',
+      );
+    }
+
     const data: any = {};
     for (const key of [
       'taxpayerId',
@@ -7986,6 +8009,19 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   async approve(tenantId: string, id: string, userId?: string, force?: boolean) {
     let doc = await this.get(tenantId, id);
 
+    // 2026-09-25 denetim bulgusu 1 — AKTARILMIŞ BELGE YENİDEN KUYRUĞA GİREMEZ. approve() belgenin
+    //   mevcut lucaStatus'una hiç bakmıyordu: Luca'da fişi kesilmiş (POSTED) ya da aktarımı süren
+    //   (POSTING) belge yeniden onaylanınca lucaStatus QUEUED'a çekiliyor ve belge ikinci kez fişe
+    //   giriyordu. Aynı korumayı remove() ve reopen() zaten yapıyor; bu iki yol dışarıda kalmıştı.
+    //   force bu kapıyı AÇMAZ — force doğrulama uyarılarını geçmek için, çift fiş için değil.
+    if (['POSTED', 'POSTING'].includes(String((doc as any).lucaStatus || ''))) {
+      throw new BadRequestException(
+        (doc as any).lucaStatus === 'POSTING'
+          ? 'Bu belge şu anda Luca\'ya aktarılıyor — yeniden onaylanamaz. Aktarım bitince işlem yapabilirsin.'
+          : 'Bu belge Luca\'ya aktarılmış — yeniden onaylanamaz (çift fiş olur). Önce "Geri Al" yapın.',
+      );
+    }
+
     // (AI denetçi kapısı kaldırıldı — kullanıcı talebi 2026-07-27.)
 
     // İşletme defteri mi? (tek-taraflı — hesap planı/kodu YOK, denge aranmaz)
@@ -8080,8 +8116,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // §G — Luca'dan geri alınmış belge (ocrData.lucaElleDuzeltilecek / lucaElleDuzeltildi): Luca'daki fiş elle
     //   düzeltilir; yeniden onay Luca'ya OTOMATİK GİTMEZ → MANUAL_DONE (batchPostToLuca/buildBatchExcel eler).
     const elleYolu = this.lucaElleYolu((doc as any).ocrData);
-    await (this.prisma as any).invoiceAccountingDocument.update({
-      where: { id },
+    // 2026-09-25 bulgu 1 (yarış durumu): yukarıdaki kapı okuma anındaki duruma bakar. Onay uzun sürüyor
+    //   (doğrulama, hafıza, AI) — bu arada belge aktarıma girmiş olabilir. Bu yüzden yazma KOŞULLU:
+    //   durum hâlâ aktarılmamışsa yazar, değilse count=0 döner ve onay reddedilir. update() yerine
+    //   updateMany bilerek: Prisma update'i where'e enum koşulu almıyor.
+    const onayYazim = await (this.prisma as any).invoiceAccountingDocument.updateMany({
+      where: { id, tenantId, lucaStatus: { notIn: ['POSTED', 'POSTING'] } },
       data: {
         status: 'APPROVED',
         approvedBy: userId || null,
@@ -8090,6 +8130,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         lucaErrorMessage: elleYolu || doc.taxpayerId ? null : 'Mukellef secilmedigi icin Luca\'ya aktarilamaz',
       },
     });
+    if (!onayYazim || onayYazim.count === 0) {
+      throw new BadRequestException(
+        'Belge onaylanamadı: bu sırada Luca aktarımına girmiş görünüyor (çift fiş olmasın diye durduruldu). Ekranı yenileyip durumu kontrol edin.',
+      );
+    }
 
     // §G — onayda yazılan öğrenme kararlarının anahtarları ocrData.ogrenmeKayitlari[]'na eklenir; "Geri al" bunları
     //   VendorMemoryService.revertDecision ile geri alır (idempotent: geri alınınca liste temizlenir).
@@ -9198,6 +9243,44 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         continue;
       }
 
+      // 2026-09-25 denetim bulgusu 2 — KISMİ KAPMA. Yalnız "hiç kapamadım" (count===0) denetleniyordu.
+      //   İki iş kısmen örtüşen belge listesiyle aynı anda başlarsa ikinci iş yalnız bir kısmını kapar,
+      //   ama payload.invoices yukarıda g.docs'un TAMAMINDAN üretilmiştir → kapılamayan (yani öteki işin
+      //   Excel'ine giren) belgeler bu işin Excel'inde de kalır ve Luca'ya İKİNCİ KEZ fiş olarak düşer.
+      //   markJobDone belgeleri lucaJobId ile eşlediği için ikinci kayıt portalda hiç görünmez.
+      //   Çözüm: içeriği kapma SONUCUNA göre daralt — Excel yalnız bu işe ait belgeleri taşır.
+      if (claim.count !== g.docs.length) {
+        const kapilan = await (this.prisma as any).invoiceAccountingDocument.findMany({
+          where: { lucaJobId: job.id },
+          select: { id: true },
+        }).catch(() => []);
+        const kapilanIds = new Set<string>((kapilan || []).map((d: any) => String(d.id)));
+        const kalan = g.docs.filter((d: any) => kapilanIds.has(String(d.id)));
+        this.logger.warn(
+          `Aktarım işi ${job.id}: ${g.docs.length} belgeden ${kalan.length} tanesi kapıldı ` +
+          `(${g.docs.length - kalan.length} belge eşzamanlı başka işe gitti) → iş içeriği daraltıldı.`,
+        );
+        if (!kalan.length) {
+          // Teorik olarak count>0 iken buraya düşmemeli; yine de boş Excel üretmeyelim.
+          await (this.prisma as any).invoiceAccountingDocument.updateMany({
+            where: { lucaJobId: job.id },
+            data: { lucaStatus: 'QUEUED', lucaJobId: null },
+          }).catch(() => {});
+          await (this.prisma as any).lucaFetchJob.delete({ where: { id: job.id } }).catch(() => {});
+          continue;
+        }
+        await (this.prisma as any).lucaFetchJob.update({
+          where: { id: job.id },
+          data: {
+            payload: {
+              ...(job.payload as any),
+              totalCount: kalan.length,
+              invoices: kalan.map(toInvoicePayload),
+            },
+          },
+        });
+      }
+
       jobs.push({ jobId: job.id, kind: g.kind, period: dominantPeriod, documentCount: claim.count });
     }
 
@@ -9233,21 +9316,48 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       throw new BadRequestException('Bu belge Luca\'dan geri alınmış — Luca\'daki fiş elle düzeltilir, yeniden gönderilmez (çift fiş olur).');
     }
 
-    // Eski aktif job'u iptal et (varsa)
+    // 2026-09-25 denetim bulgusu 1 — Luca'ya gitmiş belge yeniden gönderilmez (fiş çift olur).
+    if (String(doc.lucaStatus || '') === 'POSTED') {
+      throw new BadRequestException(
+        'Bu belge Luca\'ya aktarılmış — yeniden gönderilmez (çift fiş olur). Gerekiyorsa önce "Geri Al" yapın.',
+      );
+    }
+
+    // 2026-09-25 denetim bulgusu 13 — SÜREN ORTAK İŞE DOKUNULMAZ. Eskiden belgenin bağlı olduğu toplu iş
+    //   "failed" işaretlenip YALNIZ bu belgenin bağı koparılıyor, hemen yeni iş açılıyordu. Üç ayrı zarar:
+    //     • Tarayıcıdaki ajan yalnız "cancelled" durumunda durur, "failed" diye DURMAZ
+    //       (agent-runtime.js) → eski iş Luca'ya ortak fişi yazmaya devam eder,
+    //     • bu belge aynı anda yeni işte ikinci kez yazılır → Luca'da İKİ fiş,
+    //     • kardeş belgeler "failed" işe bakılarak FAILED'a çekilir (posting-serbest-birak) → aslında
+    //       aktarılmışken "aktarılmadı" görünür; kullanıcı tekrar deneyince onlar da ikinci kez düşer.
+    //   Artık iş gerçekten bitmeden tek belge yeniden denemesi verilmiyor. İşi çoktan bitmiş/ölmüş ama
+    //   POSTING'de TAKILI kalmış belge yine kurtarılabilir (POSTING nöbetçisiyle aynı mantık).
     if (doc.lucaJobId) {
-      await (this.prisma as any).lucaFetchJob.updateMany({
-        where: { id: doc.lucaJobId, status: { in: ['pending', 'running'] } },
-        data: { status: 'failed', errorMsg: 'Tekrar deneme icin iptal edildi', finishedAt: new Date() },
-      });
+      const is = await (this.prisma as any).lucaFetchJob.findUnique({
+        where: { id: doc.lucaJobId },
+        select: { status: true },
+      }).catch(() => null);
+      if (['pending', 'running'].includes(String(is?.status || ''))) {
+        throw new BadRequestException(
+          'Bu belgenin aktarımı hâlâ sürüyor (kuyrukta ya da Luca\'ya yazılıyor). Aktarım bitince tekrar deneyin — '
+          + 'yarıda tek belgeyi yeniden göndermek Luca\'da çift fiş üretir.',
+        );
+      }
     }
 
     // Belgenin lucaStatus'unu FAILED'a çek + eski job bağını kopar. POSTING'de takılı kalmış belge
     //   batchPostToLuca filtresine (QUEUED/FAILED/NOT_STARTED) girmezdi → "aktarılabilir belge yok"
     //   hatası veriyordu. Sıfırlayınca tekrar aktarıma girer.
-    await (this.prisma as any).invoiceAccountingDocument.updateMany({
-      where: { id, tenantId },
+    //   Koşulda lucaStatus != POSTED (yarış durumu): bu sırada aktarım tamamlanmışsa sıfırlamayız.
+    const sifirla = await (this.prisma as any).invoiceAccountingDocument.updateMany({
+      where: { id, tenantId, lucaStatus: { not: 'POSTED' } },
       data: { lucaStatus: 'FAILED', lucaJobId: null, lucaErrorMessage: null },
-    }).catch(() => {});
+    }).catch(() => ({ count: 0 }));
+    if (!sifirla || sifirla.count === 0) {
+      throw new BadRequestException(
+        'Belge yeniden gönderilemedi: bu sırada aktarım tamamlanmış görünüyor. Ekranı yenileyip durumu kontrol edin.',
+      );
+    }
 
     return this.batchPostToLuca(
       tenantId,
