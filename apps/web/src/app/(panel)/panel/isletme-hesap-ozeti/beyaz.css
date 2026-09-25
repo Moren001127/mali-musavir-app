@@ -243,3 +243,19 @@ html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-r
 
 /* ── 4. Izgara netleşsin: her hücre aynı yükseklikte, çizgiler sürekli ──────────────────────────── */
 html[data-theme='D'] body [data-panel-main] [data-isletme-report] table { border-collapse: collapse !important; }
+
+/* ── 5. DERLİ TOPLU SATIR (2026-09-25) ────────────────────────────────────────────────────────────
+   Muzaffer Bey: "satırlar çok geniş, rakamdan sonra çok boşluk var, gerekirse baştaki başlıkları
+   uzat". (a) Sütun payları page.tsx'te değişti: etiket %27→%36, dönem başına %18→%16 — rakamın
+   iki yanındaki boşluk azaldı, uzun kalem adları rahat sığıyor. (b) Yüzde, tutarın ALTINDA ayrı
+   satırdaydı ve her satırı iki kat yükseltiyordu → artık tutarın YANINDA. */
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] table tbody td > div.flex.flex-col {
+  flex-direction: row !important; align-items: baseline !important; justify-content: center !important; gap: 7px !important;
+}
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] table tbody td {
+  height: 36px !important; padding: 4px 10px !important;
+}
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] table tbody td > div.flex.flex-col > span[data-amount] { font-size: 14px !important; }
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] input.num-input { padding: 3px 8px !important; }
+/* Etiket sütunu genişledi: açıklama artık aynı satırda kalır */
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row] > td:first-child { white-space: normal !important; line-height: 1.3 !important; }

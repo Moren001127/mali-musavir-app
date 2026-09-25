@@ -1051,7 +1051,7 @@ function KarsilastirmaTablosu({
     return `%${pct.toFixed(1).replace('.', ',')}`;
   };
 
-  const COL_WIDTH = `${73 / tersDonemler.length}%`;
+  const COL_WIDTH = `${64 / tersDonemler.length}%`;
 
   // Gelir tablosuyla aynı altın renk
   const GOLD = '#d4b876';
@@ -1273,8 +1273,8 @@ function KarsilastirmaTablosu({
         <div
           className="grid"
           style={portalStyle({
-            // Tablo colgroup ile aynı: 27% etiket + 4 dönem × COL_WIDTH
-            gridTemplateColumns: `27% repeat(${tersDonemler.length}, ${COL_WIDTH})`,
+            // Tablo colgroup ile aynı: 36% etiket + 4 dönem × COL_WIDTH
+            gridTemplateColumns: `36% repeat(${tersDonemler.length}, ${COL_WIDTH})`,
           })}
         >
           {/* Sol başlık — KAR/ZARAR ÖZETİ (tam-genişlik bant kaldırıldı, buraya taşındı;
@@ -1476,7 +1476,7 @@ function KarsilastirmaTablosu({
       >
         <table className="w-full text-sm" style={portalStyle(REPORT_TABLE_STYLE)}>
           <colgroup>
-            <col style={portalStyle({ width: '27%' })} />
+            <col style={portalStyle({ width: '36%' })} />
             {tersDonemler.map((d) => (
               <col key={d} style={portalStyle({ width: COL_WIDTH })} />
             ))}
@@ -1576,7 +1576,7 @@ function KarsilastirmaTablosu({
       >
         <table className="w-full text-sm" style={portalStyle(REPORT_TABLE_STYLE)}>
           <colgroup>
-            <col style={portalStyle({ width: '27%' })} />
+            <col style={portalStyle({ width: '36%' })} />
             {tersDonemler.map((d) => (
               <col key={d} style={portalStyle({ width: COL_WIDTH })} />
             ))}
@@ -1631,7 +1631,7 @@ function KarsilastirmaTablosu({
       >
         <table className="w-full text-sm" style={portalStyle(REPORT_TABLE_STYLE)}>
           <colgroup>
-            <col style={portalStyle({ width: '27%' })} />
+            <col style={portalStyle({ width: '36%' })} />
             {tersDonemler.map((d) => (
               <col key={d} style={portalStyle({ width: COL_WIDTH })} />
             ))}
@@ -1701,8 +1701,8 @@ function KarsilastirmaTablosu({
         data-mali-actions
         className="grid rounded-xl py-3 mt-3 items-center"
         style={portalStyle({
-          // Üst tablo ile aynı: 27% etiket + N × COL_WIDTH
-          gridTemplateColumns: `27% repeat(${tersDonemler.length}, ${COL_WIDTH})`,
+          // Üst tablo ile aynı: 36% etiket + N × COL_WIDTH
+          gridTemplateColumns: `36% repeat(${tersDonemler.length}, ${COL_WIDTH})`,
           background: 'linear-gradient(135deg, rgba(212,184,118,0.08), rgba(212,184,118,0.02))',
           border: '1px solid rgba(212,184,118,0.25)',
         })}
