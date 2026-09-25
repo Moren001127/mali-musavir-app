@@ -278,6 +278,116 @@ function sahteTablo(satirlar) {
     }
   }
 
+  console.log('\n8) BULGU 10b/10c — Luca yolunda ÖNCE ÇEK SONRA SİL + tek işlem');
+  {
+    const { MizanService } = require(path.join(ROOT, 'apps/api/src/mizan/mizan.service.ts'));
+
+    // `sira`: hangi işin hangi sırayla olduğunu kaydeder. 10b'nin özü SIRA olduğu için
+    // yalnız "silindi mi" bakmak yetmez — çekimden ÖNCE mi SONRA mı silindiği önemli.
+    const kur = ({ cekimPatlasin = false, satirYazimiPatlasin = false, bosDonsun = false } = {}) => {
+      const sira = [];
+      const tx = {
+        mizan: {
+          delete: async () => { sira.push('sil'); return {}; },
+          create: async (a) => { sira.push('olustur'); return { id: 'yeni', ...a.data }; },
+        },
+        mizanHesap: {
+          createMany: async () => {
+            sira.push('satirlar');
+            if (satirYazimiPatlasin) throw new Error('baglanti koptu');
+            return { count: 1 };
+          },
+        },
+      };
+      const prisma = {
+        mizan: {
+          findFirst: async () => ({ id: 'eski', locked: false }),
+          findUnique: async () => ({ id: 'yeni', donem: '2026-08', donemTipi: 'AYLIK', hesaplar: [] }),
+          create: async (a) => { sira.push('olustur-islemsiz'); return { id: 'yeni', ...a.data }; },
+          delete: async () => { sira.push('sil-islemsiz'); return {}; },
+          update: async () => ({}),
+          // İŞLEM SARMALI: geri alma gerçekten taklit edilir — gövde patlarsa
+          // içeride yapılan her şey geri sarılır, yoksa 10c hiçbir şey kanıtlamaz.
+          $transaction: undefined,
+        },
+        $transaction: async (fn) => {
+          const oncesi = sira.length;
+          try {
+            return await fn(tx);
+          } catch (e) {
+            sira.length = oncesi;      // geri alma
+            sira.push('GERI-ALINDI');
+            throw e;
+          }
+        },
+        mizanHesap: { createMany: async () => ({ count: 0 }), findMany: async () => [] },
+        mizanAnomali: { createMany: async () => ({ count: 0 }), deleteMany: async () => ({ count: 0 }) },
+        taxpayer: { findFirst: async () => ({ id: 'tp1', companyName: 'TEST' }) },
+      };
+      const svc = new MizanService(prisma, { parse: () => [] }, {}, {});
+      svc.logger = { warn() {}, log() {}, error() {}, debug() {} };
+      svc.parser = { parse: () => (bosDonsun ? [] : [{ hesapKodu: '100', hesapAdi: 'KASA', borc: 1, alacak: 0 }]) };
+      // Denetim çözümleyicisi bu sınamanın konusu değil (silme sırası + işlem sarmalı).
+      svc.analyzeAccounts = async () => ({ anomaliler: 0 });
+      svc.lucaAutoScraper = {
+        fetchMizanExcel: async () => {
+          sira.push('cek');
+          if (cekimPatlasin) throw new Error('Luca oturumu dustu');
+          return Buffer.from('x');
+        },
+      };
+      return { svc, sira };
+    };
+
+    const calistir = async (svc) => {
+      try {
+        await svc.importFromLuca({ tenantId: 't1', taxpayerId: 'tp1', donem: '2026-08', donemTipi: 'AYLIK' });
+        return null;
+      } catch (e) { return e; }
+    };
+
+    // (a) MUTLU YOL — sıra: önce çek, sonra sil
+    {
+      const { svc, sira } = kur();
+      const hata = await calistir(svc);
+      ok(!hata, `mutlu yolda hata yok${hata ? ' (' + hata.message + ')' : ''}`);
+      ok(sira.indexOf('cek') < sira.indexOf('sil'),
+        `SIRA doğru: önce çek sonra sil (${sira.join(' > ')})`);
+      ok(sira.includes('satirlar'), 'hesap satırları yazıldı');
+    }
+
+    // (b) ÇEKİM PATLARSA — eski mizan DURMALI (10b'nin asıl amacı)
+    {
+      const { svc, sira } = kur({ cekimPatlasin: true });
+      const hata = await calistir(svc);
+      ok(!!hata, 'çekim patlayınca hata fırlatıldı');
+      ok(!sira.includes('sil') && !sira.includes('sil-islemsiz'),
+        `çekim patladı ama HİÇ SİLME YOK — eski mizan duruyor (${sira.join(' > ') || 'hiç iş yok'})`);
+      ok(!sira.includes('olustur'), 'boş PENDING kabuk da oluşturulmadı');
+      ok(/korundu|silinmedi/i.test(String(hata.message)),
+        `hata mesajı mizanın korunduğunu söylüyor: "${String(hata.message).slice(0, 60)}…"`);
+    }
+
+    // (c) DOSYA BOŞ GELİRSE — yine silme yok
+    {
+      const { svc, sira } = kur({ bosDonsun: true });
+      const hata = await calistir(svc);
+      ok(!!hata, 'boş dosyada hata fırlatıldı');
+      ok(!sira.includes('sil'), `boş dosyada da silme yok (${sira.join(' > ')})`);
+    }
+
+    // (d) SATIR YAZIMI PATLARSA — 10c: silme de geri alınmalı (ya hepsi ya hiçbiri)
+    {
+      const { svc, sira } = kur({ satirYazimiPatlasin: true });
+      const hata = await calistir(svc);
+      ok(!!hata, 'satır yazımı patlayınca hata fırlatıldı');
+      ok(sira.includes('GERI-ALINDI'),
+        'işlem GERİ ALINDI — silme+oluşturma birlikte iptal (ya hepsi ya hiçbiri)');
+      ok(!sira.includes('sil'),
+        `geri almadan sonra silme izi kalmadı (${sira.join(' > ')}) — eskiden eski mizan GİTMİŞ oluyordu`);
+    }
+  }
+
   if (failed) { console.error(`\nveri-kaybi-regression: ${failed} BAŞARISIZ`); process.exit(1); }
   console.log('\nveri-kaybi-regression ok');
 })().catch((e) => { console.error(`beklenmeyen hata: ${(e && e.stack) || e}`); process.exit(1); });
