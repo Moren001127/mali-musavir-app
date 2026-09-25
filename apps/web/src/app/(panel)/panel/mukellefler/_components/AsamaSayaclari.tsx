@@ -73,7 +73,6 @@ export function AsamaSayaclari(p: AsamaSayaclariProps) {
   const [toplamKarti, ...asamalar] = p.kartlar;
   const verildi = asamalar.find((k) => k.key === 'verildi');
   const bekleyenler = asamalar.filter((k) => k.key !== 'verildi');
-  const bekleyenToplam = bekleyenler.reduce((s, k) => s + k.count, 0);
   const verildiSayi = verildi?.count ?? 0;
   const verildiYuzde = yuzde(verildiSayi, p.toplam);
 
@@ -135,10 +134,6 @@ export function AsamaSayaclari(p: AsamaSayaclariProps) {
 
       {/* ── SAĞ: bekleyen aşamalar, akan renk yelpazesi ── */}
       <div className="at-bekleyen">
-        <div className="at-bekleyen-bas">
-          <h3>Sırada bekleyen <span>{bekleyenToplam} mükellef</span></h3>
-          <span className="at-bekleyen-not">kutuya tıklayınca liste süzülür</span>
-        </div>
         <div className="at-bekleyen-ray">
           <div className="at-bekleyen-kutular">
             {bekleyenler.map((k, i) => (
