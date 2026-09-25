@@ -304,6 +304,34 @@ export class MizanService {
         `Bu dönem için kesin kayıtlı mizan var (${existing.lockedAt ? new Date(existing.lockedAt).toLocaleString('tr-TR') : ''}). Yeniden çekmek için önce kilidi açın.`,
       );
     }
+    // ÖNCE ÇEK, SONRA SİL (2026-09-25) — eskiden mevcut mizan Luca'dan dosya İNMEDEN ÖNCE
+    // siliniyordu. Çekim patlarsa (Luca kapalı, oturum düştü, ekran değişti) geriye yalnız
+    // "FAILED" bir kayıt kalıyor, eski mizanın hesap satırları GİTMİŞ oluyordu ve geri
+    // getirilemiyordu (rawExcelKey hiçbir yolda doldurulmuyor). Elle yükleme yolu
+    // (importFromExcel) zaten doğru sırada çalışıyordu; otomatik yol da ona eşitlendi.
+    let buffer: Buffer;
+    let rows: ReturnType<typeof this.parser.parse>;
+    try {
+      buffer = await this.lucaAutoScraper.fetchMizanExcel({
+        tenantId: params.tenantId,
+        donem: params.donem,
+        donemTipi: params.donemTipi,
+        mukellefAdi,
+      });
+      rows = this.parser.parse(buffer);
+    } catch (e: any) {
+      // Eski mizan YERİNDE DURUYOR — hiçbir şey silinmedi.
+      throw new BadRequestException(
+        `Luca'dan mizan çekilemedi: ${e?.message || e}. Mevcut mizan korundu, silinmedi.`,
+      );
+    }
+    if (rows.length === 0) {
+      throw new BadRequestException(
+        'Luca\'dan gelen mizan dosyasında hiçbir satır okunamadı. Mevcut mizan korundu, silinmedi.',
+      );
+    }
+
+    // Veri elde; ancak ŞİMDİ eskiyi silip yenisini kur.
     if (existing) {
       await (this.prisma as any).mizan.delete({ where: { id: existing.id } });
     }
@@ -321,17 +349,6 @@ export class MizanService {
     });
 
     try {
-      const buffer = await this.lucaAutoScraper.fetchMizanExcel({
-        tenantId: params.tenantId,
-        donem: params.donem,
-        donemTipi: params.donemTipi,
-        mukellefAdi,
-      });
-      const rows = this.parser.parse(buffer);
-      if (rows.length === 0) {
-        throw new Error('Mizan Excel parse edildi ama hiçbir satır okunamadı');
-      }
-
       await (this.prisma as any).mizanHesap.createMany({
         data: rows.map((r) => ({
           mizanId: mizan.id,

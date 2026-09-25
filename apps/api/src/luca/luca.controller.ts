@@ -1317,6 +1317,6 @@ export class LucaController {
   }
 
   private async resolveTenantFromAgentToken(token?: string): Promise<string> {
-    return resolveAgentTenant(token, this.prisma as any);
+    return resolveAgentTenant(token, this.prisma as any, { kaynak: 'luca' });
   }
 }

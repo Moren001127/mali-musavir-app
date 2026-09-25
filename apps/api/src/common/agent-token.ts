@@ -50,7 +50,7 @@ export async function resolveTenantFromAgentToken(
    * gizli değil. Yeni uçlar bunu kabul etmemeli. Mevcut ajan/eklenti
    * kurulumları kırılmasın diye eski uçlar sıkı mod KULLANMAZ.
    */
-  opts: { strict?: boolean } = {},
+  opts: { strict?: boolean; kaynak?: string } = {},
 ): Promise<string> {
   const presented = String(token || '').trim();
   if (!presented) throw new UnauthorizedException('Missing X-Agent-Token');
@@ -92,7 +92,7 @@ export async function resolveTenantFromAgentToken(
   //   çalışıyor. Yol hemen kapatılırsa Luca otomasyonu durur. Bu yüzden şimdilik kabul edilmeye
   //   devam ediyor ama HER KULLANIM KAYDA GEÇİYOR. Ajanlar gerçek anahtara geçtikten sonra
   //   aşağıdaki blok `if (!allowLegacyLookup) throw ...` ile kapatılacak — o an tek satırlık iş.
-  legacyEskiYolKullanimi(presented, tenant.id);
+  legacyEskiYolKullanimi(presented, tenant.id, opts.kaynak || 'bilinmiyor');
   return tenant.id;
 }
 
@@ -110,13 +110,14 @@ export async function resolveTenantFromAgentToken(
 const RAPOR_ARALIGI = 25;
 const legacySayac = new Map<string, number>();
 
-function legacyEskiYolKullanimi(presented: string, tenantId: string) {
-  const adet = (legacySayac.get(presented) || 0) + 1;
-  legacySayac.set(presented, adet);
+function legacyEskiYolKullanimi(presented: string, tenantId: string, kaynak: string) {
+  const anahtar = `${presented}::${kaynak}`;
+  const adet = (legacySayac.get(anahtar) || 0) + 1;
+  legacySayac.set(anahtar, adet);
   if (adet === 1) {
     // eslint-disable-next-line no-console
     console.warn(
-      `[AGENT-TOKEN] ESKİ YOL: ofis kısa adı/kimliği anahtar olarak kabul edildi (ofis ${tenantId}). `
+      `[AGENT-TOKEN] ESKİ YOL: ofis kısa adı/kimliği anahtar olarak kabul edildi (ofis ${tenantId}, kaynak: ${kaynak}). `
       + `Bu yol kapatılacak — ajan yapılandırmasını AGENT_INGEST_TOKENS'taki gerçek anahtarla güncelleyin.`,
     );
     return;
@@ -124,13 +125,16 @@ function legacyEskiYolKullanimi(presented: string, tenantId: string) {
   if (adet % RAPOR_ARALIGI === 0) {
     // eslint-disable-next-line no-console
     console.warn(
-      `[AGENT-TOKEN] ESKİ YOL HÂLÂ KULLANILIYOR: ofis ${tenantId} · sunucu açılışından beri ${adet} kez. `
+      `[AGENT-TOKEN] ESKİ YOL HÂLÂ KULLANILIYOR: ofis ${tenantId} · KAYNAK: ${kaynak} · sunucu açılışından beri ${adet} kez. `
       + `Bu sayı artmayı bırakana kadar kısa ad yolu KAPATILAMAZ.`,
     );
   }
 }
 
 /** Sayacın anlık hâli — teşhis için (kapatma kararında kullanılır). */
-export function legacyEskiYolSayaci(): Array<{ anahtarUzunluk: number; adet: number }> {
-  return Array.from(legacySayac.entries()).map(([k, adet]) => ({ anahtarUzunluk: k.length, adet }));
+export function legacyEskiYolSayaci(): Array<{ anahtarUzunluk: number; kaynak: string; adet: number }> {
+  return Array.from(legacySayac.entries()).map(([k, adet]) => {
+    const i = k.lastIndexOf('::');
+    return { anahtarUzunluk: i > 0 ? i : k.length, kaynak: i > 0 ? k.slice(i + 2) : 'bilinmiyor', adet };
+  });
 }

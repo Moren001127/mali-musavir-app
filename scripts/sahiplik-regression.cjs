@@ -287,7 +287,7 @@ function ok(cond, msg) { if (!cond) { failed++; console.error(`  ✗ ${msg}`); }
     const eskiEnv = process.env.AGENT_INGEST_TOKENS;
     try {
       process.env.AGENT_INGEST_TOKENS = 'tBASKA:0123456789abcdef0123456789abcdef';
-      for (let i = 0; i < 51; i++) await m.resolveTenantFromAgentToken('moren-x', prisma);
+      for (let i = 0; i < 51; i++) await m.resolveTenantFromAgentToken('moren-x', prisma, { kaynak: 'sinama' });
       const ilk = uyarilar.filter((u) => /ESKİ YOL:/.test(u)).length;
       const sayim = uyarilar.filter((u) => /HÂLÂ KULLANILIYOR/.test(u));
       console.warn = asil;
@@ -298,13 +298,15 @@ function ok(cond, msg) { if (!cond) { failed++; console.error(`  ✗ ${msg}`); }
           'Eski hâlde SADECE 1 satır vardı: 30 sn\'de bir yoklayan ajanla tek seferlik istek ' +
           'ayırt edilemiyordu, "geçiş bitti mi" sorusu kayıttan YANITLANAMIYORDU.');
       ok(/50 kez/.test(sayim[1] || ''), `sayım gerçek adedi söylüyor: "${(sayim[1] || '').slice(60, 100)}"`);
+      ok(/KAYNAK: sinama/.test(sayim[1] || ''),
+        'uyarı KAYNAĞI söylüyor — hangi modülün eski anahtarla çağırdığı belli olmadan kapatma kararı verilemez');
 
       const toplam = m.legacyEskiYolSayaci().reduce((a, b) => a + b.adet, 0);
       ok(toplam === 51, `sayaç 51 (gelen: ${toplam})`);
 
       // GERÇEK anahtar sayaca girmemeli — yoksa "hâlâ kullanılıyor" yanlış alarm verir
       const once = m.legacyEskiYolSayaci().reduce((a, b) => a + b.adet, 0);
-      await m.resolveTenantFromAgentToken('0123456789abcdef0123456789abcdef', prisma);
+      await m.resolveTenantFromAgentToken('0123456789abcdef0123456789abcdef', prisma, { kaynak: 'sinama' });
       const sonra = m.legacyEskiYolSayaci().reduce((a, b) => a + b.adet, 0);
       ok(sonra === once, 'gerçek anahtarla gelen istek sayacı ARTIRMIYOR (yanlış alarm yok)');
 
@@ -312,6 +314,7 @@ function ok(cond, msg) { if (!cond) { failed++; console.error(`  ✗ ${msg}`); }
       const kayit = m.legacyEskiYolSayaci();
       ok(kayit.every((k) => typeof k.anahtarUzunluk === 'number' && !('anahtar' in k)),
         'sayaç yalnız uzunluk veriyor, anahtarın kendisini sızdırmıyor');
+      ok(kayit.every((k) => k.kaynak === 'sinama'), 'sayaç kaynağa göre ayrı tutuluyor');
     } finally {
       console.warn = asil;
       if (eskiEnv === undefined) delete process.env.AGENT_INGEST_TOKENS;

@@ -322,6 +322,6 @@ export class EDefterControlController {
   }
 
   private async resolveTenantFromAgentToken(token?: string): Promise<string> {
-    return resolveAgentTenant(token, this.prisma as any);
+    return resolveAgentTenant(token, this.prisma as any, { kaynak: 'edefter-control' });
   }
 }

@@ -34,7 +34,7 @@ export class MihsapController {
 
   /** Tenant'ı agent token'dan çöz (eklenti kullanımı için) */
   private async resolveTenantFromAgentToken(token?: string): Promise<string> {
-    return resolveAgentTenant(token, this.prisma as any);
+    return resolveAgentTenant(token, this.prisma as any, { kaynak: 'mihsap' });
   }
 
   /** Eklenti MIHSAP token'ını gönderir (X-Agent-Token ile kimlik doğrulama) */

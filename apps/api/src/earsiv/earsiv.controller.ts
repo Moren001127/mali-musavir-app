@@ -351,6 +351,6 @@ export class EarsivController {
   // === Helpers ===
 
   private async resolveTenantFromAgentToken(agentToken?: string): Promise<string> {
-    return resolveAgentTenant(agentToken, this.prisma as any);
+    return resolveAgentTenant(agentToken, this.prisma as any, { kaynak: 'earsiv' });
   }
 }

@@ -81,6 +81,25 @@ export class EarsivService {
     return !!actual && actual === expected;
   }
 
+  /**
+   * DOSYA ADI AYIRICI (2026-09-25) — belge numarası TEK BAŞINA kimlik değildir.
+   * GİB belge numarası satıcı başına sayaçtır; aynı numara farklı satıcılarda çıkar
+   * (canlı örnek: GIB2026000000083 iki ayrı satıcıda). Veritabanı satırları doğru ayrışıyordu
+   * (tekillik kısıtı satıcıyı içeriyor) ama DOSYA ANAHTARI yalnız belge numarasından
+   * kuruluyordu → ikinci faturanın PDF/HTML'i birincinin ÜZERİNE yazılıyor, "Aç/Yazdır"da
+   * ve Mihsap'a yanlış fatura gidiyordu.
+   * ETTN varsa o (en tekil), yoksa satıcı vergi no eklenir. İkisi de yoksa eski ad korunur.
+   * NOT: eski kayıtlar kendi anahtarlarını veritabanında taşır (pdfStorageKey/htmlStorageKey),
+   * bu yüzden değişiklik geçmişi BOZMAZ — yalnız yeni yazılanlar ayrışır.
+   */
+  private kimlikEki(opts: { ettn?: string | null; saticiVergiNo?: string | null }): string {
+    const e = String(opts?.ettn || '').trim();
+    if (e) return `__${this.safeFilePart(e).slice(0, 16)}`;
+    const v = String(opts?.saticiVergiNo || '').replace(/\D/g, '');
+    if (v) return `__${v}`;
+    return '';
+  }
+
   private buildPdfStorageKey(opts: {
     tenantId: string;
     taxpayerId: string;
@@ -88,10 +107,12 @@ export class EarsivService {
     tip: EarsivTip;
     belgeKaynak: BelgeKaynak;
     faturaNo: string;
+    ettn?: string | null;
+    saticiVergiNo?: string | null;
   }): string {
     const yon = opts.tip === 'SATIS' ? 'giden' : 'gelen';
     const kaynak = opts.belgeKaynak === 'EFATURA' ? 'e-fatura' : 'e-arsiv';
-    return `${opts.tenantId}/earsiv/${opts.taxpayerId}/${opts.donem}/${yon}-${kaynak}/${this.safeFilePart(opts.faturaNo)}.pdf`;
+    return `${opts.tenantId}/earsiv/${opts.taxpayerId}/${opts.donem}/${yon}-${kaynak}/${this.safeFilePart(opts.faturaNo)}${this.kimlikEki(opts)}.pdf`;
   }
 
   private buildHtmlStorageKey(opts: {
@@ -101,10 +122,12 @@ export class EarsivService {
     tip: EarsivTip;
     belgeKaynak: BelgeKaynak;
     faturaNo: string;
+    ettn?: string | null;
+    saticiVergiNo?: string | null;
   }): string {
     const yon = opts.tip === 'SATIS' ? 'giden' : 'gelen';
     const kaynak = opts.belgeKaynak === 'EFATURA' ? 'e-fatura' : 'e-arsiv';
-    return `${opts.tenantId}/earsiv/${opts.taxpayerId}/${opts.donem}/${yon}-${kaynak}/${this.safeFilePart(opts.faturaNo)}.html`;
+    return `${opts.tenantId}/earsiv/${opts.taxpayerId}/${opts.donem}/${yon}-${kaynak}/${this.safeFilePart(opts.faturaNo)}${this.kimlikEki(opts)}.html`;
   }
 
   private async storeOriginalPdf(opts: {
@@ -115,6 +138,8 @@ export class EarsivService {
     belgeKaynak: BelgeKaynak;
     faturaNo: string;
     pdfBuffer?: Buffer;
+    ettn?: string | null;
+    saticiVergiNo?: string | null;
   }): Promise<string | null> {
     if (!opts.pdfBuffer?.length) return null;
     const key = this.buildPdfStorageKey(opts);
@@ -136,6 +161,8 @@ export class EarsivService {
     belgeKaynak: BelgeKaynak;
     faturaNo: string;
     htmlContent?: string;
+    ettn?: string | null;
+    saticiVergiNo?: string | null;
   }): Promise<string | null> {
     const html = opts.htmlContent?.trim();
     if (!html) return null;
@@ -214,6 +241,18 @@ export class EarsivService {
           await this.markMihsapStatus(f.id, { status: 'skipped', error: 'Tip uygun değil' });
           continue;
         }
+        // ÇİFT YÜKLEME KAPISI (2026-09-25) — daha önce Mihsap'a yüklenmiş fatura BİR DAHA
+        // gönderilmez. Eskiden yalnız tip/kaynak bakılıyordu; "Mihsap'a Yükle"ye ikinci kez
+        // basılınca (ya da seçim içinde yüklenmiş fatura kalınca) AYNI GİDER FATURASI
+        // mükellefin defterine İKİNCİ KEZ düşüyordu. Mihsap ucu kör dosya gönderimi yapıyor,
+        // kendi tarafında mükerrer elemesi YOK — kapı burada olmak zorunda.
+        // Yeniden göndermek gerekirse önce belgenin Mihsap durumu temizlenir.
+        if (f.mihsapUploadStatus === 'uploaded') {
+          skipped++;
+          const ne = f.mihsapUploadedAt ? new Date(f.mihsapUploadedAt).toLocaleString('tr-TR') : 'daha önce';
+          details.push({ id: f.id, faturaNo: f.faturaNo, status: 'skipped', error: `Zaten Mihsap'a yüklenmiş (${ne}) — çift gider olmasın diye atlandı` });
+          continue;
+        }
         const mihsapId = f.taxpayer?.mihsapId;
         if (!mihsapId) {
           failed++;
@@ -249,8 +288,12 @@ export class EarsivService {
         const result = await this.mihsap.uploadGiderFatura(tenantId, mihsapId, pdfBuffer, `${safeName}.pdf`);
         if (result.ok) {
           uploaded++;
-          details.push({ id: f.id, faturaNo: f.faturaNo, status: 'uploaded' });
-          await this.markMihsapStatus(f.id, { status: 'uploaded' });
+          const isaretlendi = await this.markMihsapStatus(f.id, { status: 'uploaded' });
+          // İşaret yazılamadıysa fatura sonraki turda "yüklenmemiş" görünür ve ÇİFT gönderilir.
+          // Sessiz geçmek yerine kullanıcıya söylenir: Mihsap'ta kontrol edip elle işaretlesin.
+          details.push(isaretlendi
+            ? { id: f.id, faturaNo: f.faturaNo, status: 'uploaded' }
+            : { id: f.id, faturaNo: f.faturaNo, status: 'uploaded', error: 'Mihsap\'a yüklendi AMA "yüklendi" işareti kaydedilemedi — tekrar göndermeyin, çift gider olur' });
         } else {
           failed++;
           const msg = `Mihsap red: ${result.error || `HTTP ${result.status}`}`;
@@ -267,7 +310,10 @@ export class EarsivService {
     return { total: faturas.length, uploaded, failed, skipped, details };
   }
 
-  private async markMihsapStatus(faturaId: string, opts: { status: 'uploaded' | 'failed' | 'skipped'; error?: string }) {
+  /** Yazma başarılıysa true. ÇAĞIRAN KONTROL ETMELİ: "yüklendi" işareti yazılamazsa fatura
+   *  bir sonraki turda "yüklenmemiş" görünür ve ÇİFT GÖNDERİLİR (çift yükleme kapısı bu alana
+   *  dayanıyor). Eskiden hata yalnız log'a yazılıp yutuluyordu. */
+  private async markMihsapStatus(faturaId: string, opts: { status: 'uploaded' | 'failed' | 'skipped'; error?: string }): Promise<boolean> {
     try {
       const data: any = {
         mihsapUploadStatus: opts.status,
@@ -275,8 +321,10 @@ export class EarsivService {
       };
       if (opts.status === 'uploaded') data.mihsapUploadedAt = new Date();
       await (this.prisma as any).earsivFatura.update({ where: { id: faturaId }, data });
+      return true;
     } catch (e: any) {
       this.logger.warn(`Mihsap status update hatası (${faturaId}): ${e?.message}`);
+      return false;
     }
   }
 
@@ -401,9 +449,19 @@ export class EarsivService {
     if (parsed.length === 0) {
       const entries = ((parsed as any).__entries || []).slice(0, 8).join(' | ');
       const diagnostics = ((parsed as any).__diagnostics || []).slice(0, 6).join(' | ');
+      const xmlSayisi = (parsed as any).__xmlCount || 0;
+      const girdiSayisi = (parsed as any).__totalEntries || 0;
+      // AYIRT EDİCİ İŞARET (2026-09-25) — bu mesaj "fatura bulunamadı" ifadesi taşıdığı için
+      // ekran onu "Fatura yok: bu dönem için kayıtlı fatura bulunamadı" diye gösteriyordu.
+      // Böylece BOZUK ZIP ile GERÇEKTEN fatura olmaması aynı görünüyor, kullanıcı tekrar
+      // çekmiyor ve o dönem sessizce eksik kalıyordu. ZIP'te XML VARSA bu kesin bir
+      // ayrıştırma hatasıdır — ekranın "fatura yok" sayması için değil, UYARI için sebep.
       throw new BadRequestException(
-        `ZIP içinde aktarılabilir fatura bulunamadı (xml=${(parsed as any).__xmlCount || 0}, entries=${(parsed as any).__totalEntries || 0}). ` +
-        `${entries ? `İçerik: ${entries}. ` : ''}${diagnostics ? `Tanı: ${diagnostics}` : ''}`,
+        xmlSayisi > 0
+          ? `ZIP_BOZUK: Arşivde ${xmlSayisi} fatura dosyası var ama hiçbiri okunamadı — bu "fatura yok" DEĞİL, dosya okuma hatasıdır; tekrar çekmeyi deneyin. `
+            + `${entries ? `İçerik: ${entries}. ` : ''}${diagnostics ? `Tanı: ${diagnostics}` : ''}`
+          : `ZIP içinde aktarılabilir fatura bulunamadı (xml=0, entries=${girdiSayisi}). `
+            + `${entries ? `İçerik: ${entries}. ` : ''}${diagnostics ? `Tanı: ${diagnostics}` : ''}`,
       );
     }
 
@@ -504,6 +562,8 @@ export class EarsivService {
                 tip,
                 belgeKaynak,
                 faturaNo: f.faturaNo,
+                ettn: f.ettn,
+                saticiVergiNo: f.saticiVergiNo,
                 pdfBuffer: f.pdfBuffer,
               });
             } catch (e: any) {
@@ -525,6 +585,8 @@ export class EarsivService {
                 tip,
                 belgeKaynak,
                 faturaNo: f.faturaNo,
+                ettn: f.ettn,
+                saticiVergiNo: f.saticiVergiNo,
                 htmlContent: f.htmlContent,
               });
             } catch (e: any) {
@@ -571,6 +633,8 @@ export class EarsivService {
             tip,
             belgeKaynak,
             faturaNo: f.faturaNo,
+            ettn: f.ettn,
+            saticiVergiNo: f.saticiVergiNo,
             pdfBuffer: f.pdfBuffer,
           });
         } catch (e: any) {
@@ -587,6 +651,8 @@ export class EarsivService {
             tip,
             belgeKaynak,
             faturaNo: f.faturaNo,
+            ettn: f.ettn,
+            saticiVergiNo: f.saticiVergiNo,
             htmlContent: f.htmlContent,
           });
         } catch (e: any) {
