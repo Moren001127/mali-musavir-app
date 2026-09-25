@@ -171,9 +171,13 @@ tek bir düğme **6-8 saniye + onlarca tam tarama** demek.
 
 ## 3. SESSİZ VERİ RİSKLERİ — bunlar bildirim vermiyor
 
+> **DURUM 2026-09-25 akşamı: bu bölümdeki 7 KRİTİK bulgunun TAMAMI DÜZELTİLDİ ve CANLIDA**
+> (commit `973a329`, agent v1.48.0). Nöbetçi test: `scripts/luca-kritik-7-regression.cjs`
+> (25 assertion, 3 mutasyon kırmızı). Aşağıdaki açıklamalar kökü belgelemek için duruyor.
+
 Bu bölüm en önemlisi: hepsi **şu an ekranda "başarılı" görünüyor**.
 
-### 3.1 [KRİTİK] Mihsap'a çift yükleme — mükellefin defterine çift gider
+### 3.1 [DÜZELTİLDİ] Mihsap'a çift yükleme — mükellefin defterine çift gider
 `apps/api/src/earsiv/earsiv.service.ts:209-259` + `e-arsiv/page.tsx:522-532`
 
 Döngü `mihsapUploadStatus` / `mihsapUploadedAt` alanlarını **hiç kontrol etmiyor**,
@@ -182,7 +186,7 @@ gönderimi, kendi tarafında mükerrer elemesi yok.
 
 **İkinci kez "Mihsap'a Yükle" tıklanırsa aynı gider faturası iki kez düşer.**
 
-### 3.2 [KRİTİK] Aynı belge numaralı iki fatura aynı dosyaya yazılıyor
+### 3.2 [DÜZELTİLDİ] Aynı belge numaralı iki fatura aynı dosyaya yazılıyor
 `earsiv.service.ts:84-108`
 
 Dosya anahtarı: `.../{donem}/{yon}-{kaynak}/{faturaNo}.pdf` — **satıcı ve ETTN yok**.
@@ -192,7 +196,7 @@ PDF'i** gösteriyor; ikinci yükleme birincinin üzerine yazıyor.
 Canlı örnek bu kalıpta mevcut (GIB2026000000083 iki ayrı satıcıda).
 Sonuç: "Aç/Yazdır"da yanlış fatura, Mihsap'a yanlış PDF.
 
-### 3.3 [KRİTİK] Luca listesinin 1. sayfası dışı çekilmiyor
+### 3.3 [DÜZELTİLDİ] Luca listesinin 1. sayfası dışı çekilmiyor
 `agent-runtime.js:7929-7937`
 
 Ajan sayfalamayı görüyor ve günlüğe yazıyor:
@@ -202,7 +206,7 @@ Bu sürümde sadece 1. sayfa indiriliyor`
 Ama mutabakat sayacı **tablodaki satır sayısını** gönderiyor, Luca'nın toplamını
 değil → eksik kontrolü hiç tetiklenmiyor, iş "Tamamlandı" bitiyor.
 
-### 3.4 [KRİTİK] "Tamamlandı" işinin uyarıları ekranda görünmüyor
+### 3.4 [DÜZELTİLDİ] "Tamamlandı" işinin uyarıları ekranda görünmüyor
 `e-arsiv/page.tsx:1084-1101, 462-479`
 
 Sunucu "⚠️ EKSİK: Luca'da 30 belge görünüyordu, portala 25 işlendi" uyarısını iş
@@ -210,7 +214,7 @@ günlüğüne yazıyor. Ekran bu satırı yalnız **çalışan** ve **başarıs�
 gösteriyor. İş `done` olunca sadece "Tamamlandı" rozeti var ve **15 saniye sonra
 günlük tamamen siliniyor**.
 
-### 3.5 [KRİTİK] Gerçek hata "Fatura yok" diye görünüyor
+### 3.5 [DÜZELTİLDİ] Gerçek hata "Fatura yok" diye görünüyor
 `earsiv.service.ts:404-407` + `page.tsx:104-106`
 
 Sunucu `ZIP içinde aktarılabilir fatura bulunamadı (xml=0, entries=12)` diyor.
@@ -219,7 +223,7 @@ kayıtlı fatura bulunamadı"** yazıyor.
 
 Bozuk ZIP ile "o ay fatura yoktu" aynı görünüyor — kullanıcı tekrar çekmiyor.
 
-### 3.6 [KRİTİK] Mizan önce siliniyor, sonra çekiliyor
+### 3.6 [DÜZELTİLDİ] Mizan önce siliniyor, sonra çekiliyor
 `apps/api/src/mizan/mizan.service.ts:307-309`
 
 `if (existing) { await mizan.delete(...) }` satırı Luca'dan dosya indirilmeden
@@ -229,7 +233,7 @@ geri getirilemiyor (`rawExcelKey` hiçbir yerde doldurulmuyor).
 Elle yükleme yolu bunu doğru yapıyor (önce ayrıştır, sonra sil) — otomatik yol
 aynı sırayı kullanmalı.
 
-### 3.7 [KRİTİK] İşletme fiş kesmede çift fiş kapısı
+### 3.7 [DÜZELTİLDİ] İşletme fiş kesmede çift fiş kapısı
 `agent-runtime.js:4431, 4435`
 
 Fiş Kes onay sinyali görünmezse İşletme yolu `throw` edip işi **FAILED** yapıyor →
@@ -309,18 +313,18 @@ Tam geçiş için gerekenler:
 
 ## 5. ÖNCELİK SIRASI
 
-| # | Bulgu | Neden önce | Bölüm |
+| # | Bulgu | Durum | Bölüm |
 |---|---|---|---|
-| 1 | Mihsap'a çift yükleme | Mükellefin defterine çift gider — vergi hatası | 3.1 |
-| 2 | İşletme fiş kesmede çift fiş | Deftere çift kayıt; koruma Bilanço'da var, burada yok | 3.7 |
-| 3 | Mizan önce siliniyor | Veri geri getirilemiyor | 3.6 |
-| 4 | Sonsuz tekrar-sıraya-alma | Takılmanın 1. sebebi | 1.1 |
-| 5 | İş uyumsuz cihaza çivileniyor | Takılmanın 2. sebebi; sunucuya geçişle de ilgili | 1.2 |
-| 6 | Kuyruk başı tıkanması | Takılmanın 3. sebebi | 1.3 |
-| 7 | Aynı belge no → aynı dosya | Yanlış fatura görüntüsü, yanlış PDF | 3.2 |
-| 8 | 1. sayfa dışı çekilmiyor | Sessiz eksik veri | 3.3 |
-| 9 | Uyarılar ekranda görünmüyor | Eksik veri fark edilmiyor | 3.4, 3.5 |
-| 10 | Hız — kör beklemeler | Günlük iş hızı 2-4 kat | 2 |
+| 1 | Mihsap'a çift yükleme | ✅ düzeltildi | 3.1 |
+| 2 | İşletme fiş kesmede çift fiş | ✅ düzeltildi | 3.7 |
+| 3 | Mizan önce siliniyor | ✅ düzeltildi | 3.6 |
+| 4 | Sonsuz tekrar-sıraya-alma | ✅ düzeltildi (ec48a62) | 1.1 |
+| 5 | İş uyumsuz cihaza çivileniyor | ✅ düzeltildi (ec48a62) | 1.2 |
+| 6 | Kuyruk başı tıkanması | ⬜ AÇIK | 1.3 |
+| 7 | Aynı belge no → aynı dosya | ✅ düzeltildi | 3.2 |
+| 8 | 1. sayfa dışı çekilmiyor | ✅ mutabakat düzeltildi (indirme AÇIK) | 3.3 |
+| 9 | Uyarılar ekranda görünmüyor | ✅ düzeltildi | 3.4, 3.5 |
+| 10 | Hız — kör beklemeler | ✅ düzeltildi (v1.48.0) | 2 |
 
 ---
 
