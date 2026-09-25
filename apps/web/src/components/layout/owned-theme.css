@@ -155,7 +155,9 @@ html[data-theme='D'] [data-moren-sidebar] {
 /* Muzaffer Bey (2026-09-21): "yazılar sola yaslı, şeritte lüzumsuz genişlik olmayacak" →
    224px (en uzun ad "Fatura İşleme Merkezi" yazı tipi yüklenince de sığar), ince yazı; grup başlıkları küçük büyük harf. */
 html[data-theme='D'] [data-moren-sidebar][data-collapsed='false'] {
-  width: 210px !important; /* 2026-09-21 akşam: 224 → 210; en uzun ad (Fatura İşleme Merkezi) 186px'te bitiyor, sağda 38px boşluk kalıyordu */
+  width: 238px !important; /* 2026-09-25: 210 → 238. Dolu ikon kutusu 24→26px olunca yazıya kalan yer daraldı ve
+                              "Fatura İşleme Merkezi" kırpılmaya başladı; rozetli satırda da sığsın diye genişletildi.
+                              (2026-09-21 akşam 224 → 210 yapılmıştı, o zaman kutular küçüktü.) */
 }
 
 /* Madde listesi girintisi ve madde iç boşlukları sıkı: uzun adlar (Fatura İşleme Merkezi) kesilmesin */
