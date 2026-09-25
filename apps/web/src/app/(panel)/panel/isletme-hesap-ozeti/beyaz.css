@@ -186,7 +186,7 @@ html[data-theme='D'] body [data-panel-main] [data-isletme-report] table tbody td
 }
 html[data-theme='D'] body [data-panel-main] [data-isletme-report] table tbody tr:last-child td { border-bottom: 0 !important; }
 html[data-theme='D'] body [data-panel-main] [data-isletme-report] table tbody td:first-child {
-  border-left: 0 !important; text-align: left !important; background: #fcfbfa !important;
+  border-left: 0 !important; text-align: left !important; background: #fff !important;
   font-weight: 600 !important; color: var(--mt-ink) !important; box-shadow: none !important;
 }
 html[data-theme='D'] body [data-panel-main] [data-isletme-report] table tbody td:nth-child(2) { border-left: 2px solid #cfccc7 !important; }
@@ -228,12 +228,12 @@ html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-r
 html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row='detail'] { background: #fff !important; }
 html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row='detail']:hover { background: #faf9f7 !important; }
 html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row='manual'] { background: #fff !important; }
-html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row='total'] { background: #f7f6f3 !important; }
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row='total'] { background: #fff !important; }
 html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row='total'] > td { border-top: 1px solid #cfccc7 !important; }
-html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row='total'] > td:first-child { background: #f7f6f3 !important; }
-html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row='final'] { background: #dedad2 !important; }
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row='total'] > td:first-child { background: #fff !important; }
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row='final'] { background: #fff !important; }
 html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row='final'] > td { border-top: 1px solid #b0a99e !important; border-bottom: 1px solid #b0a99e !important; }
-html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row='final'] > td:first-child { background: #dedad2 !important; }
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row='final'] > td:first-child { background: #fff !important; }
 html[data-theme='D'] body [data-panel-main] [data-isletme-report] :is([data-report-row='total'], [data-report-row='final']) > td:first-child { color: #0f172a !important; font-weight: 700 !important; }
 
 /* ── E. Düzenlenebilir hücre: kutu yok, ipucu fareyle gelir ────────────────────────────────────── */
@@ -271,3 +271,24 @@ html[data-theme='D'] body [data-panel-main] [data-isletme-band] > div > div:firs
 html[data-theme='D'] body [data-panel-main] [data-isletme-band] > div > div:first-child > span:last-child {
   color: #0b7a5f !important; font-weight: 750 !important; letter-spacing: 0.12em !important;
 }
+
+/* ── H. VURGU SATIRLARINDA ARKA PLAN YOK (2026-09-25) ────────────────────────────────────────────
+   Muzaffer Bey: "brüt satış karı, dönem karı, geçici vergi matrahı ve ödenecek geçici vergi
+   alanlarının arka planındaki renklendirmeyi kaldır". Bu satırlar artık beyaz; ayrıştırmayı
+   kalın yazı + üstteki çizgi yapıyor, zemin değil. */
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] :is([data-report-row='total'], [data-report-row='final']) { background: #fff !important; }
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] :is([data-report-row='total'], [data-report-row='final']) > td { background: transparent !important; }
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] :is([data-report-row='total'], [data-report-row='final']) > td:first-child { background: #fff !important; }
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row='total'] > td { border-top: 1px solid #cfccc7 !important; }
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row='final'] > td { border-top: 2px solid #b0a99e !important; border-bottom: 1px solid #e0ded9 !important; }
+
+/* ── I. TABLO GÖVDESİNDE ZEMİN RENGİ YOK (2026-09-25, Muzaffer Bey) ──────────────────────────────
+   "başlıklar dışında yani tabloda arka planda ayırt edici renk olmasın" + "toplam stoktakini de
+   kaldır". Bütün satırlar beyaz; toplam ve sonuç satırlarını KALIN YAZI ve ÜST ÇİZGİ ayırıyor.
+   Renk yalnız blok başlığında kalır. Fare üstü vurgusu da kaldırıldı. */
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] :is([data-report-row], [data-report-row='detail'], [data-report-row='group'], [data-report-row='total'], [data-report-row='final'], [data-report-row='manual']) { background: #fff !important; }
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row] > td { background: transparent !important; }
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row]:hover { background: #fff !important; }
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row='group'] > td { border-top: 1px solid #e4e2df !important; }
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row='total'] > td { border-top: 1px solid #cfccc7 !important; }
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row='final'] > td { border-top: 2px solid #b0a99e !important; border-bottom: 1px solid #e0ded9 !important; }
