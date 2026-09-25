@@ -64,19 +64,36 @@ const AMBER = '#d8ad70';
 const SKY = '#8cbde8';
 const COPPER = '#d9a06c';
 const STEEL = '#9da8b7';
+/* Menü satır renkleri — dolu ikon kutusu için doygun ton (2026-09-25).
+   GOLD/ROSE/SAGE… pastel tonları grup başlığı ve daraltılmış menü için duruyor;
+   satır kutusunda soluk kaldıkları için burada ayrı palet var. */
+const M_TURKUAZ = '#2ec4a0';
+const M_MAVI    = '#4a90e2';
+const M_YESIL   = '#25b866';
+const M_KEHRIBAR= '#e8a33d';
+const M_BAKIR   = '#c9752f';
+const M_GUL     = '#e0637a';
+const M_ALTIN   = '#c9a227';
+const M_MOR     = '#7c5cd6';
+const M_DENIZ   = '#0e9bb5';
+const M_CIVIT   = '#5b6ee8';
+const M_KURSUNI = '#7b8794';
 const SIDEBAR_COLLAPSED_KEY = 'moren-sidebar-collapsed';
 const SIDEBAR_WIDTH = 284;
 const SIDEBAR_COLLAPSED_WIDTH = 68;
 // Sidebar gruplari kullanicinin gunluk akisi icin siralandi.
-const navGroups = [
+// `renk`: satırın kendi rengi (dolu ikon kutusu). Verilmezse grup rengine düşer.
+type NavItem = { href: string; label: string; icon: React.ElementType; renk?: string };
+type NavGroup = { label: string; color: string; icon: React.ElementType; items: NavItem[] };
+const navGroups: NavGroup[] = [
   {
     label: 'Moren AI',
     color: ROSE,
     icon: BrainCircuit,
     items: [
-      { href: '/panel/moren-ai', label: 'MOREN AI', icon: BrainCircuit },
-      { href: '/panel/ekip', label: 'Ekip', icon: Users },
-      { href: '/panel/mesajlar', label: 'WhatsApp Mesajlar', icon: MessageCircle },
+      { href: '/panel/moren-ai', label: 'MOREN AI', renk: M_TURKUAZ, icon: BrainCircuit },
+      { href: '/panel/ekip', label: 'Ekip', renk: M_MAVI, icon: Users },
+      { href: '/panel/mesajlar', label: 'WhatsApp Mesajlar', renk: M_YESIL, icon: MessageCircle },
     ],
   },
   {
@@ -84,12 +101,12 @@ const navGroups = [
     color: GOLD,
     icon: PanelTop,
     items: [
-      { href: '/panel', label: 'Gösterge Paneli', icon: Gauge },
-      { href: '/panel/mukellef-listesi', label: 'Mükellef Listesi', icon: UserRoundSearch },
-      { href: '/panel/mukellefler', label: 'Aylık Takip Listesi', icon: ClipboardCheck },
-      { href: '/panel/is-yuku', label: 'İş Akışı', icon: Workflow },
-      { href: '/panel/gorevler', label: 'Görevler & Notlar', icon: ClipboardCheck },
-      { href: '/panel/bildirimler', label: 'Bildirimler', icon: BellRing },
+      { href: '/panel', label: 'Gösterge Paneli', renk: M_TURKUAZ, icon: Gauge },
+      { href: '/panel/mukellef-listesi', label: 'Mükellef Listesi', renk: M_MAVI, icon: UserRoundSearch },
+      { href: '/panel/mukellefler', label: 'Aylık Takip Listesi', renk: M_KEHRIBAR, icon: ClipboardCheck },
+      { href: '/panel/is-yuku', label: 'İş Akışı', renk: M_BAKIR, icon: Workflow },
+      { href: '/panel/gorevler', label: 'Görevler & Notlar', renk: M_GUL, icon: ClipboardCheck },
+      { href: '/panel/bildirimler', label: 'Bildirimler', renk: M_ALTIN, icon: BellRing },
     ],
   },
   {
@@ -97,14 +114,14 @@ const navGroups = [
     color: SAGE,
     icon: ReceiptText,
     items: [
-      { href: '/fatura-merkezi', label: 'Fatura İşleme Merkezi', icon: FileStack },
-      { href: '/panel/e-arsiv', label: 'E-Fatura / E-Arşiv', icon: FileScan },
-      { href: '/panel/genel-sorgular', label: 'Genel Sorgulamalar', icon: ScanSearch },
+      { href: '/fatura-merkezi', label: 'Fatura İşleme Merkezi', renk: M_MAVI, icon: FileStack },
+      { href: '/panel/e-arsiv', label: 'E-Fatura / E-Arşiv', renk: M_MOR, icon: FileScan },
+      { href: '/panel/genel-sorgular', label: 'Genel Sorgulamalar', renk: M_DENIZ, icon: ScanSearch },
       // { href: '/panel/ajanlar/mihsap', label: 'Mihsap Fatura İşleme', icon: BotMessageSquare }, // gizlendi 2026-08-06 (sayfa+backend duruyor, sadece menüden kaldırıldı)
-      { href: '/panel/faturalar', label: 'İşlenen Faturalar', icon: ReceiptText },
-      { href: '/panel/fis-yazdirma', label: 'Fiş Yazdırma', icon: Printer },
-      { href: '/panel/banka-takip', label: 'Banka Takip', icon: Landmark },
-      { href: '/panel/ajanlar/profiller', label: 'Mükellef Profilleri', icon: UserCog },
+      { href: '/panel/faturalar', label: 'İşlenen Faturalar', renk: M_TURKUAZ, icon: ReceiptText },
+      { href: '/panel/fis-yazdirma', label: 'Fiş Yazdırma', renk: M_KURSUNI, icon: Printer },
+      { href: '/panel/banka-takip', label: 'Banka Takip', renk: M_CIVIT, icon: Landmark },
+      { href: '/panel/ajanlar/profiller', label: 'Mükellef Profilleri', renk: M_KEHRIBAR, icon: UserCog },
     ],
   },
   {
@@ -112,12 +129,12 @@ const navGroups = [
     color: AMBER,
     icon: FileCheck2,
     items: [
-      { href: '/panel/kdv-kontrol', label: 'KDV Kontrol', icon: FileCheck2 },
-      { href: '/panel/kdv-beyanname', label: 'KDV Durum Panosu', icon: FileCheck2 },
-      { href: '/panel/beyannameler', label: 'Toplu Beyanname', icon: FileText },
-      { href: '/panel/ajanlar/tebligat', label: 'e-Tebligat Kontrol', icon: MailSearch },
-      { href: '/panel/ajanlar/sgk', label: 'SGK Otomasyonu', icon: ShieldAlert },
-      { href: '/panel/aylik-odeme', label: 'Aylık Ödeme Listesi', icon: ReceiptText },
+      { href: '/panel/kdv-kontrol', label: 'KDV Kontrol', renk: M_GUL, icon: FileCheck2 },
+      { href: '/panel/kdv-beyanname', label: 'KDV Durum Panosu', renk: M_BAKIR, icon: FileCheck2 },
+      { href: '/panel/beyannameler', label: 'Toplu Beyanname', renk: M_MAVI, icon: FileText },
+      { href: '/panel/ajanlar/tebligat', label: 'e-Tebligat Kontrol', renk: M_MOR, icon: MailSearch },
+      { href: '/panel/ajanlar/sgk', label: 'SGK Otomasyonu', renk: M_DENIZ, icon: ShieldAlert },
+      { href: '/panel/aylik-odeme', label: 'Aylık Ödeme Listesi', renk: M_YESIL, icon: ReceiptText },
     ],
   },
   {
@@ -125,12 +142,12 @@ const navGroups = [
     color: SKY,
     icon: DatabaseZap,
     items: [
-      { href: '/panel/mizan', label: 'Mizan', icon: Table2 },
-      { href: '/panel/gelir-tablosu', label: 'Gelir Tablosu', icon: TrendingUp },
-      { href: '/panel/bilanco', label: 'Bilanço', icon: Scale },
-      { href: '/panel/isletme-hesap-ozeti', label: 'İşletme Hesap Özeti', icon: BookOpenText },
-      { href: '/panel/ajanlar/e-defter', label: 'E-Defter Kontrol', icon: BookMarked },
-      { href: '/panel/yapilandirma-7582', label: '7582 Yapılandırma', icon: Landmark },
+      { href: '/panel/mizan', label: 'Mizan', renk: M_CIVIT, icon: Table2 },
+      { href: '/panel/gelir-tablosu', label: 'Gelir Tablosu', renk: M_TURKUAZ, icon: TrendingUp },
+      { href: '/panel/bilanco', label: 'Bilanço', renk: M_MOR, icon: Scale },
+      { href: '/panel/isletme-hesap-ozeti', label: 'İşletme Hesap Özeti', renk: M_KEHRIBAR, icon: BookOpenText },
+      { href: '/panel/ajanlar/e-defter', label: 'E-Defter Kontrol', renk: M_DENIZ, icon: BookMarked },
+      { href: '/panel/yapilandirma-7582', label: '7582 Yapılandırma', renk: M_BAKIR, icon: Landmark },
     ],
   },
   {
@@ -138,12 +155,12 @@ const navGroups = [
     color: COPPER,
     icon: Building2,
     items: [
-      { href: '/panel/cari-kasa', label: 'Cari Kasa & Tahsilat', icon: HandCoins },
-      { href: '/panel/iletim-raporu', label: 'İletim Raporu', icon: ClipboardList },
+      { href: '/panel/cari-kasa', label: 'Cari Kasa & Tahsilat', renk: M_YESIL, icon: HandCoins },
+      { href: '/panel/iletim-raporu', label: 'İletim Raporu', renk: M_MAVI, icon: ClipboardList },
       // { href: '/panel/evraklar', label: 'Evrak Arşivi', icon: FolderArchive }, // gizlendi 2026-08-06 (sayfa+backend duruyor, sadece menüden kaldırıldı)
-      { href: '/panel/mukellef-erisim', label: 'Portal Erişimi', icon: LockKeyhole },
-      { href: '/panel/duyurular', label: 'Duyurular', icon: Megaphone },
-      { href: '/panel/galeri/hgs-ihlal', label: 'HGS İhlal Sorgulama', icon: Gavel },
+      { href: '/panel/mukellef-erisim', label: 'Portal Erişimi', renk: M_ALTIN, icon: LockKeyhole },
+      { href: '/panel/duyurular', label: 'Duyurular', renk: M_GUL, icon: Megaphone },
+      { href: '/panel/galeri/hgs-ihlal', label: 'HGS İhlal Sorgulama', renk: M_KURSUNI, icon: Gavel },
     ],
   },
   {
@@ -153,18 +170,18 @@ const navGroups = [
     items: [
       // 2026-08-21: menüye GERİ AÇILDI — operatör artık kendi Chrome penceresinde çalışıyor
       // ve Luca menüsünü kendi keşfediyor; kullanıcı buradan konuşarak iş yaptıracak.
-      { href: '/panel/luca-operator', label: 'Luca Operatörü', icon: BotMessageSquare },
-      { href: '/panel/otomasyonlar', label: 'Otomasyonlar', icon: WandSparkles },
+      { href: '/panel/luca-operator', label: 'Luca Operatörü', renk: M_MOR, icon: BotMessageSquare },
+      { href: '/panel/otomasyonlar', label: 'Otomasyonlar', renk: M_DENIZ, icon: WandSparkles },
       // { href: '/panel/hatirlatmalar', label: 'WhatsApp Otomasyonu', icon: MessageSquareText }, // gizlendi 2026-08-06 (sayfa+otomasyon duruyor, sadece menüden kaldırıldı)
-      { href: '/panel/sablonlar', label: 'Mesaj Şablonları', icon: MessageCircle },
-      { href: '/panel/bot-kalite', label: 'Bot Kalite', icon: ShieldCheck },
-      { href: '/panel/masaustu', label: 'Masaüstü Uygulaması', icon: MonitorDown },
+      { href: '/panel/sablonlar', label: 'Mesaj Şablonları', renk: M_MAVI, icon: MessageCircle },
+      { href: '/panel/bot-kalite', label: 'Bot Kalite', renk: M_TURKUAZ, icon: ShieldCheck },
+      { href: '/panel/masaustu', label: 'Masaüstü Uygulaması', renk: M_KURSUNI, icon: MonitorDown },
       // Menüden gizlendi (kullanıcı 2026-08-06 sadeleştirme) — sayfa + backend DURUYOR, sadece sidebar linki kaldırıldı. Geri açmak için yorumu kaldır.
       // { href: '/panel/ajanlar', label: 'Tüm Ajanlar', icon: Cpu },
-      { href: '/panel/ajanlar/luca', label: 'Luca Oturumu', icon: ShieldCheck },
+      { href: '/panel/ajanlar/luca', label: 'Luca Oturumu', renk: M_CIVIT, icon: ShieldCheck },
       // { href: '/panel/ajan-saglik', label: 'Sağlık Panosu', icon: Stethoscope }, // gizlendi 2026-08-06
-      { href: '/panel/ayarlar', label: 'Ayarlar', icon: Settings2 },
-      { href: '/panel/ayarlar/denetim', label: 'Denetim Günlüğü', icon: Shield },
+      { href: '/panel/ayarlar', label: 'Ayarlar', renk: M_KURSUNI, icon: Settings2 },
+      { href: '/panel/ayarlar/denetim', label: 'Denetim Günlüğü', renk: M_GUL, icon: Shield },
       // { href: '/panel/sistem/kilitli-moduller', label: 'Kilitli Modüller', icon: LockKeyhole }, // gizlendi 2026-08-06
     ],
   },
@@ -231,7 +248,7 @@ export default function Sidebar() {
   // Butce linki yalniz yetkili kullaniciya, "Ofis" grubunun sonuna eklenir.
   const gorunenGruplar = navGroups.map((g) =>
     g.label === 'Ofis' && butceGorunur
-      ? { ...g, items: [...g.items, { href: '/panel/butce', label: 'Kişisel Bütçe', icon: PiggyBank }] }
+      ? { ...g, items: [...g.items, { href: '/panel/butce', label: 'Kişisel Bütçe', renk: M_YESIL, icon: PiggyBank }] }
       : g,
   );
 
@@ -390,7 +407,7 @@ export default function Sidebar() {
 
               {/* Menü Öğeleri */}
               <div data-moren-sidebar-items="true" className={collapsed ? 'space-y-1' : 'ml-2.5 space-y-1'}>
-                {group.items.map(({ href, label, icon: Icon }) => {
+                {group.items.map(({ href, label, icon: Icon, renk }) => {
                   const active = isActive(href);
                   const baseBackground = active
                     ? `linear-gradient(135deg, ${group.color}1a 0%, rgba(255,255,255,0.03) 50%, ${group.color}0b 100%)`
@@ -423,7 +440,7 @@ export default function Sidebar() {
                         }),
                         // Grup rengi CSS değişkeni olarak: beyaz temada owned-theme.css ikon kutusunu
                         // ve aktif şeridi bundan boyuyor (2026-09-25). Renk dönüşümüne girmez.
-                        ['--menu-c' as string]: group.color,
+                        ['--menu-c' as string]: renk ?? group.color,
                       } as React.CSSProperties}
                       onMouseEnter={(e) => {
                         showCollapsedTooltip(e, label, group.color);
