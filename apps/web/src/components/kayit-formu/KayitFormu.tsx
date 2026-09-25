@@ -212,9 +212,10 @@ export function Secici({
     <div className={`inline-flex ${h} max-w-full overflow-x-auto p-[3px] [scrollbar-width:none]`} style={portalStyle({ border: `1px solid ${LINE}`, background: ALAN_ZEMIN, borderRadius: R })}>
       {options.map((o) => {
         const on = value === o.value;
+        // Seçili parça 2026-09-25'te renklendi: nötr açık dolgu seçili olanı yeterince ayırmıyordu.
         const seciliStil = o.pasif
           ? { background: 'rgba(255,255,255,0.06)', color: MUTED, fontWeight: 600 }
-          : { background: 'rgba(255,255,255,0.14)', color: TEXT, fontWeight: 700, boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08)' };
+          : { background: STEEL, color: '#ffffff', fontWeight: 700, boxShadow: '0 2px 6px rgba(79,134,201,0.35)' };
         return (
           <button
             key={o.value}

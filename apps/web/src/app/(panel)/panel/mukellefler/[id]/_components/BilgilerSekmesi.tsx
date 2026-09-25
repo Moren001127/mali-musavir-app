@@ -1,11 +1,13 @@
 'use client';
+import { portalStyle } from '@/lib/portal-theme';
+
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Building2, FileCheck, Lock, Phone, Settings2, Shield, Sparkles, UserCog, Workflow } from 'lucide-react';
 import { MukellefiyetlerCard } from '@/components/mukellef/MukellefiyetlerCard';
 import { TaxpayerPortalCredentialsCard } from '@/components/portal-automation/PortalCredentialCards';
 import { portalAutomationApi, type PortalProvider } from '@/lib/portal-automation';
-import { cleanTrPhone, formatTrPhone } from '../_lib/tema';
+import { LINE, cleanTrPhone, formatTrPhone } from '../_lib/tema';
 import { TAXPAYER_KIND_OPTIONS, applyTaxpayerKind, taxpayerKindFromForm, type DefterTuru, type FormState, type TaxpayerKind } from '../_lib/form';
 import { AccordionRow } from './ortak/AccordionRow';
 import { AlanCifti, AlanEk, AlanGirdi, AlanMetin, AlanSecim, Anahtar, FormAltBilgi, FormGrup, Satir, Secici } from './ortak/Form';
@@ -115,82 +117,92 @@ export function BilgilerTab({
     if (section === 'musteri') {
       return (
         <div className="space-y-6">
-          {/* Kimlik + sicil TEK grup: ayrı gruplar alan akışını kesip her grubun sonunda boş hücre bırakıyordu.
-              Üç sütunda hem firmada hem şahısta 12 hücre = dört tam satır. */}
-          <FormGrup baslik="Kimlik ve sicil" aciklama="tip, unvan, vergi numarası ve sicil bilgileri">
-            <Satir etiket="Mükellef tipi">
-              <Secici
-                value={taxpayerKindFromForm(form)}
-                onChange={(v) => applyTaxpayerKind(v as TaxpayerKind, setForm)}
-                options={TAXPAYER_KIND_OPTIONS}
-                boy="kucuk"
-              />
-            </Satir>
-            {tuzel ? (
-              <Satir etiket="Şirket adı" zorunlu iki>
-                <AlanGirdi value={form.companyName} onChange={alan('companyName')} required autoComplete="organization" />
-              </Satir>
-            ) : (
-              <>
-                <Satir etiket="Ad" zorunlu>
-                  <AlanGirdi value={form.firstName} onChange={alan('firstName')} required />
+          {/* B düzeni (Muzaffer Bey'in seçimi, 2026-09-25): Kimlik ve Sicil İKİ KUTU hâlinde yan yana.
+              Tek ızgarada son satırda boş hücre kalıyordu; iki kutuda sayfa da kısalıyor, hangi bilginin
+              nerede olduğu bakışta belli oluyor. "10 hane" gibi ipuçları alanın ALTINDAN İÇİNE alındı —
+              altta dururken satırı uzatıp komşu sütunların hizasını kaydırıyorlardı. Logo adresi kaldırıldı. */}
+          <div className="grid gap-3 xl:grid-cols-[1.15fr_1fr]">
+            <div style={portalStyle({ border: `1px solid ${LINE}`, borderRadius: 10, padding: '12px 13px 13px', background: 'rgba(255,255,255,0.015)' })}>
+              <FormGrup baslik="Kimlik" aciklama="kim ve hangi vergi dairesi" sutun={2}>
+                <Satir etiket="Mükellef tipi" genis>
+                  <Secici
+                    value={taxpayerKindFromForm(form)}
+                    onChange={(v) => applyTaxpayerKind(v as TaxpayerKind, setForm)}
+                    options={TAXPAYER_KIND_OPTIONS}
+                    boy="kucuk"
+                  />
                 </Satir>
-                <Satir etiket="Soyad" zorunlu>
-                  <AlanGirdi value={form.lastName} onChange={alan('lastName')} required />
+                {tuzel ? (
+                  <Satir etiket="Şirket adı" zorunlu genis>
+                    <AlanGirdi value={form.companyName} onChange={alan('companyName')} required autoComplete="organization" />
+                  </Satir>
+                ) : (
+                  <>
+                    <Satir etiket="Ad" zorunlu>
+                      <AlanGirdi value={form.firstName} onChange={alan('firstName')} required />
+                    </Satir>
+                    <Satir etiket="Soyad" zorunlu>
+                      <AlanGirdi value={form.lastName} onChange={alan('lastName')} required />
+                    </Satir>
+                  </>
+                )}
+                <Satir etiket={tuzel ? 'VKN' : 'TCKN'} zorunlu>
+                  <AlanGirdi
+                    inputMode="numeric"
+                    placeholder={tuzel ? '10 hane' : '11 hane'}
+                    value={form.taxNumber}
+                    onChange={(e) => setForm((p) => ({ ...p, taxNumber: e.target.value.replace(/\D/g, '').slice(0, tuzel ? 10 : 11) }))}
+                    maxLength={tuzel ? 10 : 11}
+                    required
+                  />
                 </Satir>
-              </>
-            )}
-            <Satir etiket={tuzel ? 'VKN' : 'TCKN'} zorunlu ipucu={tuzel ? '10 hane' : '11 hane'}>
-              <AlanGirdi
-                inputMode="numeric"
-                value={form.taxNumber}
-                onChange={(e) => setForm((p) => ({ ...p, taxNumber: e.target.value.replace(/\D/g, '').slice(0, tuzel ? 10 : 11) }))}
-                maxLength={tuzel ? 10 : 11}
-                required
-              />
-            </Satir>
-            {!tuzel && (
-              <Satir etiket="Vergi kimlik no" ipucu="Varsa 10 hane; ÖKC fişinde TCKN yerine bu yazabilir.">
-                <AlanGirdi
-                  inputMode="numeric"
-                  value={form.vergiKimlikNo}
-                  onChange={(e) => setForm((p) => ({ ...p, vergiKimlikNo: e.target.value.replace(/\D/g, '').slice(0, 10) }))}
-                  maxLength={10}
-                />
-              </Satir>
-            )}
-            <Satir etiket="Vergi dairesi" zorunlu>
-              <AlanGirdi value={form.taxOffice} onChange={alan('taxOffice')} required />
-            </Satir>
-            <Satir etiket="İşe başlama">
-              <AlanGirdi type="date" value={form.startDate} onChange={alan('startDate')} />
-            </Satir>
-            <Satir etiket="İşi bırakma" ipucu="Boşsa mükellef faal sayılır.">
-              <AlanGirdi type="date" value={form.endDate} onChange={alan('endDate')} />
-            </Satir>
-            <Satir etiket="Ticaret sicil no">
-              <AlanGirdi value={form.ticaretSicilNo} onChange={alan('ticaretSicilNo')} />
-            </Satir>
-            <Satir etiket="MERSİS no">
-              <AlanGirdi inputMode="numeric" value={form.mersisNo} onChange={alan('mersisNo')} />
-            </Satir>
-            <Satir etiket="Oda sicil no">
-              <AlanGirdi value={form.odaSicilNo} onChange={alan('odaSicilNo')} />
-            </Satir>
-            <Satir etiket="NACE kodu">
-              <AlanGirdi value={form.naceKodu} onChange={alan('naceKodu')} placeholder="00.00.00" />
-            </Satir>
-            <Satir etiket="Faaliyet / sektör" genis ipucu="Fatura eşleştirmede kullanılır — ör. yemek üretimi, inşaat malzemeleri toptan ticareti, lokanta.">
-              <AlanGirdi value={form.faaliyetAciklama} onChange={alan('faaliyetAciklama')} />
-            </Satir>
-          </FormGrup>
+                <Satir etiket="Vergi dairesi" zorunlu>
+                  <AlanGirdi value={form.taxOffice} onChange={alan('taxOffice')} required />
+                </Satir>
+                {!tuzel && (
+                  <Satir etiket="Vergi kimlik no" ipucu="ÖKC fişinde TCKN yerine bu yazabilir.">
+                    <AlanGirdi
+                      inputMode="numeric"
+                      placeholder="10 hane"
+                      value={form.vergiKimlikNo}
+                      onChange={(e) => setForm((p) => ({ ...p, vergiKimlikNo: e.target.value.replace(/\D/g, '').slice(0, 10) }))}
+                      maxLength={10}
+                    />
+                  </Satir>
+                )}
+                <Satir etiket="İşe başlama">
+                  <AlanGirdi type="date" value={form.startDate} onChange={alan('startDate')} />
+                </Satir>
+                <Satir etiket="İşi bırakma">
+                  <AlanGirdi type="date" title="Boş bırakılırsa mükellef faal sayılır" value={form.endDate} onChange={alan('endDate')} />
+                </Satir>
+              </FormGrup>
+            </div>
 
-          <FormGrup baslik="Adres ve görsel">
-            <Satir etiket="Adres" iki hizala="ust">
-              <AlanMetin rows={2} value={form.address} onChange={alan('address')} />
-            </Satir>
-            <Satir etiket="Logo adresi" ipucu="Kartta ve mükellef portalında gösterilir.">
-              <AlanGirdi value={form.logoUrl} onChange={alan('logoUrl')} placeholder="https://…" />
+            <div style={portalStyle({ border: `1px solid ${LINE}`, borderRadius: 10, padding: '12px 13px 13px', background: 'rgba(255,255,255,0.015)' })}>
+              <FormGrup baslik="Sicil ve faaliyet" aciklama="ticaret sicili, MERSİS, oda, NACE" sutun={2}>
+                <Satir etiket="Ticaret sicil no">
+                  <AlanGirdi value={form.ticaretSicilNo} onChange={alan('ticaretSicilNo')} />
+                </Satir>
+                <Satir etiket="MERSİS no">
+                  <AlanGirdi inputMode="numeric" value={form.mersisNo} onChange={alan('mersisNo')} />
+                </Satir>
+                <Satir etiket="Oda sicil no">
+                  <AlanGirdi value={form.odaSicilNo} onChange={alan('odaSicilNo')} />
+                </Satir>
+                <Satir etiket="NACE kodu">
+                  <AlanGirdi value={form.naceKodu} onChange={alan('naceKodu')} placeholder="00.00.00" />
+                </Satir>
+                <Satir etiket="Faaliyet / sektör" genis ipucu="Fatura eşleştirmede kullanılır.">
+                  <AlanGirdi value={form.faaliyetAciklama} onChange={alan('faaliyetAciklama')} />
+                </Satir>
+              </FormGrup>
+            </div>
+          </div>
+
+          <FormGrup baslik="Adres" sutun={1}>
+            <Satir etiket="Adres" hizala="ust">
+              <AlanMetin rows={2} value={form.address} onChange={alan('address')} placeholder="Mahalle, cadde, no, ilçe / il" />
             </Satir>
           </FormGrup>
 
