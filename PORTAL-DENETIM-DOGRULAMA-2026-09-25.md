@@ -304,6 +304,13 @@ eksik değeri **boş metne** çeviriyor.
 **Çözüm:** Adım şemasına `onError: 'stop' | 'continue'`, varsayılan `stop`. Şablonda eksik değişken
 varsa gönderimi reddet.
 
+**UYGULANDI (2026-09-25):** İkisi birden. (1) `executeStep` hatayı artık çağırana bildiriyor;
+`executeStepList` varsayılan olarak DURUYOR — akış yazarı bilerek `onError: 'continue'` demedikçe
+sonraki adım çalışmıyor. (2) `eksikDegiskenler()` eklendi: `send_whatsapp_template`,
+`send_whatsapp_freeform`, `send_email`, `send_sms` adımlarında şablondaki bir değişken çözülemiyorsa
+(ya da boşluktan ibaretse) gönderim yapılmıyor, `[OTOMASYON-GONDERIM-ENGELI]` kaydı düşüyor.
+SIFIR geçerli değer sayılıyor, eksik değil.
+
 ## 41(a). Kısmi mesaj teslimi "başarılı" görünüyor — **DOĞRULANDI**
 
 `whatsapp.controller.ts:1240-1266`: bir numara tutarsa `delivered = true` → **tam başarı**; hatalar
@@ -313,6 +320,11 @@ yalnız `basarili`/`hatali` alıyor.
 **Sonuç:** İki numaralı mükellefte patron hattına gitmez, muhasebe hattına gider → ekran "gönderildi" der.
 İz tamamen kaybolmuyor (her numara için ayrı `communicationLog` satırı yazılıyor) ama görmek için
 sohbeti tek tek açmak gerekiyor.
+
+**UYGULANDI (2026-09-25):** Yanıt `kismiTeslim` sayacı, satır başına `kismi` bayrağı ve
+`numaraSonuclari` (numara + sonuç + hata) taşıyor; kısmi teslimde `error` alanı artık SİLİNMİYOR.
+Duyurular ekranı kısmi teslimde yeşil "başarılı" yerine uyarı gösteriyor:
+*"N mükellefte BAZI numaralara ulaşmadı"*.
 
 ---
 
@@ -471,6 +483,12 @@ ne belgeyi görür ne uyarıyı alır. Gece işi olduğu için kimse fark etmez.
 **Bu, Fatura Merkezi'nde `aeb14fb` ile kapatılan 14(a) bulgusunun birebir aynısı.** Çözüm kalıbı hazır:
 `luca.service.ts:552-568`'deki "teyit edilemedi" deseni.
 
+**UYGULANDI (2026-09-25):** `recordCount` artık GERÇEKTEN saklanandan. Ajanın bildirdiği sayı ile
+yazılan sayı farklıysa fark `saveErrors`'a ve `[TEYIT-EDILEMEDI]` kaydına düşüyor. Ajan kayıt bildirip
+hiçbiri saklanamadıysa iş `done` değil **`failed`**; ekran metni *"PORTALA HICBIRI YAZILAMADI — teyit
+edilemedi"* diyor. Kısmi başarı (bazısı yazıldı) `done` kalıyor, gerçek sayıyla.
+`failed` işlerde otomatik yeniden deneme YOK (kontrol edildi: 4 yer yalnız raporlama için sayıyor).
+
 ## 29. Sağlıklı uzun işler "başarısız" sayılıyor — **DOĞRULANDI**
 
 `automation-runner.service.ts`: `MAX_WAIT_MS = 1 saat` (26) ama `STALE_RUNNING_MS = 2 dakika` (32);
@@ -481,6 +499,11 @@ kontrolü yok**. İş bitince aynı satır kendi sonucuyla eziliyor ve `totalRun
 "sunucu yeniden başlatıldı" yalanı söylüyor; sayaçlar bozuluyor; `failurePolicy: 'pause_after_3'`
 yüzünden **sağlıklı otomasyon kendiliğinden duraklayabiliyor**.
 
+**UYGULANDI (2026-09-25):** İki kapı eklendi. (1) Eşik `MAX_WAIT_MS + 5 dk`ya bağlandı (2 dakika değil).
+(2) `this.running` ile BU süreçte hâlâ çalışan otomasyonlar hiç dokunulmadan atlanıyor; kayda
+*"bu süreçte HÂLÂ SÜRÜYOR — dokunulmadı"* düşüyor. Açılıştaki ilk çağrı `running` boşken yapıldığı için
+gerçek çökme artıkları yine temizleniyor. Hata metni de artık kesin konuşmuyor.
+
 ## 27. Aynı onay iki kez yürütülebiliyor — **DOĞRULANDI**
 
 `ekip-onay.service.ts:165-213`: `findFirst` (okuma) → durum kapısı → `yurut()` (**dış gönderim**) →
@@ -489,6 +512,12 @@ dış gönderimin tamamı kadar uzun. İkinci yol: `tool-executor.service.ts:318
 
 **Sonuç:** Mükellefe **iki kez aynı WhatsApp mesajı**; ya da gönderim başarılı olup yazma hata alırsa
 kayıt PENDING kalır, kullanıcı tekrar basar.
+
+**UYGULANDI (2026-09-25):** Her iki yolda da koşullu `updateMany` ile KAPMA. `ekip-onay.service.ts`
+kaydı önce `EXECUTING`e çekiyor; ikinci çağrı 0 satır güncelleyip *"şu anda yürütülüyor ya da daha önce
+yürütüldü"* diyor. Gönderim patlarsa `PENDING`e geri bırakılıyor (kullanıcı yeniden deneyebilsin).
+`tool-executor.service.ts` yolunda onay önce EXECUTED'a çekiliyor, komut sonra yaratılıyor; komut
+yazılamazsa onay geri bırakılıyor.
 
 ## 28. İki ajan aynı işi alabiliyor — **DOĞRULANDI (etki koşullu)**
 
@@ -510,6 +539,10 @@ findFirst({ where: { id: jobId, tenantId } });
 if (['done','failed','cancelled'].includes(job.status)) return job;   // kapı
 update({ where: { id: jobId }, data: { status: 'cancelled', ... } });  // durum koşulu YOK
 ```
+
+**UYGULANDI (2026-09-25):** `markRunning` koşullu `updateMany` ile kapıyor — ikinci ajan 404 alıp başka
+işe geçiyor, `attempts` bir kez artıyor. `cancelJob` yalnız `done/failed/cancelled` DIŞINDAKİ işleri
+iptal ediyor; iş bu arada bittiyse güncel kayıt aynen dönüyor.
 
 Kullanıcı "İptal"e bastığı anda koşucu `completeJob` çağırırsa iş `cancelled` yazılıp sonuçlar kaybolmuş
 görünebilir, ya da tersi olur. Çözüm aynı: koşullu `updateMany` + `count === 0` ise "iş zaten kapanmış".

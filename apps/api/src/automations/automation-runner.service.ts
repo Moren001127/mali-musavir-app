@@ -19,7 +19,18 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { ACTION_BY_NAME } from './action-catalog';
 import { ActionDispatcherService } from './action-dispatcher.service';
 import { AutomationEventBus } from './automation-event-bus.service';
-import { evaluateCondition, resolveTemplates, ResolveContext } from './template-resolver';
+import { evaluateCondition, resolveTemplates, eksikDegiskenler, ResolveContext } from './template-resolver';
+
+/**
+ * Mükellefe / dışarıya çıkan gönderim araçları — bunlarda eksik şablon değişkeni
+ * gönderimi ENGELLER (portal denetimi bulgu 31). İç adımlar etkilenmez.
+ */
+const DIS_GONDERIM_ARACLARI = new Set([
+  'send_whatsapp_template',
+  'send_whatsapp_freeform',
+  'send_email',
+  'send_sms',
+]);
 
 const MAX_FOR_EACH_ITEMS = 1000;
 const MAX_NESTED_DEPTH = 10;
@@ -256,7 +267,19 @@ export class AutomationRunnerService implements OnModuleInit {
    * 'failure' olarak işaretleyip ilgili otomasyonun son durumunu da güncelliyoruz.
    */
   private async closeStaleRunningRuns(): Promise<void> {
-    const cutoff = new Date(Date.now() - STALE_RUNNING_MS);
+    // 2026-09-25 (portal denetimi bulgu 29) — SAĞLIKLI UZUN İŞLERİ ARTIK ÖLDÜRMÜYOR.
+    //   Eskiden eşik STALE_RUNNING_MS (2 DAKİKA) idi ve sahip kontrolü yoktu: bekleme adımı
+    //   olan, 200 mükellefli döngü çalıştıran ya da uzun AI adımı olan HER çalışma 2 dakikayı
+    //   aşınca "Sunucu yeniden başlatıldı" yalanıyla 'failure' yazılıyordu. İş gerçekten
+    //   bitince aynı satır kendi sonucuyla eziliyor ama `totalRuns` İKİ KEZ artmış oluyordu;
+    //   `failurePolicy: 'pause_after_3'` yüzünden sağlıklı otomasyon kendiliğinden duraklıyordu.
+    //   İki kapı eklendi:
+    //     1) Eşik, bir çalışmanın sürebileceği en uzun süreye (MAX_WAIT_MS) + pay bağlandı.
+    //     2) BU SÜREÇTE hâlâ çalışan otomasyonlar (`this.running`) hiç dokunulmadan atlanıyor.
+    //   Açılıştaki ilk çağrı (`onModuleInit`) `this.running` boşken yapıldığı için gerçek
+    //   çökme artıkları yine temizleniyor.
+    const esik = Math.max(STALE_RUNNING_MS, MAX_WAIT_MS + 5 * 60 * 1000);
+    const cutoff = new Date(Date.now() - esik);
     try {
       const stale = await this.prisma.automationRun.findMany({
         where: { status: 'running', startedAt: { lt: cutoff } },
@@ -264,18 +287,27 @@ export class AutomationRunnerService implements OnModuleInit {
       });
       if (stale.length === 0) return;
 
+      const calisanlar = stale.filter((r) => this.running.has(r.automationId));
+      if (calisanlar.length) {
+        this.logger.log(
+          `Asılı run taraması: ${calisanlar.length} çalışma bu süreçte HÂLÂ SÜRÜYOR — dokunulmadı.`,
+        );
+      }
+      const kapatilacak = stale.filter((r) => !this.running.has(r.automationId));
+      if (kapatilacak.length === 0) return;
+
       await this.prisma.automationRun.updateMany({
-        where: { id: { in: stale.map((r) => r.id) } },
+        where: { id: { in: kapatilacak.map((r) => r.id) } },
         data: {
           status: 'failure',
           finishedAt: new Date(),
-          errorMessage: 'Sunucu yeniden başlatıldı — çalışma yarıda kaldı.',
-          summary: 'Çalışma sunucu yeniden başlatılınca kesildi.',
+          errorMessage: 'Çalışma yarıda kaldı (sunucu yeniden başlatılmış ya da süreç düşmüş olabilir).',
+          summary: `Çalışma ${Math.round(esik / 60000)} dakikadır sürüyordu ve süreç tarafından sahiplenilmiyor — kesildi.`,
         },
       });
 
       // Gerçek (dry-run olmayan) kesik run'lar için otomasyon sayaçlarını da düzelt.
-      const realStale = stale.filter(
+      const realStale = kapatilacak.filter(
         (r) => (r.triggerPayload as any)?._mode !== 'dry-run',
       );
       for (const r of realStale) {
@@ -291,7 +323,7 @@ export class AutomationRunnerService implements OnModuleInit {
           })
           .catch(() => undefined);
       }
-      this.logger.warn(`Boot temizliği: ${stale.length} asılı 'running' run kapatıldı.`);
+      this.logger.warn(`Asılı run temizliği: ${kapatilacak.length} 'running' run kapatıldı (eşik ${Math.round(esik / 60000)} dk).`);
     } catch (err: any) {
       this.logger.error(`Asılı run temizliği hatası: ${err.message}`);
     }
@@ -676,6 +708,20 @@ export class AutomationRunnerService implements OnModuleInit {
       const step = steps[i];
       const result = await this.executeStep(step, ctx, dispatchCtx, log, opts);
       totalCost += result.cost;
+
+      // 2026-09-25 (portal denetimi bulgu 31) — HATALI ADIMDAN SONRA VARSAYILAN: DUR.
+      //   Eskiden her adım hatası yutulup döngü devam ediyordu. Somut sonuç: "Mihsap'tan
+      //   fatura çek" adımı token süresi dolduğu için patlar, hemen ardından "WhatsApp gönder"
+      //   çalışır ve mükellefe "Sayın , döneminde faturanız işlendi" gider — boş alanlarla,
+      //   geri alınamaz. Mihsap token süresinin dolması bu projede bilinen ve sık bir durum.
+      //   Akış yazarı bilerek "devam et" demek isterse adıma `onError: 'continue'` koyar.
+      if (result.hata && String(step?.onError || 'stop') !== 'continue') {
+        throw new Error(
+          `Adım başarısız (${step?.id ?? `step_${i + 1}`}/${step?.tool}): ${result.hata}. ` +
+            'Sonraki adımlar ÇALIŞTIRILMADI — eksik veriyle mükellefe mesaj gitmesin diye. ' +
+            "Bilerek devam edilmesi gerekiyorsa adıma onError: 'continue' ekleyin.",
+        );
+      }
     }
     return { cost: totalCost };
   }
@@ -686,7 +732,7 @@ export class AutomationRunnerService implements OnModuleInit {
     dispatchCtx: { tenantId: string; userId: string; automationId: string },
     log: StepLog[],
     opts: { depth: number; dryRun: boolean },
-  ): Promise<{ cost: number; output?: unknown }> {
+  ): Promise<{ cost: number; output?: unknown; hata?: string }> {
     const stepId = step.id ?? `step_${log.length + 1}`;
     const tool = step.tool;
     const action = ACTION_BY_NAME[tool];
@@ -704,6 +750,22 @@ export class AutomationRunnerService implements OnModuleInit {
 
     // Args'ları çöz (templates)
     const args = resolveTemplates(step.args ?? {}, ctx);
+
+    // 2026-09-25 (portal denetimi bulgu 31) — EKSİK DEĞİŞKENLE DIŞ GÖNDERİM YOK.
+    //   `template-resolver` çözülemeyen değeri boş metne çeviriyor; mükellefe
+    //   "Sayın , döneminde faturanız işlendi" gidiyordu. İç adımlarda boş değer zararsız
+    //   olabilir, dışarı çıkan mesajda değil — geri alınamaz.
+    if (DIS_GONDERIM_ARACLARI.has(tool)) {
+      const eksik = eksikDegiskenler(step.args ?? {}, ctx);
+      if (eksik.length) {
+        const mesaj =
+          `Gönderim engellendi (${stepId}/${tool}): şablondaki şu değerler boş — ${eksik.join(', ')}. ` +
+          'Önceki adım başarısız olmuş olabilir. Eksik alanla mesaj gönderilmedi.';
+        log.push({ stepId, tool, input: args, error: mesaj, ms: 0, ts: new Date().toISOString() });
+        this.logger.warn(`[OTOMASYON-GONDERIM-ENGELI] ${mesaj}`);
+        return { cost: 0, hata: mesaj };
+      }
+    }
 
     // FLOW aksiyonları — burada yorumlanır
     if (action.category === 'FLOW') {
@@ -760,9 +822,9 @@ export class AutomationRunnerService implements OnModuleInit {
         ms,
         ts: new Date().toISOString(),
       });
-      // Tek bir step hatası tüm akışı durdurmasın — partial mode için devam et
+      // Hata artık çağırana BİLDİRİLİYOR (bulgu 31); durup durmayacağına executeStepList karar verir.
       this.logger.warn(`Step hata: ${stepId}/${tool}: ${err?.message}`);
-      return { cost: action.estimatedClaudeCostPerCall };
+      return { cost: action.estimatedClaudeCostPerCall, hata: err?.message ?? String(err) };
     }
   }
 

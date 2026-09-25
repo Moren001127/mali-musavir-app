@@ -1209,6 +1209,7 @@ export class WhatsAppController {
       const preview = await this.buildPortalMessagePreview(tenantId, approval.body || body, { createApproval: false });
       let basarili = 0;
       let hatali = 0;
+      let kismiTeslim = 0; // bazı numaralara gitti, bazılarına gitmedi (denetim bulgusu 41a)
       const results: any[] = [];
 
       // Toplu gönderimde WhatsApp ban koruması: alıcılar arası kısa gecikme
@@ -1243,6 +1244,12 @@ export class WhatsAppController {
           else errors.push(`${phone}: ${result.error || 'WhatsApp gonderimi basarisiz.'}`);
         }
 
+        // 2026-09-25 (portal denetimi bulgu 41a) — KISMİ TESLİM ARTIK "BAŞARILI" DEĞİL.
+        //   Eskiden bir numara tutunca `delivered = true` olup TAM BAŞARI sayılıyordu ve
+        //   `errors` siliniyordu. İki numaralı mükellefte patron hattına gitmeyip muhasebe
+        //   hattına giden mesaj ekranda "gönderildi" görünüyordu.
+        const kismi = delivered && errors.length > 0;
+        if (kismi) kismiTeslim++;
         delivered ? basarili++ : hatali++;
         const logContent = preview.template
           ? `[Sablon: ${preview.template}] ${(row.templateParams || []).join(' | ')}`
@@ -1261,7 +1268,16 @@ export class WhatsAppController {
             },
           });
         }
-        results.push({ taxpayerId: row.id, ad: row.ad, phones: row.phones, ok: delivered, error: delivered ? undefined : errors.join(' | ') });
+        results.push({
+          taxpayerId: row.id,
+          ad: row.ad,
+          phones: row.phones,
+          ok: delivered,
+          // Kısmi teslimde de hata listesi KORUNUYOR; ön yüz hangi numaraya gitmediğini görsün.
+          kismi,
+          error: errors.length ? errors.join(' | ') : undefined,
+          numaraSonuclari: phoneResults,
+        });
       }
 
       if (approval.approvalId) {
@@ -1281,7 +1297,7 @@ export class WhatsAppController {
         });
       }
 
-      return { ...preview, basarili, hatali, results, previewId: approval.previewId || preview.previewId || null };
+      return { ...preview, basarili, hatali, kismiTeslim, results, previewId: approval.previewId || preview.previewId || null };
     }
 
     const preview = await this.previewPortalMessage(req, body);

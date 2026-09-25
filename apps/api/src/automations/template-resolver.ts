@@ -162,6 +162,37 @@ function resolveBuiltIn(key: string, ctx: ResolveContext): unknown {
  * Bir koşul nesnesini değerlendirir (branch_if için).
  * { left, op, right } — left/right önce template-resolve edilmiş olmalı.
  */
+/**
+ * Çözülemeyen değişkenleri bulur — 2026-09-25 (portal denetimi bulgu 31).
+ *
+ * `resolveString` eksik değeri sessizce BOŞ METNE çeviriyor. Bu, iç hesaplarda zararsız
+ * ama dış gönderimde değil: mükellefe **"Sayın , döneminde faturanız işlendi"** gidiyordu.
+ * Gönderim adımları bu listeyi kontrol edip doluysa göndermeyi reddeder.
+ *
+ * @returns çözülemeyen değişken yolları (tekrarsız). Boş dizi = her şey yerinde.
+ */
+export function eksikDegiskenler(value: unknown, ctx: ResolveContext): string[] {
+  const eksik = new Set<string>();
+  const tara = (v: unknown) => {
+    if (v === null || v === undefined) return;
+    if (typeof v === 'string') {
+      for (const m of v.matchAll(TEMPLATE_PATTERN)) {
+        const yol = String(m[1]).trim();
+        const deger = lookup(yol, ctx);
+        // Boş metin de eksiktir: "Sayın {{mukellef.unvan}}" → "Sayın " aynı sonucu doğurur.
+        if (deger === undefined || deger === null || (typeof deger === 'string' && deger.trim() === '')) {
+          eksik.add(yol);
+        }
+      }
+      return;
+    }
+    if (Array.isArray(v)) { for (const x of v) tara(x); return; }
+    if (typeof v === 'object') { for (const x of Object.values(v as Record<string, unknown>)) tara(x); }
+  };
+  tara(value);
+  return Array.from(eksik);
+}
+
 export function evaluateCondition(
   condition: { left: unknown; op: string; right?: unknown },
 ): boolean {

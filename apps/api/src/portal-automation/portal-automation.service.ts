@@ -1573,8 +1573,13 @@ export class PortalAutomationService {
     });
     if (!job) throw new NotFoundException('Job bulunamadi');
     if (['done', 'failed', 'cancelled'].includes(job.status)) return job;
-    return (this.prisma as any).portalAutomationJob.update({
-      where: { id: jobId },
+    // 2026-09-25 (portal denetimi bulgu 28, kardes desen) — IPTAL KOSULLU.
+    //   Eskiden kapi okuma ile, yazma kosulsuzdu: kullanici "Iptal"e bastigi anda kosucu
+    //   completeJob cagirirsa is 'cancelled' yazilip TAMAMLANMIS is kayboluyordu
+    //   (sonuclar yazilmis ama durum iptal gorunuyor). Artik yalniz hala bitmemis isler
+    //   iptal edilir; bittiyse guncel kayit aynen doner.
+    const iptal = await (this.prisma as any).portalAutomationJob.updateMany({
+      where: { id: jobId, tenantId, status: { notIn: ['done', 'failed', 'cancelled'] } },
       data: {
         status: 'cancelled',
         errorMessage: reason.slice(0, 2000),
@@ -1586,6 +1591,10 @@ export class PortalAutomationService {
         }),
       },
     });
+    if (!iptal || iptal.count === 0) {
+      this.logger.warn(`[IS-IPTAL] ${jobId} iptal edilemedi — is bu arada tamamlanmis olabilir.`);
+    }
+    return (this.prisma as any).portalAutomationJob.findFirst({ where: { id: jobId, tenantId } });
   }
 
   async getCredentialForJob(tenantId: string, jobId: string) {
@@ -1649,8 +1658,13 @@ export class PortalAutomationService {
     const message = mode.startsWith('local')
       ? 'Yerel ajan isi aldi, giris hazirligi yapiliyor.'
       : 'Runner isi aldi, giris hazirligi yapiliyor.';
-    return (this.prisma as any).portalAutomationJob.update({
-      where: { id: jobId },
+    // 2026-09-25 (portal denetimi bulgu 28) — IS KAPMA KOSULLU.
+    //   Eskiden update'in where'inde durum kosulu YOKTU: iki ajan ayni 'pending' isi
+    //   okuyup ikisi de 'running' yazabiliyordu (targetDeviceId null isler her cihaza
+    //   gosteriliyor). Ayni is iki kez calisinca cift cekim / cift fis riski dogar.
+    //   Koşullu updateMany ile ilk kapan kazanir; ikinci ajan 404 alip baska ise gecer.
+    const kapma = await (this.prisma as any).portalAutomationJob.updateMany({
+      where: { id: jobId, tenantId, status: 'pending' },
       data: {
         status: 'running',
         startedAt: new Date(),
@@ -1663,6 +1677,11 @@ export class PortalAutomationService {
         }),
       },
     });
+    if (!kapma || kapma.count === 0) {
+      this.logger.warn(`[IS-KAPMA] ${jobId} baska bir ajan tarafindan alinmis (cihaz: ${deviceId || 'bilinmiyor'}).`);
+      throw new NotFoundException('Bu isi baska bir ajan aldi');
+    }
+    return (this.prisma as any).portalAutomationJob.findFirst({ where: { id: jobId, tenantId } });
   }
 
   async updateJobProgress(tenantId: string, jobId: string, progress: JobProgressUpdate) {
@@ -1802,12 +1821,26 @@ export class PortalAutomationService {
       recordCount += dvdKayit;
     }
 
-    const finalCount = Number.isFinite(Number(input?.recordCount)) ? Number(input.recordCount) : recordCount;
+    // 2026-09-25 (portal denetimi bulgu 30) — SAYI ARTIK GERÇEKTEN SAKLANANDAN.
+    //   Eskiden `input.recordCount` (İSTEMCİNİN bildirdiği sayı) esastı. Depo erişilemezken
+    //   40 e-Tebligat indirilip hiçbiri saklanamıyor, ekran yine "40 kayit portala yazildi"
+    //   diyordu. Tebligat bildirimi de üretilmiyordu (storageKey şartı) → kullanıcı ne belgeyi
+    //   görüyor ne uyarıyı alıyordu; gece işi olduğu için kimse fark etmiyordu.
+    //   Bu, Fatura Merkezi'nde aeb14fb ile kapatılan 14(a) bulgusunun birebir aynısı.
+    const bildirilen = Number.isFinite(Number(input?.recordCount)) ? Number(input.recordCount) : null;
+    const finalCount = recordCount;
+    if (bildirilen != null && bildirilen !== recordCount) {
+      const fark = `ajan ${bildirilen} kayit bildirdi, portala ${recordCount} yazildi`;
+      saveErrors.push(`Sayi uyusmuyor: ${fark}.`.slice(0, 300));
+      this.logger.warn(`[TEYIT-EDILEMEDI] completeJob ${jobId}: ${fark}.`);
+    }
     await this.markCredentialSuccess(job).catch(() => {});
     let doneMessage = input?.result?.validationOnly
       ? 'Portal girisi dogrulandi.'
       : finalCount > 0
       ? `${finalCount} kayit portala yazildi.`
+      : bildirilen
+      ? `Ajan ${bildirilen} kayit bildirdi ama PORTALA HICBIRI YAZILAMADI — teyit edilemedi.`
       : 'GIB sorgusu tamamlandi, indirilecek kayit bulunamadi.';
     let resultData: any = input?.result || { declarations: declarations.length, documents: documents.length };
     if (saveErrors.length) {
@@ -1818,15 +1851,24 @@ export class PortalAutomationService {
       }
       doneMessage = `${doneMessage} (${saveErrors.length} kayit saklanamadi)`;
     }
+    // Ajan kayit bildirdi ama portala HICBIRI yazilamadiysa bu basarili bir is degildir.
+    // Kismi basari (bazisi yazildi) 'done' kalir; ekranda saveErrors ile gorunur.
+    const tamamenBasarisiz = !!bildirilen && bildirilen > 0 && finalCount === 0;
+    if (tamamenBasarisiz) {
+      this.logger.error(`[TEYIT-EDILEMEDI] completeJob ${jobId}: ${bildirilen} kayit bildirildi, HICBIRI saklanamadi — is 'failed'.`);
+    }
     const updated = await (this.prisma as any).portalAutomationJob.update({
       where: { id: jobId },
       data: {
-        status: 'done',
+        status: tamamenBasarisiz ? 'failed' : 'done',
+        errorMessage: tamamenBasarisiz
+          ? `Ajan ${bildirilen} kayit bildirdi ama hicbiri saklanamadi. ${saveErrors.slice(0, 3).join(' | ')}`.slice(0, 2000)
+          : undefined,
         result: resultData,
         recordCount: finalCount,
         finishedAt: new Date(),
         payload: this.withJobProgress(job.payload, {
-          step: 'done',
+          step: tamamenBasarisiz ? 'failed' : 'done',
           message: doneMessage,
           records: finalCount,
         }),

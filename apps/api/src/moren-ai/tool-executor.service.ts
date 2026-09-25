@@ -3228,24 +3228,36 @@ export class ToolExecutorService {
         return { error: 'Mihsap komutu için payload.ay ve payload.mukellefler zorunlu.' };
       }
     }
-    const cmd = await (this.prisma as any).agentCommand.create({
-      data: {
-        tenantId: ctx.tenantId,
-        agent,
-        action,
-        payload,
-        createdBy: ctx.userId || null,
-      },
+    // 2026-09-25 (portal denetimi bulgu 27) — ÖNCE KAP, SONRA KOMUT OLUŞTUR.
+    //   Eskiden komut yaratılıp SONRA onay EXECUTED yapılıyordu; aynı onayla iki kez
+    //   çağrılırsa İKİ agent komutu oluşuyordu (mükellefe iki kez aynı iş).
+    //   Koşullu updateMany kapma sağlar: ikinci çağrı 0 satır günceller ve geri döner.
+    const kapma = await (this.prisma as any).ownerApprovalRequest.updateMany({
+      where: { id: approval.id, status: 'PENDING' },
+      data: { status: 'EXECUTED', approvedAt: new Date(), consumedAt: new Date(), responseText: confirmationRaw },
     });
-    await (this.prisma as any).ownerApprovalRequest.update({
-      where: { id: approval.id },
-      data: {
-        status: 'EXECUTED',
-        approvedAt: new Date(),
-        consumedAt: new Date(),
-        responseText: confirmationRaw,
-      },
-    });
+    if (!kapma || kapma.count === 0) {
+      return { error: `Bu onay zaten kullanıldı: ${previewId}. Tekrar komut oluşturulmadı.`, requiresConfirmation: true, previewId };
+    }
+
+    let cmd: any;
+    try {
+      cmd = await (this.prisma as any).agentCommand.create({
+        data: {
+          tenantId: ctx.tenantId,
+          agent,
+          action,
+          payload,
+          createdBy: ctx.userId || null,
+        },
+      });
+    } catch (e: any) {
+      // Komut yazılamadıysa onayı geri bırak — kullanıcı yeniden deneyebilsin.
+      await (this.prisma as any).ownerApprovalRequest
+        .update({ where: { id: approval.id }, data: { status: 'PENDING', consumedAt: null } })
+        .catch(() => null);
+      throw e;
+    }
     await this.writeOwnerApprovalAudit(ctx, 'EXECUTE', approval.id, {
       previewId,
       commandId: cmd.id,

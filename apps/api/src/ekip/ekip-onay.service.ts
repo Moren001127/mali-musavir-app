@@ -190,6 +190,25 @@ export class EkipOnayService {
     const ajanId = String(kayit.agent || '').replace(/^ekip:/, '');
     const ctx = { tenantId: params.tenantId, userId: params.userId ?? null, taxpayerId };
 
+    // 2026-09-25 (portal denetimi bulgu 27) — ONAYI ÖNCE KAPIYORUZ.
+    //   Eskiden: findFirst (okuma) → durum kapısı → yurut() (DIŞ GÖNDERİM) → update.
+    //   Kapı ile yazma arasındaki boşluk dış gönderimin tamamı kadar uzundu; aynı onaya
+    //   iki kez basmak (portal düğmesi + sesli komut, ya da çift tıklama) mükellefe
+    //   AYNI WhatsApp mesajını iki kez gönderiyordu. Artık koşullu updateMany ile kayıt
+    //   'EXECUTING'e çekiliyor; ikinci çağrı 0 satır güncelleyip geri dönüyor.
+    const kapma = await (this.prisma as any).ownerApprovalRequest.updateMany({
+      where: { id: kayit.id, status: 'PENDING' },
+      data: { status: 'EXECUTING', approvedAt: new Date() },
+    });
+    if (!kapma || kapma.count === 0) {
+      this.logger.warn(`[ONAY-CIFT] ${kayit.previewId} zaten yürütülüyor ya da yürütülmüş — ikinci çağrı reddedildi.`);
+      return {
+        ok: false,
+        error: 'Bu onay şu anda yürütülüyor ya da daha önce yürütüldü. Tekrar göndermeyi önlemek için durduruldu.',
+        previewId: kayit.previewId,
+      };
+    }
+
     let sonuc: any;
     try {
       sonuc = await this.yurut(name, payload, ctx, ajanId, isId);
@@ -201,6 +220,7 @@ export class EkipOnayService {
     await (this.prisma as any).ownerApprovalRequest.update({
       where: { id: kayit.id },
       data: {
+        // Başarısızsa PENDING'e geri bırakılır ki kullanıcı yeniden deneyebilsin.
         status: basarili ? 'EXECUTED' : 'PENDING',
         approvedAt: new Date(),
         consumedAt: basarili ? new Date() : null,

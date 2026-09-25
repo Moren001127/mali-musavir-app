@@ -385,9 +385,15 @@ export default function DuyurularPage() {
     });
   };
 
-  const doSend = async (ids: string[], message: string): Promise<{ basarili: number; hatali: number }> => {
+  // 2026-09-25 (denetim bulgusu 41a): kısmi teslim de görünsün. İki numaralı mükellefte
+  // patron hattına gitmeyip muhasebe hattına giden mesaj ekranda "gönderildi" görünüyordu.
+  const doSend = async (ids: string[], message: string): Promise<{ basarili: number; hatali: number; kismiTeslim: number }> => {
     const resp = await api.post('/whatsapp/portal-message/send', { taxpayerIds: ids, message });
-    return { basarili: resp.data?.basarili || 0, hatali: resp.data?.hatali || 0 };
+    return {
+      basarili: resp.data?.basarili || 0,
+      hatali: resp.data?.hatali || 0,
+      kismiTeslim: resp.data?.kismiTeslim || 0,
+    };
   };
 
   const sendPortalMessage = async () => {
@@ -396,9 +402,11 @@ export default function DuyurularPage() {
     if (!window.confirm(`"${groupLabel}" grubundaki ${recipients.length} mükellefe WhatsApp duyurusu gönderilecek. Devam edilsin mi?`)) return;
     setSending(true);
     try {
-      const { basarili, hatali } = await doSend(recipients.map((t) => t.id), plainMessage);
+      const { basarili, hatali, kismiTeslim } = await doSend(recipients.map((t) => t.id), plainMessage);
       addHistory(basarili, hatali, 'WhatsApp');
-      toast.success(`${basarili} gönderildi, ${hatali} hatalı`);
+      const kismiNot = kismiTeslim > 0 ? ` · ${kismiTeslim} mükellefte BAZI numaralara ulaşmadı` : '';
+      if (kismiTeslim > 0) toast(`${basarili} gönderildi, ${hatali} hatalı${kismiNot}`, { duration: 12000, icon: '⚠️' });
+      else toast.success(`${basarili} gönderildi, ${hatali} hatalı`);
     } catch (error: any) {
       toast.error(error?.response?.data?.message || 'Duyuru gönderilemedi');
     } finally { setSending(false); }
