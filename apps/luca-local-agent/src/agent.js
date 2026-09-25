@@ -558,6 +558,41 @@ async function logJob(jobId, line) {
   }
 }
 
+/**
+ * SAYFA OTURMASINI BEKLE (2026-09-25) — sabit tampon yerine "hazir olunca devam et".
+ *
+ * NEDEN: `page.goto(..., domcontentloaded)` Luca frameset'i yuklenmeden doner, bu yuzden
+ * dort yerde sabit tampon vardi (4500 + 4500 + 3000 + 3500 = 15,5 saniye). Denetim olcumu
+ * (2026-09-25): tek isde 40-70 saniye kor bekleme birikiyordu, Luca'nin kendi payi 10-20 sn.
+ *
+ * GUVENLIK: tavan ESKI SURENIN AYNISI. Frame'ler yerlesince erken cikar, yerlesmezse eskisi
+ * kadar bekler — hicbir bekleme UZAMAZ. Olcemedigimizde beklemeye devam eder.
+ * Imza olarak frame URL'leri kullanilir: frame'ler yuklenene kadar about:blank olup sonra
+ * degistigi icin "yuklendi mi" sorusunu dogru yanitlar (sadece frame SAYISI yaniltici olurdu).
+ */
+async function beklePageOturma(page, maxMs) {
+  const tavan = Math.max(0, Number(maxMs) || 0);
+  if (!tavan) return;
+  const t0 = Date.now();
+  const imzaAl = () => {
+    try {
+      return `${page.url()}|` + page.frames().map((f) => { try { return f.url(); } catch { return 'x'; } }).join(',');
+    } catch { return null; }
+  };
+  let onceki = imzaAl();
+  let kararli = 0;
+  while (Date.now() - t0 < tavan) {
+    await page.waitForTimeout(120).catch(() => {});
+    const simdi = imzaAl();
+    if (simdi === null) continue;                    // olcemedik -> eski davranisa guven
+    if (simdi === onceki) {
+      // Iki ardisik olcum ayni VE hic about:blank frame kalmamis -> sayfa oturdu.
+      if (kararli >= 1 && !/about:blank/.test(simdi)) return;
+      kararli++;
+    } else { kararli = 0; onceki = simdi; }
+  }
+}
+
 async function waitForJobFinalStatus(jobId, timeoutMs = JOB_TIMEOUT) {
   const started = Date.now();
   let lastStatus = '';
@@ -928,9 +963,20 @@ function looksLikeValidRuntime(code) {
   return typeof code === 'string' && code.length > 100_000 && /AGENT_VERSION\s*=/.test(code);
 }
 
+// RUNTIME ONBELLEGI (2026-09-25) — her isde sunucudan 703 KB yeniden indiriliyordu
+// (`?v=${Date.now()}` onbellegi bypass ediyor). Denetim olcumu: is basina 0,5-2 sn + ag.
+// Oto-guncelleme korunuyor: onbellek 5 dakika yasar, sonra sunucu yeniden sorulur; ajan
+// yeniden baslayinca da sifirlanir. Yani deploy edilen yeni runtime en gec 5 dk icinde yayilir.
+const RUNTIME_ONBELLEK_MS = 5 * 60 * 1000;
+let _runtimeOnbellek = { kod: null, zaman: 0 };
+
 async function loadMorenRuntimeCode() {
   const localRuntimePath = path.resolve(__dirname, '..', '..', 'api', 'public', 'agent-runtime.js');
   const localExists = fs.existsSync(localRuntimePath);
+
+  if (_runtimeOnbellek.kod && Date.now() - _runtimeOnbellek.zaman < RUNTIME_ONBELLEK_MS) {
+    return _runtimeOnbellek.kod;
+  }
 
   // DUZELTME (2026-06-08): Varsayilan artik SUNUCU-ONCELIKLI (oto-guncelleme).
   // Boylece deploy edilen agent-runtime.js tum makinelere otomatik yayilir; her
@@ -953,6 +999,7 @@ async function loadMorenRuntimeCode() {
     if (looksLikeValidRuntime(code)) {
       const v = extractMorenRuntimeVersion(code);
       log.info(`Sunucudan agent-runtime.js cekildi (${Math.round(code.length / 1024)}KB, v${v || '?'}).`);
+      _runtimeOnbellek = { kod: code, zaman: Date.now() };
       return code;
     }
     log.warn('Sunucudan gelen agent-runtime.js gecersiz gorunuyor; yerele dusuluyor.');
@@ -1032,19 +1079,31 @@ async function nativeClickText(page, payload = {}) {
             return true;
           }
         };
-        const candidates = [];
-        for (const el of document.querySelectorAll('*')) {
-          const tag = String(el.tagName || '').toUpperCase();
-          if (/^(HTML|HEAD|BODY|SCRIPT|STYLE|META|LINK|TITLE)$/.test(tag)) continue;
-          if (!allowHidden && !visible(el)) continue;
-          const own = norm(el.textContent || el.value || el.getAttribute?.('title') || '');
-          if (!own) continue;
-          if (!exact && own.length > target.length * 5 + 20) continue;
-          const ok = exact ? own === target : (own === target || own.includes(target));
-          if (!ok) continue;
-          const score = (el.children?.length ? 0 : 10) + (isActionable(el, true) ? 5 : 0) - Math.max(0, own.length - target.length);
-          candidates.push({ el, score });
-        }
+        // HIZ (2026-09-25): eskiden HER tık için `querySelectorAll('*')` ile TÜM elemanlar
+        // taranıp her birine getBoundingClientRect + getComputedStyle çağrılıyordu (layout
+        // thrashing). Denetim ölçümü: bulunamayan tek bir düğme 6-8 saniye + onlarca tam
+        // tarama demekti. Artık ÖNCE tıklanabilir/metin taşıyan dar küme taranır; orada
+        // bulunamazsa ESKİ tam tarama aynen çalışır → sonuç değişmez, tipik durumda hızlanır.
+        const DAR = 'a,button,input,select,textarea,td,th,span,font,b,strong,label,li,option,p,h1,h2,h3,h4,[onclick],[role="button"]';
+        const topla = (liste) => {
+          const out = [];
+          for (const el of liste) {
+            const tag = String(el.tagName || '').toUpperCase();
+            if (/^(HTML|HEAD|BODY|SCRIPT|STYLE|META|LINK|TITLE)$/.test(tag)) continue;
+            if (!allowHidden && !visible(el)) continue;
+            const own = norm(el.textContent || el.value || el.getAttribute?.('title') || '');
+            if (!own) continue;
+            if (!exact && own.length > target.length * 5 + 20) continue;
+            const ok = exact ? own === target : (own === target || own.includes(target));
+            if (!ok) continue;
+            const score = (el.children?.length ? 0 : 10) + (isActionable(el, true) ? 5 : 0) - Math.max(0, own.length - target.length);
+            out.push({ el, score });
+          }
+          return out;
+        };
+        let candidates = [];
+        try { candidates = topla(document.querySelectorAll(DAR)); } catch {}
+        if (!candidates.length) candidates = topla(document.querySelectorAll('*'));
         candidates.sort((a, b) => b.score - a.score);
         return candidates[0]?.el ? clickable(candidates[0].el) : null;
       },
@@ -1407,7 +1466,7 @@ async function runJobWithMorenRuntime(job) {
           await logJob(jobId, msg).catch(() => {});
           await page.goto(LUCA_CLASSIC_ENTRY, { waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(() => {});
         });
-      await page.waitForTimeout(4500).catch(() => {});
+      await beklePageOturma(page, 4500);
       currentUrl = page.url();
     }
     if (/^https:\/\/auygs\.luca\.com\.tr\/Luca\/giris\.do/i.test(currentUrl || '')) {
@@ -1419,7 +1478,7 @@ async function runJobWithMorenRuntime(job) {
           await logJob(jobId, msg).catch(() => {});
           await page.goto(LUCA_CLASSIC_ENTRY, { waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(() => {});
         });
-      await page.waitForTimeout(4500).catch(() => {});
+      await beklePageOturma(page, 4500);
       currentUrl = page.url();
     }
     // SSO toparlama sonrasi HALA login sayfasindaysak (cerez dusmus): kayitli
@@ -1448,7 +1507,7 @@ async function runJobWithMorenRuntime(job) {
         .catch(async () => {
           await page.goto(LUCA_CLASSIC_ENTRY, { waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(() => {});
         });
-      await page.waitForTimeout(3000).catch(() => {});
+      await beklePageOturma(page, 3000);
       currentUrl = page.url();
     }
     // Captcha ekrani her adreste cikabilir (main.erp dahil) -> once onu coz.
@@ -2031,7 +2090,7 @@ async function preWarmBrowserSession() {
           .catch(async () => {
             await page.goto(LUCA_CLASSIC_ENTRY, { waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(() => {});
           });
-        await page.waitForTimeout(3500).catch(() => {});
+        await beklePageOturma(page, 3500);
       } else if (GIRIS_VEYA_KOD_EKRANI.test(currentUrl)) {
         // Giriş/kod ekranında yeniden yükleme YOK: kod sayfası bir form yanıtıdır, yenilemek kodu
         // eskitir/yeniden gönderir. loginToLuca zaten giriş sayfasına kendisi gider.

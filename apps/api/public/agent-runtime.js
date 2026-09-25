@@ -92,7 +92,7 @@
   // v1.47.82 (2026-09-23): İŞLETME Fiş Kes — Luca'nın gönderim sonrası mesajı (lucaNotYaz) önce/sonra FARKIYLA loga
   //   yazılır (sayfa metni 4.200 karakterde kesiliyor, mesajlar sonda kalıyordu); sayfanın son 1.200 karakteri de yazılır.
   // v1.47.83 (2026-09-23): İŞLETME Fiş Kes — KOD alanı Luca biçiminde "614 | 5/10" yazılır (yalnız "614" sessizce reddediliyordu).
-  const AGENT_VERSION = '1.47.84';
+  const AGENT_VERSION = '1.48.0';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -523,6 +523,47 @@
       }
     } catch {}
     return docs;
+  }
+
+  /**
+   * TIK SONRASI OTURMA (2026-09-25) — sabit uyku yerine "hazır olunca devam et".
+   *
+   * NEDEN: denetimde ölçüldü — bu dosyada 239 sabit bekleme var (toplam 195 sn) ve tek fiş
+   * kesme işinde 40-70 saniye KÖR bekleme birikiyordu; Luca'nın kendi yanıt süresi 10-20 sn.
+   * Yani yavaşlığın baskın kaynağı Luca değil, bizim beklemelerimizdi. Rapor/form AÇMA
+   * yolları zaten akıllı bekliyordu (waitUntil), ama TIK SONRASI oturma beklemeleri
+   * neredeyse tamamen kördü (24 tık noktası × 800-2000 ms).
+   *
+   * GÜVENLİK: tavan ESKİ SÜRENİN AYNISI. Sayfa kararlı hale gelirse erken çıkar, gelmezse
+   * eskisi kadar bekler — yani hiçbir bekleme UZAMAZ, en kötü durumda eski davranış.
+   * Ölçemediğimiz durumda (frame erişimi kapalı) beklemeye devam eder.
+   */
+  async function lucaSettle(maxMs) {
+    const tavan = Math.max(0, Number(maxMs) || 0);
+    if (!tavan) return;
+    const t0 = Date.now();
+    const imzaAl = () => {
+      try {
+        const docs = lucaDocuments();
+        let s = docs.length + '|';
+        for (const d of docs) {
+          try { s += (d.readyState || '?') + ':' + ((d.body && d.body.childElementCount) || 0) + ','; } catch { s += 'x,'; }
+        }
+        return s;
+      } catch { return null; }
+    };
+    let onceki = imzaAl();
+    let kararli = 0;
+    while (Date.now() - t0 < tavan) {
+      await sleep(80);
+      const simdi = imzaAl();
+      if (simdi === null) continue;                  // ölçemedik → eski davranışa güven
+      if (simdi === onceki) {
+        // İki ardışık ölçüm aynı VE hiçbir belge yüklenmiyor → sayfa oturdu.
+        if (kararli >= 1 && !/loading/.test(simdi)) return;
+        kararli++;
+      } else { kararli = 0; onceki = simdi; }
+    }
   }
 
   // ─── LUCA OPERATÖRÜ: ekranı anlamlı oku (SADECE OKUMA; yazma yok) ───
@@ -2669,7 +2710,7 @@
                   if (!bridge) { try { bridge = window.top && window.top.__morenNativeClickText; } catch {} }
                   if (typeof bridge !== 'function') return false;
                   const res = await bridge({ text, exact: !!opts.exact, hoverOnly: !!opts.hoverOnly, timeoutMs: opts.timeoutMs || 6000 });
-                  if (res && res.ok) { await sleep(opts.settleMs || 800); return true; }
+                  if (res && res.ok) { await lucaSettle(opts.settleMs || 800); return true; }
                 } catch {}
                 return false;
               };
@@ -2809,7 +2850,7 @@
                   if (!bridge) { try { bridge = window.top && window.top.__morenNativeClickText; } catch {} }
                   if (typeof bridge !== 'function') return false;
                   const res = await bridge({ text, exact: !!opts.exact, hoverOnly: !!opts.hoverOnly, timeoutMs: opts.timeoutMs || opts.maxMs || 6000 });
-                  if (res && res.ok) { await sleep(opts.settleMs || 800); return true; }
+                  if (res && res.ok) { await lucaSettle(opts.settleMs || 800); return true; }
                 } catch {}
                 return false;
               };
@@ -3355,7 +3396,7 @@
                       try {
                         if (pw && typeof pw.__morenNativeClickText === 'function') {
                           const r = await Promise.resolve(pw.__morenNativeClickText({ text, exact: !!opts.exact, hoverOnly: !!opts.hoverOnly, timeoutMs: opts.timeoutMs || 5000 }));
-                          if (r && r.ok) { await sleep(opts.settleMs || 800); return true; }
+                          if (r && r.ok) { await lucaSettle(opts.settleMs || 800); return true; }
                           return false;
                         }
                       } catch {}
@@ -4500,7 +4541,7 @@
                       const t = ((el.value || el.innerText || el.textContent) || '').trim().toLocaleLowerCase('tr-TR');
                       if (t === want && (el.offsetParent !== null || el.tagName === 'INPUT')) {
                         try { el.scrollIntoView({ block: 'center' }); } catch {}
-                        el.click(); await sleep(opts.settleMs || 800); return 'dom';
+                        el.click(); await lucaSettle(opts.settleMs || 800); return 'dom';
                       }
                     }
                   } catch {}
@@ -6293,7 +6334,7 @@
           });
           if (res?.ok) {
             await log(`Native ${opts.hoverOnly ? 'hover' : 'click'}: "${text}" (${res.frame || '?'})`);
-            await sleep(opts.settleMs || 800);
+            await lucaSettle(opts.settleMs || 800);
             return true;
           }
           await log(`Native click "${text}" bulunamadi: ${res?.reason || 'yok'}`);
@@ -11267,7 +11308,7 @@
       });
       if (res?.ok) {
         if (log) await log(`Native hover menü: "${label}" (${res.frame || '?'})`);
-        await sleep(opts.settleMs || 900);
+        await lucaSettle(opts.settleMs || 900);
         return true;
       }
       if (log) await log(`Native hover "${label}" bulunamadi: ${res?.reason || 'yok'}`);
