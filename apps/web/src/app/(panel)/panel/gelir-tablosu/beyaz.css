@@ -228,3 +228,17 @@ html[data-theme='D'] body [data-panel-main] [data-gelir-report] [data-report-row
 html[data-theme='D'] body [data-panel-main] [data-gelir-report] [data-report-row='detail']:hover { background: var(--mt-hover) !important; }
 /* Stok tablosunda da aynı sadeleştirme */
 html[data-theme='D'] body [data-panel-main] [data-gelir-stok] tbody tr:not([style*='copper']):not([style*='rose']) { background: #fff !important; }
+
+/* ── 8. Izgara: YATAY çizgiler de görünsün (2026-09-25) ───────────────────────────────────────────
+   Muzaffer Bey: "geçici vergi hesaplama tablosuna bak, başlıklar arası satır çizgileri yok gibi".
+   Yatay ayraç en açık tonla çiziliyordu; dikey çizgiler görünüp yataylar kaybolunca tablo
+   sütunlara bölünmüş ama satırlara bölünmemiş gibi duruyordu. */
+html[data-theme='D'] body [data-panel-main] :is([data-gelir-report], [data-gelir-vergi], [data-gelir-stok]) tbody td {
+  border-bottom: 1px solid #e6ebf1 !important;
+}
+html[data-theme='D'] body [data-panel-main] :is([data-gelir-report], [data-gelir-vergi], [data-gelir-stok]) :is(td, th) + :is(td, th) {
+  border-left: 1px solid #dbe2ea !important;
+}
+html[data-theme='D'] body [data-panel-main] :is([data-gelir-vergi], [data-gelir-stok]) thead th { border-bottom: 2px solid #cfd8e3 !important; }
+/* Geçici vergi ve stok tablolarının kart kenarı da görünür olsun */
+html[data-theme='D'] body [data-panel-main] :is([data-gelir-vergi], [data-gelir-stok]) { border-color: #dbe2ea !important; }

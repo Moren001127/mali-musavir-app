@@ -479,10 +479,10 @@ html[data-theme='D'] body [data-panel-main] .financial-report-readable :is([data
 /* ── Satır kademeleri: aynı dört ton ───────────────────────────────────────────────────────────── */
 html[data-theme='D'] body [data-panel-main] .financial-report-readable [data-report-row='detail'] { background: #fff !important; }
 html[data-theme='D'] body [data-panel-main] .financial-report-readable [data-report-row='group'] { background: #f8fafc !important; }
-html[data-theme='D'] body [data-panel-main] .financial-report-readable [data-report-row='total'] { background: #f1f5f9 !important; }
+html[data-theme='D'] body [data-panel-main] .financial-report-readable [data-report-row='total'] { background: #eef2f6 !important; }
 html[data-theme='D'] body [data-panel-main] .financial-report-readable [data-report-row='total'] > td { border-top: 2px solid var(--mt-line-strong) !important; }
-html[data-theme='D'] body [data-panel-main] .financial-report-readable [data-report-row='final'] { background: var(--mt-primary-soft) !important; }
-html[data-theme='D'] body [data-panel-main] .financial-report-readable [data-report-row='final'] > td { border-top: 2px solid #b9c7f5 !important; border-bottom: 2px solid #b9c7f5 !important; }
+html[data-theme='D'] body [data-panel-main] .financial-report-readable [data-report-row='final'] { background: #dde5ee !important; }
+html[data-theme='D'] body [data-panel-main] .financial-report-readable [data-report-row='final'] > td { border-top: 1px solid #b6c2d0 !important; border-bottom: 1px solid #b6c2d0 !important; }
 html[data-theme='D'] body [data-panel-main] .financial-report-readable [data-report-row='detail']:hover { background: var(--mt-hover) !important; }
 /* Genel zebra KAPALI: grup/toplam satırları da sayıldığı için tek-çift düzeni kayıyor,
    ana başlığın altındaki satır rastgele farklı tonda çıkıyordu. Kademe zaten zeminden okunuyor. */
@@ -503,16 +503,10 @@ html[data-theme='D'] body [data-panel-main] [data-gelir-report] { --mt-modul-ren
 html[data-theme='D'] body [data-panel-main] [data-bilanco-report] { --mt-modul-renk: #7048e8; }    /* Bilanço · mor */
 /* İHÖ blok şeridi KALDIRILDI (2026-09-25): sayfada üç blok alt alta; üç renkli şerit çerçeve gibi duruyordu. */
 
-/* Ara toplamın solunda ton çizgisi — göz kademeyi kenardan da okur */
-html[data-theme='D'] body [data-panel-main] .financial-report-readable [data-report-row='group'] > td:first-child {
-  box-shadow: inset 3px 0 0 #cbd5e1;
-}
-html[data-theme='D'] body [data-panel-main] .financial-report-readable [data-report-row='total'] > td:first-child {
-  box-shadow: inset 3px 0 0 #94a3b8;
-}
-html[data-theme='D'] body [data-panel-main] .financial-report-readable [data-report-row='final'] > td:first-child {
-  box-shadow: inset 3px 0 0 var(--mt-primary);
-}
+/* Ara toplamın solundaki ton çizgileri KALDIRILDI (2026-09-25): satırdan satıra düzensiz duruyordu. */
+
+
+
 /* Kâr yeşili · zarar kırmızısı yalnız SONUÇ satırlarında; ayrıntıda sayı nötr kalır */
 html[data-theme='D'] body [data-panel-main] .financial-report-readable :is([data-report-row='total'], [data-report-row='final']) [data-amount='pos'] { color: #2b8a3e !important; }
 html[data-theme='D'] body [data-panel-main] .financial-report-readable :is([data-report-row='total'], [data-report-row='final']) [data-amount='neg'] { color: #c92a2a !important; }

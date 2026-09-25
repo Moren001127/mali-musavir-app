@@ -217,23 +217,23 @@ html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-s
   border: 1px solid var(--iho-cizgi, #dbe2ea) !important; box-shadow: none !important;
 }
 /* Kar/Zarar Özeti · deniz yeşili */
-html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-section='emerald'] { --iho-zemin: #e9fbf5; --iho-cizgi: #b8ecd9; --iho-yazi: #0b7a5f; }
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-section='emerald'] { --iho-zemin: #e9fbf5; --iho-cizgi: #b8ecd9; --iho-yazi: #0b7a5f; --iho-vurgu: #d7f3e7; --iho-vurgu-cizgi: #9ad9c0; }
 /* Stok Hareketi · kehribar */
-html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-section='amber'] { --iho-zemin: #fff6e9; --iho-cizgi: #f5d9b0; --iho-yazi: #b55d09; }
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-section='amber'] { --iho-zemin: #fff6e9; --iho-cizgi: #f5d9b0; --iho-yazi: #b55d09; --iho-vurgu: #fdeed6; --iho-vurgu-cizgi: #eec894; }
 /* Geçici Vergi Hesaplaması · çivit */
-html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-section='indigo'] { --iho-zemin: #eef2ff; --iho-cizgi: #c7d2f5; --iho-yazi: #3b4fb8; }
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-section='indigo'] { --iho-zemin: #eef2ff; --iho-cizgi: #c7d2f5; --iho-yazi: #3b4fb8; --iho-vurgu: #e1e8ff; --iho-vurgu-cizgi: #b3c2f0; }
 
 /* ── D. Satır kademesi: yalnız zemin, kenar çizgisi yok ────────────────────────────────────────── */
 html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row] > td:first-child { box-shadow: none !important; }
 html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row='detail'] { background: #fff !important; }
 html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row='detail']:hover { background: #f6f9fc !important; }
 html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row='manual'] { background: #fff !important; }
-html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row='total'] { background: #f4f7fa !important; }
-html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row='total'] > td { border-top: 1px solid #dbe2ea !important; }
-html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row='total'] > td:first-child { background: #f4f7fa !important; }
-html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row='final'] { background: #eef2f7 !important; }
-html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row='final'] > td { border-top: 1px solid #cfd8e3 !important; border-bottom: 1px solid #cfd8e3 !important; }
-html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row='final'] > td:first-child { background: #eef2f7 !important; }
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row='total'] { background: #eef2f6 !important; }
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row='total'] > td { border-top: 1px solid #cfd8e3 !important; }
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row='total'] > td:first-child { background: #eef2f6 !important; }
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row='final'] { background: #dde5ee !important; }
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row='final'] > td { border-top: 1px solid #b6c2d0 !important; border-bottom: 1px solid #b6c2d0 !important; }
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row='final'] > td:first-child { background: #dde5ee !important; }
 html[data-theme='D'] body [data-panel-main] [data-isletme-report] :is([data-report-row='total'], [data-report-row='final']) > td:first-child { color: #0f172a !important; font-weight: 700 !important; }
 
 /* ── E. Düzenlenebilir hücre: kutu yok, ipucu fareyle gelir ────────────────────────────────────── */
