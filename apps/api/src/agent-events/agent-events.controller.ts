@@ -36,7 +36,7 @@ export class AgentEventsController {
 
   /** Async resolver — DB tenant.slug/id lookup. Status ping için kullanılır. */
   private async resolveTenantFromTokenAsync(token?: string): Promise<string> {
-    return resolveTenantFromAgentToken(token, this.prisma as any);
+    return resolveTenantFromAgentToken(token, this.prisma as any, { kaynak: 'agent-events' });
   }
 
   // ---- VERSION LATEST (extension auto-update banner için) ----

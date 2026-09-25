@@ -39,7 +39,7 @@ export class EvrakOtomasyonController {
    * tahmin edilebilir; bu uçlar ofis sahibinin telefonuna mesaj tetikliyor.
    */
   private tenant(token?: string) {
-    return resolveTenantFromAgentToken(token, this.prisma as any, { strict: true });
+    return resolveTenantFromAgentToken(token, this.prisma as any, { strict: true, kaynak: 'evrak-otomasyon' });
   }
 
   private not() {

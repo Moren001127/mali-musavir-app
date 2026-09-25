@@ -23,7 +23,7 @@ export class KdvAgentController {
     @Headers('x-agent-token') agentToken: string,
     @Query('limit') limit?: string,
   ) {
-    const tenantId = await resolveTenantFromAgentToken(agentToken, this.prisma as any);
+    const tenantId = await resolveTenantFromAgentToken(agentToken, this.prisma as any, { kaynak: 'kdv-agent' });
     const n = Math.min(parseInt(limit || '200', 10) || 200, 500);
     return this.kdvService.dryRunOcrAudit(tenantId, n);
   }
@@ -37,7 +37,7 @@ export class KdvAgentController {
     @Headers('x-agent-token') agentToken: string,
     @Query('mukellef') mukellefFilter?: string,
   ) {
-    const tenantId = await resolveTenantFromAgentToken(agentToken, this.prisma as any);
+    const tenantId = await resolveTenantFromAgentToken(agentToken, this.prisma as any, { kaynak: 'kdv-agent' });
 
     const where: any = { session: { tenantId } };
     if (mukellefFilter) {
@@ -87,7 +87,7 @@ export class KdvAgentController {
     @Headers('x-agent-token') agentToken: string,
     @Param('imageId') imageId: string,
   ) {
-    const tenantId = await resolveTenantFromAgentToken(agentToken, this.prisma as any);
+    const tenantId = await resolveTenantFromAgentToken(agentToken, this.prisma as any, { kaynak: 'kdv-agent' });
     const img = await (this.prisma as any).receiptImage.findFirst({
       where: { id: imageId, session: { tenantId } },
       select: { id: true, s3Key: true, originalName: true, ocrStatus: true },
@@ -108,7 +108,7 @@ export class KdvAgentController {
     @Headers('x-agent-token') agentToken: string,
     @Param('imageId') imageId: string,
   ) {
-    const tenantId = await resolveTenantFromAgentToken(agentToken, this.prisma as any);
+    const tenantId = await resolveTenantFromAgentToken(agentToken, this.prisma as any, { kaynak: 'kdv-agent' });
     const img = await (this.prisma as any).receiptImage.findFirst({
       where: { id: imageId, session: { tenantId } },
       select: { id: true, s3Key: true, originalName: true, ocrStatus: true, ocrBelgeTipi: true, ocrRawText: true },
@@ -128,7 +128,7 @@ export class KdvAgentController {
     @Query('limit') limit?: string,
     @Query('mukellef') mukellefFilter?: string,
   ) {
-    const tenantId = await resolveTenantFromAgentToken(agentToken, this.prisma as any);
+    const tenantId = await resolveTenantFromAgentToken(agentToken, this.prisma as any, { kaynak: 'kdv-agent' });
     const n = Math.min(parseInt(limit || '30', 10) || 30, 100);
 
     const where: any = {

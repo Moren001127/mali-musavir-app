@@ -41,7 +41,7 @@ function parseTokenMap(raw: string) {
 
 export async function resolveTenantFromAgentToken(
   token: string | undefined,
-  prisma?: { tenant?: { findFirst: (args: any) => Promise<{ id: string } | null> } },
+  prisma: { tenant?: { findFirst: (args: any) => Promise<{ id: string } | null> } } | undefined,
   /**
    * SIKI MOD — ofis kısa adı (slug) yedeğine DÜŞMEZ.
    *
@@ -50,7 +50,13 @@ export async function resolveTenantFromAgentToken(
    * gizli değil. Yeni uçlar bunu kabul etmemeli. Mevcut ajan/eklenti
    * kurulumları kırılmasın diye eski uçlar sıkı mod KULLANMAZ.
    */
-  opts: { strict?: boolean; kaynak?: string } = {},
+  /**
+   * `kaynak` ZORUNLUDUR (2026-09-25). Eski yol uyarısı bu etiketi basar; etiketsiz
+   * bir çağıran kalırsa uyarı "bilinmiyor" der ve hangi modülün hâlâ kısa ad
+   * sunduğunu bulmak imkânsızlaşır. Zorunlu tutuldu ki yeni bir uç eklenirken
+   * unutulması DERLEME HATASI olsun — "hiç uyarı çıkmıyor" ölçütü ancak böyle güvenilir.
+   */
+  opts: { strict?: boolean; kaynak: string },
 ): Promise<string> {
   const presented = String(token || '').trim();
   if (!presented) throw new UnauthorizedException('Missing X-Agent-Token');

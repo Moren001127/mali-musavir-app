@@ -4104,7 +4104,7 @@ export class PortalAutomationService {
   }
 
   private async resolveTenantFromToken(token?: string): Promise<string> {
-    return resolveAgentTenant(token, this.prisma as any);
+    return resolveAgentTenant(token, this.prisma as any, { kaynak: 'portal-automation' });
   }
 
   private envFlag(value?: string | null) {

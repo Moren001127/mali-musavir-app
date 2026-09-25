@@ -30,7 +30,7 @@ export class TaxpayerEksikRaporController {
 
   @Post('eksik-bilgiler')
   async eksikBilgiler(@Headers('x-agent-token') token: string) {
-    const tenantId = await resolveTenantFromAgentToken(token, this.prisma as any, { strict: true });
+    const tenantId = await resolveTenantFromAgentToken(token, this.prisma as any, { strict: true, kaynak: 'eksik-rapor' });
     const ozet: any = await this.taxpayers.getCompletenessSummary(tenantId);
 
     // Alan bazında ters kırılım: "bu alan kaç mükellefte eksik".

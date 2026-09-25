@@ -260,7 +260,7 @@ export class FisYazdirmaAgentController {
   ) {}
 
   private async resolveTenantId(token?: string): Promise<string> {
-    return resolveAgentTenant(token, this.prisma as any);
+    return resolveAgentTenant(token, this.prisma as any, { kaynak: 'fis-yazdirma' });
   }
 
   /** GET /api/v1/agent/print-queue/pending?deviceId=X */

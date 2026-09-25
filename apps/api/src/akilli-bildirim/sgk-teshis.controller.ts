@@ -22,7 +22,7 @@ export class SgkTeshisController {
 
   @Post()
   async teshis(@Headers('x-agent-token') token: string, @Query('month') month?: string) {
-    const tenantId = await resolveTenantFromAgentToken(token, this.prisma as any, { strict: true });
+    const tenantId = await resolveTenantFromAgentToken(token, this.prisma as any, { strict: true, kaynak: 'sgk-teshis' });
 
     const simdi = new Date();
     const ay = month || `${simdi.getFullYear()}-${String(simdi.getMonth() + 1).padStart(2, '0')}`;

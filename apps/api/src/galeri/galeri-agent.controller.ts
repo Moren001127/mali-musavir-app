@@ -13,7 +13,7 @@ export class GaleriAgentController {
   ) {}
 
   private async resolveTenantFromToken(token?: string): Promise<string> {
-    return resolveAgentTenant(token, this.prisma as any);
+    return resolveAgentTenant(token, this.prisma as any, { kaynak: 'galeri-hgs' });
   }
 
   @Post('araclar/:id/hgs-sorgu-sonuc')
