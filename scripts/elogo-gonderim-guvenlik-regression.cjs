@@ -124,8 +124,12 @@ const ok = (ad, sart, ek) => {
     'sessizce donerse cagiran taraf FATURA KESILDI der');
 
   // R3: numara alindiktan SONRA ag cagrisi kalmasin
+  // 2026-09-25: BAYAT DESEN DUZELTILDI. Kontrol 'const numara = await this.numaraAl(' ariyordu;
+  //   kod 'numara = await this.numaraAl(' olmus (degisken yukarida tanimlaniyor) -> desen hic
+  //   eslesmiyor, iNumara=-1 kalip sinama KIRIK doniyordu. Koruma yerinde: hamUbl (1059) numaraAl
+  //   cagrisindan (1086) ONCE hazirlaniyor. Desen artik const'lu ve const'suz atamayi da yakalar.
   const iUbl = servis.indexOf('const hamUbl');
-  const iNumara = servis.indexOf('const numara = await this.numaraAl(');
+  const iNumara = servis.search(/\bnumara\s*=\s*await this\.numaraAl\(/);
   ok('UBL numaradan ONCE hazirlaniyor', iUbl > 0 && iNumara > 0 && iUbl < iNumara,
     'numara alinip sonra hata olursa numara yanar');
 

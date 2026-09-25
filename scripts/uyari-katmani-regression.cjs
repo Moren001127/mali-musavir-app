@@ -384,7 +384,18 @@ const kodlar = (list) => list.map((u) => u.kod);
     assert(e('İptal Talebi Kabul Edildi').engelli && e('Red Talebi Kabul Edildi').engelli, '"İptal/Red Talebi Kabul Edildi" → engelli');
     assert(!e('Kredi Kartı ile Ödendi').engelli && !e('Onaylandı (Redirect)').engelli, 'geniş "red" kalıbı yok: "Kredi" / "Redirect" engelli DEĞİL');
     assert(e('Reddedildi').engelli && e('Rejected').engelli && e('Cancelled').engelli && e('Canceled').engelli && e('İptal Edildi').engelli, 'Reddedildi / Rejected / Cancel(l)ed / İptal Edildi → engelli');
-    assert(e('Onaylandı', 'İtiraz Edildi').engelli && e('Onaylandı', '1').engelli && !e('Onaylandı', 'Hayır').engelli, 'iptalItiraz: "İtiraz Edildi"/"1" engelli; "Hayır" serbest');
+    // 2026-09-25: BAYAT SINAMA DÜZELTİLDİ. Bu satır e('Onaylandı','1').engelli bekliyordu; oysa davranış
+    //   sahibin talebiyle BİLİNÇLİ değişti (kaynaktaki yorum: TÜRMOB IptalItirazDurumu çıplak bayrağı
+    //   '1'/'true'/'Evet' anlamı belirsiz — canlı ÖZ ELA örneği "Onaylandı" ama bayrak 1; eskiden belge
+    //   sessizce oluşturulmuyordu, ekran ise "aktarılabilir" gösteriyordu → "aktarılmıyor" şikâyeti).
+    //   Yeni kural: metinsiz bayrak ENGEL DEĞİL, belge aktarılır + UYARI üretilir (kararı sahip verir).
+    //   Test bu yüzden zincirde KIRIK duruyordu ve fark edilmiyordu (pre-commit bu zinciri koşmuyor).
+    assert(e('Onaylandı', 'İtiraz Edildi').engelli && !e('Onaylandı', 'Hayır').engelli, 'iptalItiraz: "İtiraz Edildi" engelli; "Hayır" serbest');
+    {
+      const bayrak = e('Onaylandı', '1');
+      assert(!bayrak.engelli && /iptal\/itiraz işareti/i.test(String(bayrak.uyari || '')),
+        'iptalItiraz metinsiz bayrak ("1") ENGEL DEĞİL ama UYARI üretir (sahip kararı)');
+    }
     assert(e('Taslak').neden === 'taslak' && e('GİB Tarafında Hata').neden === 'gib-hata', 'taslak / GİB hata nedenleri korunur');
   }
 

@@ -1575,7 +1575,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       }
       if (status === 'APPROVED') approved++;
       if (status === 'REJECTED' || status === 'ERROR') errors++;
-      if (d.lucaStatus === 'POSTED') posted++;
+      // BULGU 7 devamı (2026-09-25): MANUAL_DONE de arşiv sayılır. Ön yüz "aktarılmış" tanımı
+      //   (isArchived) POSTED **veya** MANUAL_DONE; burada yalnız POSTED sayıldığı için sol menü
+      //   rozeti ile Genel Bakış arasında fark kalıyordu ("Luca'da elle işlendi" belgeler aktarım
+      //   kuyruğunda görünüyordu, oysa iş bitmişti). İki yer artık aynı tanımı kullanıyor.
+      if (d.lucaStatus === 'POSTED' || d.lucaStatus === 'MANUAL_DONE') posted++;
       if (d.ocrStatus === 'IN_PROGRESS' || d.ocrStatus === 'PENDING') ocrInProgress++;
 
       if (!hasTaxpayer) orphanCount++;

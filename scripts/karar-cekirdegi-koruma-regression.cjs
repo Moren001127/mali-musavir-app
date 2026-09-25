@@ -110,7 +110,12 @@ ok(!/accountCode: null/.test(grn), 'generateRichMuhasebeNeden icinde hicbir acco
 ok(grn.includes("'ONERILEN_HESAP: <"), 'prompt ONERILEN_HESAP satiri istiyor');
 ok(grn.includes('ADAY LİSTESİ:') && grn.includes('...oneriAdaylari'), 'prompt yon filtreli aday listesi (kod = ad) veriyor');
 ok(/const oneriYonRe = isReturn \? \(isSale \? \/\^\(15\|25\|7\)\/ : \/\^\(61\|60\)\/\) : \(isSale \? \/\^\(60\|64\|67\)\/ : \/\^\(15\|25\|7\)\/\);/.test(grn), 'aday yon filtresi: alista 15x/25x/7xx, satista 60x/64x/67x');
-ok(grn.includes('.slice(0, 80)'), 'aday listesi en cok 80');
+// 2026-09-25: BAYAT SINAMA DÜZELTİLDİ. Bu kontrol '.slice(0, 80)' arıyordu ama aday sınırı bilinçli
+//   olarak 40'a indirilmişti (kaynaktaki yorum: "en çok 40 aday → yorum çağrısı ~%25 küçülür, öneri
+//   kalitesi korunur"). Yani koruma kaybolmamış, sayı değişmiş; test güncellenmediği için zincirde
+//   KIRIK duruyordu ve fark edilmiyordu (pre-commit bu zinciri koşmuyor). Sınır yine değişirse burası
+//   da güncellenmeli — bu kontrol metin tabanlıdır, çünkü sınır prompt üretiminin içine gömülü.
+ok(grn.includes('.slice(0, 40)'), 'aday listesi en cok 40 (maliyet siniri)');
 ok(/rawText\.match\(\/ONERILEN_HESAP\\s\*:\?\\s\*\(\[0-9\]\[0-9\.\]\*\|YOK\)\/i\)/.test(grn), 'ONERILEN_HESAP yanittan ayristiriliyor');
 ok(grn.includes('planYaprakMi(oneriHam) && oneriYonRe.test(oneriHam) && !mevcutMatrahKodlari.has(oneriHam)'), 'oneri planda gecerli yaprak + yon + mevcut hesaptan farkli olmali');
 ok(grn.includes('onerilenHesap: uyumsuz ? onerilen : null,'), 'ocrData.onerilenHesap yaziliyor');

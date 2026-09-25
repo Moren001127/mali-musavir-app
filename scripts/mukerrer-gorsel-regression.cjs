@@ -117,6 +117,17 @@ function makeService(db = {}) {
   const svc = new FaturaMuhasebelestirmeService(prisma, storage, ocr, {}, {}, vendorMemory, {}, {}, {}, {});
   svc.logger = { log() {}, warn() {}, error() {}, debug() {} };
   svc.uploadOcrConcurrency = 0; // arka plan OCR kuyruğu çalışmasın
+  // 2026-09-25 (denetim bulgusu 11 sonrası): HESAP PLANI SABİTLENDİ. get() artık plan kapısını
+  //   BELLEKTE uyguluyor (eskiden list() bunu kalıcı updateMany ile yapıyordu). Sahte prisma'da plan
+  //   snapshot'ı olmadığı için kapı "plan yok" sanıp bütün hesap kodlarını gizliyor ve approve()
+  //   "Gelir/gider hesabı boş" diyerek reddediyordu — test gerçek kullanıcı akışını taklit etmiyordu:
+  //   ekran her zaman list() çağırır ve ESKİ kod da orada kodları silerdi, yani plansız mükellefte
+  //   onay eskiden de reddediliyordu. Fixture kodlarını içeren bir plan verip gerçek akışı kuruyoruz.
+  svc.getPlanCodeSet = async () => new Set([
+    '770.01.001', '191.01.020', '320.01.001', '191.01.001', '600.01.001',
+    '153.01.001', '740.01.001', '760.01.001', '391.01.020', '120.01.001',
+  ]);
+  if (!svc.planCodeCache) svc.planCodeCache = new Map();
   return { svc, state, prisma };
 }
 const T0 = new Date('2026-08-01T10:00:00Z');
