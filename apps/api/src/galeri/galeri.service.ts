@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 /** Plaka normalize — boşlukları kaldır, büyük harfe çevir. "34 abc 123" → "34ABC123" */
@@ -16,6 +16,7 @@ function formatPlaka(p: string): string {
 
 @Injectable()
 export class GaleriService {
+  private readonly logger = new Logger(GaleriService.name);
   constructor(private prisma: PrismaService) {}
 
   // ════════════ ARAÇLAR ════════════
@@ -453,22 +454,41 @@ export class GaleriService {
   /** Dashboard için: toplam araç, ihlalli araç sayısı, toplam tutar */
   async ozet(tenantId: string) {
     const toplamArac = await (this.prisma as any).arac.count({ where: { tenantId, aktif: true } });
-    // Her aracın EN SON sorgusuna göre ihlal özeti
+    // Her aracın EN SON BAŞARILI sorgusuna göre ihlal özeti.
+    //
+    // 2026-09-25 (portal denetimi bulgu 42): eskiden yalnız EN SON kayıt alınıyor ve
+    // `durum` alanına HİÇ BAKILMIYORDU. `kaydetSorguSonucu` hatalı sorguya da
+    // `ihlalSayisi: 0` yazdığı için TEK BİR başarısız sorgu (KGM captcha/zaman aşımı)
+    // önceki ihlalleri panodan siliyordu: pano "ihlal yok" diyor, ihlal duruyordu.
+    // Artık son BAŞARILI sonuç esas; kaç aracın sonucu teyit edilemediği ayrıca bildiriliyor.
     const araclar = await (this.prisma as any).arac.findMany({
       where: { tenantId, aktif: true },
-      include: { hgsSonuclari: { orderBy: { sorguTarihi: 'desc' }, take: 1 } },
+      include: { hgsSonuclari: { orderBy: { sorguTarihi: 'desc' }, take: 10 } },
     });
     let ihlalliArac = 0;
     let toplamIhlal = 0;
     let toplamTutar = 0;
+    let sonSorgusuBasarisiz = 0;   // son deneme patlamış araç sayısı (pano uyarısı)
+    let hicBasariliSorguYok = 0;   // hiç başarılı sorgu görmemiş araç
     for (const a of araclar) {
-      const sonuc = a.hgsSonuclari?.[0];
-      if (sonuc && sonuc.ihlalSayisi > 0) {
+      const sonuclar: any[] = a.hgsSonuclari || [];
+      if (sonuclar.length && sonuclar[0]?.durum && sonuclar[0].durum !== 'basarili') sonSorgusuBasarisiz++;
+      const sonuc = sonuclar.find((r) => r?.durum === 'basarili')
+        // Eski kayıtlarda `durum` boş olabilir — o zaman en sonu kullan (eski davranış).
+        || sonuclar.find((r) => !r?.durum);
+      if (!sonuc) { if (sonuclar.length) hicBasariliSorguYok++; continue; }
+      if (sonuc.ihlalSayisi > 0) {
         ihlalliArac++;
         toplamIhlal += sonuc.ihlalSayisi;
         toplamTutar += Number(sonuc.toplamTutar || 0);
       }
     }
-    return { toplamArac, ihlalliArac, toplamIhlal, toplamTutar };
+    if (sonSorgusuBasarisiz || hicBasariliSorguYok) {
+      this.logger.warn(
+        `[HGS-OZET] ${sonSorgusuBasarisiz} aracın SON sorgusu başarısız, ` +
+          `${hicBasariliSorguYok} araçta hiç başarılı sorgu yok — özet son başarılı sonuçtan üretildi.`,
+      );
+    }
+    return { toplamArac, ihlalliArac, toplamIhlal, toplamTutar, sonSorgusuBasarisiz, hicBasariliSorguYok };
   }
 }

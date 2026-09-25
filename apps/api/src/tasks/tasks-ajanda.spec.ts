@@ -14,7 +14,11 @@ const GOREVLER = [
   { id: 'g1', tenantId: 't1', tur: 'GOREV', status: 'OPEN', isTemplate: false, dueDate: '2026-09-14T00:00:00.000Z', pinned: false, taxpayerId: 'tp1' },
   { id: 'g2', tenantId: 't1', tur: 'GOREV', status: 'OPEN', isTemplate: false, dueDate: '2026-09-13T21:30:00.000Z', pinned: false }, // Istanbul 14 Eylül 00:30 → bugün
   { id: 'g3', tenantId: 't1', tur: 'GOREV', status: 'IN_PROGRESS', isTemplate: false, dueDate: '2026-09-13T20:30:00.000Z' }, // Istanbul 13 Eylül 23:30 → gecikmiş
-  { id: 'g4', tenantId: 't1', tur: 'GOREV', status: 'SNOOZED', isTemplate: false, dueDate: '2026-09-10T00:00:00.000Z' }, // ertelenmiş: açık ama gecikmiş sayılmaz
+  // 2026-09-25 (denetim bulgusu 34): erteleme BİTİŞ TARİHİ YOK ama vadesi geçmiş →
+  // ekran tarafı (etkinTarih) bunu zaten 'gecikmiş' grubuna koyuyordu; sayaç ise saymıyordu.
+  // Artık sayaç da sayıyor. (Hâlâ ertelemede olan — snoozedUntil ileri tarihli — sayılmaz: g10.)
+  { id: 'g4', tenantId: 't1', tur: 'GOREV', status: 'SNOOZED', isTemplate: false, dueDate: '2026-09-10T00:00:00.000Z', snoozedUntil: null },
+  { id: 'g10', tenantId: 't1', tur: 'GOREV', status: 'SNOOZED', isTemplate: false, dueDate: '2026-09-09T00:00:00.000Z', snoozedUntil: '2026-10-01T00:00:00.000Z' }, // HÂLÂ ertelemede → gecikmiş DEĞİL
   { id: 'g5', tenantId: 't1', tur: 'GOREV', status: 'OPEN', isTemplate: false, dueDate: '2026-09-20T12:00:00.000Z', taxCalendarId: 'c1' }, // Pazar → bu hafta
   { id: 'g6', tenantId: 't1', tur: 'GOREV', status: 'OPEN', isTemplate: false, dueDate: '2026-09-21T00:00:00.000Z' }, // Pazartesi 03:00 → gelecek hafta
   { id: 'g7', tenantId: 't1', tur: 'GOREV', status: 'DONE', isTemplate: false, dueDate: '2026-09-14T08:00:00.000Z' },
@@ -41,6 +45,21 @@ const BILDIRIMLER = [
 
 /** where → kayıt uyuyor mu (yalnız testte kullanılan alanlar). */
 function uyar(t: any, where: any): boolean {
+  // 2026-09-25: OR desteği eklendi. Gecikmiş sayacı (denetim bulgusu 34) artık OR ile
+  // kuruluyor; OR görmezden gelinince sahte prisma TÜM açık görevleri sayıyor ve sayaç
+  // sınaması anlamsızlaşıyordu (beklenen 1, gelen 7).
+  if (Array.isArray(where.OR)) {
+    if (!where.OR.some((dal: any) => uyar(t, dal))) return false;
+  }
+  if (where.snoozedUntil !== undefined) {
+    const su = t.snoozedUntil ? new Date(t.snoozedUntil).getTime() : null;
+    if (where.snoozedUntil === null) {
+      if (su !== null) return false;
+    } else if (where.snoozedUntil.lt) {
+      if (su === null || su >= where.snoozedUntil.lt.getTime()) return false;
+    }
+  }
+  if (typeof where.status === 'string' && t.status !== where.status) return false;
   if (where.tenantId && t.tenantId !== where.tenantId) return false;
   if (where.isTemplate !== undefined && !!t.isTemplate !== where.isTemplate) return false;
   if (where.tur && t.tur !== where.tur) return false;
@@ -138,9 +157,9 @@ describe('GET /tasks/ajanda — birleştirme', () => {
     const s = servisKur(prisma);
     const r = await s.ajanda('t1');
 
-    expect(r.gorevler.map((g: any) => g.id).sort()).toEqual(['g1', 'g2', 'g3', 'g4', 'g5', 'g6', 'g9']);
+    expect(r.gorevler.map((g: any) => g.id).sort()).toEqual(['g1', 'g10', 'g2', 'g3', 'g4', 'g5', 'g6', 'g9']);
     expect(r.notlar.map((n: any) => n.id)).toEqual(['n1']);
-    expect(r.sayaclar).toEqual({ bugun: 2, gecikmis: 1, buHafta: 3, acik: 7, istek: 2, not: 1 });
+    expect(r.sayaclar).toEqual({ bugun: 2, gecikmis: 2, buHafta: 3, acik: 8, istek: 2, not: 1 });
 
     // görev sorgusu: tenant + tur + açık durumlar + sabit önce, not sayısı dahil
     const gorevSorgu = prisma.cagrilar.find((c) => c.model === 'task' && c.op === 'findMany' && c.arg.where.tur === 'GOREV')!;
@@ -203,7 +222,7 @@ describe('GET /tasks/ajanda — birleştirme', () => {
     const tp = await s.ajanda('t1', { taxpayerId: 'tp1' });
     expect(tp.gorevler.map((g: any) => g.id)).toEqual(['g1']);
     expect(tp.ekipIstekler.map((i: any) => i.id)).toEqual(['b1']);
-    expect(tp.sayaclar).toEqual({ bugun: 2, gecikmis: 1, buHafta: 3, acik: 7, istek: 2, not: 1 });
+    expect(tp.sayaclar).toEqual({ bugun: 2, gecikmis: 2, buHafta: 3, acik: 8, istek: 2, not: 1 });
 
     const ara = await s.ajanda('t1', { search: 'balçık' });
     expect(ara.ekipIstekler.map((i: any) => i.id)).toEqual(['b1']); // mükellef adından, büyük/küçük harf duyarsız

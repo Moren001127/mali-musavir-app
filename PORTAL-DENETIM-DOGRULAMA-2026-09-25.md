@@ -780,6 +780,63 @@ eski veri. Müşavir tarafı doğru yapıyor (`useAuth.ts:38` `queryClient.clear
 
 ---
 
+### GÖRÜNÜRLÜK GRUBU — UYGULANANLAR (2026-09-25)
+
+**33 — sistem sağlığı ofis bazlı oldu.** Ajan/oturum/kuyruk sorgularının hepsine `tenantId`
+eklendi; `runAllChecks` ofisler üzerinde dönüyor, altyapı kontrolleri (MODULE_HASH, DB_HEALTH)
+ofisten bağımsız kalıyor (`tenantId: null`). `upsertCheck` tekilleştirmesi ve `resolveCheck`
+kapatması da ofise bağlandı — yoksa A ofisinin açık uyarısını B ofisinin kontrolü kapatıyordu.
+`getActiveAlerts` ofisin kendi uyarıları + altyapı uyarılarını veriyor.
+
+> **Denetimde olmayan ek bulgu:** `checkMihsapTokenAge` şemada **olmayan** bir modeli çağırıyordu
+> (`mihsapToken`; doğrusu `mihsapSession`, tablo `mihsap_sessions`). Her çalışmada
+> "Cannot read properties of undefined" fırlatıp dıştaki `catch`'e düşüyordu — **bu kontrol
+> bugüne kadar tek uyarı üretmedi.** Düzeltildi.
+
+> **Geçiş temizliği:** Canlı ölçümde açık 2 uyarı vardı, ikisi de `tenantId: null` ve ikisi de
+> ofis bazlı tipte (LUCA_JOB_FAILURE, LUCA_TOKEN_AGE). Ofis bazlı düzene geçince bunlar hiçbir
+> kontrol tarafından kapatılamaz ve "altyapı uyarısı" sayıldıkları için HER ofiste asılı
+> kalırdı. `ofissizEskiUyarilariKapat()` bunları bir kez kapatıyor; koşul sürüyorsa aynı tur
+> içinde ofis bazlı olarak yeniden açılıyor.
+
+**34 — ertelemesi biten görev sayaçta.** Gecikmiş sayacı artık ekranın tanımıyla aynı:
+süresi dolmuş `SNOOZED` görevler de gecikmiş. Hâlâ ertelemede olanlar sayılmıyor.
+Sınama tarafında bir **bayat fikstür** bulundu: `g4` (SNOOZED, vadesi geçmiş, erteleme bitişi
+yok) *"açık ama gecikmiş sayılmaz"* diye çivilenmişti — oysa ekran onu zaten gecikmiş
+gösteriyordu. Ayrıca sahte prisma `OR` desteklemiyordu, yani yeni sayaç sorgusu hiç
+sınanmamış olurdu (beklenen 1, gelen 7). İkisi de düzeltildi.
+
+**42 — tek başarısız HGS sorgusu ihlalleri silmiyor.** Özet artık son **başarılı** sonuçtan
+üretiliyor; `durum` alanı boş eski kayıtlarda eski davranış korundu. Yanıt
+`sonSorgusuBasarisiz` ve `hicBasariliSorguYok` sayaçlarını da taşıyor, `[HGS-OZET]` kaydı düşüyor.
+
+**44 — "Sorun yok" yalanı kalktı.** `KritikUyariStatCard` artık `isError` okuyor: sağlık verisi
+okunamazsa sayı yerine `—`, metin *"Sistem durumu okunamadı — 'sorun yok' anlamına gelmez"*
+ve tıklanır "Yeniden dene". Panelde `queueUnavailable` bayrağı ilk kez **okunuyor**: iş yükü
+sayacı bilinmiyorsa `—` gösteriyor, *"Okunamadı — 'iş yok' anlamına gelmez"* diyor.
+
+**45 — evrak bekleyenler artık sırada.** `siradaki` listesinden `EVRAK_BEKLIYOR` dışlaması ve
+`.slice(0, 10)` kırpması kaldırıldı. Sıralama önceliğinde `EVRAK_BEKLIYOR` zaten en sonda
+(stageOrder 5), yani "sıradaki iş" önerisi değişmiyor; yalnız ekranın "Geç Kalanlar" süzgeci
+artık onları da görüyor.
+
+**46 — gecikme artık sıfırlanmıyor (kısmen).** `bekleyenGun` hesabı aşamaya göre ayrıldı:
+`EVRAK_BEKLIYOR` → dönem başı (ya da mükellefiyet başlangıcı); `ISLENMEYI/KONTROL` →
+`evraklarIslendiAt` damgası varsa ondan; diğerleri → eski `updatedAt`.
+**Tam çözüm için şema değişikliği gerekiyor:** `TaxpayerMonthlyStatus`'ta aşama başına damga
+yok, elde yalnız `evraklarIslendiAt` var. Şemanın kendi notu da durumu söylüyor:
+*"updatedAt kullanılamaz: başka alan güncellenince tazelenir."*
+
+**Sınama:** `scripts/gorunurluk-regression.cjs` (21 kontrol, zincirde). Her düzeltme tek tek
+kapsanıyor — mutasyonda sırasıyla 2, 1, 1, 1, 2, 4, 2 kontrol düşüyor.
+
+**BU GRUPTA HENÜZ ELE ALINMAYANLAR:** 35 ve 48 (sessiz kırpma: `take` sınırları, bellekte
+süzme), 32 (okundu bilgisi ofis geneli tek alan), 36 (belge sürümünde `mimeType` yok),
+37 (denetim günlüğü `resourceId`/`oldData`/`newData` yazmıyor), 40, 49, 25, 26, 20, 22.
+
+
+---
+
 # 8. MEVCUT SINAMALARIN KAÇIRDIKLARI
 
 Kullanıcının özellikle sorduğu madde. Tespitler:

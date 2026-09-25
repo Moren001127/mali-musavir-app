@@ -523,7 +523,24 @@ export class TasksService {
     const temel = { tenantId, isTemplate: false, tur: 'GOREV', status: { in: [...ACIK_DURUMLAR] } };
     const [bugun, gecikmis, buHafta, acik, not] = await Promise.all([
       this.db.task.count({ where: { ...temel, dueDate: { gte: z.gunBasi, lte: z.gunSonu } } }),
-      this.db.task.count({ where: { ...temel, status: { in: ['OPEN', 'IN_PROGRESS'] }, dueDate: { lt: z.gunBasi } } }),
+      // 2026-09-25 (portal denetimi bulgu 34) — ERTELEMESİ BİTEN GÖREV SAYAÇTA.
+      //   Eskiden sayaç SNOOZED'ı tamamen dışlıyor ve `snoozedUntil`'e hiç bakmıyordu.
+      //   Repoda SNOOZED → OPEN geri dönüşü yapan bir iş de YOK, yani erteleme süresi
+      //   dolan görev sayaçta sonsuza dek görünmüyordu (kullanıcı "0 gecikmiş" görüp
+      //   hiç tıklamıyordu). Ekran tarafı zaten doğru davranıyor: `etkinTarih()`
+      //   snoozedUntil'i vade sayıyor ve süresi geçmişi 'overdue' grubuna koyuyor —
+      //   sayaç o tanıma hizalandı. Hâlâ ertelemede olanlar sayılmaz.
+      this.db.task.count({
+        where: {
+          ...temel,
+          OR: [
+            { status: { in: ['OPEN', 'IN_PROGRESS'] }, dueDate: { lt: z.gunBasi } },
+            { status: 'SNOOZED', snoozedUntil: { lt: z.gunBasi } },
+            // Ertelenmiş ama bitiş tarihi girilmemiş: vadesi geçmişse yine gecikmiş.
+            { status: 'SNOOZED', snoozedUntil: null, dueDate: { lt: z.gunBasi } },
+          ],
+        },
+      }),
       this.db.task.count({ where: { ...temel, dueDate: { gte: z.gunBasi, lte: z.haftaSonu } } }),
       this.db.task.count({ where: temel }),
       this.db.task.count({ where: { tenantId, isTemplate: false, tur: 'NOT', status: { notIn: ['DONE', 'CANCELLED'] } } }),

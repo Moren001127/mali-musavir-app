@@ -45,7 +45,10 @@ interface HealthData {
 export function KritikUyariStatCard() {
   const [open, setOpen] = useState(false);
 
-  const { data: health } = useQuery<HealthData>({
+  // 2026-09-25 (portal denetimi bulgu 44): `isError` okunuyor. Eskiden sorgu düşünce
+  // `health` undefined kalıyor, sayaç 0 çıkıyor ve kart "Sorun yok — her şey yolunda"
+  // diyordu. API erişilemezken "sorun yok" demek, sorunun ta kendisini gizliyor.
+  const { data: health, isError: healthError, refetch: healthRefetch } = useQuery<HealthData>({
     queryKey: ['system-health'],
     queryFn: () => api.get('/system/health').then((r) => r.data),
     refetchInterval: 30_000,
@@ -106,7 +109,9 @@ export function KritikUyariStatCard() {
   // Ajan hataları "uyarı" seviyesidir (kritik değil) — kart her gün kırmızı yanmasın.
   const criticalCount = critical + moduleHashCritical + criticalNotifCount;
   const totalUyari = criticalCount + warning + moduleHashWarning + todayErrors.length;
-  const hasIssue = totalUyari > 0;
+  // Sağlık verisi okunamadıysa sayı 0 çıkar; bu "sorun yok" DEĞİLDİR (bulgu 44).
+  const durumBilinmiyor = healthError;
+  const hasIssue = totalUyari > 0 || durumBilinmiyor;
 
   return (
     <>
@@ -137,12 +142,22 @@ export function KritikUyariStatCard() {
           fontSize: 26,
           fontWeight: 900,
           letterSpacing: 0,
-          color: hasIssue ? '#f43f5e' : '#fafaf9',
+          color: durumBilinmiyor ? '#fbbf24' : hasIssue ? '#f43f5e' : '#fafaf9',
         })}>
-          {totalUyari}
+          {durumBilinmiyor ? '—' : totalUyari}
         </p>
-        <p className="text-[11.5px] mt-2" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
-          {totalUyari === 0 ? 'Sorun yok — her şey yolunda' : (
+        <p className="text-[11.5px] mt-2" style={portalStyle({ color: durumBilinmiyor ? '#fbbf24' : 'rgba(250,250,249,0.5)' })}>
+          {durumBilinmiyor ? (
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={(ev) => { ev.stopPropagation(); void healthRefetch(); }}
+              onKeyDown={(ev) => { if (ev.key === 'Enter') { ev.stopPropagation(); void healthRefetch(); } }}
+              style={{ textDecoration: 'underline', cursor: 'pointer' }}
+            >
+              Sistem durumu okunamadı — &quot;sorun yok&quot; anlamına gelmez. Yeniden dene
+            </span>
+          ) : totalUyari === 0 ? 'Sorun yok — her şey yolunda' : (
             <>
               {critical > 0 && <span>{critical} sistem · </span>}
               {warning > 0 && <span>{warning} sistem uyarı · </span>}

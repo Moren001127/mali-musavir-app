@@ -860,10 +860,15 @@ export default function DashboardPage() {
     queryFn: () => api.get('/taxpayers/workflow/queue').then((r) => r.data).catch(() => ({ queueUnavailable: true, counts: { evrak: 0, yukleme: 0, islenme: 0, kontrol: 0, beyanname: 0, tamam: 0 }, total: 0 })),
     refetchInterval: 60_000,
   });
-  const aktifIsYuku =
-    (workflowData?.counts?.islenme ?? 0) +
-    (workflowData?.counts?.kontrol ?? 0) +
-    (workflowData?.counts?.beyanname ?? 0);
+  // 2026-09-25 (portal denetimi bulgu 44): `queueUnavailable` bayrağı ÜRETİLİYOR ama
+  //   hiçbir yerde okunmuyordu — kuyruk sorgusu düşünce sayaç sessizce 0 oluyor ve panel
+  //   "yapılacak iş yok" gibi görünüyordu. Artık bilinmiyor durumu ayırt ediliyor.
+  const isYukuBilinmiyor = workflowData?.queueUnavailable === true;
+  const aktifIsYuku = isYukuBilinmiyor
+    ? null
+    : (workflowData?.counts?.islenme ?? 0) +
+      (workflowData?.counts?.kontrol ?? 0) +
+      (workflowData?.counts?.beyanname ?? 0);
 
   // e-Tebligat sayacı (2026-09-21): gece sorgusuyla gelen ve henüz okunmamış tebligatlar.
   // Kaynak = /bugun konusu 'tb' (BugunMasasi ile aynı sorgu anahtarı → tek istek, 3 dk önbellek).
@@ -1042,7 +1047,7 @@ export default function DashboardPage() {
           totalTx={totalTx}
           pendingTasks={pendingTasks.length}
           todayTaskCount={todayTaskCount}
-          activeWorkload={aktifIsYuku}
+          activeWorkload={aktifIsYuku ?? 0}
           unread={unread}
           workflowCounts={workflowCounts}
           workflowTotal={workflowTotal}
@@ -1123,13 +1128,15 @@ export default function DashboardPage() {
             (İŞLENECEK + KONTROL + BEYAN aşamalarındaki mükellef sayısı toplamı) */}
         <StatCard
           title="Aktif İş Yükü"
-          value={aktifIsYuku}
+          value={isYukuBilinmiyor ? '—' : (aktifIsYuku as number)}
           icon={Bot}
           href="/panel/is-yuku"
           sub={
-            workflowData?.counts
-              ? `${workflowData.counts.kontrol} kontrol · ${workflowData.counts.beyanname} beyan`
-              : 'Sıradaki yapılacak işleri gör'
+            isYukuBilinmiyor
+              ? 'Okunamadı — "iş yok" anlamına gelmez'
+              : workflowData?.counts
+                ? `${workflowData.counts.kontrol} kontrol · ${workflowData.counts.beyanname} beyan`
+                : 'Sıradaki yapılacak işleri gör'
           }
           accent="champagne"
         />

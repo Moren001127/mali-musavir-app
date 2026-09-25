@@ -52,16 +52,16 @@ export class SystemHealthController {
   @Get('health')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Roles('ADMIN', 'STAFF')
-  async getHealth(@Req() _req: any) {
-    return this.health.getActiveAlerts();
+  async getHealth(@Req() req: any) {
+    return this.health.getActiveAlerts(req?.user?.tenantId);
   }
 
   @Post('health/run-now')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Roles('ADMIN')
   @HttpCode(HttpStatus.OK)
-  async runNow(@Req() _req: any) {
-    return this.health.runNow();
+  async runNow(@Req() req: any) {
+    return this.health.runNow(req?.user?.tenantId);
   }
 
   // === LOCKED MODULES ===

@@ -50,38 +50,60 @@ export class SystemHealthService {
   ) {}
 
   // === ENTRY POINT — CRON ===
+  //
+  // 2026-09-25 (portal denetimi bulgu 33) — KONTROLLER ARTIK OFİS BAZLI.
+  //   Ajan/oturum/kuyruk sorgularının hiçbirinde `tenantId` yoktu: başka ofisin ajanı
+  //   ping attığında BİZİM panelimiz "sağlıklı" gösteriyordu; tersi de doğruydu — kendi
+  //   ajanımız düşmüşken başka ofisin ajanı yüzünden uyarı hiç çıkmıyordu.
+  //   Satış hazırlığında (çok ofisli kullanım) bu en riskli kusurdu.
+  //   Altyapı kontrolleri (MODULE_HASH, DB_HEALTH) ofisten bağımsız → tenantId null.
   @Cron(CronExpression.EVERY_5_MINUTES)
   async runAllChecks() {
     this.logger.log('SystemHealth: tüm kontroller başlıyor');
     try {
-      await Promise.allSettled([
-        this.checkAgentPing('mihsap', 'AGENT_PING_MIHSAP', 'Mihsap'),
-        this.checkAgentPing('luca', 'AGENT_PING_LUCA', 'Luca'),
-        this.checkLucaTokenAge(),
-        this.checkMihsapTokenAge(),
-        this.checkPendingQueue(),
-        this.checkFailedRatio(),
-        this.checkRecentLucaJobFailures(),
+      const tenants: Array<{ id: string }> = await (this.prisma as any).tenant
+        .findMany({ select: { id: true } })
+        .catch(() => []);
+
+      const isler: Array<Promise<any>> = [
+        // Ofisten bağımsız altyapı kontrolleri
         this.checkModuleHashes(),
-        this.checkAgentVersion(),
         this.checkDbHealth(),
-      ]);
-      this.logger.log('SystemHealth: tüm kontroller tamamlandı');
+      ];
+      for (const t of tenants) {
+        isler.push(
+          this.checkAgentPing('mihsap', 'AGENT_PING_MIHSAP', 'Mihsap', t.id),
+          this.checkAgentPing('luca', 'AGENT_PING_LUCA', 'Luca', t.id),
+          this.checkLucaTokenAge(t.id),
+          this.checkMihsapTokenAge(t.id),
+          this.checkPendingQueue(t.id),
+          this.checkFailedRatio(t.id),
+          this.checkRecentLucaJobFailures(t.id),
+          this.checkAgentVersion(t.id),
+        );
+      }
+      await Promise.allSettled(isler);
+      await this.ofissizEskiUyarilariKapat();
+      this.logger.log(`SystemHealth: tüm kontroller tamamlandı (${tenants.length} ofis)`);
     } catch (e: any) {
       this.logger.error('SystemHealth runAllChecks hata:', e?.message || e);
     }
   }
 
   // === MANUEL TETİKLEME (frontend "Şimdi Kontrol Et" butonu) ===
-  async runNow() {
+  async runNow(tenantId?: string) {
     await this.runAllChecks();
-    return await this.getActiveAlerts();
+    return await this.getActiveAlerts(tenantId);
   }
 
   // === ENDPOINT: aktif uyarılar ===
-  async getActiveAlerts() {
+  async getActiveAlerts(tenantId?: string) {
+    // Bulgu 33: ofisin kendi uyarıları + ofisten bağımsız altyapı uyarıları (tenantId null).
+    const where: any = tenantId
+      ? { resolved: false, OR: [{ tenantId }, { tenantId: null }] }
+      : { resolved: false };
     const checks = await (this.prisma as any).systemHealthCheck.findMany({
-      where: { resolved: false },
+      where,
       orderBy: [{ severity: 'desc' }, { createdAt: 'desc' }],
       take: 50,
     });
@@ -101,12 +123,12 @@ export class SystemHealthService {
   // INDIVIDUAL CHECKS
   // ========================================================
 
-  private async checkAgentPing(agent: 'mihsap' | 'luca', type: string, label: string) {
+  private async checkAgentPing(agent: 'mihsap' | 'luca', type: string, label: string, tenantId: string) {
     try {
       // v1.36.43 FIX: AgentStatus modelinde alan adı 'lastPing' (lastSeen değil).
       // Önceki yanlış field adı yüzünden lastSeen hep undefined geliyor → "hiç ping atmamış" yanlış uyarısı.
       const ping = await (this.prisma as any).agentStatus.findFirst({
-        where: { agent },
+        where: { agent, tenantId },
         orderBy: { lastPing: 'desc' },
       }).catch(() => null);
 
@@ -117,6 +139,7 @@ export class SystemHealthService {
 
       if (!lastSeen) {
         await this.upsertCheck({
+          tenantId,
           type,
           severity: 'WARNING',
           status: 'DOWN',
@@ -128,6 +151,7 @@ export class SystemHealthService {
         });
       } else if (ageMin > 10) {
         await this.upsertCheck({
+          tenantId,
           type,
           severity: 'CRITICAL',
           status: 'DOWN',
@@ -137,6 +161,7 @@ export class SystemHealthService {
         });
       } else if (ageMin > 5) {
         await this.upsertCheck({
+          tenantId,
           type,
           severity: 'WARNING',
           status: 'DEGRADED',
@@ -145,16 +170,17 @@ export class SystemHealthService {
           acilTavsiye: 'Tarayıcı sekmesi arka planda olabilir',
         });
       } else {
-        await this.resolveCheck(type);
+        await this.resolveCheck(type, tenantId);
       }
     } catch (e: any) {
       this.logger.warn(`checkAgentPing(${agent}) hata:`, e?.message);
     }
   }
 
-  private async checkLucaTokenAge() {
+  private async checkLucaTokenAge(tenantId: string) {
     try {
       const sess = await (this.prisma as any).lucaSession.findFirst({
+        where: { tenantId },
         orderBy: { updatedAt: 'desc' },
       }).catch(() => null);
 
@@ -167,6 +193,7 @@ export class SystemHealthService {
 
       if (ageMin > 60) {
         await this.upsertCheck({
+          tenantId,
           type: 'LUCA_TOKEN_AGE',
           severity: 'CRITICAL',
           status: 'DOWN',
@@ -176,6 +203,7 @@ export class SystemHealthService {
         });
       } else if (ageMin > 30) {
         await this.upsertCheck({
+          tenantId,
           type: 'LUCA_TOKEN_AGE',
           severity: 'WARNING',
           status: 'DEGRADED',
@@ -184,16 +212,21 @@ export class SystemHealthService {
           acilTavsiye: "Portalda Luca Oturum Yöneticisi'ni yenile; gerekirse güvenlik kodunu buradan gir",
         });
       } else {
-        await this.resolveCheck('LUCA_TOKEN_AGE');
+        await this.resolveCheck('LUCA_TOKEN_AGE', tenantId);
       }
     } catch (e: any) {
       this.logger.warn('checkLucaTokenAge hata:', e?.message);
     }
   }
 
-  private async checkMihsapTokenAge() {
+  private async checkMihsapTokenAge(tenantId: string) {
     try {
-      const tok = await (this.prisma as any).mihsapToken.findFirst({
+      // 2026-09-25: `mihsapToken` diye bir model ŞEMADA YOK — doğrusu `mihsapSession`
+      //   (schema.prisma:1581, tablo mihsap_sessions). Eski çağrı her seferinde
+      //   "Cannot read properties of undefined" fırlatıp dıştaki catch'e düşüyordu:
+      //   bu kontrol BUGÜNE KADAR HİÇ ÇALIŞMADI, tek uyarı üretmedi.
+      const tok = await (this.prisma as any).mihsapSession.findFirst({
+        where: { tenantId },
         orderBy: { updatedAt: 'desc' },
       }).catch(() => null);
 
@@ -203,6 +236,7 @@ export class SystemHealthService {
 
       if (ageMin > 30) {
         await this.upsertCheck({
+          tenantId,
           type: 'MIHSAP_TOKEN_AGE',
           severity: 'CRITICAL',
           status: 'DOWN',
@@ -212,6 +246,7 @@ export class SystemHealthService {
         });
       } else if (ageMin > 15) {
         await this.upsertCheck({
+          tenantId,
           type: 'MIHSAP_TOKEN_AGE',
           severity: 'WARNING',
           status: 'DEGRADED',
@@ -219,21 +254,22 @@ export class SystemHealthService {
           detail: { ageMin, lastSync: tok.updatedAt },
         });
       } else {
-        await this.resolveCheck('MIHSAP_TOKEN_AGE');
+        await this.resolveCheck('MIHSAP_TOKEN_AGE', tenantId);
       }
     } catch (e: any) {
       this.logger.warn('checkMihsapTokenAge hata:', e?.message);
     }
   }
 
-  private async checkPendingQueue() {
+  private async checkPendingQueue(tenantId: string) {
     try {
       const pending = await (this.prisma as any).lucaFetchJob.count({
-        where: { status: 'pending' },
+        where: { status: 'pending', tenantId },
       }).catch(() => 0);
 
       if (pending > 50) {
         await this.upsertCheck({
+          tenantId,
           type: 'PENDING_QUEUE',
           severity: 'CRITICAL',
           status: 'DEGRADED',
@@ -243,6 +279,7 @@ export class SystemHealthService {
         });
       } else if (pending > 20) {
         await this.upsertCheck({
+          tenantId,
           type: 'PENDING_QUEUE',
           severity: 'WARNING',
           status: 'DEGRADED',
@@ -250,28 +287,28 @@ export class SystemHealthService {
           detail: { pending },
         });
       } else {
-        await this.resolveCheck('PENDING_QUEUE');
+        await this.resolveCheck('PENDING_QUEUE', tenantId);
       }
     } catch (e: any) {
       this.logger.warn('checkPendingQueue hata:', e?.message);
     }
   }
 
-  private async checkFailedRatio() {
+  private async checkFailedRatio(tenantId: string) {
     try {
       const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
       const total = await (this.prisma as any).lucaFetchJob.count({
-        where: { createdAt: { gte: oneHourAgo } },
+        where: { createdAt: { gte: oneHourAgo }, tenantId },
       }).catch(() => 0);
 
       if (total < 5) {
         // İstatistik için yeterli veri yok — sessiz geç
-        await this.resolveCheck('FAILED_RATIO');
+        await this.resolveCheck('FAILED_RATIO', tenantId);
         return;
       }
 
       const failed = await (this.prisma as any).lucaFetchJob.count({
-        where: { createdAt: { gte: oneHourAgo }, status: 'failed' },
+        where: { createdAt: { gte: oneHourAgo }, status: 'failed', tenantId },
       }).catch(() => 0);
 
       const ratio = failed / total;
@@ -279,6 +316,7 @@ export class SystemHealthService {
 
       if (ratio >= 0.5) {
         await this.upsertCheck({
+          tenantId,
           type: 'FAILED_RATIO',
           severity: 'CRITICAL',
           status: 'DEGRADED',
@@ -288,6 +326,7 @@ export class SystemHealthService {
         });
       } else if (ratio >= 0.3) {
         await this.upsertCheck({
+          tenantId,
           type: 'FAILED_RATIO',
           severity: 'WARNING',
           status: 'DEGRADED',
@@ -295,19 +334,20 @@ export class SystemHealthService {
           detail: { failed, total, ratio },
         });
       } else {
-        await this.resolveCheck('FAILED_RATIO');
+        await this.resolveCheck('FAILED_RATIO', tenantId);
       }
     } catch (e: any) {
       this.logger.warn('checkFailedRatio hata:', e?.message);
     }
   }
 
-  private async checkRecentLucaJobFailures() {
+  private async checkRecentLucaJobFailures(tenantId: string) {
     try {
       const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
       const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
       const failureWhere = {
         status: 'failed',
+        tenantId,
         OR: [
           { finishedAt: { gte: dayAgo } },
           { finishedAt: null, createdAt: { gte: dayAgo } },
@@ -319,6 +359,7 @@ export class SystemHealthService {
         (this.prisma as any).lucaFetchJob.count({
           where: {
             status: 'failed',
+            tenantId,
             OR: [
               { finishedAt: { gte: hourAgo } },
               { finishedAt: null, createdAt: { gte: hourAgo } },
@@ -344,7 +385,7 @@ export class SystemHealthService {
       ]);
 
       if (!failed24h || latestFailures.length === 0) {
-        await this.resolveCheck('LUCA_JOB_FAILURE');
+        await this.resolveCheck('LUCA_JOB_FAILURE', tenantId);
         return;
       }
 
@@ -357,6 +398,7 @@ export class SystemHealthService {
       const jobLabel = `${this.formatJobTip(latest.tip)}${taxpayerName ? ` · ${taxpayerName}` : ''}`;
 
       await this.upsertCheck({
+        tenantId,
         type: 'LUCA_JOB_FAILURE',
         severity,
         status: severity === 'CRITICAL' ? 'DOWN' : 'DEGRADED',
@@ -442,7 +484,7 @@ export class SystemHealthService {
     }
   }
 
-  private async checkAgentVersion() {
+  private async checkAgentVersion(tenantId: string) {
     try {
       // Son 1 saatte ping atan agent'ların version dağılımı
       const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
@@ -452,7 +494,7 @@ export class SystemHealthService {
       >`
         SELECT "agent", "meta"->>'agentVersion' AS "agentVersion", "meta"->>'version' AS "version", "lastPing"
         FROM "agent_status"
-        WHERE "lastPing" >= ${oneHourAgo}
+        WHERE "lastPing" >= ${oneHourAgo} AND "tenantId" = ${tenantId}
       `.catch(() => []);
 
       const versionCounts: Record<string, number> = {};
@@ -468,6 +510,7 @@ export class SystemHealthService {
       if (oldVersions.length > 0) {
         const detail = oldVersions.map((v) => `${v}=${versionCounts[v]}`).join(', ');
         await this.upsertCheck({
+          tenantId,
           type: 'AGENT_VERSION',
           severity: 'WARNING',
           status: 'DEGRADED',
@@ -476,7 +519,7 @@ export class SystemHealthService {
           acilTavsiye: "Luca/Mihsap sekmelerinde bookmarklet'i tekrar tıkla; local agent ise yeniden başlat.",
         });
       } else {
-        await this.resolveCheck('AGENT_VERSION');
+        await this.resolveCheck('AGENT_VERSION', tenantId);
       }
     } catch (e: any) {
       this.logger.warn('checkAgentVersion hata:', e?.message);
@@ -514,8 +557,10 @@ export class SystemHealthService {
     tenantId?: string | null;
   }) {
     // Aynı type için açık (resolved=false) check varsa onu güncelle, yoksa yeni oluştur.
+    // Bulgu 33: aynı tip uyarı ofis başına AYRI tutulmalı; yoksa A ofisinin açık uyarısı
+    // B ofisinin kontrolüyle eziliyor ve iki ofisten biri uyarıyı hiç görmüyordu.
     const existing = await (this.prisma as any).systemHealthCheck.findFirst({
-      where: { type: args.type, resolved: false },
+      where: { type: args.type, resolved: false, tenantId: args.tenantId ?? null },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -589,9 +634,38 @@ export class SystemHealthService {
     }
   }
 
-  private async resolveCheck(type: string) {
+  /**
+   * GEÇİŞ TEMİZLİĞİ (bulgu 33) — ofis bazlı kontrole geçmeden ÖNCE açılmış, `tenantId`'si
+   * boş uyarıları kapatır.
+   *
+   * Neden gerekli: bu uyarılar artık ofis başına yeniden üretiliyor; eski ofissiz satırlar
+   * hiçbir kontrol tarafından kapatılamaz (kapatma da ofise bağlı) ve `tenantId: null`
+   * altyapı uyarısı sayıldıkları için HER OFİSİN panelinde sonsuza dek asılı kalırlardı.
+   * Canlı ölçüm (25.09.2026): tam 2 satır — LUCA_JOB_FAILURE ve LUCA_TOKEN_AGE.
+   * Koşul sürüyorsa aynı tur içinde ofis bazlı olarak zaten yeniden açılır.
+   */
+  private async ofissizEskiUyarilariKapat() {
+    const OFIS_BAZLI_TIPLER = [
+      'AGENT_PING_MIHSAP', 'AGENT_PING_LUCA', 'LUCA_TOKEN_AGE', 'MIHSAP_TOKEN_AGE',
+      'PENDING_QUEUE', 'FAILED_RATIO', 'LUCA_JOB_FAILURE', 'AGENT_VERSION',
+    ];
+    const r = await (this.prisma as any).systemHealthCheck
+      .updateMany({
+        where: { resolved: false, tenantId: null, type: { in: OFIS_BAZLI_TIPLER } },
+        data: { resolved: true, resolvedAt: new Date() },
+      })
+      .catch(() => ({ count: 0 }));
+    if (r?.count) {
+      this.logger.log(`[SAGLIK-GECIS] ${r.count} ofissiz eski uyarı kapatıldı (ofis bazlı olarak yeniden üretilecek).`);
+    }
+  }
+
+  /** Bulgu 33: kapatma da ofise bağlı — A ofisinin uyarısını B ofisinin kontrolü kapatmasın. */
+  private async resolveCheck(type: string, tenantId?: string | null) {
+    const where: any = { type, resolved: false };
+    if (tenantId !== undefined) where.tenantId = tenantId ?? null;
     await (this.prisma as any).systemHealthCheck.updateMany({
-      where: { type, resolved: false },
+      where,
       data: { resolved: true, resolvedAt: new Date() },
     });
   }

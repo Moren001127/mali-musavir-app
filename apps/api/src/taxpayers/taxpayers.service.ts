@@ -899,9 +899,30 @@ export class TaxpayersService {
         actionPath = `/panel/mukellefler/${taxpayer.id}`;
       }
 
-      // Bekleme süresi: updatedAt'ten şimdiye kaç gün
-      const bekleyenGun = Math.floor(
-        (now.getTime() - new Date(s.updatedAt).getTime()) / (1000 * 60 * 60 * 24),
+      // Bekleme süresi — 2026-09-25 (portal denetimi bulgu 46) DAHA DÜRÜST ÖLÇÜM.
+      //   Eskiden hep genel `updatedAt`'ten hesaplanıyordu; şemanın kendi notu da bunun
+      //   yanlış olduğunu söylüyor: "updatedAt kullanılamaz: başka alan güncellenince
+      //   tazelenir". Sonuç: 208 gündür evrak bekleyen mükellefte biri herhangi bir kutuyu
+      //   işaretleyince gecikme SIFIRLANIYORDU.
+      //   Elde tek aşama damgası var (`evraklarIslendiAt`); diğerleri için şema değişikliği
+      //   gerekir. Şimdilik:
+      //     EVRAK_BEKLIYOR → hiçbir şey olmadı; ölçü DÖNEMİN BAŞINDAN (ya da mükellefiyet
+      //       başlangıcından). `updatedAt` burada tamamen ilgisiz.
+      //     ISLENMEYI/KONTROL → "işlendi" damgası varsa ondan.
+      //     diğerleri → `updatedAt` (eski davranış; doğru damga şemada yok).
+      const bekleyenBaslangic: Date = (() => {
+        if (stage === 'EVRAK_BEKLIYOR') {
+          const mukellefiyetBas = taxpayer.startDate ? new Date(taxpayer.startDate) : null;
+          return mukellefiyetBas && mukellefiyetBas > firstDay ? mukellefiyetBas : firstDay;
+        }
+        if ((stage === 'ISLENMEYI_BEKLIYOR' || stage === 'KONTROL_BEKLIYOR') && s.evraklarIslendiAt) {
+          return new Date(s.evraklarIslendiAt);
+        }
+        return new Date(s.updatedAt);
+      })();
+      const bekleyenGun = Math.max(
+        0,
+        Math.floor((now.getTime() - bekleyenBaslangic.getTime()) / (1000 * 60 * 60 * 24)),
       );
 
       return {
@@ -963,7 +984,14 @@ export class TaxpayersService {
         beyanname: grouped.BEYANNAME_BEKLIYOR.length,
         tamam: grouped.TAMAM.length,
       },
-      siradaki: siralanmis.filter((i) => i.stage !== 'TAMAM' && i.stage !== 'EVRAK_BEKLIYOR').slice(0, 10),
+      // 2026-09-25 (portal denetimi bulgu 45) — EVRAK BEKLEYENLER ARTIK LİSTEDE.
+      //   Eskiden `EVRAK_BEKLIYOR` tamamen dışarıda bırakılıyor ve liste 10'a kırpılıyordu.
+      //   Ekranın "Geç Kalanlar" süzgeci bu 10 kayıt üzerinde çalıştığı için 208 GÜNDÜR
+      //   evrak bekleyen mükellef orada ASLA görünmüyordu. Sıralama önceliğinde
+      //   EVRAK_BEKLIYOR zaten en sonda (stageOrder 5), yani "sıradaki iş" önerisi değişmez.
+      //   Kırpma kaldırıldı: liste zaten mükellef sayısıyla sınırlı ve `grouped` aynı
+      //   kayıtları tam hâliyle gönderiyor — yük artmıyor.
+      siradaki: siralanmis.filter((i) => i.stage !== 'TAMAM'),
       grouped,
     };
   }
