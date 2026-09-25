@@ -27,26 +27,56 @@ export class NotificationsService {
 
   constructor(private prisma: PrismaService) {}
 
+  /**
+   * OKUNMAMIŞLIK ÖLÇÜTÜ — 2026-09-25 (denetim bulgusu 32b).
+   *
+   * `isRead` artık "HERKES İÇİN KAPANDI" demek: sistemin kendiliğinden kapatması
+   * (şifre düzeldi, iş kalemi bitti) ve kişiye özel bildirimler onu kullanır.
+   * `notification_reads` ise "şu kişi okudu" demek. Bir bildirim X kişisi için
+   * okunmamıştır: `isRead = false` VE o tabloda X için satır YOK.
+   *
+   * Eskiden tek alan vardı; ofis geneline (userId = null) giden bir bildirimi
+   * personelden biri açınca HERKES için okundu oluyor, diğerleri onu hiç görmüyordu.
+   */
+  private okunmamisKosulu(tenantId: string, userId: string) {
+    return {
+      tenantId,
+      isRead: false,
+      OR: [{ userId }, { userId: null }],
+      reads: { none: { userId } },
+    };
+  }
+
   /** Son bildirimler; limit 1..200 aralığına kırpılır (varsayılan 50). */
   async findAll(tenantId: string, userId: string, limit = 50) {
     const take = Math.min(Math.max(Math.floor(Number(limit) || 50), 1), 200);
-    return this.prisma.notification.findMany({
+    const satirlar = await this.prisma.notification.findMany({
       where: {
         tenantId,
         OR: [{ userId }, { userId: null }],
       },
       orderBy: { createdAt: 'desc' },
       take,
+      // Bu kullanıcının okuma satırı var mı — yalnız onun satırı çekilir.
+      include: { reads: { where: { userId }, select: { readAt: true }, take: 1 } },
+    });
+
+    // `isRead` KİŞİYE GÖRE hesaplanıp döner; ekranlar bu alanı okuduğu için
+    // sözleşme aynı kalır, arayüzde tek satır değişiklik gerekmez.
+    return satirlar.map((n: any) => {
+      const kisiOkumasi = n.reads?.[0] || null;
+      const { reads, ...kalan } = n;
+      return {
+        ...kalan,
+        isRead: n.isRead || !!kisiOkumasi,
+        readAt: n.readAt || kisiOkumasi?.readAt || null,
+      };
     });
   }
 
   async getUnreadCount(tenantId: string, userId: string): Promise<number> {
     return this.prisma.notification.count({
-      where: {
-        tenantId,
-        isRead: false,
-        OR: [{ userId }, { userId: null }],
-      },
+      where: this.okunmamisKosulu(tenantId, userId),
     });
   }
 
@@ -56,11 +86,7 @@ export class NotificationsService {
    * bu karta karışmaz (kullanıcı şikayeti: her şey kritik görünüyordu).
    */
   async getUnreadSummary(tenantId: string, userId: string): Promise<{ total: number; critical: number }> {
-    const baseWhere = () => ({
-      tenantId,
-      isRead: false,
-      OR: [{ userId }, { userId: null }],
-    });
+    const baseWhere = () => this.okunmamisKosulu(tenantId, userId);
     const [total, critical] = await Promise.all([
       this.prisma.notification.count({ where: baseWhere() }),
       this.prisma.notification.count({
@@ -74,24 +100,63 @@ export class NotificationsService {
     // IDOR koruması: yalnız kendi tenant'ındaki + kendine/tenant geneline ait
     // bildirimi okundu işaretle. (Eskiden where:{id} idi → başka tenant'ın
     // bildirimi işaretlenebiliyordu.)
-    const res = await this.prisma.notification.updateMany({
+    const bildirim = await this.prisma.notification.findFirst({
       where: { id, tenantId, OR: [{ userId }, { userId: null }] },
-      data: { isRead: true, readAt: new Date() },
+      select: { id: true, userId: true },
     });
-    return { updated: res.count };
+    if (!bildirim) return { updated: 0 };
+
+    // 2026-09-25 (32b): OFİS GENELİ bildirimde yalnız KİŞİ BAZLI okuma satırı yazılır;
+    //   `isRead`e dokunulmaz — yoksa diğer personel bildirimi hiç görmez.
+    //   Kişiye özel bildirimde eski davranış sürer (`isRead`), ayrıca okuma satırı da
+    //   yazılır ki sayaç ile liste tek ölçütten beslenmeye devam etsin.
+    await this.kisiOkumasiYaz(bildirim.id, userId);
+    if (bildirim.userId) {
+      await this.prisma.notification.update({
+        where: { id: bildirim.id },
+        data: { isRead: true, readAt: new Date() },
+      });
+    }
+    return { updated: 1 };
   }
 
-  /** Tenant + (kullanicinin kendi + tenant geneli) tum okunmamis bildirimleri okundu isaretler */
+  /** Kişi bazlı okuma satırı — aynı kişi iki kez okursa çakışma yaratmaz. */
+  private async kisiOkumasiYaz(notificationId: string, userId: string) {
+    await (this.prisma as any).notificationRead.upsert({
+      where: { notificationId_userId: { notificationId, userId } },
+      create: { notificationId, userId },
+      update: {},
+    }).catch(() => null);
+  }
+
+  /**
+   * Kullanıcının okunmamış bildirimlerini (kendi + ofis geneli) okundu işaretler.
+   *
+   * 2026-09-25 (32b): ofis geneli olanlara `isRead` YAZILMAZ — yalnız bu kişi için
+   * okuma satırı açılır; diğer personel bildirimi görmeye devam eder. Kişiye özel
+   * olanlarda eski davranış (`isRead`) sürer.
+   */
   async markAllRead(tenantId: string, userId: string) {
-    const result = await this.prisma.notification.updateMany({
-      where: {
-        tenantId,
-        isRead: false,
-        OR: [{ userId }, { userId: null }],
-      },
-      data: { isRead: true, readAt: new Date() },
+    const okunmamislar = await this.prisma.notification.findMany({
+      where: this.okunmamisKosulu(tenantId, userId),
+      select: { id: true, userId: true },
     });
-    return { count: result.count };
+    if (!okunmamislar.length) return { count: 0 };
+
+    const kendi = okunmamislar.filter((n) => !!n.userId).map((n) => n.id);
+    if (kendi.length) {
+      await this.prisma.notification.updateMany({
+        where: { id: { in: kendi }, tenantId },
+        data: { isRead: true, readAt: new Date() },
+      });
+    }
+
+    await (this.prisma as any).notificationRead.createMany({
+      data: okunmamislar.map((n) => ({ notificationId: n.id, userId })),
+      skipDuplicates: true,
+    }).catch(() => null);
+
+    return { count: okunmamislar.length };
   }
 
   /**

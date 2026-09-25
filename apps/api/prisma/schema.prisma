@@ -74,6 +74,7 @@ model User {
   userRoles                UserRole[]
   auditLogs                AuditLog[]
   notifications            Notification[]
+  notificationReads        NotificationRead[]
   createdOfficeChatThreads OfficeChatThread[]      @relation("OfficeChatThreadCreator")
   officeChatParticipants   OfficeChatParticipant[]
   officeChatMessages       OfficeChatMessage[]
@@ -911,11 +912,39 @@ model Notification {
   metadata  Json?
   createdAt DateTime  @default(now())
 
-  tenant Tenant @relation(fields: [tenantId], references: [id])
-  user   User?  @relation(fields: [userId], references: [id])
+  tenant Tenant             @relation(fields: [tenantId], references: [id])
+  user   User?              @relation(fields: [userId], references: [id])
+  reads  NotificationRead[]
 
   @@index([tenantId, isRead])
   @@map("notifications")
+}
+
+// === OFIS GENELI BILDIRIMDE KISI BAZLI "OKUNDU" (2026-09-25, denetim bulgusu 32b) ===
+// SORUN: `Notification.isRead` TEK alandi. Ofis geneline (userId = null) gonderilen bir
+// bildirimi personelden biri acinca HERKES icin okundu oluyor; digerleri o bildirimi hic
+// gormuyordu. Kritik uyarilar da bu yolla kayboluyordu.
+//
+// AYRIM: `isRead` artik "HERKES ICIN KAPANDI" demek — sistemin kendiliginden kapatmasi
+// (sifre duzeldi, is kalemi bitti) ve kisiye ozel bildirimler onu kullanir. Bu tablo ise
+// "su kisi okudu" demek. Bir bildirim X kisisi icin okunmamistir: isRead = false VE bu
+// tabloda X icin satir YOK.
+//
+// GERI DOLUM GEREKMEZ: eski ofis geneli bildirimlerde kisi bazli okundu bilgisi zaten
+// YOKTU. `isRead = true` olanlar herkeste kapali kalir; acik olanlar herkese okunmamis
+// gorunur. Bir kereye mahsus, kucuk bir gurultu.
+model NotificationRead {
+  id             String   @id @default(cuid())
+  notificationId String
+  userId         String
+  readAt         DateTime @default(now())
+
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([notificationId, userId])
+  @@index([userId, readAt])
+  @@map("notification_reads")
 }
 
 // === BILDIRIM TERCIHI ===

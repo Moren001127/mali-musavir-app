@@ -2840,8 +2840,16 @@ export class MorenAiService {
     // --- KRİTİK UYARI SAYISI (sistem sağlık + kilitli modül drift'i)
     let okunmamisBildirim = 0;
     try {
+      // 2026-09-25 (32b): ofis geneli bildirimlerde "okundu" artık KİŞİ BAZLI
+      //   (`notification_reads`). Sayaç yalnız `isRead`e bakarsa, Muzaffer Bey'in
+      //   okuduğu ofis geneli bildirim brifingde okunmamış görünmeye devam eder ve
+      //   sayaç ile bildirim ekranı AYRIŞIR. Bu yüzden aynı ölçüt kullanılıyor.
       const cnt = await (this.prisma as any).notification.count({
-        where: { tenantId, isRead: false },
+        where: {
+          tenantId,
+          isRead: false,
+          ...(userId ? { reads: { none: { userId } } } : {}),
+        },
       });
       okunmamisBildirim = cnt;
     } catch {}
