@@ -153,3 +153,66 @@ html[data-theme='D'] [data-gelir-report] > div.fixed.inset-0 button.border-white
   border-radius: 10px !important;
 }
 html[data-theme='D'] [data-gelir-report] > div.fixed.inset-0 button.text-white { border-radius: 10px !important; }
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════════════
+   NETLEŞTİRME TURU — 2026-09-25 (Muzaffer Bey: "rakamlar ayırt edici görünmüyor, satırlar sütunlar
+   belli olmuyor, profesyonel bir görünüm olsun"). Önek `body` ile yazılır; düzen ve işleyiş DEĞİŞMEZ.
+   ═══════════════════════════════════════════════════════════════════════════════════════════════════ */
+
+/* ── 1. SÜTUNLAR belli olsun ────────────────────────────────────────────────────────────────────────
+   Dikey ayraç `--mt-line-soft` idi; dört "TUTAR" sütunu birbirine karışıyordu. Dönem sütunlarının
+   arası artık tam ayraç; kod/kalem sütunlarının arası ince kalır (onlar tek bir blok). */
+html[data-theme='D'] body [data-panel-main] [data-gelir-report] table :is(td, th) + :is(td, th) {
+  border-left: 1px solid var(--mt-line) !important;
+}
+html[data-theme='D'] body [data-panel-main] [data-gelir-report] table tbody td:nth-child(2) { border-left-color: var(--mt-line-soft) !important; }
+/* Tutar sütunlarının blok başlangıcı (ilk dönem sütunu) daha belirgin */
+html[data-theme='D'] body [data-panel-main] [data-gelir-report] table :is(td, th):nth-child(3) {
+  border-left: 2px solid var(--mt-line) !important;
+}
+
+/* ── 2. RAKAMLAR: mali tablo düzeni — sağa yaslı, basamaklar alt alta ──────────────────────────────
+   Tutarlar ortalıydı; basamaklar hizalanmadığı için sayılar birbiriyle karşılaştırılamıyordu. */
+html[data-theme='D'] body [data-panel-main] [data-gelir-report] tbody td.text-center { text-align: right !important; }
+html[data-theme='D'] body [data-panel-main] [data-gelir-report] tbody td.text-center > * { justify-content: flex-end !important; }
+html[data-theme='D'] body [data-panel-main] [data-gelir-report] thead th.text-center { text-align: center !important; }
+
+/* ── 3. VERİ YOK sütunu geri çekilsin ─────────────────────────────────────────────────────────────
+   Boş dönemler dolu dönemlerle aynı ağırlıktaydı; göz her seferinde onlara takılıyordu. */
+html[data-theme='D'] body [data-panel-main] [data-gelir-report] tbody td[data-gt-bos='evet'] {
+  background: #fafbfd !important; color: #cbd5e1 !important;
+}
+html[data-theme='D'] body [data-panel-main] [data-gelir-report] tbody td[data-gt-bos='evet'] * { color: #cbd5e1 !important; }
+
+/* ── 4. SATIRLAR: kademe belli olsun ──────────────────────────────────────────────────────────────
+   Ara toplamlar (A/B/D/E) ayrıntı satırlarıyla neredeyse aynı zemindeydi; yalnız kalınlık ayırıyordu. */
+html[data-theme='D'] body [data-panel-main] [data-gelir-report] [data-report-row='detail'] > td { border-bottom-color: var(--mt-line-soft) !important; }
+html[data-theme='D'] body [data-panel-main] [data-gelir-report] [data-report-row='group'] { background: #eef2f7 !important; }
+html[data-theme='D'] body [data-panel-main] [data-gelir-report] [data-report-row='group'] > td {
+  border-top: 1px solid var(--mt-line) !important; border-bottom: 1px solid var(--mt-line) !important; color: #0f172a !important;
+}
+html[data-theme='D'] body [data-panel-main] [data-gelir-report] [data-report-row='total'] { background: #e7edf5 !important; }
+html[data-theme='D'] body [data-panel-main] [data-gelir-report] [data-report-row='final'] { background: var(--mt-primary-soft) !important; }
+/* Ayrıntı satırlarında kalem yazısı biraz geri çekilsin ki ara toplamlar öne çıksın */
+html[data-theme='D'] body [data-panel-main] [data-gelir-report] [data-report-row='detail'] > td:nth-child(2) { font-weight: 450 !important; color: var(--mt-ink-2) !important; }
+
+/* ── 5. Başlık satırı: dönem ile TUTAR bağı ───────────────────────────────────────────────────────
+   "TUTAR" dört kez tekrar ediyordu; hangi döneme ait olduğu ancak yukarı bakılınca anlaşılıyordu. */
+html[data-theme='D'] body [data-panel-main] [data-gelir-report] thead th {
+  font-weight: 700 !important; box-shadow: inset 0 -1px 0 var(--mt-line-strong);
+}
+html[data-theme='D'] body [data-panel-main] [data-gelir-report] thead tr:last-child th:nth-child(n+3) {
+  color: var(--mt-muted) !important; font-size: 10.5px !important; letter-spacing: .08em !important;
+}
+
+/* ── 6. Finansal oran kartları: durum kartın kendisinden okunsun ──────────────────────────────────
+   Durum (iyi/uyarı/kötü) yalnız yazı renginde duruyordu; dokuz kart tarandığında hangisinin
+   sorunlu olduğu ancak rakam okununca anlaşılıyordu. Artık sol kenar şeridi durumu taşıyor. */
+html[data-theme='D'] body [data-panel-main] [data-gelir-report] [data-report-ratio] {
+  border-left: 3px solid #cbd5e1 !important; padding-left: 13px !important;
+}
+html[data-theme='D'] body [data-panel-main] [data-gelir-report] [data-report-ratio='good'] { border-left-color: #2f9e44 !important; }
+html[data-theme='D'] body [data-panel-main] [data-gelir-report] [data-report-ratio='warn'] { border-left-color: #f08c00 !important; }
+html[data-theme='D'] body [data-panel-main] [data-gelir-report] [data-report-ratio='bad'] { border-left-color: #e03131 !important; background: #fffafa !important; }
+html[data-theme='D'] body [data-panel-main] [data-gelir-report] [data-report-ratio] > :nth-child(2) { letter-spacing: -0.02em !important; }
+html[data-theme='D'] body [data-panel-main] [data-gelir-report] [data-report-ratio] > :first-child { font-weight: 650 !important; color: var(--mt-ink-2) !important; }

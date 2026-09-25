@@ -158,3 +158,37 @@ html[data-theme='D'] [data-isletme-report] div.fixed.inset-0 pre {
   color: var(--mt-ink) !important;
 }
 html[data-theme='D'] [data-isletme-report] div.fixed.inset-0 button { border-radius: 10px !important; }
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════════════
+   NETLEŞTİRME TURU — 2026-09-25 (Muzaffer Bey: "karışık bir görünüm var, tablo yok gibi;
+   ilk tablo diğerlerine göre küçük, eşit durmuyor"). Genişlik eşitlemesi page.tsx'te yapıldı.
+   ═══════════════════════════════════════════════════════════════════════════════════════════════════ */
+
+/* ── 1. TABLO ÇİZGİLERİ görünsün ──────────────────────────────────────────────────────────────────
+   Hücre ayraçları `--mt-line-soft` idi; ekranda tablo değil, serbest yerleşmiş sayılar görünüyordu. */
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] table :is(td, th) { border-color: var(--mt-line) !important; }
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] table tbody td + td { border-left: 1px solid var(--mt-line) !important; }
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] table tbody tr > td { border-bottom: 1px solid var(--mt-line-soft) !important; }
+/* Dönem sütunlarının başladığı yer (satır etiketinden sonra) belirgin olsun */
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] table tbody td:nth-child(2) { border-left: 2px solid var(--mt-line) !important; }
+
+/* ── 2. Satır etiketi ile tutar ayrışsın ─────────────────────────────────────────────────────────── */
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row] > td:first-child {
+  background: #fcfdfe !important; font-weight: 600 !important;
+}
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row='total'] > td:first-child,
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row='final'] > td:first-child { background: transparent !important; }
+/* Etiket içindeki açıklama ("Luca'dan otomatik" gibi) ikinci plana düşsün */
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row] > td:first-child > span.normal-case:not(.rounded-md) {
+  font-weight: 400 !important; font-size: 11px !important;
+}
+
+/* ── 3. Tutarlar sağa yaslı — basamaklar alt alta ────────────────────────────────────────────────── */
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] table tbody td:not(:first-child) { text-align: right !important; }
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] table tbody td:not(:first-child) > * { justify-content: flex-end !important; margin-left: auto !important; }
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] input.num-input { text-align: right !important; }
+
+/* ── 4. Bölüm başlıkları ve blok aralığı ─────────────────────────────────────────────────────────── */
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-sections] > [data-report-section],
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-sections] > div > [data-report-section] { border-radius: 12px !important; }
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-section-heading] h2 { font-size: 11px !important; font-weight: 750 !important; }

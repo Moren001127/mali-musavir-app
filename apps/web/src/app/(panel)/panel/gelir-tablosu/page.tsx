@@ -1312,6 +1312,8 @@ export default function GelirTablosuPage() {
                       return (
                         <td
                           key={qi}
+                          data-gt-donem={String(qi)}
+                          data-gt-bos={!hasData ? 'evet' : undefined}
                           className="px-3 py-2.5 text-center"
                           style={portalStyle({
                             // v1.36.50: Kar/Zarar satırları (brutSatisKari, faaliyetKari, olaganKar, donemKari, donemNetKari)

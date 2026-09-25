@@ -1252,15 +1252,13 @@ function KarsilastirmaTablosu({
   }, []);
 
   return (
-    <div data-report-sections>
+    <div data-report-sections style={portalStyle({ maxWidth: Math.min(1120, 320 + tersDonemler.length * 200), marginRight: 'auto' })}>
+      {/* v1.36.71: Tablo ekranı boydan boya kaplamasın — dönem sayısına göre ölçeklenen genişlik sınırı + ortala.
+          2026-09-25: Bu sınır ÖNCEDEN yalnız ilk bloğa (Kar/Zarar) uygulanıyordu; Stok ve Geçici Vergi
+          blokları tam genişlikte kalıyor, ilk tablo dar ve içeride duruyordu ("eşit durmuyor"). Sınır artık
+          BÜTÜN bölümleri saran kaba verildi; üç blok da aynı genişlikte ve aynı hizada. */}
       {/* v1.36.26: Dönem Aksiyonları + KAR/ZARAR ÖZETİ tek bağlı blok — boşluk yok */}
-      {/* v1.36.71: Tablo ekranı boydan boya kaplamasın — dönem sayısına göre ölçeklenen
-          genişlik sınırı + ortala. Bar/tablolar/aksiyonlar aynı sarmalın içinde olduğu
-          için %-tabanlı sütunlar birlikte hizalı kalır. */}
-      <div
-        className="space-y-0"
-        style={portalStyle({ maxWidth: Math.min(1120, 320 + tersDonemler.length * 200), margin: '0 auto' })}
-      >
+      <div className="space-y-0">
       {/* Üst dönem barı — tablonun sütun genişlikleriyle birebir hizalı */}
       <div data-isletme-band
         className="rounded-t-xl overflow-hidden"
