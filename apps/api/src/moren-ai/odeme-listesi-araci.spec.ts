@@ -42,7 +42,8 @@ describe('get_my_odeme_listesi', () => {
     expect(list).toHaveBeenCalledWith('T1', '2026-08', 'TP1');
     expect(r.ay).toBe('Ağustos 2026');
     expect(r.adet).toBe(2);
-    expect(r.kalemler[0]).toMatchObject({ odeme: 'KDV Beyannamesi', donem: 'Temmuz 2026', sonOdemeGunu: '2026-08-28', tutar: 7046.77 });
+    // Dönem yazımı 069cfb9 (2026-09-14) ile '07/2026' oldu; bu satır eski biçimi bekliyordu (bayat test).
+    expect(r.kalemler[0]).toMatchObject({ odeme: 'KDV Beyannamesi', donem: '07/2026', sonOdemeGunu: '2026-08-28', tutar: 7046.77 });
     expect(r.kalemler[1]).toMatchObject({ odeme: 'SGK Prim Tahakkuku', sonOdemeGunu: '2026-11-02', not: expect.stringMatching(/kaydirildi/) });
     expect(r.vergiToplam).toBe(7046.77);
     expect(r.sgkToplam).toBe(24277.05);

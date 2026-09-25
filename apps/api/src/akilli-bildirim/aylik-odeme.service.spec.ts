@@ -164,12 +164,15 @@ describe('AylikOdemeService.list — çeyrek/yıllık eşlemesi + iş günü kay
     expect(temmuz.find((r) => r.taxpayerId === 'C')).toBeUndefined();
   });
 
-  it('Ekim 2026: DAMGA 25 Ekim Pazar → 26 Ekim; SGK 31 Ekim Cumartesi → 2 Kasım (ham gün korunur)', async () => {
+  // 2026-09-25 (portal denetimi bulgu 43): DAMGA taban günü 25 → 26 düzeltildi (GİB vergi
+  // takvimi: Ekim 2026 dönemi Damga 26.11.2026). Bu yüzden "25 Ekim Pazar → 26 Ekim" örneği
+  // artık kaymayı GÖSTERMİYOR: 26 Ekim 2026 zaten Pazartesi. Kayma SGK satırıyla sınanıyor.
+  it('Ekim 2026: DAMGA ham 26 Ekim (Pzt, kayma yok); SGK 31 Ekim Cumartesi → 2 Kasım (ham gün korunur)', async () => {
     const { s } = servis(sahtePrisma({ beyan: beyanlar, sgk: sgkler }));
     const rows = await s.list('t1', '2026-10');
     const a = rows.find((r) => r.taxpayerId === 'A')!;
     const damga = a.satirlar.find((x) => x.tur === 'DAMGA')!;
-    expect(damga.sonGunHam).toBe('25.10.2026');
+    expect(damga.sonGunHam).toBe('26.10.2026');
     expect(damga.sonGun).toBe('26.10.2026');
     const sgk = a.satirlar.find((x) => x.kaynak === 'SGK')!;
     expect(sgk.sonGunHam).toBe('31.10.2026');
@@ -317,7 +320,8 @@ describe('AylikOdemeService.send — KALEM BAZLI takip (Muzaffer Bey 2026-09-14:
     expect(r2.atlanan).toBe(0);
     expect(r2.results.map((x) => [x.channel, x.kalem, x.yeni])).toEqual([['WHATSAPP', 3, 1], ['EMAIL', 3, 1]]);
     const m2 = whatsapp.sendMessageDetailed.mock.calls[1][1] as string;
-    expect(m2).toContain('DAMGA - Tahakkuk - Son Ödeme: 25.8.2026 - 100,00  TL');
+    // DAMGA taban günü 25 → 26 düzeltildi (denetim bulgusu 43; GİB vergi takvimi).
+    expect(m2).toContain('DAMGA - Tahakkuk - Son Ödeme: 26.8.2026 - 100,00  TL');
     expect(m2).not.toContain('KDV1');
     expect(m2).not.toContain('GGECICI');
     expect(m2).toContain('Toplam: 100,00  TL');

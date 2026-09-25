@@ -198,6 +198,83 @@ sabit günlerden değil uçtan okusun; kaydırılmamış kayıt `tahmini: true` 
 söylüyor — kaydırma aracının tatil verisi de teyitsiz. KDV2/Damga çelişkisinde hangisinin doğru olduğu
 resmî takvimden okunmalı.
 
+---
+
+### 43-EK. GİB RESMÎ TAKVİMİNDEN DOĞRULAMA (25 Eylül 2026) — bulgu sanılandan ağır
+
+`gib.gov.tr/vergi-takvimi` **temiz bir iş günü ayında** (Kasım 2026: 25'i Çarşamba, 26'sı Perşembe)
+okundu. Çelişkili çiftlerde **hangisinin doğru olduğu kesinleşti**:
+
+| Beyanname | MaliTakvim.tsx | deadline.util.ts | **GİB (Ekim 2026 dönemi)** | Sonuç |
+|---|---|---|---|---|
+| KDV2 tevkifat | 25 | 28 | **25.11.2026** | util YANLIŞ |
+| Damga (her iki tür) | 26 | 25 | **26.11.2026** | util YANLIŞ |
+| MUHSGK | 26 | 26 | 26.11.2026 | ikisi de doğru |
+| Konaklama | 26 | 26 | 26.11.2026 | ikisi de doğru |
+| KDV1 | 28 | 28 | 28.12.2026 (Kasım dönemi) | ikisi de doğru |
+| Turizm payı | ay sonu | 26 | **30.09.2026** (Ağustos dönemi) | util YANLIŞ |
+
+Ofis bu tiplerden KDV2'yi (30 kayıt) ve DAMGA'yı (1 kayıt) **gerçekten veriyor**
+(`beyan_durumu` tip dağılımı, canlı okuma). Yanlış taban gün `akilli-bildirim` üzerinden
+mükellefe giden "Son Ödeme" satırına da giriyordu.
+
+**Canlı `tax_calendar` ölçümü (49 satır):** önümüzdeki 11 satırın **3'ü hafta sonuna düşüyor** —
+MUHSGK 26.09.2026 · KDV1 28.11.2026 · MUHSGK 26.12.2026, üçü de **Cumartesi**.
+GİB takvimi aynı yükümlülükler için **28.09 / 30.11 / 28.12** diyor. İki yıllık ufukta sapan
+satır sayısı **12**.
+
+**Daha ağır bir nokta:** `taxpayer-portal.service.ts:812` tax_calendar satırlarını
+`tahmini: false` ile veriyordu. Oysa bu tabloya yazan **tek yer** tohum betiği
+(`vergi-takvimi-tohum.service.ts:50`) — yani her satır bir hesap. Mükellefe hesaplanmış,
+üstelik hafta sonuna düşmüş bir tarih **"kesin"** diye gösteriliyordu.
+
+**Formülle çözülemeyen katman — sirküler uzatmaları.** Nisan 2026 döneminde Kurban Bayramı
+nedeniyle GİB **199 Sıra No.lu VUK Sirküleri** ile uzatma verdi:
+
+| | Düz iş günü hesabı | **GİB** |
+|---|---|---|
+| MUHSGK / Damga / Konaklama | 26.05.2026 | **03.06.2026** |
+| KDV1 | 01.06.2026 | **05.06.2026** |
+| KDV2 | 25.05.2026 | 25.05.2026 (uzatma yok) |
+| Turizm payı | 01.06.2026 | 01.06.2026 (uzatma yok) |
+
+Uzatma **tipe göre farklı** ve hiçbir formül üretemez. Sonuç: üretilen her tarih **tahminidir**;
+bilinen uzatmalar kaynağıyla bir tabloya yazılır, bilinmeyeni uydurulmaz.
+
+**Uygulanan düzeltme (2026-09-25):**
+1. `packages/shared/src/constants/resmi-tatil.ts` — tatil tablosu + `isGununeKaydir` TEK KAYNAK.
+   Tablo daha önce iki yerde kopyaydı (`apps/api/src/schedule/is-gunu.ts`,
+   `packages/shared/src/constants/edefter-takvim.ts`); ikisi de artık buradan okuyor, tarayıcı da.
+2. `packages/shared/src/constants/beyanname-takvim.ts` — taban günler (GİB'den doğrulananlar ✓
+   işaretli, teyitsizlere dokunulmadı) + `BEYANNAME_UZATMALAR` sirküler tablosu. Kalıp e-Defter
+   takviminden alındı; orada zaten doğru yapılıyordu.
+3. `calculateBeyannameDeadline` artık **kaydırılmış** günü döndürüyor. Ham gün isteyen tek yer
+   aylık ödeme cetveli — `beyannameHamTarihi` eklendi.
+4. `EDEFTER` bu util'den kaldırıldı: oradaki "3 ay sonrasının son günü" kuralı yanlıştı
+   (gerçek kural 4. ayın 10'u/14'ü, mükellef tipine bağlı). Yanlış tarih üretmektense `null`.
+5. Mükellef portalı: seed satırları `tahmini: true`, uyarı metninde "(tahmini)".
+6. `MaliTakvim.tsx` sabit gün kontrolünden çıktı; karar `mali-takvim-kurallar.ts` (saf, testli).
+
+**Bayat sınamalar:** `vergi-takvimi-tohum.spec.ts:14` (2026-09-26 Cumartesi),
+`aylik-odeme-donem.spec.ts:51` (DAMGA 25.08), `aylik-odeme.service.spec.ts:172,323` (DAMGA 25)
+**hatayı beklenen davranış olarak çiviliyordu** — dördü de kanıt notuyla düzeltildi.
+Ayrıca ilgisiz bir bayat test bulundu: `odeme-listesi-araci.spec.ts:45` dönem yazımını
+`069cfb9` (2026-09-14) değiştirdiği hâlde güncellenmemişti — API paketi o tarihten beri
+**2 kırmızı testle** çalışıyordu.
+
+**Yeni sınama:** `scripts/vergi-takvimi-is-gunu-regression.cjs` (37 kontrol, zincirde).
+Beklenen tarihlerin tamamı GİB takviminden alındı. Mutasyon denemesi: kayma kapatılıp
+DAMGA 25'e döndürülünce **7 kontrol** düşüyor.
+
+**Canlı veri:** kod düzelse de tohum mevcut satırlara dokunmuyor.
+`scripts/vergi-takvimi-duzelt.cjs` yalnız sapan satırların `dueDate` alanını düzeltir
+(silme/ekleme yok, varsayılan kuru çalışma). Kuru çalıştırıldı: **12 satır** sapıyor.
+
+**Kalan teyitsizlik:** 2027 dini bayram tarihleri (Ramazan 9-11 Mart, Kurban 16-19 Mayıs)
+hâlâ elle girilmiş — GİB 2027 takvimini henüz yayımlamadı, doğrulanamadı. 2026 tarihleri
+GİB'in kendi kaydırmalarıyla tutarlı çıktı. `POSET` (24) ve `BILDIRGE` (23) GİB takviminde
+görünmüyor (SGK/diğer yükümlülük) — dokunulmadı, teyitsiz işaretlendi.
+
 ## 18. Taslak KDV tutarı "resmî beyan" diye sunuluyor — **DOĞRULANDI**
 
 `taxpayer-portal.service.ts:583-598`: tutarın koşulu (`beyan?.tahakkukTutari != null`) ile etiketin

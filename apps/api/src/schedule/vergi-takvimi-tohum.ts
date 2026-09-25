@@ -7,8 +7,16 @@
  * Kapsam (ofisin GERÇEKTEN verdiği beyanlar — beyan_kayitlari tablosundan teyit, 2026-09-14):
  *   KDV1 aylık (28) · MUHSGK aylık (26) + 3 aylık (çeyrek sonunu izleyen ayın 26'sı) · GGECICI / KGECICI 3 aylık
  *   (çeyrek sonunu izleyen 2. ayın 17'si; 4. dönem dahil — 2025/Q4 Şubat'ta verildi) · GELIR (31 Mart) · KURUMLAR (30 Nisan)
- * Dışarıda: KDV2, DAMGA, POSET, OTV… — canlı beyan tarihleri koddaki kuralla uyuşmuyor / tek kayıt; yanlış tarih tohumlamaktansa
- * elle eklenir. Hafta sonu / resmî tatil kayması uygulanmaz (GİB ilk iş gününe uzatır; görev açarken vade elle değiştirilebilir).
+ * Dışarıda: KDV2, DAMGA, POSET, OTV… — tek kayıt / kapsam dışı; elle eklenir.
+ *
+ * 2026-09-25 (portal denetimi bulgu 43): HAFTA SONU / RESMÎ TATİL KAYMASI ARTIK UYGULANIYOR.
+ * Eski not "kayma uygulanmaz" diyordu ve bunun bedeli canlıda görüldü: tabloda MUHSGK 26.09.2026,
+ * KDV1 28.11.2026, MUHSGK 26.12.2026 — üçü de CUMARTESİ. GİB'in kendi takvimi bunlara 28.09 /
+ * 30.11 / 28.12 diyor. Kayma artık `calculateBeyannameDeadline` içinde.
+ * ("KDV2, DAMGA — canlı beyan tarihleri koddaki kuralla uyuşmuyor" notunun sebebi de buydu:
+ *  kural yanlıştı, canlı doğruydu. KDV2 25, DAMGA 26 olarak düzeltildi.)
+ *
+ * Üretilen tarihler TAHMİNİDİR: GİB sirkülerle uzatabiliyor. Tabloyu okuyan ekranlar öyle sunmalı.
  */
 import { calculateBeyannameDeadline } from './beyanname-deadline.util';
 

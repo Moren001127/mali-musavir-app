@@ -4,9 +4,9 @@
  * Ödeme ayı M için hangi `beyan_kayitlari.donem` anahtarları listeye girer, hangi gruba düşer,
  * ham son ödeme günü nedir — hepsi burada. `list()` yalnız bu tabloyu uygular.
  *
- *   AYLIK   : dönem M-1 (Ağustos listesi Temmuz beyannameleri)            → `calculateBeyannameDeadline`
+ *   AYLIK   : dönem M-1 (Ağustos listesi Temmuz beyannameleri)            → `beyannameHamTarihi`
  *   3 AYLIK (geçici vergi DIŞI: MUHSGK/KDV1 üç aylık, POŞET …): M ∈ {1,4,7,10} → önceki çeyrek `YYYY-Qn`;
- *             son gün = çeyreğin son ayı için `calculateBeyannameDeadline` (MUHSGK 26, KDV 28 …)
+ *             son gün = çeyreğin son ayı için `beyannameHamTarihi` (MUHSGK 26, KDV 28 …)
  *   GEÇİCİ  : GGECICI/KGECICI — M ∈ {2,5,8,11}: Q4(önceki yıl)/Q1/Q2/Q3, son gün M'nin 17'si
  *   YILLIK  : GELIR/GMSI `YYYY-YIL` (YYYY = M yılı − 1): Mart 1. taksit (31 Mart), Temmuz 2. taksit (31 Temmuz)
  *             KURUMLAR: Nisan tek taksit (30 Nisan)
@@ -16,7 +16,7 @@
  * `tahakkukTutari`'ndan yapılır.
  */
 import { createHash } from 'crypto';
-import { calculateBeyannameDeadline } from '../schedule/beyanname-deadline.util';
+import { beyannameHamTarihi } from '../schedule/beyanname-deadline.util';
 
 export type OdemeGrup = 'AYLIK' | 'GECICI' | 'YILLIK' | 'SGK';
 export type OdemeKaynak = 'VERGI' | 'SGK';
@@ -163,7 +163,7 @@ export function kaydinSecimi(secimler: DonemSecimi[], beyanTipi: string, donem: 
 
 /**
  * HAM son ödeme günü (hafta sonu/tatil kayması uygulanmamış). Aylık dönemlerde tek kaynak
- * `calculateBeyannameDeadline`; çeyrek ve yıllıkta bu dosyadaki takvim.
+ * `beyannameHamTarihi`; çeyrek ve yıllıkta bu dosyadaki takvim.
  */
 export function hamSonGun(beyanTipi: string, donem: string, month: string): Date | null {
   const tip = String(beyanTipi || '').toUpperCase();
@@ -172,13 +172,15 @@ export function hamSonGun(beyanTipi: string, donem: string, month: string): Date
   const my = Number(mAy[1]);
   const mm = Number(mAy[2]);
 
-  if (/^\d{4}-\d{2}$/.test(donem)) return calculateBeyannameDeadline(tip, donem);
+  // 2026-09-25: `calculateBeyannameDeadline` artık KAYDIRILMIŞ günü döndürüyor; burası HAM
+  // günü istiyor (kaydırmayı `aylik-odeme.service.ts` kendi yapıp ikisini birlikte gösteriyor).
+  if (/^\d{4}-\d{2}$/.test(donem)) return beyannameHamTarihi(tip, donem);
 
   const q = /^(\d{4})-Q([1-4])$/i.exec(donem);
   if (q) {
     if (GECICI_TIPLER.has(tip)) return new Date(my, mm - 1, 17, 23, 59, 59);
     const sonAy = `${q[1]}-${String(Number(q[2]) * 3).padStart(2, '0')}`;
-    return calculateBeyannameDeadline(tip, sonAy);
+    return beyannameHamTarihi(tip, sonAy);
   }
 
   if (/^\d{4}-YIL$/i.test(donem)) {

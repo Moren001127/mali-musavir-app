@@ -18,6 +18,7 @@ import { KdvBeyannameService } from '../kdv-beyanname/kdv-beyanname.service';
 import { DriveService } from '../drive/drive.service';
 import { AylikOdemeService } from '../akilli-bildirim/aylik-odeme.service';
 import { ayAdi } from '../akilli-bildirim/aylik-odeme-donem';
+import { ilkIsGunu } from '../schedule/is-gunu';
 import { PDFParse } from 'pdf-parse';
 
 /** Brifing "Odak Notu" — sürekli değişen ticari/motivasyon cümleleri (her açılışta rastgele). */
@@ -816,7 +817,12 @@ export class TaxpayerPortalService {
             ? `${c.periodYear}-${String(c.periodMonth).padStart(2, '0')}`
             : c.periodQuarter ? `${c.periodYear}-Q${c.periodQuarter}` : `${c.periodYear}`;
           const kalanGun = Math.max(0, Math.ceil((new Date(c.dueDate).getTime() - now.getTime()) / 86400000));
-          return { tip: c.declarationType, donem, sonTarih: c.dueDate, aciklama: c.description || null, kalanGun, tahmini: false };
+          // 2026-09-25 denetim bulgusu 43 — ESKİDEN `tahmini: false` DENİYORDU, YANLIŞTI.
+          //   tax_calendar'a yazan TEK yer tohum betiği (vergi-takvimi-tohum.service.ts); yani
+          //   buradaki her satır bir HESAP, resmî bir kayıt değil. Üstelik kayma uygulanmadığı
+          //   için canlıda 3 satır cumartesiye düşmüştü ve mükellefe "kesin" diye gösteriliyordu.
+          //   GİB ayrıca sirkülerle uzatıyor — hiçbir formül bunu üretemez. Tarih hep tahminidir.
+          return { tip: c.declarationType, donem, sonTarih: c.dueDate, aciklama: c.description || null, kalanGun, tahmini: true };
         });
       }
     } catch (e) {
@@ -829,7 +835,10 @@ export class TaxpayerPortalService {
   private computeVergiTakvimi(gun: number, now: Date, to: Date) {
     const bugun = new Date(now); bugun.setHours(0, 0, 0, 0);
     const items: Array<{ tip: string; donem: string; sonTarih: Date; aciklama: string; kalanGun: number; tahmini: boolean }> = [];
-    const ekle = (tip: string, donem: string, sonTarih: Date, aciklama: string) => {
+    // 2026-09-25 denetim bulgusu 43: ham gün hafta sonu/resmî tatile düşerse ilk iş gününe taşınır
+    // (VUK md. 18). Eskiden taşınmıyordu; mükellef "son tarih 26.09.2026" (Cumartesi) görüyordu.
+    const ekle = (tip: string, donem: string, hamTarih: Date, aciklama: string) => {
+      const sonTarih = ilkIsGunu(hamTarih);
       if (sonTarih >= bugun && sonTarih <= to) {
         items.push({ tip, donem, sonTarih, aciklama, kalanGun: Math.max(0, Math.ceil((sonTarih.getTime() - bugun.getTime()) / 86400000)), tahmini: true });
       }
@@ -926,7 +935,10 @@ export class TaxpayerPortalService {
     if (bekleyen > 0) alerts.push({ severity: 'high', text: `${bekleyen} beyannameniz işlem bekliyor görünüyor`, href: '/mukellef/beyannameler' });
     if (yakin.length > 0) {
       const t0 = yakin[0];
-      alerts.push({ severity: 'medium', text: `${t0.tip || 'Beyanname'} son tarihi ${dt(t0.sonTarih)} — ${t0.kalanGun} gün kaldı`, href: '/mukellef/beyannameler' });
+      // Denetim bulgusu 43: tarih hesapla üretiliyor ve GİB sirkülerle uzatabiliyor —
+      // mükellefe kesin gibi sunulmuyor.
+      const tahminiNot = t0.tahmini === false ? '' : ' (tahmini)';
+      alerts.push({ severity: 'medium', text: `${t0.tip || 'Beyanname'} son tarihi ${dt(t0.sonTarih)}${tahminiNot} — ${t0.kalanGun} gün kaldı`, href: '/mukellef/beyannameler' });
     }
     if (bakiye > 0) alerts.push({ severity: 'medium', text: `Cari hesabınızda ${TL(bakiye)} açık bakiye (borç) görünüyor`, href: '/mukellef/cari' });
 

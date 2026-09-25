@@ -45,10 +45,19 @@ describe('aylik-odeme-donem — ödeme ayı → dönem anahtarları', () => {
 
 describe('aylik-odeme-donem — ham son gün', () => {
   const g = (d: Date | null) => (d ? isoGun(d) : null);
-  it('aylık tek kaynaktan: KDV1 2026-07 → 28.08, MUHSGK → 26.08, DAMGA → 25.08', () => {
+  // DAMGA 2026-09-25'te 25 → 26 olarak DÜZELTİLDİ (portal denetimi bulgu 43). Bu satır
+  // eskiden 25'i bekliyordu, yani hatayı çiviliyordu. GİB vergi takvimi (25.09.2026'da
+  // gib.gov.tr/vergi-takvimi'nden): Ekim 2026 dönemi Damga → 26.11.2026 (Perşembe, temiz iş günü).
+  it('aylık tek kaynaktan: KDV1 2026-07 → 28.08, MUHSGK → 26.08, DAMGA → 26.08', () => {
     expect(g(hamSonGun('KDV1', '2026-07', '2026-08'))).toBe('2026-08-28');
     expect(g(hamSonGun('MUHSGK', '2026-07', '2026-08'))).toBe('2026-08-26');
-    expect(g(hamSonGun('DAMGA', '2026-07', '2026-08'))).toBe('2026-08-25');
+    expect(g(hamSonGun('DAMGA', '2026-07', '2026-08'))).toBe('2026-08-26');
+  });
+  it('KDV2 ayın 25\'i (eskiden 28 sayılıyordu — GİB: Ekim 2026 dönemi 25.11.2026)', () => {
+    expect(g(hamSonGun('KDV2', '2026-10', '2026-11'))).toBe('2026-11-25');
+  });
+  it('Turizm payı izleyen ayın SON GÜNÜ (eskiden 26\'sı sayılıyordu — GİB: Ağustos 2026 dönemi 30.09.2026)', () => {
+    expect(g(hamSonGun('TURIZM', '2026-08', '2026-09'))).toBe('2026-09-30');
   });
   it('geçici vergi: Q2 → 17 Ağustos, Q4 → 17 Şubat (ertesi yıl)', () => {
     expect(g(hamSonGun('GGECICI', '2026-Q2', '2026-08'))).toBe('2026-08-17');

@@ -3,6 +3,8 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Bell, Bookmark, CalendarDays, FileCheck, FileText, Receipt, Timer, X } from 'lucide-react';
 import { api } from '@/lib/api';
+// Tatil tablosu + iş günü kaydırması sunucuyla ORTAK kaynaktan (denetim bulgusu 43).
+import { kuralGunu, sonGunuMu } from './mali-takvim-kurallar';
 import './mali-takvim.css';
 
 /**
@@ -35,7 +37,7 @@ const AYLAR = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz',
 const GUNLER = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
 const GUN_UZUN = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
 const KURAL_NOTU =
-  "e-Defter: aylık tercih için gelir vergisi mükelleflerinde ayın 10'u, kurumlar/diğer mükelleflerde ayın 14'ü · KDV2: ayın 25'i · MUHSGK/Damga/Konaklama: ayın 26'sı · KDV1: ayın 28'i · Geçici Vergi: Şubat/Mayıs/Ağustos/Kasım 17'si · Ay sonu: Turizm Payı";
+  "e-Defter: aylık tercih için gelir vergisi mükelleflerinde ayın 10'u, kurumlar/diğer mükelleflerde ayın 14'ü · KDV2: ayın 25'i · MUHSGK/Damga/Konaklama: ayın 26'sı · KDV1: ayın 28'i · Geçici Vergi: Şubat/Mayıs/Ağustos/Kasım 17'si · Ay sonu: Turizm Payı. Hafta sonu/resmî tatile düşen gün ilk iş gününe kayar (VUK 18). Tarihler tahminidir; GİB sirkülerle uzatabilir.";
 
 function monthName(date: Date) {
   return date.toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' });
@@ -56,30 +58,42 @@ function quarterlyLedgerPeriodForDueDate(date: Date) {
   return null;
 }
 
-/** Belirli bir günün mali son tarihleri (kurallar eski BuHaftaTakvim ile birebir). */
+/**
+ * Belirli bir günün mali son tarihleri.
+ *
+ * 2026-09-25 (portal denetimi bulgu 43): eskiden `if (day === 26)` gibi SABİT gün kontrolüydü;
+ * hafta sonu / resmî tatil kayması yoktu. 26 Eylül 2026 Cumartesi olduğu hâlde ekran o günü
+ * MUHSGK son günü gösteriyordu (GİB: 28 Eylül Pazartesi). Artık kural günü `mali-takvim-kurallar.ts`
+ * üzerinden taşınıyor; tatil tablosu sunucuyla AYNI kaynaktan geliyor (`@mali-musavir/shared`).
+ *
+ * Kural günleri GİB vergi takviminden doğrulandı (25.09.2026): KDV2 25 · MUHSGK/Damga/
+ * Konaklama 26 · KDV1 28 · Geçici vergi 17 · Turizm payı izleyen ayın son günü.
+ * Not: GİB ayrıca sirkülerle uzatabiliyor; bu ekran o uzatmaları bilmez.
+ */
 function gununSonTarihleri(date: Date): Omit<SonTarih, 'date' | 'gunFark'>[] {
-  const day = date.getDate();
+  const y = date.getFullYear();
   const month = date.getMonth() + 1;
-  const isLastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate() === day;
   const out: Omit<SonTarih, 'date' | 'gunFark'>[] = [];
+  const kural = (hamGun: Parameters<typeof kuralGunu>[1]) => kuralGunu(date, hamGun);
 
-  if (day === 25) out.push({ title: "KDV2 Tevkifat Beyannamesi (2 No'lu KDV)", subtitle: "Tevkifata tâbi işlemler · 164 Sıra No'lu VUK Sirküleri · izleyen ayın 25'i", icon: FileText, kind: 'vat' });
-  if (day === 26) {
+  if (kural(25)) out.push({ title: "KDV2 Tevkifat Beyannamesi (2 No'lu KDV)", subtitle: "Tevkifata tâbi işlemler · izleyen ayın 25'i", icon: FileText, kind: 'vat' });
+  if (kural(26)) {
     out.push({ title: 'Muhtasar ve Prim Hizmet Beyannamesi (MUHSGK)', subtitle: 'Bir önceki ay dönemi — birleşik muhtasar + SGK', icon: FileText, kind: 'payroll' });
     out.push({ title: 'Damga Vergisi Beyannamesi', subtitle: 'Önceki ay damga vergisi beyan ve ödeme', icon: FileCheck, kind: 'stamp' });
     out.push({ title: 'Konaklama Vergisi Beyannamesi', subtitle: 'Otel/pansiyon/tatil köyü · önceki ay · %2', icon: Bell, kind: 'tourism' });
   }
-  if (day === 28) out.push({ title: 'KDV Beyannamesi (KDV1)', subtitle: "Önceki ay KDV beyan ve ödeme · izleyen ayın 28'i", icon: Receipt, kind: 'vat' });
-  if (isLastDay) out.push({ title: 'Turizm Payı Beyannamesi', subtitle: 'Konaklama, yat, seyahat acentesi · izleyen ayın SON GÜNÜ (23:59)', icon: Bell, kind: 'tourism' });
-  if (day === 10 || day === 14) {
-    const grup = day === 10 ? 'Gelir vergisi mükellefleri' : 'Kurumlar/diğer mükellefler';
-    out.push({ title: 'e-Defter Berat Yükleme (Aylık Tercih)', subtitle: `${previousPeriodLabel(date, 4)} dönemi · ${grup} · ayın ${day}. günü sonu`, icon: Bookmark, kind: 'ledger' });
-    const ceyrek = quarterlyLedgerPeriodForDueDate(date);
-    if (ceyrek) out.push({ title: 'e-Defter Berat Yükleme (Geçici Vergi Dönemi)', subtitle: `${ceyrek} dönemi · ${grup} · ayın ${day}. günü sonu`, icon: Bookmark, kind: 'ledger' });
+  if (kural(28)) out.push({ title: 'KDV Beyannamesi (KDV1)', subtitle: "Önceki ay KDV beyan ve ödeme · izleyen ayın 28'i", icon: Receipt, kind: 'vat' });
+  if (kural('aySonu')) out.push({ title: 'Turizm Payı Beyannamesi', subtitle: 'Konaklama, yat, seyahat acentesi · izleyen ayın SON GÜNÜ (23:59)', icon: Bell, kind: 'tourism' });
+  for (const hamGun of [10, 14] as const) {
+    if (!kural(hamGun)) continue;
+    const grup = hamGun === 10 ? 'Gelir vergisi mükellefleri' : 'Kurumlar/diğer mükellefler';
+    out.push({ title: 'e-Defter Berat Yükleme (Aylık Tercih)', subtitle: `${previousPeriodLabel(date, 4)} dönemi · ${grup} · ayın ${hamGun}. günü sonu`, icon: Bookmark, kind: 'ledger' });
+    const ceyrek = quarterlyLedgerPeriodForDueDate(new Date(y, month - 1, hamGun));
+    if (ceyrek) out.push({ title: 'e-Defter Berat Yükleme (Geçici Vergi Dönemi)', subtitle: `${ceyrek} dönemi · ${grup} · ayın ${hamGun}. günü sonu`, icon: Bookmark, kind: 'ledger' });
   }
-  if (day === 17 && [2, 5, 8, 11].includes(month)) out.push({ title: 'Geçici Vergi Beyannamesi', subtitle: '3 aylık dönem geçici vergi', icon: FileText, kind: 'income' });
-  if (month === 3 && day === 31) out.push({ title: 'Yıllık Gelir Vergisi Beyannamesi', subtitle: 'Önceki yıl gelirleri · Mart sonu', icon: FileText, kind: 'income' });
-  if (month === 4 && day === 30) out.push({ title: 'Yıllık Kurumlar Vergisi Beyannamesi', subtitle: 'Önceki takvim yılı kurumlar vergisi · 1-30 Nisan', icon: FileText, kind: 'income' });
+  if ([2, 5, 8, 11].includes(month) && sonGunuMu(date, 17)) out.push({ title: 'Geçici Vergi Beyannamesi', subtitle: '3 aylık dönem geçici vergi', icon: FileText, kind: 'income' });
+  if (month === 3 && sonGunuMu(date, 31)) out.push({ title: 'Yıllık Gelir Vergisi Beyannamesi', subtitle: 'Önceki yıl gelirleri · Mart sonu', icon: FileText, kind: 'income' });
+  if (month === 4 && sonGunuMu(date, 30)) out.push({ title: 'Yıllık Kurumlar Vergisi Beyannamesi', subtitle: 'Önceki takvim yılı kurumlar vergisi · 1-30 Nisan', icon: FileText, kind: 'income' });
   return out;
 }
 

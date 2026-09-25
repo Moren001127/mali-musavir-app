@@ -35,54 +35,12 @@ export const EDEFTER_UZATMALAR: Record<string, { yeni: string; kaynak: string }>
   '2026-06-15': { yeni: '2026-06-30', kaynak: 'VUK-202 (09.06.2026)' }, // 14 Haziran 2026 Paz → 15 Haziran
 };
 
-/** Resmî tatiller (tam gün). Arife öğleden sonraları iş günü sayılır. */
-const SABIT_TATILLER = ['01-01', '04-23', '05-01', '05-19', '07-15', '08-30', '10-29'];
-const DINI_TATILLER: Record<number, string[]> = {
-  2025: ['03-30', '03-31', '04-01', '06-06', '06-07', '06-08', '06-09'],
-  2026: ['03-20', '03-21', '03-22', '05-27', '05-28', '05-29', '05-30'],
-  2027: ['03-09', '03-10', '03-11', '05-16', '05-17', '05-18', '05-19'],
-  2028: ['02-26', '02-27', '02-28', '05-05', '05-06', '05-07', '05-08'],
-};
+// Tatil tablosu ve iş günü kaydırması 2026-09-25'te `resmi-tatil.ts`e taşındı: aynı tablo
+// `apps/api/src/schedule/is-gunu.ts` içinde de duruyordu ve kopyalar sapabiliyordu.
+// `@mali-musavir/shared` kökü ikisini de dışarı verdiği için içe aktaranlar etkilenmiyor.
+import { isoGun, isGununeKaydir } from './resmi-tatil';
 
 const pad = (n: number) => String(n).padStart(2, '0');
-
-export function isoGun(y: number, m: number, d: number): string {
-  return `${y}-${pad(m)}-${pad(d)}`;
-}
-
-function parcala(iso: string): { y: number; m: number; d: number } {
-  const [y, m, d] = iso.split('-').map((x) => parseInt(x, 10));
-  return { y, m, d };
-}
-
-function gunEkle(iso: string, n: number): string {
-  const { y, m, d } = parcala(iso);
-  const t = new Date(Date.UTC(y, m - 1, d + n));
-  return isoGun(t.getUTCFullYear(), t.getUTCMonth() + 1, t.getUTCDate());
-}
-
-function haftaGunu(iso: string): number {
-  const { y, m, d } = parcala(iso);
-  return new Date(Date.UTC(y, m - 1, d)).getUTCDay(); // 0 Paz … 6 Cmt
-}
-
-export function resmiTatilMi(iso: string): boolean {
-  const { y } = parcala(iso);
-  const ayGun = iso.slice(5);
-  if (SABIT_TATILLER.includes(ayGun)) return true;
-  return (DINI_TATILLER[y] || []).includes(ayGun);
-}
-
-/** Hafta sonu ya da resmî tatile rastlayan tarihi izleyen ilk iş gününe taşır. */
-export function isGununeKaydir(iso: string): string {
-  let t = iso;
-  for (let i = 0; i < 15; i++) {
-    const hg = haftaGunu(t);
-    if (hg !== 0 && hg !== 6 && !resmiTatilMi(t)) return t;
-    t = gunEkle(t, 1);
-  }
-  return t;
-}
 
 /** "YYYY-MM" ay anahtarına n ay ekler. */
 export function ayEkle(ayAnahtari: string, n: number): string {
@@ -253,9 +211,4 @@ export function eDefterDonemEtiketi(donem: string): string {
   return c.tur === 'AY' ? `${AYLAR_TR[c.m - 1]} ${c.y}` : `${CEYREK_TR[c.q - 1]} ${c.y}`;
 }
 
-/** "2026-09-14" → "14.09.2026" */
-export function isoGunuBicimle(iso: string | null | undefined): string {
-  if (!iso) return '';
-  const { y, m, d } = parcala(iso);
-  return `${pad(d)}.${pad(m)}.${y}`;
-}
+// isoGunuBicimle artık resmi-tatil.ts'te; yukarıdaki `export { ... } from` ile aynen dışarı veriliyor.

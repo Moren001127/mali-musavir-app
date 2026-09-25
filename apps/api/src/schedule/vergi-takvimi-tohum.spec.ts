@@ -9,11 +9,19 @@ describe('vergiTakvimiKayitlari', () => {
   const kayitlar = vergiTakvimiKayitlari(new Date('2026-09-01T00:00:00+03:00'), new Date('2026-12-31T23:59:59+03:00'));
   const bul = bulucu(kayitlar);
 
-  it('aylık KDV1 28, MUHSGK 26 — izleyen ay', () => {
+  // 2026-09-25 (portal denetimi bulgu 43): bu satır eskiden '2026-09-26' bekliyordu — HATAYI
+  // ÇİVİLİYORDU. 26 Eylül 2026 CUMARTESİ; GİB vergi takvimi Ağustos 2026 dönemi MUHSGK'yı
+  // 28.09.2026 gösteriyor. Kayma artık uygulanıyor.
+  it('aylık KDV1 28, MUHSGK 26 — izleyen ay; hafta sonuna düşen gün ilk iş gününe kayar', () => {
     expect(gun(bul('KDV1', 2026, 8, null)!.dueDate)).toBe('2026-09-28');
-    expect(gun(bul('MUHSGK', 2026, 8, null)!.dueDate)).toBe('2026-09-26');
+    expect(gun(bul('MUHSGK', 2026, 8, null)!.dueDate)).toBe('2026-09-28'); // ham 26 Eylül Cmt
     expect(gun(bul('KDV1', 2026, 11, null)!.dueDate)).toBe('2026-12-28');
     expect(bul('KDV1', 2026, 7, null)).toBeUndefined(); // 28 Ağustos aralık dışı
+  });
+  it('canlıda hafta sonuna düşmüş üç satır artık iş gününde (GİB takvimiyle birebir)', () => {
+    // Canlı tax_calendar'da 25.09.2026'da bulunan üç hatalı satır:
+    expect(gun(bul('KDV1', 2026, 10, null)!.dueDate)).toBe('2026-11-30');   // ham 28 Kasım Cmt → GİB 30.11
+    expect(gun(bul('MUHSGK', 2026, 11, null)!.dueDate)).toBe('2026-12-28'); // ham 26 Aralık Cmt → GİB 28.12
   });
 
   it('3 aylık: MUHSGK Q3 → 26 Ekim; geçici vergi Q3 → 17 Kasım (canlı beyan kayıtlarıyla uyumlu)', () => {
