@@ -272,6 +272,53 @@ function ok(cond, msg) { if (!cond) { failed++; console.error(`  ✗ ${msg}`); }
     }
   }
 
+  console.log('\n5) BULGU 01 geçişi — eski yol kullanımı SAYILIYOR (kapatma kararı buna bakacak)');
+  {
+    const m = require(path.join(ROOT, 'apps/api/src/common/agent-token.ts'));
+    const prisma = {
+      tenant: {
+        findFirst: async ({ where }) =>
+          (where.OR.some((o) => o.slug === 'moren-x' || o.id === 'moren-x') ? { id: 't1' } : null),
+      },
+    };
+    const uyarilar = [];
+    const asil = console.warn;
+    console.warn = (x) => uyarilar.push(String(x));
+    const eskiEnv = process.env.AGENT_INGEST_TOKENS;
+    try {
+      process.env.AGENT_INGEST_TOKENS = 'tBASKA:0123456789abcdef0123456789abcdef';
+      for (let i = 0; i < 51; i++) await m.resolveTenantFromAgentToken('moren-x', prisma);
+      const ilk = uyarilar.filter((u) => /ESKİ YOL:/.test(u)).length;
+      const sayim = uyarilar.filter((u) => /HÂLÂ KULLANILIYOR/.test(u));
+      console.warn = asil;
+
+      ok(ilk === 1, `ilk kullanımda TEK uyarı (gelen: ${ilk}) — günlük şişmiyor`);
+      ok(sayim.length === 2,
+        `51 çağrıda 2 sayım satırı (25 ve 50'de) — gelen: ${sayim.length}. ` +
+          'Eski hâlde SADECE 1 satır vardı: 30 sn\'de bir yoklayan ajanla tek seferlik istek ' +
+          'ayırt edilemiyordu, "geçiş bitti mi" sorusu kayıttan YANITLANAMIYORDU.');
+      ok(/50 kez/.test(sayim[1] || ''), `sayım gerçek adedi söylüyor: "${(sayim[1] || '').slice(60, 100)}"`);
+
+      const toplam = m.legacyEskiYolSayaci().reduce((a, b) => a + b.adet, 0);
+      ok(toplam === 51, `sayaç 51 (gelen: ${toplam})`);
+
+      // GERÇEK anahtar sayaca girmemeli — yoksa "hâlâ kullanılıyor" yanlış alarm verir
+      const once = m.legacyEskiYolSayaci().reduce((a, b) => a + b.adet, 0);
+      await m.resolveTenantFromAgentToken('0123456789abcdef0123456789abcdef', prisma);
+      const sonra = m.legacyEskiYolSayaci().reduce((a, b) => a + b.adet, 0);
+      ok(sonra === once, 'gerçek anahtarla gelen istek sayacı ARTIRMIYOR (yanlış alarm yok)');
+
+      // Sayaç anahtarın KENDİSİNİ sızdırmamalı
+      const kayit = m.legacyEskiYolSayaci();
+      ok(kayit.every((k) => typeof k.anahtarUzunluk === 'number' && !('anahtar' in k)),
+        'sayaç yalnız uzunluk veriyor, anahtarın kendisini sızdırmıyor');
+    } finally {
+      console.warn = asil;
+      if (eskiEnv === undefined) delete process.env.AGENT_INGEST_TOKENS;
+      else process.env.AGENT_INGEST_TOKENS = eskiEnv;
+    }
+  }
+
   if (failed) { console.error(`\nsahiplik-regression: ${failed} BAŞARISIZ`); process.exit(1); }
   console.log('\nsahiplik-regression ok');
 })().catch((e) => { console.error(`beklenmeyen hata: ${(e && e.stack) || e}`); process.exit(1); });

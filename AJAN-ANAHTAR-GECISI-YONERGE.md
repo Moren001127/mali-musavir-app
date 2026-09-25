@@ -106,3 +106,44 @@ dokunulmuyor.
 **Luca parolam değişiyor mu?**
 Hayır. Luca kullanıcı adı ve parolanız aynı kalıyor. Değişen, ajanın **portala** bağlanırken
 kullandığı anahtar.
+
+---
+
+## EK — 25 Eylül 2026 ölçümü: iş sandığımızdan KÜÇÜK
+
+Sunucudan okudum, durum şu:
+
+**Yerel ajan TEK yerde çalışıyor: `vps-radore-luca-operator` (Radore VPS).**
+Son 30 günde ping atan 7 cihazın altısı tarayıcı eklentisi (sürüm `1.47.x`) —
+onlar anahtarı portaldan kendiliğinden alıyor, **hiçbir şey yapmanıza gerek yok.**
+Yalnız VPS'teki `local-1.1.8` sürümü elle geçirilmeli.
+
+**Muzaffer Bey'in bilgisayarındaki `config.json` (25.09.2026) GEÇİRİLDİ** — ama o makinede
+ajan çalışmıyor, yani etkisi yok; yine de doğru anahtarla duruyor. Eski değer
+`config.json.eski-anahtar.yedek` dosyasında.
+
+**Ofisler ve anahtarlar:**
+
+| Ofis | Mükellef | Fatura | Ajan | `AGENT_INGEST_TOKENS` |
+|---|---|---|---|---|
+| Moren Mali Musavirlik | 1 | 0 | hiç yok | **anahtar YOK** |
+| Moren Mali Musavirlik 2 | 177 | 26.747 | etkin | anahtar VAR (32 karakter) |
+
+Birinci ofis atıl. Çalışan ofisin anahtarı zaten tanımlı, yani **yeni anahtar
+tanımlanmasına gerek yok** — yönergenin "Kurulum eksik" uyarısı bu ofis için geçerli değil.
+
+## EK — Kapatmaya ne zaman hazırız (artık ölçülebiliyor)
+
+Uyarı eskiden anahtar başına **süreç ömrü boyunca bir kez** basılıyordu. O yüzden kayıtta
+"1 uyarı" görmek hiçbir şey söylemiyordu: 30 saniyede bir yoklayan bir ajan da, tek seferlik
+bir istek de aynı tek satırı üretiyordu. Sayaç eklendi:
+
+```
+[AGENT-TOKEN] ESKİ YOL: ...                      ← ilk kullanımda bir kez
+[AGENT-TOKEN] ESKİ YOL HÂLÂ KULLANILIYOR: ofis … · sunucu açılışından beri 25 kez.
+                                                  ← her 25 kullanımda bir
+```
+
+**Kapatma ölçütü:** sunucu yeniden başlatıldıktan sonra bu satırlar hiç çıkmıyorsa geçiş
+gerçekten bitmiştir. Çıkmaya devam ediyorsa bir yerde eski anahtar hâlâ kullanılıyordur ve
+kapatmak o ajanı durdurur.

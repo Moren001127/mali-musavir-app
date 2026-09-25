@@ -92,16 +92,45 @@ export async function resolveTenantFromAgentToken(
   //   çalışıyor. Yol hemen kapatılırsa Luca otomasyonu durur. Bu yüzden şimdilik kabul edilmeye
   //   devam ediyor ama HER KULLANIM KAYDA GEÇİYOR. Ajanlar gerçek anahtara geçtikten sonra
   //   aşağıdaki blok `if (!allowLegacyLookup) throw ...` ile kapatılacak — o an tek satırlık iş.
-  if (!legacyUyarildi.has(presented)) {
-    legacyUyarildi.add(presented);
-    // eslint-disable-next-line no-console
-    console.warn(
-      `[AGENT-TOKEN] ESKİ YOL: ofis kısa adı/kimliği anahtar olarak kabul edildi (ofis ${tenant.id}). `
-      + `Bu yol kapatılacak — ajan yapılandırmasını AGENT_INGEST_TOKENS'taki gerçek anahtarla güncelleyin.`,
-    );
-  }
+  legacyEskiYolKullanimi(presented, tenant.id);
   return tenant.id;
 }
 
-/** Aynı kısa ad için tekrar tekrar uyarı basmamak (günlük şişmesin) — süreç ömrü boyunca bir kez. */
-const legacyUyarildi = new Set<string>();
+/**
+ * Eski yol kullanım SAYACI — 2026-09-25 (ikinci tur).
+ *
+ * İlk hâlde uyarı anahtar başına SÜREÇ ÖMRÜ BOYUNCA BİR KEZ basılıyordu. O yüzden kayıtta
+ * "1 uyarı" görmek hiçbir şey söylemiyordu: 30 saniyede bir yoklayan bir ajan da, tek seferlik
+ * bir istek de aynı tek satırı üretiyordu. "Geçiş bitti mi, kapatabilir miyim?" sorusunu
+ * kayıttan yanıtlayamıyorduk.
+ *
+ * Artık ilk kullanımda uyarı, sonra her `RAPOR_ARALIGI` kullanımda bir SAYIM satırı basılıyor.
+ * Kapatma kararı buna bakarak verilir: sayım artmıyorsa geçiş gerçekten bitmiştir.
+ */
+const RAPOR_ARALIGI = 25;
+const legacySayac = new Map<string, number>();
+
+function legacyEskiYolKullanimi(presented: string, tenantId: string) {
+  const adet = (legacySayac.get(presented) || 0) + 1;
+  legacySayac.set(presented, adet);
+  if (adet === 1) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[AGENT-TOKEN] ESKİ YOL: ofis kısa adı/kimliği anahtar olarak kabul edildi (ofis ${tenantId}). `
+      + `Bu yol kapatılacak — ajan yapılandırmasını AGENT_INGEST_TOKENS'taki gerçek anahtarla güncelleyin.`,
+    );
+    return;
+  }
+  if (adet % RAPOR_ARALIGI === 0) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[AGENT-TOKEN] ESKİ YOL HÂLÂ KULLANILIYOR: ofis ${tenantId} · sunucu açılışından beri ${adet} kez. `
+      + `Bu sayı artmayı bırakana kadar kısa ad yolu KAPATILAMAZ.`,
+    );
+  }
+}
+
+/** Sayacın anlık hâli — teşhis için (kapatma kararında kullanılır). */
+export function legacyEskiYolSayaci(): Array<{ anahtarUzunluk: number; adet: number }> {
+  return Array.from(legacySayac.entries()).map(([k, adet]) => ({ anahtarUzunluk: k.length, adet }));
+}
