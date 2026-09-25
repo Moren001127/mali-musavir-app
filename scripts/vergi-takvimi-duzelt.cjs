@@ -10,6 +10,9 @@
  * Kayıt SİLMEZ, kayıt EKLEMEZ, başka alana dokunmaz.
  *
  * VARSAYILAN KURU ÇALIŞMA. Yazmak için: --uygula
+ * Son tarih yılını sınırlamak için: --sonYil=2026
+ *   (2027 dini bayram tarihleri elle girilmiş ve GİB 2027 takvimini henüz yayımlamadı;
+ *    Muzaffer Bey 25.09.2026'da yalnız GİB'den birebir doğrulanan 2026 satırlarını onayladı.)
  *
  * Çalıştırma (Railway üzerinden, apps/api içinden):
  *   railway run --service Postgres sh -c 'DATABASE_URL="$DATABASE_PUBLIC_URL" node ../../scripts/vergi-takvimi-duzelt.cjs'
@@ -26,6 +29,10 @@ const { calculateBeyannameDeadline } = require(path.join(ROOT, 'apps/api/src/sch
 const { PrismaClient } = require(path.join(ROOT, 'apps/api/node_modules/@prisma/client'));
 
 const UYGULA = process.argv.includes('--uygula');
+const SON_YIL = (() => {
+  const a = process.argv.find((x) => x.startsWith('--sonYil='));
+  return a ? Number(a.split('=')[1]) : null;
+})();
 const GUN_ADI = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
 /** İstanbul takvim günü. */
 const gun = (d) => new Date(new Date(d).getTime() + 3 * 3600000).toISOString().slice(0, 10);
@@ -66,13 +73,18 @@ function utilDonemi(r) {
 
     const degisecek = [];
     const cozulemeyen = [];
+    const yilDisi = [];
     for (const r of rows) {
+      // Son tarih yılı süzgeci: yalnız doğrulanmış yıl düzeltilsin.
+      if (SON_YIL && Number(gun(r.dueDate).slice(0, 4)) > SON_YIL) { yilDisi.push(r); continue; }
       const donem = utilDonemi(r);
       if (!donem) { cozulemeyen.push({ r, neden: 'dönem çözülemedi' }); continue; }
       const dogru = calculateBeyannameDeadline(r.declarationType, donem);
       if (!dogru) { cozulemeyen.push({ r, neden: `kural yok (${r.declarationType})` }); continue; }
       if (gun(dogru) !== gun(r.dueDate)) degisecek.push({ r, yeni: dogru, donem });
     }
+
+    if (yilDisi.length) console.log(`↷ ${yilDisi.length} satır ${SON_YIL} sonrası — süzgeç gereği DOKUNULMUYOR.\n`);
 
     if (cozulemeyen.length) {
       console.log(`⚠ ${cozulemeyen.length} satır hesaplanamadı — DOKUNULMUYOR:`);
