@@ -1437,9 +1437,18 @@ export class OcrService {
     return stripMatrahFragmentsPure(text);
   }
 
-  /** @deprecated Faz 2 — saf provider'a delege. */
-  private foldTurkishAscii(text: string): string {
+  /** @deprecated Faz 2 — saf provider'a delege. (public: satici unvani backfill'i de kullanir) */
+  foldTurkishAscii(text: string): string {
     return foldTurkishAsciiPure(text);
+  }
+
+  /**
+   * Kayitli HAM METINDEN satici unvanini yeniden turetir — Azure'a/AI'ya GITMEZ (maliyet yok).
+   * Eski ayristirici tek satir sectigi icin cok satira bolunmus unvanlarin ilk satiri atlanmis
+   * ya da ADRES satiri firma adi yazilmis belgeleri duzeltmek icin (bkz. reparseSaticiUnvani).
+   */
+  extractSaticiUnvanFromRawText(rawText: string): string | null {
+    return extractSaticiUnvanPure(rawText, (s) => this.foldTurkishAscii(s));
   }
 
   /**

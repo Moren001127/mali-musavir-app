@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Body,
   Delete,
   Param,
   Query,
@@ -118,6 +119,21 @@ export class VendorMemoryController {
     const tenantId = req?.user?.tenantId;
     if (!tenantId) throw new BadRequestException('tenantId yok');
     return this.service.cariDefteriKur(tenantId, { limit: limit ? parseInt(limit, 10) : undefined });
+  }
+
+  /**
+   * ÜNVAN HİZALA — bir VKN için TEK doğru ünvan (cari defteri + o VKN'li alış belgeleri).
+   * Aynı satıcının farklı yazılışlarla durmasını (Luca'da mükerrer cari) bitirir.
+   * dryRun varsayılan TRUE. `documents/reparse-satici-unvan`dan SONRA çalıştırılmalı.
+   */
+  @Post('cari-unvan-hizala')
+  cariUnvanHizala(@Req() req: any, @Body() body: { dryRun?: boolean; limit?: number }) {
+    const tenantId = req?.user?.tenantId;
+    if (!tenantId) throw new BadRequestException('tenantId yok');
+    return this.service.cariUnvanHizala(tenantId, {
+      dryRun: body?.dryRun !== false,
+      limit: body?.limit,
+    });
   }
 
   /** Yanlis ogrenme durumunu temizleme */

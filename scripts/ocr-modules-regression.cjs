@@ -160,7 +160,8 @@ eq(vendorParser.extractSaticiVkn(vknBare, foldTr), '9876543210', 'vendor VKN bar
 eq(vendorParser.extractSaticiUnvan(vknText, foldTr), 'ACME TICARET LTD STI', 'vendor unvan LTD STI');
 // GERCEK bug (OTO ILKER OKC fisi, 2026-09-24): sahis isletmesinde unvan kisa ("OTO ILKER" = 8 harf),
 // eski "en az 12 buyuk harf" kurali onu eleyip ADRES satirini ("K.SINAN MERKEZ MAH." = 15 harf)
-// firma adi sanıyordu. Artik adres satirlari elenir, sirket eki yoksa ilk anlamli satir alinir.
+// firma adi sanıyordu. Artik adres satirlari elenir; sahis fisinde ticari ad + sahis adi BIRLESIR
+// (sahip karari 2026-09-25: VKN ile birlikte cari eslesmesini guclendirir).
 const okcFisUnvan = `OTO ILKER
 ILKER ONER
 K.SINAN MERKEZ MAH.
@@ -168,14 +169,37 @@ KARANFIL 2 SK. NO:20/A
 BAHCELIEVLER/ISTANBUL
 Y.BOSNA VD 28027698710
 TEL:0212 552 24 44`;
-eq(vendorParser.extractSaticiUnvan(okcFisUnvan, foldTr), 'OTO ILKER', 'vendor unvan sahis isletmesi (adres degil)');
+eq(vendorParser.extractSaticiUnvan(okcFisUnvan, foldTr), 'OTO ILKER ILKER ONER', 'vendor unvan sahis isletmesi (adres degil, ticari ad + sahis adi)');
 eq(vendorParser.extractSaticiVkn(okcFisUnvan, foldTr), '28027698710', 'vendor VKN OKC fisi VD satiri');
+// UNVAN BLOGU (2026-09-25): OKC fisinde unvan 2-3 satira bolunur; eski surum TEK satir aliyordu.
 const okcLtdUnvan = `OTO CEM OTO YEDEK PARCA
 SAN.TIC.LTD.STI.
 F.CAKMAK MH.HALKALI CD.
 SEFAKOY IS MERKEZI NO:209
 K.CEKMECE VD:6490011354`;
-eq(vendorParser.extractSaticiUnvan(okcLtdUnvan, foldTr), 'OTO CEM OTO YEDEK PARCA', 'vendor unvan OKC ilk satir');
+eq(vendorParser.extractSaticiUnvan(okcLtdUnvan, foldTr), 'OTO CEM OTO YEDEK PARCA SAN.TIC.LTD.STI.', 'vendor unvan OKC iki satir birlesir');
+// GERCEK vaka (ERCAN SANLAV temmuz 2026): unvanin ILK satiri atlanip 2. satir firma adi sanilıyordu.
+const okcIlkSatirAtlanan = `HIDAYETOTO YEDEK PARCA
+IC VE DIS TICARET A.S.
+KOZA MAH. 1690. SK.
+EVREN OTO SAN. 4.BLOK
+NO: 7/1 ESENYURT/ISTANBUL
+Esenyurt VD 4621050112`;
+eq(vendorParser.extractSaticiUnvan(okcIlkSatirAtlanan, foldTr), 'HIDAYETOTO YEDEK PARCA IC VE DIS TICARET A.S.', 'vendor unvan ilk satir ATLANMAZ');
+// GERCEK vaka (OTO GENC fisi): 3. satir unvan eki + ADRES karisik ("LTD.STI.FEVZI CAKMAK MH.")
+// → eski surum bu ADRES satirini komple firma adi olarak yaziyordu.
+const okcKarmaSatir = `OTO GENC
+EMIRHAN GENC OTM.SAN.VE.TIC
+LTD.STI.FEVZI CAKMAK MH.
+HALKALI CD.SIMSEK SAN SIT.
+NO : 197 SEFAKOY
+ISTANBUL
+3341120616`;
+eq(vendorParser.extractSaticiUnvan(okcKarmaSatir, foldTr), 'OTO GENC EMIRHAN GENC OTM.SAN.VE.TIC LTD.STI.', 'vendor unvan karma satirdan yalniz ek alinir');
+// Adres satirinin BASINDAKI tek harf ("K.SINAN...", "F.CAKMAK...") unvan eki sanilmamali.
+eq(vendorParser.extractSaticiUnvan(`ALFA OTO\nK.SINAN MERKEZ MAH.\nY.BOSNA VD 28027698710`, foldTr), 'ALFA OTO', 'vendor unvan tek harfli adres oneki alinmaz');
+// OCR copu tek kelime ("Bakanlar" = arka plan filigrani) unvana YAPISMAZ.
+eq(vendorParser.extractSaticiUnvan(`BASBUG OTO YEDEK PARCA SANAYI ITHALAT IHRACAT\nVE TICARET ANONIM SIRKETI\nBakanlar\nATATURK MAH. ORHAN VELI CAD. No:`, foldTr), 'BASBUG OTO YEDEK PARCA SANAYI ITHALAT IHRACAT VE TICARET ANONIM SIRKETI', 'vendor unvan tek kelimelik OCR copu alinmaz');
 // GERCEK bug (mobil tarama, 2026-09-24): dosya adi belge no saniliyordu — Azure "FIS NO: 212"
 // okudugu halde belgeNo "TARAMA-2026-09-24-4" oluyordu (Luca/Mihsap eslesmesi imkansiz).
 const belgeNoParser2 = require(path.join(ROOT, 'apps/api/src/kdv-control/ocr/parsers/belge-no.ts'));
@@ -191,7 +215,7 @@ const vknVdText = 'ARS OTOMOBIL YEDEK PARÇA\nSAN.VE TIC.LTD.STI\nIKITELI VD:080
 eq(vendorParser.extractSaticiVkn(vknVdText, foldTr), '0800371588', 'vendor VKN "VD:" etiketi (IKITELI TEL-tuzagi)');
 const vknTelText = 'ABC GIDA\nTEL:02126719801\nSAYIN MUSTERI';
 eq(vendorParser.extractSaticiVkn(vknTelText, foldTr), null, 'vendor telefon satiri hala VKN sanilmaz');
-ok('vendor.ts (5 assertion)');
+ok('vendor.ts unvan blogu 2026-09-25 (10 assertion)');
 
 // ─── text-classifiers.ts ───
 eq(textClassifiers.isLikelyStandaloneTaxRate('20', foldTr), true, 'classifier rate 20');

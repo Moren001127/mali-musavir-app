@@ -432,6 +432,26 @@ export class FaturaMuhasebelestirmeController {
   }
 
   /**
+   * SATICI ÜNVANI backfill (2026-09-25) — çok satıra bölünmüş unvanın ilk satırı atlanmış ya da
+   * ADRES satırı firma adı yazılmış belgeleri kayıtlı HAM METİNDEN düzeltir. Azure'a/AI'ya GİTMEZ.
+   * Mevcut doğru adı ezmez (yalnız boş / adres kalıplı / eksik-tamamlanan kayıtlara dokunur).
+   * dryRun varsayılan TRUE → ne değişeceğini örnekleriyle döner, DB'ye yazmaz.
+   */
+  @Roles('ADMIN', 'STAFF')
+  @Post('documents/reparse-satici-unvan')
+  reparseSaticiUnvan(
+    @Req() req: any,
+    @Body() body: { taxpayerId?: string; period?: string; dryRun?: boolean; documentIds?: string[] },
+  ) {
+    return this.service.reparseSaticiUnvani(req.user.tenantId, {
+      taxpayerId: body?.taxpayerId,
+      period: body?.period,
+      dryRun: body?.dryRun !== false,
+      documentIds: Array.isArray(body?.documentIds) ? body.documentIds : undefined,
+    });
+  }
+
+  /**
    * Faz 0 (PLAN/15) — bozuk okunmuş belgeleri toplu yeniden oku / kod-ad karışıklığını temizle.
    * YALNIZ ofis sahibi (OwnerOnlyGuard: MOREN_OWNER_EMAIL / MOREN_BUTCE_OWNER_EMAIL; başkasına 404).
    * Gövde: { mode?: 'oku'|'temizle', dryRun?: boolean (varsayılan TRUE), taxpayerId?, period?: 'YYYY-MM', limit?, documentIds? }

@@ -3,7 +3,8 @@
  *
  * Public API (Faz 1 modul izolasyon):
  *   extractSaticiVkn(text, foldFn)   - 10/11 haneli VKN/TCKN doner
- *   extractSaticiUnvan(text, foldFn) - tedarikci/satici unvanini doner
+ *   extractSaticiUnvan(text, foldFn) - tedarikci/satici unvanini BLOK halinde doner
+ *                                      (cok satira bolunmus unvan birlestirilir)
  *
  * Bu helper'lar `this` kullanmaz - saf fonksiyonlar.
  * `foldFn` parametresi caller tarafindan saglanan Turkce-ASCII katlama
@@ -47,48 +48,99 @@ export function extractSaticiVkn(text: string, foldFn: FoldFn): string | null {
   return null;
 }
 
+// ═══ UNVAN BLOĞU sabitleri (2026-09-25) ═══
+// Adres/konum işaretleri — unvan bloğu burada BİTER. "MH" (noktasız kısaltma) eskiden listede
+// YOKTU; OTO GENÇ fişinde "LTD.ŞTİ.FEVZİ ÇAKMAK MH." satırının firma adı sanılmasının sebebi buydu.
+const ADRES_ISARETI =
+  /\b(?:MH|MAH|MAHALLE(?:SI)?|CD|CAD|CADDE(?:SI)?|SK|SOK|SOKAK|BLV|BULV(?:AR)?|APT|KAT|DAIRE|SIT|SITE(?:SI)?|IS\s*MERKEZI|PLAZA|BLOK|OSB|ORGANIZE|POSTA\s*KODU|PK)\b|\bNO\s*[:.]?\s*\d/;
+
+// Unvan bloğunu bitiren meta satırlar: vergi dairesi/VKN, iletişim, sicil, tarih/fiş başlıkları.
+// "TIC SIC" birlikte aranır — tek başına "TIC" unvanın kendi ekidir ("SAN.VE TİC.A.Ş.").
+const META_ISARETI =
+  /\bV\.?\s*D\.?\b|\bVKN\b|\bTCKN\b|\bVERGI\b|\bTEL\w*\b|\bGSM\b|\bFAX\b|\bFAKS\b|\bMERSIS\b|\bLISANS\b|\bTIC\.?\s*SIC\b|\bTICARET\s*SICIL\b|\bODA\s*SICIL\b|\bADA\s*NO\b|\bFIS\s*NO\b|\bFATURA\b|\bBELGE\s*NO\b|\bTARIH\b|\bSAAT\b|\bZ\s*NO\b|\bEKU\b|\bWEB\b|\bE-?POSTA\b|\bETTN\b|\bIBAN\b|\bSERI\s*NO\b/;
+
+// Unvan ekleri (kelime bazlı) — karma satırda baştaki "ek" parçalarını ayırmak için.
+const EK_KELIME =
+  /^(?:LTD|LIMITED|STI|SIRKET(?:I)?|ANONIM|AS|A|S|SAN|SANAYI|SANAYII|TIC|TICARET|VE|INS|INSAAT|TURZ|TURIZM|PAZ|PAZARLAMA|NAK|NAKLIYAT|NAKLIYE|TAS|TASIMACILIK|OTM|OTOMOTIV|OTO|GIDA|PETROL|PET|URUN(?:LERI)?|UR|MALZ(?:EMELERI)?|HIZ(?:METLERI)?|DIS|IC|KOLL|KOM|ITH|IHR|ITHALAT|IHRACAT|MUH|MUHENDISLIK|ENERJI|ELEKT(?:RIK)?|TEKS|TEKSTIL)$/;
+
+// "Anlamlı" şirket eki — kırpılmış parçanın gerçekten unvan devamı olduğunu doğrular.
+const GUCLU_EK = /\b(?:LTD|STI|SIRKET|ANONIM|AS|SAN|SANAYI|TIC|TICARET|INS|INSAAT|PAZ|NAK|OTM|GIDA|PETROL|MALZ|HIZ|ITH|IHR|LIMITED)\b/;
+
+/** Parçanın TÜM kelimeleri unvan eki mi ("VE TİC", "SAN", "LTD")? */
+function hepsiEkMi(parcaFolded: string): boolean {
+  const kelimeler = parcaFolded.split(/[^A-Z0-9]+/).filter(Boolean);
+  if (!kelimeler.length) return false;
+  return kelimeler.every((k) => EK_KELIME.test(k));
+}
+
 /**
- * Faturanin ust kismindan satici/tedarikci unvanini cikarir.
- * "SAYIN/ALICI/MUSTERI" kelimesinden onceki ilk anlamli sirket
- * satirini doner (LTD/LIMITED/ANONIM/AS/STI/SIRKET/TICARET... gibi
- * sirket eklerini iceren ya da yeterli sayida buyuk harf icerenler).
+ * Karma satırda ("LTD.ŞTİ.FEVZİ ÇAKMAK MH.") baştaki unvan-eki parçalarını döner → "LTD.ŞTİ."
+ * İlk parça en az 2 harfli GERÇEK bir ek olmalı: "K.SİNAN MERKEZ MAH."in "K"si ya da
+ * "75. YIL MAH."in "75"i unvan sanılmasın.
+ */
+function ekOnekiniAl(raw: string, foldFn: FoldFn): string | null {
+  const alinan: string[] = [];
+  for (const parca of raw.split('.')) {
+    const t = parca.trim();
+    if (!t) break;
+    const f = foldFn(t).trim();
+    if (!hepsiEkMi(f)) break;
+    if (alinan.length === 0 && f.replace(/[^A-Z]/g, '').length < 2) break;
+    alinan.push(parca);
+  }
+  if (!alinan.length) return null;
+  const metin = alinan.join('.').trim();
+  if (!GUCLU_EK.test(foldFn(metin))) return null;  // yalnız "VE" gibi bir kırıntı — boşver
+  return `${metin}.`;
+}
+
+/**
+ * Faturanin/fisin ust kismindan satici unvanini cikarir — UNVAN BLOGU birlestirerek.
+ *
+ * NEDEN BLOK (2026-09-25, gercek vaka ERCAN SANLAV temmuz fisleri): eski surum ust bloktan
+ * TEK satir secerdi. OKC fislerinde unvan 2-3 satira bolunur; bu yuzden ya ilk satir
+ * atlaniyordu ("HIDAYETOTO YEDEK PARCA" kaybolup "IC VE DIS TICARET A.S." kaliyordu) ya da
+ * ADRES satiri firma adi saniliyordu ("LTD.STI.FEVZI CAKMAK MH."). Canli olcum: ham metni
+ * olan 550 alis belgesinin 522'sinde unvan eksik/yanlisti.
+ *
+ * Yeni davranis: en ustten baslanip ADRES ya da META (VKN/TEL/MERSIS/TARIH/FIS NO...) satirina
+ * kadar ardisik satirlar birlestirilir. Karma satirda yalniz bastaki ek parcalari alinir.
  */
 export function extractSaticiUnvan(text: string, foldFn: FoldFn): string | null {
   if (!text) return null;
   const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   const stop = lines.findIndex((l) => /SAYIN|ALICI|MUSTERI|MÜŞTERİ/.test(foldFn(l)));
-  const topLines = stop >= 0 ? lines.slice(0, stop) : lines.slice(0, 10);
-  // ADRES SATIRI ELEME (2026-09-24, gerçek vaka "OTO İLKER" fişi): şahıs işletmelerinde unvan
-  // kısadır ("OTO İLKER" = 8 harf) ve eski "en az 12 büyük harf" kuralına takılmıyordu; onun
-  // yerine ADRES satırı seçiliyordu ("K.SİNAN MERKEZ MAH." = 15 harf) → portala firma adı diye
-  // adres düşüyordu. Artık adres satırları elenir ve şirket eki yoksa İLK anlamlı satır alınır.
-  const ADRES = /\b(?:MAH|MAHALLE(?:SI)?|CAD|CADDE(?:SI)?|SOK|SOKAK|SK|BULV(?:AR)?|BLV|APT|KAT|DAIRE|SITE(?:SI)?|IS\s+MERKEZI|PLAZA|BLOK|OSB|ORGANIZE|POSTA\s+KODU|PK)\b|\bNO\s*[:.]?\s*\d/;
-  const adayGecerli = (folded: string) => folded.length >= 5
-    && /[A-Z]/.test(folded)
-    && !/\b(?:VKN|TCKN|VERGI|TEL|FAKS|WEB|E-?POSTA|MERSIS|TICARET\s+SICIL|FATURA|ETTN)\b/.test(folded)
-    && !ADRES.test(folded);
+  const topLines = stop >= 0 ? lines.slice(0, stop) : lines.slice(0, 12);
 
-  // 1) Şirket eki taşıyan ilk satır — en güvenilir işaret.
-  for (let i = 0; i < topLines.length; i++) {
+  const parcalar: string[] = [];
+  for (let i = 0; i < Math.min(topLines.length, 8); i++) {
     const raw = topLines[i];
     const folded = foldFn(raw);
-    if (!adayGecerli(folded)) continue;
-    if (/\b(?:LTD|LIMITED|ANONIM|AS|STI|SIRKET|TICARET|SANAYI|TURIZM|HIZMET|INSAAT|LOJISTIK|TASIMACILIK)\b/.test(folded)) {
-      // Ek satırı TEK BAŞINA unvan değildir: ÖKC fişlerinde firma adı iki satıra bölünür
-      // ("OTO CEM OTO YEDEK PARÇA" / "SAN.TİC.LTD.ŞTİ."). Ekleri atınca anlamlı ad kalmıyorsa
-      // asıl unvan bir ÖNCEKİ satırdadır.
-      const ekSiz = folded.replace(/\b(?:LTD|LIMITED|ANONIM|AS|STI|SIRKET|TIC|TICARET|SAN|SANAYI|VE)\b/g, '').replace(/[^A-Z]/g, '');
-      if (ekSiz.length >= 3) return raw.slice(0, 200);
-      const onceki = [...topLines.slice(0, i)].reverse().find((r) => adayGecerli(foldFn(r)));
-      return (onceki || raw).slice(0, 200);
+    // Blok henüz başlamadıysa üstteki çöp (logo/slogan/tutar kalıntısı) atlanabilir;
+    // blok başladıktan sonra ilk engel bloğu BİTİRİR.
+    const atlanabilir = parcalar.length === 0;
+
+    if (META_ISARETI.test(folded) || folded.replace(/[^A-Z]/g, '').length < 2) {
+      if (atlanabilir) continue;
+      break;
     }
+    if (ADRES_ISARETI.test(folded)) {
+      const kirpik = ekOnekiniAl(raw, foldFn);
+      if (kirpik) { parcalar.push(kirpik); break; }
+      if (atlanabilir) continue;
+      break;
+    }
+    // DEVAM SATIRI KAPISI (gerçek vaka: BASBUG e-faturasında 3. satır "Bakanlar" = arka plan
+    // filigranı, unvana yapışıyordu). Unvanın 2. ve sonraki satırı ya bir ŞİRKET EKİ taşımalı
+    // ("SAN.TİC.LTD.ŞTİ.") ya da en az İKİ kelime olmalı ("MANİNUR KÖSE", "İLKER ÖNER").
+    if (parcalar.length > 0) {
+      const kelimeSayisi = folded.split(/[^A-Z0-9]+/).filter(Boolean).length;
+      if (!GUCLU_EK.test(folded) && kelimeSayisi < 2) break;
+    }
+    parcalar.push(raw);
+    if (parcalar.length >= 3) break;  // kaçak büyümeyi engelle
   }
-  // 2) Şirket eki yoksa (şahıs işletmesi / ÖKC fişi): adres olmayan İLK anlamlı satır.
-  //    En az 4 harf yeter — "OTO İLKER" gibi kısa unvanlar da yakalanır.
-  for (const raw of topLines) {
-    const folded = foldFn(raw);
-    if (!adayGecerli(folded)) continue;
-    if (folded.replace(/[^A-Z]/g, '').length >= 4) return raw.slice(0, 200);
-  }
-  return null;
+
+  if (!parcalar.length) return null;
+  return parcalar.join(' ').replace(/\s{2,}/g, ' ').trim().slice(0, 200) || null;
 }

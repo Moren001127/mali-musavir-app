@@ -15981,6 +15981,78 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     return { ok: true, dryRun: !!opts.dryRun, scanned, changed, samples };
   }
 
+  /**
+   * SATICI ÜNVANI backfill (2026-09-25) — eski ayrıştırıcı ham metinden TEK satır seçtiği için
+   * çok satıra bölünmüş unvanların ya ilk satırı atlanmış ("HİDAYETOTO YEDEK PARÇA" düşüp
+   * "İÇ VE DIŞ TİCARET A.Ş." kalmış) ya da ADRES satırı firma adı yazılmış
+   * ("LTD.ŞTİ.FEVZİ ÇAKMAK MH.", "K.SİNAN MERKEZ MAH."). Kayıtlı HAM METİNDEN yeniden türetir —
+   * Azure'a da AI'ya da GİTMEZ (maliyet yok).
+   *
+   * KORUMA: mevcut ad her zaman ezilmez. Yalnız şu üç durumda yazılır:
+   *   (a) mevcut ad boş,
+   *   (b) mevcut ad ADRES kalıplı (kesin hata),
+   *   (c) yeni ad mevcut adı KAPSIYOR (eksik parçanın tamamlanması).
+   * Aksi halde atlanır — ham metni bozuk belgelerde (ekran fotoğrafı, OCR çöpü, "LTD"→"LID"
+   * harf hatası) doğru kayıtlı adın üzerine yazılmasını önler.
+   */
+  async reparseSaticiUnvani(
+    tenantId: string,
+    opts: { taxpayerId?: string; period?: string; dryRun?: boolean; documentIds?: string[] },
+  ) {
+    const where: any = { tenantId, invoiceKind: 'ALIS' };
+    if (opts.taxpayerId) where.taxpayerId = opts.taxpayerId;
+    if (opts.documentIds?.length) where.id = { in: opts.documentIds };
+    if (opts.period && /^\d{4}-\d{2}$/.test(opts.period)) {
+      const [y, m] = opts.period.split('-').map((n) => parseInt(n, 10));
+      where.faturaTarihi = { gte: new Date(Date.UTC(y, m - 1, 1)), lt: new Date(Date.UTC(y, m, 1)) };
+    }
+    const docs = await (this.prisma as any).invoiceAccountingDocument.findMany({
+      where,
+      select: { id: true, vendorName: true, sellerVkn: true, ocrRawText: true, ocrData: true, lucaStatus: true },
+      take: 5000,
+    });
+
+    const ADRES_KALIBI = /\b(?:MH|MAH|MAHALLE(?:SI)?|CD|CAD|CADDE(?:SI)?|SK|SOK|SOKAK|BLV|BULV(?:AR)?|SIT|SITE(?:SI)?|APT|BLOK|OSB|PLAZA)\b|\bNO\s*[:.]?\s*\d/;
+    const sade = (s: any) => String(s || '').replace(/\s+/g, ' ').trim();
+    const katla = (s: string) => this.ocr.foldTurkishAscii(s).replace(/[^A-Z0-9]/g, '');
+
+    let taranan = 0; let degisen = 0; let korunan = 0; let aktarilmis = 0;
+    const ornekler: any[] = [];
+    const korunanOrnekler: any[] = [];
+    for (const d of docs) {
+      const od: any = (d.ocrData && typeof d.ocrData === 'object') ? d.ocrData : {};
+      const ham = String(d.ocrRawText || od.rawText || '');
+      if (!ham) continue;
+      taranan++;
+      const yeni = sade(this.ocr.extractSaticiUnvanFromRawText(ham));
+      if (!yeni) continue;
+      const eski = sade(d.vendorName);
+      if (eski === yeni) continue;
+
+      const gerekce = !eski ? 'bos-doldu'
+        : ADRES_KALIBI.test(this.ocr.foldTurkishAscii(eski)) ? 'adres-duzeldi'
+        : katla(yeni).includes(katla(eski)) ? 'tamamlandi'
+        : null;
+      if (!gerekce) {
+        korunan++;
+        if (korunanOrnekler.length < 10) korunanOrnekler.push({ id: d.id, mevcut: eski, onerilen: yeni });
+        continue;
+      }
+
+      degisen++;
+      if (d.lucaStatus === 'POSTED') aktarilmis++;
+      if (ornekler.length < 15) ornekler.push({ id: d.id, vkn: d.sellerVkn, gerekce, once: eski || null, sonra: yeni });
+      if (!opts.dryRun) {
+        await (this.prisma as any).invoiceAccountingDocument.update({
+          where: { id: d.id },
+          data: { vendorName: yeni, ocrData: { ...od, satici: yeni } },
+        }).catch((e: any) => this.logger.warn(`reparse-unvan update basarisiz (${d.id}): ${e?.message || e}`));
+      }
+    }
+
+    return { ok: true, dryRun: !!opts.dryRun, taranan, degisen, korunan, aktarilmis, ornekler, korunanOrnekler };
+  }
+
   async reapplyAccountCodes(tenantId: string, taxpayerId: string, documentIds?: string[]) {
     if (!taxpayerId) throw new BadRequestException('Mükellef seçilmeli');
     // documentIds verilirse SADECE o belgeleri yeniden eşle (tek/az belge → hızlı, HTTP timeout yok).

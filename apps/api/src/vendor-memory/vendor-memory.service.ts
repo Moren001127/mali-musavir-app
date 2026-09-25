@@ -976,6 +976,132 @@ Yanlış ipucuna uyup yanlış karar vermek, ipucu olmamasından DAHA KÖTÜDÜR
     }
     return { taranan: kayitlar.length, bulunanCari: defter.size, yeni, guncel };
   }
+
+  /**
+   * ÜNVAN HİZALAMA (2026-09-25) — bir VKN için TEK doğru ünvan.
+   *
+   * Sorun: aynı satıcı portalda birden çok yazılışla duruyordu (ARS OTOMOBİL tek VKN altında
+   * 5 ayrı ad) — eski ayrıştırıcı ham metinden tek satır seçtiği için kimi belgede ünvanın
+   * yalnız ilk satırı, kimisinde ikinci satırı, kimisinde ADRES satırı yazılmıştı. Luca'ya
+   * aktarımda bu, aynı firma için mükerrer cari demek.
+   *
+   * Kural: her VKN için bir "resmî ad" belirlenir ve hem cari defterine hem o VKN'li ALIŞ
+   * belgelerine yazılır. Ad seçimi YALNIZ AÇIK KAZANÇ olan iki durumda yapılır:
+   *   1. Cari defterinde UBL kaynaklı kayıt varsa (e-Fatura XML'inden gelen resmî ünvan) O esastır.
+   *   2. Adaylar yalnız YAZIM olarak ayrışıyorsa (büyük/küçük harf, Türkçe karakter, nokta/tire)
+   *      → en çok kullanılan yazılış. Örn. "Turkcell Iletisim Hizmetleri A.S." = "TURKCELL İLETİŞİM
+   *      HİZMETLERİ A.Ş.".
+   *   3. Bir aday diğer TÜM adayları kapsıyorsa (eksik okumanın tamamlanmışı) → o ad.
+   * Bunların dışında (gerçekten farklı adlar: şube önekli "BEYLİKDÜZÜ SB. - ...", yarıda kesilmiş
+   * "... İHRACAT VE", OCR çöplü kuyruklar) DOKUNULMAZ — elle karar gerekenler raporda listelenir.
+   * Adres kalıplı adaylar hiç yarışmaya girmez; "[AZURE]"/"[MAX]" iz önekleri temizlenir.
+   *
+   * dryRun=true → yalnız ne değişeceğini döner. reparse-satici-unvan'dan SONRA çalıştırılmalı.
+   */
+  async cariUnvanHizala(tenantId: string, opts: { dryRun?: boolean; limit?: number } = {}) {
+    const ADRES_KALIBI = /\b(?:MH|MAH|MAHALLE(?:SI)?|CD|CAD|CADDE(?:SI)?|SK|SOK|SOKAK|BLV|BULV(?:AR)?|SIT|SITE(?:SI)?|APT|BLOK|OSB|PLAZA)\b|\bNO\s*[:.]?\s*\d/i;
+    // "[AZURE] "/"[MAX] " = eski okuma izleri; ünvanın parçası değil.
+    const sade = (s: any) => String(s || '').replace(/\[(?:AZURE|MAX)\]\s*/gi, '').replace(/\s+/g, ' ').trim();
+    const katla = (s: string) => s.toLocaleUpperCase('tr-TR')
+      .replace(/Ğ/g, 'G').replace(/Ü/g, 'U').replace(/Ş/g, 'S').replace(/İ/g, 'I').replace(/Ö/g, 'O').replace(/Ç/g, 'C')
+      .replace(/[^A-Z0-9]/g, '');
+
+    const gruplar: any[] = await (this.prisma as any).invoiceAccountingDocument.groupBy({
+      by: ['sellerVkn', 'vendorName'],
+      where: { tenantId, invoiceKind: 'ALIS', sellerVkn: { not: null }, vendorName: { not: null } },
+      _count: { _all: true },
+    });
+
+    // VKN → [{ ad, adet }]
+    const vknAdaylar = new Map<string, { ad: string; adet: number }[]>();
+    for (const g of gruplar) {
+      const vkn = sade(g.sellerVkn); const ad = sade(g.vendorName);
+      if (!vkn || !ad) continue;
+      if (!vknAdaylar.has(vkn)) vknAdaylar.set(vkn, []);
+      vknAdaylar.get(vkn)!.push({ ad, adet: g._count._all });
+    }
+
+    let incelenen = 0; let defterGuncel = 0; let belgeGuncel = 0; let atlanan = 0;
+    const ornekler: any[] = [];
+    const elleKarar: any[] = [];
+    const tavan = Math.min(5000, Math.max(1, Number(opts.limit || 5000)));
+    for (const [vkn, adaylar] of vknAdaylar) {
+      if (incelenen >= tavan) break;
+      incelenen++;
+      const temiz = adaylar.filter((a) => a.ad && !ADRES_KALIBI.test(a.ad));
+      if (!temiz.length) { atlanan++; continue; }
+
+      const defter: any = await (this.prisma as any).vendorMemory.findUnique({
+        where: { tenantId_firmaKimlikNo: { tenantId, firmaKimlikNo: vkn } },
+        select: { id: true, firmaUnvan: true, cariKaynak: true },
+      }).catch(() => null);
+
+      // Yalnız yazım farkıyla ayrışanları TEK aday say ("Turkcell ... A.S." = "TURKCELL ... A.Ş.").
+      const yazimGruplari = new Map<string, { ad: string; adet: number }[]>();
+      for (const a of temiz) {
+        const k = katla(a.ad);
+        if (!yazimGruplari.has(k)) yazimGruplari.set(k, []);
+        yazimGruplari.get(k)!.push(a);
+      }
+      // Her grubun temsilcisi: TÜRKÇESİ EN DOĞRU yazılış. OCR Türkçe harfi DÜŞÜRÜR, eklemez —
+      // "Turkcell Iletisim Hizmetleri A.S." ile "TURKCELL İLETİŞİM HİZMETLERİ A.Ş." aynı kaydın
+      // iki okumasıdır ve doğrusu ikincisidir. Sıklık tek başına yanlış yönü seçiyordu (bozuk
+      // yazılış daha sık olabiliyor). Eşitlikte sıklık, sonra uzunluk.
+      const trPuan = (s: string) => (s.match(/[ÇĞİÖŞÜçğıöşü]/g) || []).length;
+      const temsilciler = [...yazimGruplari.values()].map((g) => {
+        const en = [...g].sort((x, y) => trPuan(y.ad) - trPuan(x.ad) || y.adet - x.adet || y.ad.length - x.ad.length)[0];
+        return { ad: en.ad, adet: g.reduce((t, x) => t + x.adet, 0) };
+      });
+
+      let resmi: string | null = null;
+      if (defter?.cariKaynak === 'ubl' && sade(defter.firmaUnvan)) {
+        resmi = sade(defter.firmaUnvan);                    // 1) UBL resmî ünvanı — tartışmasız
+      } else if (temsilciler.length === 1) {
+        resmi = temsilciler[0].ad;                          // 2) yalnız yazım farkı
+      } else {
+        // 3) bir aday diğer TÜM adayları kapsıyor mu (eksik okumanın tamamlanmışı)?
+        const enUzun = [...temsilciler].sort((x, y) => y.ad.length - x.ad.length)[0];
+        if (temsilciler.every((t) => katla(enUzun.ad).includes(katla(t.ad)))) resmi = enUzun.ad;
+      }
+      if (!resmi) {
+        // Gerçekten farklı adlar (şube öneki, yarım okuma, OCR kuyruğu) — otomatik karar verilmez.
+        atlanan++;
+        if (elleKarar.length < 20) elleKarar.push({ vkn, adaylar: temsilciler.map((t) => `${t.ad} (${t.adet})`) });
+        continue;
+      }
+
+      const farkliBelgeAdlari = adaylar.filter((a) => a.ad !== resmi);
+      const defterFarkli = !defter || sade(defter.firmaUnvan) !== resmi;
+      if (!farkliBelgeAdlari.length && !defterFarkli) continue;
+
+      if (ornekler.length < 15) {
+        ornekler.push({ vkn, resmi, defterdeki: defter ? sade(defter.firmaUnvan) || null : '(kayıt yok)', hizalanacakAdlar: farkliBelgeAdlari.map((a) => `${a.ad} (${a.adet})`) });
+      }
+
+      if (defterFarkli) {
+        defterGuncel++;
+        if (!opts.dryRun) {
+          if (defter) {
+            await (this.prisma as any).vendorMemory.update({ where: { id: defter.id }, data: { firmaUnvan: resmi } }).catch(() => null);
+          } else {
+            await (this.prisma as any).vendorMemory.create({ data: { tenantId, firmaKimlikNo: vkn, firmaUnvan: resmi, cariKaynak: 'belge' } }).catch(() => null);
+          }
+        }
+      }
+      if (farkliBelgeAdlari.length) {
+        const adet = farkliBelgeAdlari.reduce((t, a) => t + a.adet, 0);
+        belgeGuncel += adet;
+        if (!opts.dryRun) {
+          await (this.prisma as any).invoiceAccountingDocument.updateMany({
+            where: { tenantId, invoiceKind: 'ALIS', sellerVkn: vkn, vendorName: { in: farkliBelgeAdlari.map((a) => a.ad) } },
+            data: { vendorName: resmi },
+          }).catch(() => null);
+        }
+      }
+    }
+
+    return { ok: true, dryRun: !!opts.dryRun, incelenenVkn: incelenen, defterGuncel, belgeGuncel, atlanan, ornekler, elleKarar };
+  }
 }
 
 /** Taxpayer için kısa isim üret. */
