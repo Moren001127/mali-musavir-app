@@ -12795,12 +12795,26 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       opts.direction === 'SATIS'
         ? `PageIndex="0" PageSize="${opts.limit}"`
         : `PageIndex="0" PageSize="${opts.limit}" SetTaken="false" OnlyNewestInvoices="false"`;
+    // 🗓️ AY SONU TUZAĞI (2026-09-25 canlı kanıt): ExecutionDate FATURA TARİHİ DEĞİL, faturanın Uyumsoft'a
+    //   DÜŞTÜĞÜ tarih. Ayın son günü kesilen fatura ertesi ay penceresine kayıyor → ay sonu faturaları
+    //   sessizce eksik kalıyordu. KANIT (SULTAN OSMAN): 01.08–31.08 sorgusu 16 fatura getirdi ama ikisinin
+    //   tarihi 31.07 idi; 31.08 tarihli ERENES EFE2026000000383 ise ancak 01.09–10.09 penceresinde çıktı
+    //   (Mihsap 15 gösterirken biz 14 gösteriyorduk, fark tam olarak bu faturaydı).
+    //   ÇÖZÜM: pencerenin SONUNA pay bırak. Fazladan gelen fatura sorun değil — kayıt GERÇEK fatura
+    //   tarihiyle saklanıyor, yani kendi ayında listeleniyor (31.07'liler Temmuz'da duruyor, doğrulandı).
+    const gunEkle = (iso: string, gun: number) => {
+      const t = new Date(`${String(iso).slice(0, 10)}T12:00:00Z`);
+      if (Number.isNaN(t.getTime())) return iso;
+      t.setUTCDate(t.getUTCDate() + gun);
+      return t.toISOString().slice(0, 10);
+    };
+    const sorguBitis = gunEkle(opts.period.endDate, 10);
     const body = `
       <${method} xmlns="http://tempuri.org/">
         <userInfo Username="${this.xmlEscape(cfg.username)}" Password="${this.xmlEscape(cfg.password)}" />
         <query ${queryAttrs}>
           <ExecutionStartDate>${opts.period.startDate}T00:00:00</ExecutionStartDate>
-          <ExecutionEndDate>${opts.period.endDate}T23:59:59</ExecutionEndDate>
+          <ExecutionEndDate>${sorguBitis}T23:59:59</ExecutionEndDate>
         </query>
       </${method}>`;
     const url = cfg.baseUrl || PROVIDER_DEFAULT_BASE_URL.UYUMSOFT;
