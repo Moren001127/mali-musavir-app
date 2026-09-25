@@ -193,3 +193,92 @@ html[data-theme='D'] .financial-report-readable table td.text-center span.rounde
   border-radius: 999px !important;
 }
 html[data-theme='D'] .financial-report-readable table td.text-center span.rounded[style*='green-wash'] { border-radius: 999px !important; }
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════════════
+   NETLEŞTİRME TURU — 2026-09-25 (Mizan'a özel; ortak kısımlar mali-tablolar-white.css §A-B'de)
+   ═══════════════════════════════════════════════════════════════════════════════════════════════════ */
+
+/* ── 1. DENGE: mizanın en kritik bilgisi görünür olsun ─────────────────────────────────────────────
+   Toplam Borç ile Toplam Alacak aynı sayıydı ama "dengede mi" hiç söylenmiyordu; iki kart sessizdi. */
+html[data-theme='D'] body [data-portal-kpi][data-kpi-denge] { position: relative; }
+html[data-theme='D'] body [data-portal-kpi][data-kpi-denge='evet'] { border-color: #c6efd0 !important; }
+html[data-theme='D'] body [data-portal-kpi][data-kpi-denge='evet']::after { background: linear-gradient(90deg, #2f9e44, #51cf66) !important; }
+html[data-theme='D'] body [data-portal-kpi][data-kpi-denge='evet'] [data-kpi-etiket]::after {
+  content: 'DENGEDE'; margin-left: auto; background: #ebfbee; color: #2b8a3e; border: 1px solid #c6efd0;
+  border-radius: 999px; padding: 1px 7px; font-size: 9.5px; font-weight: 700; letter-spacing: .05em;
+}
+html[data-theme='D'] body [data-portal-kpi][data-kpi-denge='hayir'] { border-color: #ffc9c9 !important; background: #fffafa !important; }
+html[data-theme='D'] body [data-portal-kpi][data-kpi-denge='hayir']::after { background: linear-gradient(90deg, #e03131, #ff6b6b) !important; }
+html[data-theme='D'] body [data-portal-kpi][data-kpi-denge='hayir'] [data-kpi-etiket]::after {
+  content: 'FARK VAR'; margin-left: auto; background: #fff5f5; color: #c92a2a; border: 1px solid #ffc9c9;
+  border-radius: 999px; padding: 1px 7px; font-size: 9.5px; font-weight: 700; letter-spacing: .05em;
+}
+html[data-theme='D'] body [data-portal-kpi][data-kpi-denge] [data-kpi-etiket] { width: 100%; }
+
+/* ── 2. Denetim uyarısı sayacı: sıfırken sade, doluyken kendini gösterir ──────────────────────────── */
+html[data-theme='D'] body [data-portal-kpi][data-kpi-tur='uyari'][data-kpi-dolu='evet'] {
+  background: #fff4e6 !important; border-color: #ffd8a8 !important;
+}
+html[data-theme='D'] body [data-portal-kpi][data-kpi-tur='uyari'][data-kpi-dolu='evet'] [data-kpi-deger] { color: #d9480f !important; }
+html[data-theme='D'] body [data-portal-kpi][data-kpi-tur='uyari'][data-kpi-dolu='hayir'] [data-kpi-deger] { color: #b6c1cf !important; }
+html[data-theme='D'] body [data-portal-kpi][data-kpi-tur='uyari'][data-kpi-dolu='hayir']::after { background: linear-gradient(90deg, #2f9e44, #51cf66) !important; }
+
+/* ── 3. Hesap kodu denetimi kutuları: kritik olan öne çıksın, uyarı sakin kalsın ──────────────────
+   Hepsi beyaz zeminli ve eşit ağırlıktaydı; hata ile uyarı yalnız ince kenar rengiyle ayrılıyordu. */
+html[data-theme='D'] body [data-mizan-uyari-grid] { grid-template-columns: repeat(1, minmax(0, 1fr)); gap: 10px; }
+@media (min-width: 1100px) {
+  html[data-theme='D'] body [data-mizan-uyari-grid] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+html[data-theme='D'] body [data-mizan-uyari] {
+  border-radius: 10px !important; padding: 10px 12px 10px 11px !important; align-items: flex-start;
+}
+html[data-theme='D'] body [data-mizan-uyari='uyari'] {
+  background: #fff9f0 !important; border-color: #ffd8a8 !important; border-left: 3px solid #f08c00 !important;
+}
+html[data-theme='D'] body [data-mizan-uyari='hata'] {
+  background: #fff5f5 !important; border-color: #ffc9c9 !important; border-left: 3px solid #e03131 !important;
+}
+html[data-theme='D'] body [data-mizan-uyari] > div:first-child { background: transparent !important; width: 18px !important; height: 18px !important; }
+html[data-theme='D'] body [data-mizan-uyari='uyari'] > div:first-child { color: #d9480f !important; }
+html[data-theme='D'] body [data-mizan-uyari='hata'] > div:first-child { color: #c92a2a !important; }
+html[data-theme='D'] body [data-mizan-uyari] p:first-child { font-size: 11.5px !important; letter-spacing: .04em !important; }
+html[data-theme='D'] body [data-mizan-uyari='uyari'] p:first-child { color: #d9480f !important; }
+html[data-theme='D'] body [data-mizan-uyari='hata'] p:first-child { color: #c92a2a !important; }
+html[data-theme='D'] body [data-mizan-uyari] p:last-child { color: var(--mt-ink) !important; font-size: 11.5px !important; line-height: 1.45 !important; }
+
+/* ── 4. Mizan tablosu: HESAP AĞACI okunur olsun ───────────────────────────────────────────────────
+   Eskiden iki görünüm vardı: "üst seviye" (kalın + hafif zemin) ve "gerisi". Bu yüzden
+   1 DÖNEN VARLIKLAR ile 10 HAZIR DEĞERLER aynı ağırlıktaydı, 320.01.001 gibi kırılımlar da
+   üç haneli hesaplarla eşitti. Artık dört kademe var; göz gruplayabiliyor.
+   Satır yüksekliği (42px) DEĞİŞMEDİ — tasarım dilindeki 40–44px aralığında. */
+html[data-theme='D'] body [data-panel-main] [data-mizan-report] tbody tr[data-mizan-seviye='0'] { background: #eaeff6 !important; }
+html[data-theme='D'] body [data-panel-main] [data-mizan-report] tbody tr[data-mizan-seviye='0'] td {
+  color: #0f172a !important; font-weight: 750 !important;
+  border-top: 1px solid var(--mt-line) !important; border-bottom-color: var(--mt-line) !important;
+}
+html[data-theme='D'] body [data-panel-main] [data-mizan-report] tbody tr[data-mizan-seviye='1'] { background: #f6f9fc !important; }
+html[data-theme='D'] body [data-panel-main] [data-mizan-report] tbody tr[data-mizan-seviye='1'] td { color: #16233a !important; font-weight: 680 !important; }
+html[data-theme='D'] body [data-panel-main] [data-mizan-report] tbody tr[data-mizan-seviye='2'] { background: #fff !important; }
+html[data-theme='D'] body [data-panel-main] [data-mizan-report] tbody tr[data-mizan-seviye='2'] td { color: var(--mt-ink) !important; font-weight: 550 !important; }
+html[data-theme='D'] body [data-panel-main] [data-mizan-report] tbody tr:is([data-mizan-seviye='3'], [data-mizan-seviye='4'], [data-mizan-seviye='5'], [data-mizan-seviye='6']) { background: #fff !important; }
+html[data-theme='D'] body [data-panel-main] [data-mizan-report] tbody tr:is([data-mizan-seviye='3'], [data-mizan-seviye='4'], [data-mizan-seviye='5'], [data-mizan-seviye='6']) td { color: var(--mt-ink-2) !important; font-weight: 450 !important; }
+/* Hesap kodu sütunu: kimlik bilgisi, okunur ama öne çıkmaz */
+html[data-theme='D'] body [data-panel-main] [data-mizan-report] tbody td[data-mizan-sutun='0'] {
+  color: var(--mt-muted) !important; font-weight: 600 !important; font-size: 12px !important;
+}
+html[data-theme='D'] body [data-panel-main] [data-mizan-report] tbody tr[data-mizan-seviye='0'] td[data-mizan-sutun='0'] { color: #334155 !important; font-weight: 750 !important; }
+/* Tutar sütunları: "hareket" (borç/alacak) ile "bakiye" ayrı iki blok — aralarına ayraç */
+html[data-theme='D'] body [data-panel-main] [data-mizan-report] :is(thead th, tbody td, tfoot td):nth-child(5) {
+  border-left: 2px solid var(--mt-line) !important;
+}
+/* Boş tutar hücresi: nokta bile koymadan tamamen sakin kalsın */
+html[data-theme='D'] body [data-panel-main] [data-mizan-report] tbody td[data-mizan-bos='evet'] { color: transparent !important; }
+/* Başlık satırı: yapışkan kalırken alt kenarı belirgin olsun (kaydırırken sütun karışmasın) */
+html[data-theme='D'] body [data-panel-main] [data-mizan-report] thead th {
+  font-weight: 700 !important; box-shadow: inset 0 -1px 0 var(--mt-line-strong);
+}
+/* TOPLAM satırı: tablonun kapanışı */
+html[data-theme='D'] body [data-panel-main] [data-mizan-report] tfoot td { font-weight: 750 !important; }
+
+/* ── 5. Denetim kriterleri kartı: başlık şeridi biraz daha derli toplu ───────────────────────────── */
+html[data-theme='D'] body .financial-report-readable > div.rounded-xl.border.p-4:has(h3 span.text-\[10\.5px\]) { padding: 14px 16px !important; }

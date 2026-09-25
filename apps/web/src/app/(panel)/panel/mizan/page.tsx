@@ -780,6 +780,8 @@ export default function MizanPage() {
   const anomaliler = (mizan?.anomaliler ?? []) as any[];
   const toplamBorc = mizan?.toplamBorc ?? 0;
   const toplamAlacak = mizan?.toplamAlacak ?? 0;
+  // Mizanın dengede olup olmadığı SAYAÇTA görünsün (yalnız görsel işaret; hesap/veri değişmez).
+  const dengeDurumu = Math.abs(Number(toplamBorc) - Number(toplamAlacak)) < 0.005 ? 'evet' : 'hayir';
 
   return (
     <div className="financial-report-readable space-y-3 max-w-7xl">
@@ -1102,11 +1104,11 @@ export default function MizanPage() {
       {mizan && (
         <>
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-            <Kpi label="Toplam Hesap" val={hesaplar.length.toString()} color="#305ea2" icon={FileText} />
-            <Kpi label="Toplam Borç" val={fmtTRY(toplamBorc)} color="#75509c" icon={null} />
-            <Kpi label="Toplam Alacak" val={fmtTRY(toplamAlacak)} color="#087f78" icon={null} />
-            <Kpi label="Denetim Uyarısı" val={anomaliler.length.toString()} color={anomaliler.length > 0 ? '#f59e0b' : '#22c55e'} icon={AlertTriangle} />
-            <Kpi label="Son Güncelleme" val={mizan.createdAt ? new Date(mizan.createdAt).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'} color="#305ea2" small icon={null} />
+            <Kpi label="Toplam Hesap" val={hesaplar.length.toString()} color="#305ea2" icon={FileText} tur="hesap" />
+            <Kpi label="Toplam Borç" val={fmtTRY(toplamBorc)} color="#75509c" icon={null} tur="borc" denge={dengeDurumu} />
+            <Kpi label="Toplam Alacak" val={fmtTRY(toplamAlacak)} color="#087f78" icon={null} tur="alacak" denge={dengeDurumu} />
+            <Kpi label="Denetim Uyarısı" val={anomaliler.length.toString()} color={anomaliler.length > 0 ? '#f59e0b' : '#22c55e'} icon={AlertTriangle} tur="uyari" dolu={anomaliler.length > 0 ? 'evet' : 'hayir'} />
+            <Kpi label="Son Güncelleme" val={mizan.createdAt ? new Date(mizan.createdAt).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'} color="#305ea2" small icon={null} tur="guncelleme" />
           </div>
           {/* Kesin Kayıt ribbon */}
           <div className="flex items-center justify-between rounded-xl p-3" style={portalStyle({
@@ -1429,10 +1431,11 @@ export default function MizanPage() {
               {anomaliler.length} uyarı
             </span>
           </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
+          <div data-mizan-uyari-grid className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
             {anomaliler.map((a, i) => (
               <div
                 key={a.id || i}
+                data-mizan-uyari={a.seviye === 'ERROR' ? 'hata' : 'uyari'}
                 className="rounded-lg px-3 py-2.5 flex gap-2.5"
                 style={portalStyle({
                   background: 'rgba(255,255,255,0.02)',
@@ -1621,14 +1624,14 @@ export default function MizanPage() {
   );
 }
 
-function Kpi({ label, val, color, small, icon: Icon }: { label: string; val: string; color: string; small?: boolean; icon: any }) {
+function Kpi({ label, val, color, small, icon: Icon, tur, dolu, denge }: { label: string; val: string; color: string; small?: boolean; icon: any; tur?: string; dolu?: string; denge?: string }) {
   return (
-    <div data-portal-kpi className="rounded-xl p-4" style={portalStyle({ ...({ '--kpi-tone': portalStyle({ color }).color } as CSSProperties), background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' })}>
-      <div className="flex items-center gap-1.5 mb-2 text-[11px] font-bold uppercase tracking-[.1em]" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
+    <div data-portal-kpi data-kpi-tur={tur} data-kpi-dolu={dolu} data-kpi-denge={denge} className="rounded-xl p-4" style={portalStyle({ ...({ '--kpi-tone': portalStyle({ color }).color } as CSSProperties), background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' })}>
+      <div data-kpi-etiket className="flex items-center gap-1.5 mb-2 text-[11px] font-bold uppercase tracking-[.1em]" style={portalStyle({ color: 'rgba(250,250,249,0.5)' })}>
         {Icon ? <Icon size={12} style={portalStyle({ color })} /> : null}
         {label}
       </div>
-      <p className="leading-none tabular-nums" style={portalStyle({ fontFamily: FINANCIAL_FONT, fontSize: small ? 15 : 22, fontWeight: 700, color, letterSpacing: 0 })}>
+      <p data-kpi-deger className="leading-none tabular-nums" style={portalStyle({ fontFamily: FINANCIAL_FONT, fontSize: small ? 15 : 22, fontWeight: 700, color, letterSpacing: 0 })}>
         {val}
       </p>
     </div>
@@ -1819,7 +1822,7 @@ function MizanTable({
               ];
 
               return (
-                <tr key={h.id} data-mizan-group={isUpper || undefined} style={portalStyle({ background: rowBg })}>
+                <tr key={h.id} data-mizan-group={isUpper || undefined} data-mizan-seviye={String(lvl)} style={portalStyle({ background: rowBg })}>
                   {cells.map((c, colIdx) => {
                     const focused = focusCell?.row === rowIdx && focusCell?.col === colIdx;
                     const isAmountCell = colIdx >= 2;
@@ -1829,6 +1832,8 @@ function MizanTable({
                       <td
                         key={colIdx}
                         data-cell={`${rowIdx}-${colIdx}`}
+                        data-mizan-sutun={String(colIdx)}
+                        data-mizan-bos={isAmountCell && !hasAmountValue ? 'evet' : undefined}
                         tabIndex={0}
                         onClick={() => setFocusCell({ row: rowIdx, col: colIdx })}
                         onFocus={() => setFocusCell({ row: rowIdx, col: colIdx })}

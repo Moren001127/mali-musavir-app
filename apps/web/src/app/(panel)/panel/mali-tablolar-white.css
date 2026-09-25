@@ -399,3 +399,40 @@ html[data-theme='D'] .financial-report-readable ::placeholder { color: var(--mt-
 html[data-theme='D'] .financial-report-readable div.rounded-lg.border > input:focus-visible,
 html[data-theme='D'] .financial-report-readable [data-mali-menu] input:focus-visible { outline: none !important; box-shadow: none !important; }
 html[data-theme='D'] .financial-report-readable input[type='checkbox'] { accent-color: var(--mt-primary); }
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════════════
+   NETLEŞTİRME TURU — 2026-09-25 (Muzaffer Bey: "göz yormayan ama ayırt edici")
+   Bu dosya ORTAK: Mizan · Bilanço · Gelir Tablosu · İşletme Hesap Özeti dördünü birden besler.
+   Önek `body` ile yazılır ki mevcut kuralları özgüllükle geçsin. Düzen ve işleyiş DEĞİŞMEZ.
+   ═══════════════════════════════════════════════════════════════════════════════════════════════════ */
+
+/* ── A. Sayaç kartları: tam genişlik çubuk "ilerleme çubuğu" gibi okunuyordu ────────────────────────
+   Çizgi kısalır ve sayının hemen altına gelir; kartın rengi artık bir ölçü değil, yalnız kimlik. */
+html[data-theme='D'] body .financial-report-readable [data-portal-kpi] {
+  display: flex; flex-direction: column;
+}
+html[data-theme='D'] body .financial-report-readable [data-portal-kpi]::after {
+  position: static; left: auto; right: auto; bottom: auto;
+  width: 34px; height: 3px; margin-top: 10px; border-radius: 999px; opacity: 1;
+  flex: none;
+}
+html[data-theme='D'] body .financial-report-readable [data-portal-kpi] [data-kpi-etiket] {
+  margin-bottom: 6px !important; min-height: 16px; align-items: flex-start !important;
+}
+html[data-theme='D'] body .financial-report-readable [data-portal-kpi] [data-kpi-deger] {
+  font-size: 22px !important; font-weight: 750 !important; letter-spacing: -0.015em !important; color: #0f172a !important;
+}
+/* Sayaç değeri bir TARİH ise (ör. "Son Güncelleme") rakam gibi büyük durmasın */
+html[data-theme='D'] body .financial-report-readable [data-portal-kpi][data-kpi-tur='guncelleme'] [data-kpi-deger] {
+  font-size: 14px !important; font-weight: 650 !important; color: var(--mt-ink) !important;
+}
+
+/* ── B. Kesin kayıt şeridi: AÇIK hâl de kendini belli etsin ────────────────────────────────────────
+   Kilitli hâl zaten yeşil; açık hâl düz beyazdı, "bu mizan hâlâ değişebilir" mesajı kayboluyordu. */
+html[data-theme='D'] body .financial-report-readable > div.flex.items-center.justify-between.rounded-xl.p-3:not(:has(> div > svg.lucide-lock)) {
+  background: var(--mt-head, #f8fafc) !important; border-color: var(--mt-line) !important;
+  border-left: 3px solid #94a3b8 !important;
+}
+html[data-theme='D'] body .financial-report-readable > div.flex.items-center.justify-between.rounded-xl.p-3:has(> div > svg.lucide-lock) {
+  border-left: 3px solid #2f9e44 !important;
+}
