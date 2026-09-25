@@ -106,6 +106,9 @@ export class DocumentsService {
           sizeBytes: meta.sizeBytes,
           uploadedBy: userId,
           notes: 'İlk yükleme',
+          // 2026-09-25 (bulgu 36b): tür ve özgün ad artık SÜRÜMDE de saklanıyor
+          mimeType: dto.mimeType || null,
+          originalName: dto.originalName || null,
         },
       });
 
@@ -286,6 +289,24 @@ export class DocumentsService {
    * Şema değişmeden yapılabilecek en doğru şey: sürümün KENDİ nesne anahtarındaki
    * uzantıdan türü çıkarmak. Uzantı yoksa güncel belgenin türüne düşülür (eski davranış).
    */
+  /**
+   * Sürümün gerçek tür + dosya adı — 2026-09-25 bulgu 36b.
+   *
+   * Artık `DocumentVersion`ta `mimeType` ve `originalName` var. KAYITLI DEĞER ÖNCE
+   * gelir; yalnız o boşsa (geri dolum yapılmadı, eski satırlar null) uzantı tabanlı
+   * `surumMimeTuru` yedeği devreye girer.
+   */
+  private surumBilgisi(
+    version: { s3Key: string; mimeType?: string | null; originalName?: string | null },
+    belgeVarsayilan?: string | null,
+  ): { mimeType: string; originalName: string | null } {
+    const kayitli = String(version.mimeType || '').trim();
+    return {
+      mimeType: kayitli || this.surumMimeTuru(version.s3Key, belgeVarsayilan),
+      originalName: String(version.originalName || '').trim() || null,
+    };
+  }
+
   private surumMimeTuru(s3Key: string, varsayilan?: string | null): string {
     const uzanti = String(s3Key || '').split('?')[0].match(/\.([a-z0-9]{1,8})$/i)?.[1]?.toLowerCase();
     const tablo: Record<string, string> = {
@@ -310,14 +331,17 @@ export class DocumentsService {
 
     let s3Key = doc.s3Key;
     let mimeType = doc.mimeType || 'application/octet-stream';
+    let surumAdi: string | null = null;
     if (versionNo) {
       const version = doc.versions.find((v) => v.versionNo === versionNo);
       if (!version) throw new NotFoundException('Versiyon bulunamadı');
       s3Key = version.s3Key;
-      mimeType = this.surumMimeTuru(version.s3Key, doc.mimeType);
+      const bilgi = this.surumBilgisi(version as any, doc.mimeType);
+      mimeType = bilgi.mimeType;
+      surumAdi = bilgi.originalName;
     }
 
-    const filename = this.documentFilename({ ...doc, s3Key, mimeType });
+    const filename = surumAdi || this.documentFilename({ ...doc, s3Key, mimeType });
     const url = await this.storage.getPresignedDownloadUrl(s3Key, filename);
     return { url, filename, mimeType, expiresInSeconds: 3600 };
   }
@@ -330,15 +354,18 @@ export class DocumentsService {
 
     let s3Key = doc.s3Key;
     let mimeType = doc.mimeType || 'application/octet-stream';
+    let surumAdi: string | null = null;
     if (versionNo) {
       const version = doc.versions.find((v) => v.versionNo === versionNo);
       if (!version) throw new NotFoundException('Versiyon bulunamadı');
       s3Key = version.s3Key;
       // Bulgu 36: önizlemede Content-Type yanlışsa tarayıcı belgeyi bozuk gösterir.
-      mimeType = this.surumMimeTuru(version.s3Key, doc.mimeType);
+      const bilgi = this.surumBilgisi(version as any, doc.mimeType);
+      mimeType = bilgi.mimeType;
+      surumAdi = bilgi.originalName;
     }
 
-    const filename = this.documentFilename({ ...doc, s3Key, mimeType });
+    const filename = surumAdi || this.documentFilename({ ...doc, s3Key, mimeType });
     const url = await this.storage.getPresignedInlineUrl(s3Key, filename, mimeType);
     return { url, filename, mimeType, expiresInSeconds: 3600 };
   }
@@ -387,6 +414,8 @@ export class DocumentsService {
           sizeBytes: meta.sizeBytes,
           uploadedBy: userId,
           notes: dto.notes,
+          mimeType: dto.mimeType || null,
+          originalName: (dto as any).originalName || null,
         },
       });
 

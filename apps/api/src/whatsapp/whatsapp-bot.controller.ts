@@ -910,6 +910,8 @@ export class WhatsAppBotController implements OnModuleInit {
           s3Key,
           sizeBytes: downloaded.sizeBytes,
           uploadedBy: kaynak === 'whatsapp-qr' ? 'whatsapp-qr' : 'whatsapp-webhook',
+          mimeType: downloaded.mimeType || null,
+          originalName: filename || null,
           notes: `WhatsApp ${kaynak} mediaId=${msg.media.id || msg.id || '-'}`,
         },
       });

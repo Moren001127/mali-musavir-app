@@ -867,6 +867,18 @@ model DocumentVersion {
   notes      String?
   createdAt  DateTime @default(now())
 
+  // ---- SÜRÜM DOSYA BİLGİSİ (2026-09-25, portal denetimi bulgu 36b) ----
+  // Şemada tür ve özgün ad YOKTU. 25 Eylül düzeltmesi türü NESNE ANAHTARI
+  // UZANTISINDAN çıkarıyor (`surumMimeTuru`); uzantısız anahtarlarda güncel
+  // belgenin türüne düşüyor — yani eski bir sürüm PDF olsa da güncel sürüm
+  // JPEG ise PDF, "image/jpeg" olarak indiriliyordu.
+  // GERİ DOLUM YAPILMADI: eski satırlarda gerçek tür bilinmiyor; null kalır ve
+  // uzantı tabanlı mevcut davranış sürer.
+  /// Yükleme anındaki gerçek tür (null ise uzantıdan türetilir)
+  mimeType     String?
+  /// Kullanıcının yüklediği dosya adı (otomatik indirmelerde null)
+  originalName String?
+
   document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
   @@unique([documentId, versionNo])

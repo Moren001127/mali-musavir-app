@@ -3092,6 +3092,9 @@ export class PortalAutomationService {
           sizeBytes,
           uploadedBy: 'portal-automation',
           notes: 'Portal otomasyonu ilk indirme',
+          // 2026-09-25 (bulgu 36b): tür saklanıyor. Özgün ad YOK — bu bir otomatik
+          // indirme, kullanıcının verdiği bir dosya adı hiç olmadı; uydurulmaz.
+          mimeType: mimeType || null,
         },
       });
       await (this.prisma as any).document.update({

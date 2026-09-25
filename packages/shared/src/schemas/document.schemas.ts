@@ -71,6 +71,10 @@ export const InitiateNewVersionSchema = z.object({
 export const ConfirmNewVersionSchema = z.object({
   s3Key: S3KeySchema,
   mimeType: MimeTypeSchema,
+  // 2026-09-25 (bulgu 36b): özgün ad `initiate` adımında alınıyordu ama teyide
+  // taşınmıyordu; sürüm satırına yazacak bir şey kalmıyordu. Opsiyonel — eski
+  // istemciler göndermezse null yazılır, davranış bozulmaz.
+  originalName: z.string().min(1).max(255).optional(),
   notes: z.string().max(1000).optional(),
 }).strict();
 

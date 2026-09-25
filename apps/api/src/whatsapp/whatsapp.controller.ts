@@ -731,6 +731,8 @@ export class WhatsAppController {
         sizeBytes,
         uploadedBy: req.user?.sub || req.user?.userId || 'whatsapp-portal',
         notes: 'WhatsApp portal medya gonderimi',
+        mimeType: mimeType || null,
+        originalName: originalName || null,
       },
     });
 

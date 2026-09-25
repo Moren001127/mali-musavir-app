@@ -72,6 +72,8 @@ export const documentsApi = {
       .post(`/documents/${documentId}/versions/confirm`, {
         s3Key,
         mimeType: file.type,
+        // 2026-09-25 (bulgu 36b): sürüm satırına yazılsın diye özgün ad da gider
+        originalName: file.name,
         notes,
       })
       .then((r) => r.data);
