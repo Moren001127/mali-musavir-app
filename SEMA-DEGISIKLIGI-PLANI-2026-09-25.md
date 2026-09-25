@@ -1,9 +1,39 @@
 # Şema değişikliği isteyen dört kalem — plan
 
 **Tarih:** 25 Eylül 2026
-**Durum:** UYGULANMADI. Onay bekliyor.
-**Neden ayrı tur:** Dördü de veritabanı şeması değiştiriyor. Kod değişikliği geri alınabilir,
-şema değişikliği + geri dolum alınamaz. Her biri ayrı ayrı onaylanmalı ve tek tek alınmalı.
+**Durum: DÖRDÜ DE UYGULANDI VE CANLIDA.** Aşağısı kayıt için duruyor.
+
+| # | Konu | Commit | Canlı doğrulama |
+|---|---|---|---|
+| 46b | Aşama damgası | `123ffdd` | 4/4 sütun eklendi, 340 satır DEĞİŞMEDİ |
+| 36b | Sürümde dosya türü | `a0f7578` | 2/2 sütun eklendi |
+| 32b | Kişi bazlı okundu | `2946005` | `notification_reads` tablosu var, 6.436 bildirim değişmedi |
+| 35b | Kalan `take` sınırları | `fefc8a1`, `69ad262` | 90.215 belge üzerinde koşturuldu |
+
+**Hiçbirinde geri dolum yapılmadı** — plandaki gerekçelerle. Üç göç de EKLEMELİ
+(`ADD COLUMN IF NOT EXISTS` / `CREATE TABLE IF NOT EXISTS`); tek bir mevcut satır bile
+değişmedi, canlı sayımlarla doğrulandı.
+
+**35b planlandığından FARKLI yapıldı — gerekçesi:** Plan üçünü de
+`{ rows, total, page, pageSize }` biçimine geçirmeyi ve bunu "ORTA risk" saymayı
+öngörüyordu. İki şey bunu değiştirdi:
+1. Repo sözleşmesi (§4) sayfalamayı **isteğe bağlı** kılıyor: `page` verilmezse eski dizi
+   yanıtı aynen döner. Yani tüketen ekranları kırma riski yok.
+2. **Canlı ölçüm** önceliği tersine çevirdi: belgelerde 90.215'e karşı 100 sınırı bugün
+   doluyor, görevlerde 19/500 ve sohbette 4/80 dolmuyor. Bu yüzden belgeler tam çözüldü
+   (sunucuda süzme + gerçek sayaçlar + sayfalama), görev ve sohbette yanıt biçimi
+   değiştirilmedi; yalnız **sessiz kırpma** kaldırıldı (`kirpildi`, `dahaEskisiVar`).
+
+**Ayrıca 35b sırasında bulunan, planda OLMAYAN kusurlar** (hepsinin kökü aynı: Evrak
+ekranı şemada bulunmayan alan adlarını okuyordu) — ayrıntısı `fefc8a1` commit'inde:
+kart başlığı hep "Belge" çıkıyordu, başlıkta arama hiç çalışmıyordu, "OCR Edilmiş" sayacı
+hep %0'dı ve OCR süzgeci seçilince liste her zaman boş kalıyordu, üç tür kutucuğu hiçbir
+zaman sonuç vermiyordu.
+
+---
+
+**Neden ayrı tur (özgün gerekçe):** Dördü de veritabanı şeması değiştiriyor. Kod değişikliği
+geri alınabilir, şema değişikliği + geri dolum alınamaz.
 
 ---
 
