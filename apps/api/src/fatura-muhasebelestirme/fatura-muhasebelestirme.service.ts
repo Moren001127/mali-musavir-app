@@ -12427,10 +12427,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       });
       if (useDateFilter && start && end) params.set('filter[issue_date]', `${start}..${end}`);
       const url = `${baseUrl.replace(/\/+$/, '')}/${firmaNo}/${path}?${params.toString()}`;
-      const res = await fetch(url, {
-        method: 'GET',
-        headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
-      });
+      // 429 TUZAĞI (2026-09-26, WASH CLEAN satış): bu liste isteği düz fetch'ti, hemen üstteki pfetch'i
+      //   kullanmıyordu → Paraşüt "Too many requests — Try again in 6 seconds" deyince beklemeden hata
+      //   fırlatıyordu. Alış tarafı pfetch kullandığı için orada sorun yoktu. Artık ikisi de aynı yoldan.
+      if (page > 1) await psleep(1200); // sayfalar arası nefes payı — alış tarafıyla aynı
+      const res = await pfetch(url);
+      if (!res) throw new Error('Parasut satış fatura listesi alınamadı: hız sınırı (429) 5 denemede de sürdü — birkaç dakika sonra tekrar sorgulayın');
       if (!res.ok) {
         const errTxt = await res.text();
         if (useDateFilter && /issue_date|not a date|invalid|Bad Request/i.test(errTxt)) {
