@@ -1,10 +1,17 @@
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException, Optional, Logger } from '@nestjs/common';
+import { sayfaBoyutuNormalize, sayfaNoNormalize } from '../beyan-kayitlari/beyan-sayfa';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { ConfirmNewVersionDto, InitiateNewVersionDto, InitiateUploadDto, UpdateDocumentDto } from '@mali-musavir/shared';
 import { AutomationEventBus } from '../automations/automation-event-bus.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NOTIFICATION_TYPES } from '../notifications/notification-types';
+
+/**
+ * Şemadaki `DocumentCategory` değerleri. Ekran süzgeci bunları gönderir; tanınmayan
+ * değer sessizce yok sayılır (uydurma kategori süzgeci boş liste üretmesin).
+ */
+export const DOSYA_KATEGORILERI = ['SOZLESME', 'FATURA', 'BEYANNAME', 'EVRAK', 'DIGER'] as const;
 
 @Injectable()
 export class DocumentsService {
@@ -234,24 +241,125 @@ export class DocumentsService {
   /**
    * Tüm tenant'ın belgelerini listele (genel evrak arşivi)
    */
-  async findAll(tenantId: string, category?: string, search?: string) {
-    return this.prisma.document.findMany({
-      where: {
-        isDeleted: false,
-        taxpayer: { tenantId },
-        ...(category ? { category: category as any } : {}),
-        ...(search
-          ? { title: { contains: search, mode: 'insensitive' } }
-          : {}),
-      },
-      include: {
-        tags: true,
-        taxpayer: { select: { id: true, firstName: true, lastName: true, companyName: true } },
-        _count: { select: { versions: true } },
-      },
-      orderBy: { updatedAt: 'desc' },
-      take: 100,
-    });
+  /**
+   * Liste süzgeci — 2026-09-25 (portal denetimi bulgu 35b).
+   *
+   * Eskiden yalnız `category` + başlıkta arama vardı ve liste 100'e kırpılıyordu.
+   * CANLI ÖLÇÜM (25 Eylül): silinmemiş belge sayısı **90.215**, ekran 100 gösteriyordu.
+   * Ekran süzmeyi ve SAYAÇLARI o 100 satır üzerinde yaptığı için "Toplam Evrak: 100"
+   * yazıyordu — 900 kat yanlış. Süzme artık veritabanında, sayaçlar `ozet()`ten.
+   *
+   * Arama başlıkta VE mükellef ünvanında çalışır (ekran ikisini de arıyor gibi
+   * davranıyordu ama `d.name`/`d.fileName` alanları şemada YOK, yani başlık hiç
+   * aranmıyordu).
+   */
+  private listeWhere(tenantId: string, opts: {
+    category?: string; search?: string; taxpayerId?: string;
+  }) {
+    const arama = String(opts.search || '').trim();
+    return {
+      isDeleted: false,
+      taxpayer: { tenantId },
+      ...(opts.taxpayerId ? { taxpayerId: opts.taxpayerId } : {}),
+      // `category` virgülle çoklu olabilir (ekranda tür kutucukları çoklu seçim).
+      ...(() => {
+        const secilen = String(opts.category || '')
+          .split(',')
+          .map((x) => x.trim().toUpperCase())
+          .filter((x) => (DOSYA_KATEGORILERI as readonly string[]).includes(x));
+        if (!secilen.length) return {};
+        return secilen.length === 1
+          ? { category: secilen[0] as any }
+          : { category: { in: secilen as any[] } };
+      })(),
+      ...(arama
+        ? {
+            OR: [
+              { title: { contains: arama, mode: 'insensitive' as any } },
+              { taxpayer: { tenantId, companyName: { contains: arama, mode: 'insensitive' as any } } },
+              { taxpayer: { tenantId, firstName: { contains: arama, mode: 'insensitive' as any } } },
+              { taxpayer: { tenantId, lastName: { contains: arama, mode: 'insensitive' as any } } },
+            ],
+          }
+        : {}),
+    };
+  }
+
+  /**
+   * Belge listesi. `page` verilirse `{ rows, total, page, pageSize }`, verilmezse
+   * ESKİ dizi yanıtı aynen döner (repo sözleşmesi: docs/sayfalama-sozlesme-2026-09-14.md §4).
+   * Böylece bu ucu kullanan eski ekranlar kırılmaz.
+   */
+  async findAll(
+    tenantId: string,
+    category?: string,
+    search?: string,
+    opts: { page?: unknown; pageSize?: unknown; taxpayerId?: string } = {},
+  ) {
+    const where = this.listeWhere(tenantId, { category, search, taxpayerId: opts.taxpayerId });
+    const include = {
+      tags: true,
+      taxpayer: { select: { id: true, firstName: true, lastName: true, companyName: true } },
+      _count: { select: { versions: true } },
+    };
+
+    // Sayfa istenmediyse eski davranış (ilk 100) — sözleşme gereği yanıt biçimi DEĞİŞMEZ.
+    if (opts.page === undefined || opts.page === null || opts.page === '') {
+      return this.prisma.document.findMany({
+        where,
+        include,
+        orderBy: { updatedAt: 'desc' },
+        take: 100,
+      });
+    }
+
+    const page = sayfaNoNormalize(opts.page);
+    const pageSize = sayfaBoyutuNormalize(opts.pageSize);
+    const [total, rows] = await Promise.all([
+      this.prisma.document.count({ where }),
+      this.prisma.document.findMany({
+        where,
+        include,
+        orderBy: { updatedAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+    ]);
+    return { rows, total, page, pageSize };
+  }
+
+  /**
+   * GERÇEK SAYAÇLAR — 2026-09-25 (bulgu 35b).
+   * Ekran sayaçları elindeki 100 satırdan üretiyordu. Artık tamamı veritabanından:
+   * toplam, bu ay, kullanılan alan ve kategori dağılımı. Süzgeç verilirse sayaçlar
+   * da süzülmüş kümeye göre hesaplanır (liste ile ayrışmaz).
+   */
+  async ozet(
+    tenantId: string,
+    opts: { category?: string; search?: string; taxpayerId?: string } = {},
+  ) {
+    const where = this.listeWhere(tenantId, opts);
+    const simdi = new Date();
+    const ayBasi = new Date(simdi.getFullYear(), simdi.getMonth(), 1);
+
+    const [toplam, buAy, boyut, kategoriler] = await Promise.all([
+      this.prisma.document.count({ where }),
+      this.prisma.document.count({ where: { ...where, createdAt: { gte: ayBasi } } }),
+      this.prisma.document.aggregate({ where, _sum: { sizeBytes: true } }),
+      this.prisma.document.groupBy({ by: ['category'], where, _count: { _all: true } }),
+    ]);
+
+    const kategoriDagilimi: Record<string, number> = {};
+    for (const k of kategoriler as any[]) {
+      kategoriDagilimi[String(k.category)] = k._count?._all ?? 0;
+    }
+
+    return {
+      toplam,
+      buAy,
+      toplamBoyut: boyut._sum.sizeBytes ?? 0,
+      kategoriDagilimi,
+    };
   }
 
   /**

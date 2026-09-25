@@ -48,13 +48,36 @@ export class DocumentsController {
   constructor(private documentsService: DocumentsService) {}
 
   /** Tüm evrak arşivi (tenant geneli) */
+  /**
+   * Belge listesi. `page` verilirse `{ rows, total, page, pageSize }`, verilmezse
+   * ESKİ dizi yanıtı (repo sözleşmesi §4) — eski ekranlar kırılmaz.
+   */
   @Get()
   findAll(
     @Req() req: any,
     @Query('category') category?: string,
     @Query('search') search?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('taxpayerId') taxpayerId?: string,
   ) {
-    return this.documentsService.findAll(req.user.tenantId, category, search);
+    return this.documentsService.findAll(req.user.tenantId, category, search, {
+      page, pageSize, taxpayerId,
+    });
+  }
+
+  /**
+   * Sayaçlar — 2026-09-25 (bulgu 35b). Ekran sayaçları elindeki 100 satırdan
+   * üretiyordu; canlıda 90.215 belge varken "Toplam Evrak: 100" yazıyordu.
+   */
+  @Get('ozet')
+  ozet(
+    @Req() req: any,
+    @Query('category') category?: string,
+    @Query('search') search?: string,
+    @Query('taxpayerId') taxpayerId?: string,
+  ) {
+    return this.documentsService.ozet(req.user.tenantId, { category, search, taxpayerId });
   }
 
   /**

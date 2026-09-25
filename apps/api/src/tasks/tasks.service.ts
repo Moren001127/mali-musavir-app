@@ -138,6 +138,10 @@ const nesne = (v: any) => (v && typeof v === 'object' && !Array.isArray(v) ? v :
 
 @Injectable()
 export class TasksService {
+  /** Liste tavanları — `kirpildi` bayrağı bunlarla kıyaslanır (bulgu 35b). */
+  static readonly GOREV_TAVANI = 500;
+  static readonly NOT_TAVANI = 200;
+
   private readonly logger = new Logger('TasksService');
 
   constructor(
@@ -461,7 +465,7 @@ export class TasksService {
         : this.db.task.findMany({
             where: { ...ortak, tur: 'GOREV', status: { in: [...ACIK_DURUMLAR] } },
             orderBy: [{ pinned: 'desc' }, { dueDate: 'asc' }, { priority: 'desc' }, { createdAt: 'desc' }],
-            take: 500,
+            take: TasksService.GOREV_TAVANI,
             include,
           }),
       tur === 'GOREV'
@@ -469,7 +473,7 @@ export class TasksService {
         : this.db.task.findMany({
             where: { ...ortak, tur: 'NOT', status: { notIn: ['DONE', 'CANCELLED'] } },
             orderBy: [{ pinned: 'desc' }, { updatedAt: 'desc' }],
-            take: 200,
+            take: TasksService.NOT_TAVANI,
             include,
           }),
       this.acikEkipIstekleri(tenantId),
@@ -515,6 +519,17 @@ export class TasksService {
       ekipIstekler,
       takvim,
       sayaclar: { ...sayaclar, istek: (istekler as any[]).length },
+      // KIRPMA BİLDİRİMİ — 2026-09-25 (portal denetimi bulgu 35b).
+      //   Görev listesi 500'e, not listesi 200'e kırpılıyor ve bu SESSİZCE oluyordu:
+      //   sınır dolduğunda kullanıcı eksik listeye bakıp tam sanıyordu. Canlı ölçüm
+      //   (25 Eylül): 19 açık görev — sınır BUGÜN dolmuyor. Yine de sessiz kalmasın;
+      //   dolarsa ekran uyarabilir. Sayfalama gerekirse bu bayrak onu tetikler.
+      kirpildi: {
+        gorev: (gorevler as any[]).length >= TasksService.GOREV_TAVANI,
+        gorevTavan: TasksService.GOREV_TAVANI,
+        not: (notlar as any[]).length >= TasksService.NOT_TAVANI,
+        notTavan: TasksService.NOT_TAVANI,
+      },
     };
   }
 

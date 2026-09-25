@@ -7,6 +7,9 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 
+/** Sohbet mesaj tavanları — `dahaEskisiVar` bayrağı bunlarla kıyaslanır (bulgu 35b). */
+const SOHBET_MESAJ_TAVANI = 80;
+const SOHBET_MESAJ_TAVANI_ACILIS = 50;
 const MESSAGE_LIMIT = 4000;
 
 @Injectable()
@@ -99,10 +102,10 @@ export class OfficeChatService {
           ],
         },
       },
-      include: this.threadInclude(50),
+      include: this.threadInclude(SOHBET_MESAJ_TAVANI_ACILIS),
     });
 
-    return this.threadDetail(thread, userId);
+    return this.threadDetail(thread, userId, SOHBET_MESAJ_TAVANI_ACILIS);
   }
 
   async getThread(tenantId: string, userId: string, threadId: string) {
@@ -112,10 +115,10 @@ export class OfficeChatService {
 
     const fresh = await (this.prisma as any).officeChatThread.findFirst({
       where: { id: thread.id, tenantId },
-      include: this.threadInclude(80),
+      include: this.threadInclude(SOHBET_MESAJ_TAVANI),
     });
 
-    return this.threadDetail(fresh, userId);
+    return this.threadDetail(fresh, userId, SOHBET_MESAJ_TAVANI);
   }
 
   async sendMessage(tenantId: string, userId: string, threadId: string, rawContent: string) {
@@ -291,13 +294,23 @@ export class OfficeChatService {
     };
   }
 
-  private async threadDetail(thread: any, currentUserId: string) {
+  /**
+   * @param mesajTavani Bu sorguda kaç mesaj istendiyse (`threadInclude(n)` ile aynı n).
+   *   KIRPMA BİLDİRİMİ — 2026-09-25 (portal denetimi bulgu 35b): sohbet son N mesajı
+   *   getiriyor ve daha eskisinin VAR OLDUĞUNU hiç söylemiyordu; kullanıcı konuşmanın
+   *   başını göremiyor ve bunu anlamıyordu. Canlı ölçüm (25 Eylül): en kalabalık
+   *   sohbette 4 mesaj — sınır BUGÜN dolmuyor. Yine de sessiz kalmasın.
+   */
+  private async threadDetail(thread: any, currentUserId: string, mesajTavani?: number) {
     const summary = await this.threadSummary(thread, currentUserId);
+    const mesajlar = [...(thread.messages || [])];
     return {
       ...summary,
-      messages: [...(thread.messages || [])]
+      messages: mesajlar
         .sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
         .map((message: any) => this.publicMessage(message)),
+      dahaEskisiVar: !!mesajTavani && mesajlar.length >= mesajTavani,
+      mesajTavani: mesajTavani ?? null,
     };
   }
 

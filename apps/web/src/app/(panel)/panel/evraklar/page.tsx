@@ -3,25 +3,46 @@ import './beyaz-inceleme.css';
 import { portalStyle, portalPaint } from '@/lib/portal-theme';
 
 
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Search, Folder, FileText, Bot, HardDrive, Receipt, FileSignature, Mailbox, Landmark, ClipboardList } from 'lucide-react';
 
 const GOLD = '#d4b876';
 
+/**
+ * 2026-09-25 (portal denetimi bulgu 35b) — ALANLAR ARTIK ŞEMAYLA AYNI.
+ *   Eskiden `name`, `fileName`, `documentType`, `size`, `ocrCompleted` okunuyordu;
+ *   BUNLARIN HİÇBİRİ şemada yok. Sonuç: her kart "Belge" yazıyordu, arama başlıkta
+ *   hiç çalışmıyordu, "OCR edilmiş" sayacı hep %0 çıkıyordu ve OCR süzgeci
+ *   seçildiğinde liste HER ZAMAN boş kalıyordu. Gerçek alanlar: title, sizeBytes.
+ */
 type DocumentItem = {
   id: string;
-  name?: string;
-  fileName?: string;
-  documentType?: string;
+  title: string;
   category?: string;
-  period?: string;
-  size?: number;
-  ocrCompleted?: boolean;
+  sizeBytes?: number;
   taxpayer?: { id: string; companyName?: string; firstName?: string; lastName?: string };
   createdAt?: string;
 };
+
+type Ozet = {
+  toplam: number;
+  buAy: number;
+  toplamBoyut: number;
+  kategoriDagilimi: Record<string, number>;
+};
+
+/** Şema kategorileri → ekranda görünen ad. Kutucuklar artık GERÇEK kategorilerden. */
+const KATEGORI_ADI: Record<string, string> = {
+  FATURA: 'Fatura',
+  SOZLESME: 'Sözleşme',
+  BEYANNAME: 'Beyanname',
+  EVRAK: 'Evrak',
+  DIGER: 'Diğer',
+};
+const KATEGORILER = ['FATURA', 'SOZLESME', 'BEYANNAME', 'EVRAK', 'DIGER'] as const;
+const SAYFA_BOYUTU = 24;
 
 function getIcon(type?: string) {
   const t = (type || '').toLowerCase();
@@ -62,43 +83,43 @@ function getTaxpayerName(d: DocumentItem): string {
 export default function EvraklarPage() {
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<string[]>([]);
-  const [ocrFilter, setOcrFilter] = useState<'all' | 'ocr' | 'noocr'>('all');
+  const [sayfa, setSayfa] = useState(1);
 
-  const { data: documents = [], isLoading } = useQuery<DocumentItem[]>({
-    queryKey: ['documents', 'list'],
-    queryFn: () => api.get('/documents').then((r) => r.data).catch(() => []),
+  /**
+   * 2026-09-25 (bulgu 35b) — SÜZME VE SAYAÇLAR ARTIK SUNUCUDA.
+   *   Eskiden uç ilk 100 satırı getiriyor, ekran süzmeyi ve sayaçları o 100 satır
+   *   üzerinde yapıyordu. CANLI ÖLÇÜM: silinmemiş belge sayısı 90.215 — yani
+   *   "Toplam Evrak: 100" yazıyordu (900 kat yanlış) ve 101. belge hiç görünmüyordu.
+   */
+  const kategoriParam = typeFilter.length ? typeFilter.join(',') : undefined;
+  const aramaParam = search.trim() || undefined;
+
+  const { data: liste, isLoading } = useQuery<{ rows: DocumentItem[]; total: number; page: number; pageSize: number }>({
+    queryKey: ['documents', 'list', sayfa, kategoriParam, aramaParam],
+    queryFn: () => api
+      .get('/documents', { params: { page: sayfa, pageSize: SAYFA_BOYUTU, category: kategoriParam, search: aramaParam } })
+      .then((r) => r.data)
+      .catch(() => ({ rows: [], total: 0, page: 1, pageSize: SAYFA_BOYUTU })),
   });
 
-  const counts = useMemo(() => {
-    const byType: Record<string, number> = { Fatura: 0, Sözleşme: 0, Tebligat: 0, Banka: 0, Diğer: 0 };
-    for (const d of documents) {
-      const tag = getTypeTag(d.documentType || d.category);
-      byType[tag] = (byType[tag] || 0) + 1;
-    }
-    const ocr = documents.filter((d) => d.ocrCompleted).length;
-    const thisMonth = documents.filter((d) => {
-      if (!d.createdAt) return false;
-      const dt = new Date(d.createdAt);
-      const now = new Date();
-      return dt.getMonth() === now.getMonth() && dt.getFullYear() === now.getFullYear();
-    }).length;
-    const totalSize = documents.reduce((s, d) => s + (d.size || 0), 0);
-    return { total: documents.length, byType, ocr, thisMonth, totalSize, noocr: documents.length - ocr };
-  }, [documents]);
+  const { data: ozet } = useQuery<Ozet>({
+    queryKey: ['documents', 'ozet', kategoriParam, aramaParam],
+    queryFn: () => api
+      .get('/documents/ozet', { params: { category: kategoriParam, search: aramaParam } })
+      .then((r) => r.data)
+      .catch(() => ({ toplam: 0, buAy: 0, toplamBoyut: 0, kategoriDagilimi: {} })),
+  });
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return documents.filter((d) => {
-      const tag = getTypeTag(d.documentType || d.category);
-      if (typeFilter.length > 0 && !typeFilter.includes(tag)) return false;
-      if (ocrFilter === 'ocr' && !d.ocrCompleted) return false;
-      if (ocrFilter === 'noocr' && d.ocrCompleted) return false;
-      if (!q) return true;
-      return `${d.name || d.fileName || ''} ${getTaxpayerName(d)}`.toLowerCase().includes(q);
-    });
-  }, [documents, search, typeFilter, ocrFilter]);
+  const documents = liste?.rows ?? [];
+  const toplam = ozet?.toplam ?? 0;
+  const sonSayfa = Math.max(1, Math.ceil(toplam / SAYFA_BOYUTU));
+  const ilkSira = toplam === 0 ? 0 : (sayfa - 1) * SAYFA_BOYUTU + 1;
+  const sonSira = Math.min(sayfa * SAYFA_BOYUTU, toplam);
 
-  const toggleType = (t: string) => setTypeFilter((prev) => prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]);
+  const toggleType = (t: string) => {
+    setSayfa(1);
+    setTypeFilter((prev) => (prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]));
+  };
 
   return (
     <div data-inceleme="evraklar" className="space-y-5 max-w-7xl">
@@ -117,10 +138,13 @@ export default function EvraklarPage() {
       {/* KPI */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3.5">
         {[
-          { label: 'Toplam Evrak', value: counts.total, sub: 'tüm dönemler', icon: Folder },
-          { label: 'Bu Ay', value: counts.thisMonth, sub: new Date().toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' }), icon: FileText },
-          { label: 'OCR Edilmiş', value: counts.total > 0 ? `${Math.round((counts.ocr / counts.total) * 100)}%` : '0%', sub: `${counts.ocr} belge`, icon: Bot },
-          { label: 'Depolama', value: counts.totalSize > 0 ? fmtBytes(counts.totalSize) : '0 B', sub: 'kullanılan', icon: HardDrive },
+          // Sayaçlar `/documents/ozet`ten — süzgeç varsa süzülmüş kümeye göre.
+          { label: 'Toplam Evrak', value: toplam, sub: typeFilter.length || aramaParam ? 'süzgeçe uyan' : 'tüm dönemler', icon: Folder },
+          { label: 'Bu Ay', value: ozet?.buAy ?? 0, sub: new Date().toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' }), icon: FileText },
+          // OCR: `documents` tablosunda belge başına OCR durumu YOK. Eskiden hep %0
+          //   yazıyordu; yanlış sayı göstermek yerine izlenmediğini söylüyoruz.
+          { label: 'OCR Edilmiş', value: '—', sub: 'bu ekranda izlenmiyor', icon: Bot },
+          { label: 'Depolama', value: (ozet?.toplamBoyut ?? 0) > 0 ? fmtBytes(ozet?.toplamBoyut) : '0 B', sub: 'kullanılan', icon: HardDrive },
         ].map(({ label, value, sub, icon: Icon }) => (
           <div data-inceleme-sayac={label} key={label} className="rounded-2xl p-5" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' })}>
             <div className="flex items-center justify-between mb-4">
@@ -136,7 +160,7 @@ export default function EvraklarPage() {
       {/* SEARCH + MAIN GRID */}
       <div className="relative">
         <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })} />
-        <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Evrak adı, mükellef veya tür ara..." className="w-full pl-10 pr-3 py-2.5 text-[13px] rounded-[10px] outline-none" style={portalStyle({ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' })} />
+        <input type="text" value={search} onChange={(e) => { setSayfa(1); setSearch(e.target.value); }} placeholder="Evrak başlığı veya mükellef ara..." className="w-full pl-10 pr-3 py-2.5 text-[13px] rounded-[10px] outline-none" style={portalStyle({ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' })} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_260px] gap-4">
@@ -147,20 +171,24 @@ export default function EvraklarPage() {
               <div className="w-8 h-8 rounded-full animate-spin" style={portalStyle({ border: '2px solid rgba(255,255,255,0.08)', borderTopColor: GOLD })} />
               <span className="text-sm">Yükleniyor...</span>
             </div>
-          ) : filtered.length === 0 ? (
+          ) : documents.length === 0 ? (
             <div className="rounded-2xl py-16 text-center" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' })}>
               <div className="w-14 h-14 mx-auto mb-3 rounded-2xl flex items-center justify-center" style={portalStyle({ background: 'rgba(255,255,255,0.05)' })}>
                 <Folder size={24} style={portalStyle({ color: 'rgba(250,250,249,0.35)' })} />
               </div>
-              <p className="text-[14px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>Henüz evrak yok</p>
-              <p className="text-[11.5px] mt-1" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>Evrak yükleyin ya da OCR taraması başlatın</p>
+              <p className="text-[14px] font-semibold" style={portalStyle({ color: '#fafaf9' })}>
+                {typeFilter.length || aramaParam ? 'Süzgeçe uyan evrak yok' : 'Henüz evrak yok'}
+              </p>
+              <p className="text-[11.5px] mt-1" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}>
+                {typeFilter.length || aramaParam ? 'Aramayı ya da tür seçimini değiştirin' : 'Evrak yükleyin'}
+              </p>
             </div>
           ) : (
             <>
               <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
-                {filtered.slice(0, 24).map((d) => {
-                  const Icon = getIcon(d.documentType || d.category);
-                  const tag = getTypeTag(d.documentType || d.category);
+                {documents.map((d) => {
+                  const Icon = getIcon(d.category);
+                  const tag = KATEGORI_ADI[String(d.category || '')] || getTypeTag(d.category);
                   return (
                     <div data-inceleme-belge key={d.id} className="p-4 rounded-2xl transition-all cursor-pointer"
                       style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' })}
@@ -169,7 +197,7 @@ export default function EvraklarPage() {
                       <div className="w-12 h-12 rounded-xl flex items-center justify-center mb-3" style={portalStyle({ background: 'rgba(184,160,111,0.08)', border: '1px solid rgba(184,160,111,0.15)', color: GOLD })}>
                         <Icon size={20} />
                       </div>
-                      <p className="text-[13px] font-semibold truncate" style={portalStyle({ color: '#fafaf9' })}>{d.name || d.fileName || 'Belge'}</p>
+                      <p className="text-[13px] font-semibold truncate" style={portalStyle({ color: '#fafaf9' })}>{d.title || 'Belge'}</p>
                       <div className="flex items-center gap-1.5 mt-1 text-[11px]" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>
                         <span className="truncate">{getTaxpayerName(d)}</span>
                         <span>·</span>
@@ -180,9 +208,23 @@ export default function EvraklarPage() {
                   );
                 })}
               </div>
-              <p className="text-center text-[12px] mt-4" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>
-                Gösterilen: {Math.min(24, filtered.length)} / {filtered.length}
-              </p>
+              {/* SAYFALAMA — 2026-09-25 (bulgu 35b): 101. belge artık ERİŞİLEBİLİR. */}
+              <div className="flex items-center justify-center gap-3 mt-4">
+                <button type="button" disabled={sayfa <= 1} onClick={() => setSayfa((n) => Math.max(1, n - 1))}
+                  className="px-3 py-1.5 rounded-[10px] text-[12px] font-semibold disabled:opacity-35 disabled:cursor-not-allowed"
+                  style={portalStyle({ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' })}>
+                  Önceki
+                </button>
+                <p className="text-[12px] tabular-nums" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>
+                  {ilkSira}–{sonSira} / {toplam}
+                  <span className="ml-2">(sayfa {sayfa}/{sonSayfa})</span>
+                </p>
+                <button type="button" disabled={sayfa >= sonSayfa} onClick={() => setSayfa((n) => Math.min(sonSayfa, n + 1))}
+                  className="px-3 py-1.5 rounded-[10px] text-[12px] font-semibold disabled:opacity-35 disabled:cursor-not-allowed"
+                  style={portalStyle({ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' })}>
+                  Sonraki
+                </button>
+              </div>
             </>
           )}
         </div>
@@ -190,28 +232,26 @@ export default function EvraklarPage() {
         {/* SIDEBAR FILTERS */}
         <div className="space-y-4">
           <div className="rounded-2xl p-4" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' })}>
+            {/* 2026-09-25 (bulgu 35b): kutucuklar artık ŞEMADAKİ GERÇEK kategoriler.
+                Eskiden "Tebligat", "Banka", "Muhasebe" yazıyordu; bu adlar hiçbir
+                kategoriyle eşleşmediği için o üç süzgeç HİÇBİR ZAMAN sonuç vermiyordu.
+                Sayılar da artık `/documents/ozet`ten (tüm veri), elindeki 100 satırdan değil. */}
             <p className="text-[11px] font-bold uppercase mb-3 tracking-[.12em]" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>Türe Göre Filtre</p>
-            {(['Fatura', 'Sözleşme', 'Tebligat', 'Banka', 'Muhasebe', 'Diğer'] as const).map((t) => (
-              <label key={t} className="flex items-center justify-between py-1.5 cursor-pointer">
+            {KATEGORILER.map((k) => (
+              <label key={k} className="flex items-center justify-between py-1.5 cursor-pointer">
                 <span className="flex items-center gap-2 text-[12.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.75)' })}>
-                  <input type="checkbox" checked={typeFilter.length === 0 || typeFilter.includes(t)} onChange={() => toggleType(t)} style={portalStyle({ accentColor: GOLD })} />
-                  {t}
+                  <input type="checkbox" checked={typeFilter.includes(k)} onChange={() => toggleType(k)} style={portalStyle({ accentColor: GOLD })} />
+                  {KATEGORI_ADI[k]}
                 </span>
-                <span className="text-[11px] tabular-nums" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>({counts.byType[t] || 0})</span>
+                <span className="text-[11px] tabular-nums" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>({ozet?.kategoriDagilimi?.[k] ?? 0})</span>
               </label>
             ))}
-          </div>
-          <div className="rounded-2xl p-4" style={portalStyle({ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' })}>
-            <p className="text-[11px] font-bold uppercase mb-3 tracking-[.12em]" style={portalStyle({ color: 'rgba(250,250,249,0.42)' })}>OCR Durumu</p>
-            {([['all', 'Tümü', counts.total], ['ocr', 'Taranmış', counts.ocr], ['noocr', 'Taranmamış', counts.noocr]] as const).map(([key, label, n]) => (
-              <label key={key} className="flex items-center justify-between py-1.5 cursor-pointer">
-                <span className="flex items-center gap-2 text-[12.5px]" style={portalStyle({ color: 'rgba(250,250,249,0.75)' })}>
-                  <input type="radio" name="ocr" checked={ocrFilter === key} onChange={() => setOcrFilter(key as any)} style={portalStyle({ accentColor: GOLD })} />
-                  {label}
-                </span>
-                <span className="text-[11px] tabular-nums" style={portalStyle({ color: 'rgba(250,250,249,0.4)' })}>({n})</span>
-              </label>
-            ))}
+            {typeFilter.length > 0 && (
+              <button type="button" onClick={() => { setSayfa(1); setTypeFilter([]); }}
+                className="mt-2 text-[11.5px] font-semibold" style={portalStyle({ color: GOLD })}>
+                Tür seçimini temizle
+              </button>
+            )}
           </div>
         </div>
       </div>
