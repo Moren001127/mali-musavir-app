@@ -39,7 +39,7 @@ import { EarsivService, EarsivTip, BelgeKaynak } from '../earsiv/earsiv.service'
 import { MizanParserService } from '../mizan/mizan-parser.service';
 import { FaturaMuhasebelestirmeService } from '../fatura-muhasebelestirme/fatura-muhasebelestirme.service';
 import { buildLucaImportExcel, buildLucaIsletmeHizliFisCsv, buildAccountPlanCsv } from '../fatura-muhasebelestirme/luca-excel.service';
-import { resolveTenantFromAgentToken as resolveAgentTenant } from '../common/agent-token';
+import { resolveTenantFromAgentToken as resolveAgentTenant, agentTokenForTenant } from '../common/agent-token';
 import { EDefterControlService } from '../edefter-control/edefter-control.service';
 
 /**
@@ -174,16 +174,28 @@ export class LucaController {
    * Basit: tenant.slug (resolveTenantFromAgentToken bunu kabul eder).
    */
   @Get('agent/me/token')
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('ADMIN', 'STAFF')
   async getAgentToken(@Req() req: any) {
     const tenant = await (this.prisma as any).tenant.findUnique({
       where: { id: req.user.tenantId },
       select: { slug: true, name: true },
     });
-    return {
-      token: tenant?.slug || req.user.tenantId,
-      tenantName: tenant?.name || null,
-    };
+    // 2026-09-25 denetim bulgusu 01: bu uç ESKİDEN ofis KISA ADINI token diye dağıtıyordu; kurulan
+    //   her ajan böylece açık yoldan çalışıyordu ve kısa ad halka açık bilgiden türüyor.
+    //   Artık AGENT_INGEST_TOKENS'taki GERÇEK anahtar veriliyor. Anahtar tanımlı değilse kısa ad
+    //   YEDEK OLARAK SUNULMUYOR — kurulum eksik denir, çünkü kısa adı dağıtmak açığı sürdürür.
+    const gercek = agentTokenForTenant(req.user.tenantId);
+    if (!gercek) {
+      return {
+        token: null,
+        tenantName: tenant?.name || null,
+        kurulumEksik: true,
+        mesaj: 'Bu ofis için ajan anahtarı tanımlı değil (AGENT_INGEST_TOKENS). '
+          + 'Anahtar tanımlanmadan ajan kurulumu yapılmamalıdır.',
+      };
+    }
+    return { token: gercek, tenantName: tenant?.name || null, kurulumEksik: false };
   }
 
   // ==================== LUCA CREDENTIAL (DEPRECATED - PLAYWRIGHT) ====================
@@ -636,10 +648,13 @@ export class LucaController {
     @Body() body: { recordCount?: number; fisBasari?: boolean; fisNo?: string; fisMetin?: string; beklenenSatir?: number },
     @Headers('x-agent-token') agentToken: string,
   ) {
-    await this.resolveTenantFromAgentToken(agentToken);
+    // 2026-09-25 denetim bulgusu 02: dönen ofis kimliği ATILIYORDU → başka ofisin iş kimliği bilinirse
+    //   o işin durumu değiştirilebiliyordu. Artık yakalanıp sorguya konuyor.
+    const tenantId = await this.resolveTenantFromAgentToken(agentToken);
     // 2026-09-25 bulgu 14a: ajan (v1.47.84+) fiş onayını gerçekten gördü mü bildiriyor. Eski ajan bu
     //   alanları göndermez → undefined kalır ve markJobDone eski davranışı korur (geriye dönük uyumlu).
     await this.luca.markJobDone(id, body.recordCount ?? 0, {
+      tenantId,
       fisNo: body.fisNo,
       fisBasari: body.fisBasari,
       fisMetin: body.fisMetin,
@@ -676,8 +691,9 @@ export class LucaController {
     @Body() body: { error: string },
     @Headers('x-agent-token') agentToken: string,
   ) {
-    await this.resolveTenantFromAgentToken(agentToken);
-    await this.luca.markJobFailed(id, body.error || 'bilinmeyen hata');
+    // Bulgu 02: ofis kimliği yakalanıp servise geçiriliyor (eskiden atılıyordu).
+    const tenantId = await this.resolveTenantFromAgentToken(agentToken);
+    await this.luca.markJobFailed(id, body.error || 'bilinmeyen hata', tenantId);
     return { ok: true };
   }
 
@@ -692,8 +708,9 @@ export class LucaController {
     @Headers('x-agent-token') agentToken: string,
     @Res() res: any,
   ) {
-    await this.resolveTenantFromAgentToken(agentToken);
-    const job = await (this.prisma as any).lucaFetchJob.findUnique({ where: { id } });
+    // Bulgu 02: iş SORGUSU ofisle daraltılıyor — başka ofisin Excel'i indirilemez.
+    const tenantId = await this.resolveTenantFromAgentToken(agentToken);
+    const job = await (this.prisma as any).lucaFetchJob.findFirst({ where: { id, tenantId } });
     if (!job) throw new BadRequestException('Job bulunamadi');
     if (job.tip !== 'INVOICE_POST') {
       throw new BadRequestException('Sadece INVOICE_POST job icin Excel uretilir');
@@ -726,8 +743,9 @@ export class LucaController {
     @Headers('x-agent-token') agentToken: string,
     @Res() res: any,
   ) {
-    await this.resolveTenantFromAgentToken(agentToken);
-    const job = await (this.prisma as any).lucaFetchJob.findUnique({ where: { id } });
+    // Bulgu 02: iş sorgusu ofisle daraltılıyor — başka ofisin hesap planı CSV'si indirilemez.
+    const tenantId = await this.resolveTenantFromAgentToken(agentToken);
+    const job = await (this.prisma as any).lucaFetchJob.findFirst({ where: { id, tenantId } });
     if (!job) throw new BadRequestException('Job bulunamadi');
     if (job.tip !== 'ACCOUNT_PLAN_PUSH') throw new BadRequestException('Sadece ACCOUNT_PLAN_PUSH job icin CSV uretilir');
     const accounts = Array.isArray((job.payload as any)?.accounts) ? (job.payload as any).accounts : [];
@@ -745,12 +763,16 @@ export class LucaController {
     @Param('id') id: string,
     @Headers('x-agent-token') agentToken: string,
   ) {
-    await this.resolveTenantFromAgentToken(agentToken);
-    const job = await (this.prisma as any).lucaFetchJob.findUnique({ where: { id } });
+    // Bulgu 02: hem iş sorgusu hem hesap satırı güncellemesi ofisle daraltılıyor.
+    const tenantId = await this.resolveTenantFromAgentToken(agentToken);
+    const job = await (this.prisma as any).lucaFetchJob.findFirst({ where: { id, tenantId } });
     if (!job || job.tip !== 'ACCOUNT_PLAN_PUSH') throw new BadRequestException('ACCOUNT_PLAN_PUSH job bulunamadi');
     const ids = (((job.payload as any)?.accounts) || []).map((a: any) => a?.id).filter(Boolean);
     if (ids.length) {
-      await (this.prisma as any).lucaAccountPlanLine.updateMany({ where: { id: { in: ids } }, data: { syncedToLuca: true } });
+      await (this.prisma as any).lucaAccountPlanLine.updateMany({
+        where: { id: { in: ids }, snapshot: { tenantId } },
+        data: { syncedToLuca: true },
+      });
     }
     return { ok: true, synced: ids.length };
   }

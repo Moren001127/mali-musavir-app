@@ -540,12 +540,20 @@ export class LucaService {
   async markJobDone(
     jobId: string,
     recordCount: number,
-    extra?: { fisNo?: string; fisBasari?: boolean; fisMetin?: string; beklenenSatir?: number },
+    extra?: { fisNo?: string; fisBasari?: boolean; fisMetin?: string; beklenenSatir?: number; tenantId?: string },
   ) {
-    const current = await (this.prisma as any).lucaFetchJob.findUnique({
-      where: { id: jobId },
+    // 2026-09-25 denetim bulgusu 02: iş sorgusu ofisle daraltılıyor. Eskiden yalnız jobId ile
+    //   gidiliyordu → başka ofisin iş kimliği bilinirse o işin durumu değiştirilebiliyordu.
+    //   tenantId geçilmezse (eski çağrı) davranış değişmez; controller artık her zaman geçiyor.
+    const ofisKosulu = extra?.tenantId ? { tenantId: extra.tenantId } : {};
+    const current = await (this.prisma as any).lucaFetchJob.findFirst({
+      where: { id: jobId, ...ofisKosulu },
       select: { recordCount: true, tip: true, invoiceDocumentId: true },
     });
+    if (!current && extra?.tenantId) {
+      this.logger.warn(`[OFIS-KORUMA] markJobDone: iş ${jobId} bu ofiste bulunamadı — işlem yapılmadı.`);
+      return { ok: false, neden: 'bulunamadi' };
+    }
     const nextRecordCount = Number.isFinite(recordCount) && recordCount > 0
       ? recordCount
       : (current?.recordCount || 0);
@@ -857,8 +865,16 @@ export class LucaService {
     }
   }
 
-  async markJobFailed(jobId: string, errorMsg: string) {
-    const job = await (this.prisma as any).lucaFetchJob.findUnique({ where: { id: jobId } });
+  async markJobFailed(jobId: string, errorMsg: string, tenantId?: string) {
+    // 2026-09-25 denetim bulgusu 02: iş sorgusu ofisle daraltılıyor. tenantId geçilmezse (iç çağrılar)
+    //   eski davranış korunur; ajan ucu artık her zaman geçiyor.
+    const job = await (this.prisma as any).lucaFetchJob.findFirst({
+      where: { id: jobId, ...(tenantId ? { tenantId } : {}) },
+    });
+    if (!job && tenantId) {
+      this.logger.warn(`[OFIS-KORUMA] markJobFailed: iş ${jobId} bu ofiste bulunamadı — işlem yapılmadı.`);
+      return null;
+    }
     if (job?.status === 'cancelled') return job;
     const retryableLucaRuntimeError =
       /Firma\s+DE[ĞG][Iİ]S[ŞS]MED[Iİ]|firma degisimi|frm4\/SirketCombo|firma frame|classic frame|giris\.do bos|giris\.do bo[sş]|TRANSIENT_LUCA/i.test(errorMsg || '');

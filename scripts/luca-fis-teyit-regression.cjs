@@ -33,7 +33,10 @@ function makeSvc() {
   const kayit = { isGuncelleme: null, belgeGuncelleme: null };
   const prisma = {
     lucaFetchJob: {
+      // 2026-09-25 bulgu 02 sonrası: markJobDone iş sorgusunu ofisle daraltmak için findUnique
+      //   yerine findFirst kullanıyor (where'e tenantId konabilsin diye). İkisi de tanımlı.
       findUnique: async () => ({ recordCount: 0, tip: 'INVOICE_POST', invoiceDocumentId: null }),
+      findFirst: async () => ({ recordCount: 0, tip: 'INVOICE_POST', invoiceDocumentId: null }),
       updateMany: async (args) => { kayit.isGuncelleme = args; return { count: 1 }; },
     },
     invoiceAccountingDocument: {

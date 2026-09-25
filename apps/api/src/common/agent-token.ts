@@ -11,6 +11,18 @@ function safeEqual(a: string, b: string) {
   return timingSafeEqual(ah, bh);
 }
 
+/**
+ * 2026-09-25 bulgu 01 geçişi: bir ofisin AGENT_INGEST_TOKENS'taki GERÇEK anahtarını verir.
+ * `luca/agent/me/token` ucu bunu kullanır; eskiden ofis kısa adını token diye dağıtıyordu ve
+ * kurulan her ajan otomatik olarak açık yoldan çalışıyordu. Anahtar tanımlı değilse null döner —
+ * çağıran taraf "anahtar kurulmamış" der, kısa ad ASLA yedek olarak sunulmaz.
+ */
+export function agentTokenForTenant(tenantId: string): string | null {
+  const pairs = parseTokenMap(process.env.AGENT_INGEST_TOKENS || '');
+  const bulunan = pairs.find((p) => p.tenantId === tenantId);
+  return bulunan ? bulunan.token : null;
+}
+
 function parseTokenMap(raw: string) {
   return raw
     .split(',')
@@ -68,5 +80,28 @@ export async function resolveTenantFromAgentToken(
     if (!allowLegacyLookup) throw new UnauthorizedException('Agent token map is not configured');
     throw new UnauthorizedException('Invalid agent token');
   }
+  // 2026-09-25 denetim bulgusu 01 — KAPATMA DÜĞMESİ YANLIŞ YERDEYDİ.
+  //   `allowLegacyLookup` yukarıda hesaplanıyor ama YALNIZ `if (!tenant)` dalında okunuyordu; ofis
+  //   kısa adı gerçek bir ofisle eşleşince akış buraya düşüp kimliği KOŞULSUZ döndürüyordu. Yani
+  //   AGENT_TOKEN_ALLOW_TENANT_ID=false, NODE_ENV=production ve AGENT_INGEST_TOKENS dolu olsa bile
+  //   kısa ad kabul ediliyordu. (Canlı ölçüm 2026-09-25: üçü de doğru ayarlıydı, yol yine açıktı.)
+  //   Kısa ad gizli değil — tenant.slug ofis adından türer ve `GET luca/agent/me/token` onu token
+  //   olarak dağıtıyor; bu yolla `GET agent/luca/credential` Luca parolasını açık döndürüyor.
+  //
+  //   GEÇİŞ NOTU (sahip kararı, kademeli): yerel ajan ve tarayıcı eklentisi ŞU AN kısa adla
+  //   çalışıyor. Yol hemen kapatılırsa Luca otomasyonu durur. Bu yüzden şimdilik kabul edilmeye
+  //   devam ediyor ama HER KULLANIM KAYDA GEÇİYOR. Ajanlar gerçek anahtara geçtikten sonra
+  //   aşağıdaki blok `if (!allowLegacyLookup) throw ...` ile kapatılacak — o an tek satırlık iş.
+  if (!legacyUyarildi.has(presented)) {
+    legacyUyarildi.add(presented);
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[AGENT-TOKEN] ESKİ YOL: ofis kısa adı/kimliği anahtar olarak kabul edildi (ofis ${tenant.id}). `
+      + `Bu yol kapatılacak — ajan yapılandırmasını AGENT_INGEST_TOKENS'taki gerçek anahtarla güncelleyin.`,
+    );
+  }
   return tenant.id;
 }
+
+/** Aynı kısa ad için tekrar tekrar uyarı basmamak (günlük şişmesin) — süreç ömrü boyunca bir kez. */
+const legacyUyarildi = new Set<string>();

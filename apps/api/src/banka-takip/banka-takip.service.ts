@@ -88,7 +88,23 @@ export class BankaTakipService {
       where: { id, tenantId },
     });
     if (!mevcut) throw new NotFoundException('Banka hesabı bulunamadı');
-    return (this.prisma as any).bankaHesap.update({ where: { id }, data });
+    // 2026-09-25 denetim bulgusu 13 — KÜTLE ATAMA KAPATILDI. Eskiden gövdenin TAMAMI
+    //   `update({ where: { id }, data })` ile yazılıyordu. İmzadaki Partial<> yalnız derleme
+    //   zamanı tipidir; çalışma anında hiçbir şey süzmez. Denetleyici de `@Body() body: any`
+    //   kullandığı için main.ts'teki whitelist süzgeci devreye girmiyordu (Nest, gövde tipi
+    //   `any` olduğunda süzgeci atlar). Sonuç: gövdeye tenantId konursa hesap BAŞKA OFİSE
+    //   taşınıyor, taxpayerId konursa hesap ve geçmişi başka mükellefe kayıyordu.
+    //   Artık yalnız izinli alanlar yazılır; tenantId/taxpayerId asla gövdeden alınmaz.
+    const izinli: any = {};
+    for (const alan of ['bankaAdi', 'hesapNo', 'iban', 'sube', 'paraBirimi', 'aciklama', 'aktif', 'sira'] as const) {
+      if (alan in (data as any)) izinli[alan] = (data as any)[alan];
+    }
+    if (typeof izinli.bankaAdi === 'string') izinli.bankaAdi = izinli.bankaAdi.trim();
+    if (!Object.keys(izinli).length) return mevcut;
+    // where'e tenantId de konuyor: okuma ile yazma arasındaki yarışta bile ofis dışına yazılmaz.
+    const r = await (this.prisma as any).bankaHesap.updateMany({ where: { id, tenantId }, data: izinli });
+    if (!r?.count) throw new NotFoundException('Banka hesabı bulunamadı');
+    return (this.prisma as any).bankaHesap.findFirst({ where: { id, tenantId } });
   }
 
   async deleteBankaHesap(tenantId: string, id: string) {
@@ -129,13 +145,17 @@ export class BankaTakipService {
     });
     if (!tp) throw new NotFoundException('Mükellef bulunamadı');
 
-    // Banka hesabı bu tenant'a ait mi?
+    // Banka hesabı bu tenant'a VE bu mükellefe ait mi?
+    // 2026-09-25 denetim bulgusu 14: iki kontrol de vardı (mükellef ofise ait mi, hesap ofise ait mi)
+    //   ama ARALARINDAKİ BAĞ kurulmuyordu → A mükellefinin ekstre kaydı B mükellefinin hesabına
+    //   bağlanabiliyordu (ofis içi karışma). Ekstre "geldi/işlendi" işaretleri yanlış hesapta birikip
+    //   eksik ekstre görevlerini hatalı üretiyordu. taxpayerId koşula eklendi.
     if (data.bankaHesapId) {
       const bh = await (this.prisma as any).bankaHesap.findFirst({
-        where: { id: data.bankaHesapId, tenantId },
+        where: { id: data.bankaHesapId, tenantId, taxpayerId: data.taxpayerId },
         select: { id: true },
       });
-      if (!bh) throw new NotFoundException('Banka hesabı bulunamadı');
+      if (!bh) throw new NotFoundException('Banka hesabı bulunamadı (bu mükellefe ait değil)');
     }
 
     const now = new Date();
