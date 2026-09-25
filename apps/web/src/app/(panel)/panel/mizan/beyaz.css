@@ -251,12 +251,12 @@ html[data-theme='D'] body [data-mizan-uyari] p:last-child { color: var(--mt-ink)
    1 DÖNEN VARLIKLAR ile 10 HAZIR DEĞERLER aynı ağırlıktaydı, 320.01.001 gibi kırılımlar da
    üç haneli hesaplarla eşitti. Artık dört kademe var; göz gruplayabiliyor.
    Satır yüksekliği (42px) DEĞİŞMEDİ — tasarım dilindeki 40–44px aralığında. */
-html[data-theme='D'] body [data-panel-main] [data-mizan-report] tbody tr[data-mizan-seviye='0'] { background: #eaeff6 !important; }
+html[data-theme='D'] body [data-panel-main] [data-mizan-report] tbody tr[data-mizan-seviye='0'] { background: #efedea !important; }
 html[data-theme='D'] body [data-panel-main] [data-mizan-report] tbody tr[data-mizan-seviye='0'] td {
   color: #0f172a !important; font-weight: 750 !important;
   border-top: 1px solid var(--mt-line) !important; border-bottom-color: var(--mt-line) !important;
 }
-html[data-theme='D'] body [data-panel-main] [data-mizan-report] tbody tr[data-mizan-seviye='1'] { background: #f6f9fc !important; }
+html[data-theme='D'] body [data-panel-main] [data-mizan-report] tbody tr[data-mizan-seviye='1'] { background: #f9f8f6 !important; }
 html[data-theme='D'] body [data-panel-main] [data-mizan-report] tbody tr[data-mizan-seviye='1'] td { color: #16233a !important; font-weight: 680 !important; }
 html[data-theme='D'] body [data-panel-main] [data-mizan-report] tbody tr[data-mizan-seviye='2'] { background: #fff !important; }
 html[data-theme='D'] body [data-panel-main] [data-mizan-report] tbody tr[data-mizan-seviye='2'] td { color: var(--mt-ink) !important; font-weight: 550 !important; }

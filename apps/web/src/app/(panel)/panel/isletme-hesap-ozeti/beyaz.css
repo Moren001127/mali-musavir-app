@@ -166,7 +166,7 @@ html[data-theme='D'] [data-isletme-report] div.fixed.inset-0 button { border-rad
    renklendirme · görüntünün tablo olduğu bile belli olmuyor".
 
    KARARLAR
-   A. IZGARA ÖNCE GELİR. Dikey ayraç #dbe2ea, yatay #e6ebf1 — ekranda önce tablo görünür.
+   A. IZGARA ÖNCE GELİR. Dikey ayraç #e4e2df, yatay #e0ded9 — ekranda önce tablo görünür.
    B. ORAN, tutarın ALTINDA, ortalı, 10px, #9aa7b8. Kapsül yok, kenar yok, sırıtmaz.
    C. RENK YALNIZ BLOK BAŞLIĞINDA: Kar/Zarar deniz yeşili · Stok kehribar · Geçici Vergi çivit.
       Başlığın altında kendi renginde 2px çizgi. Tablo gövdesi nötr kalır.
@@ -175,21 +175,21 @@ html[data-theme='D'] [data-isletme-report] div.fixed.inset-0 button { border-rad
 
 /* ── A. Kart ve ızgara ─────────────────────────────────────────────────────────────────────────── */
 html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-section] {
-  border: 1px solid #dbe2ea !important; border-radius: 12px !important; overflow: hidden !important;
+  border: 1px solid #e4e2df !important; border-radius: 12px !important; overflow: hidden !important;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04) !important;
 }
 html[data-theme='D'] body [data-panel-main] [data-isletme-report] table { border-collapse: collapse !important; }
 html[data-theme='D'] body [data-panel-main] [data-isletme-report] table tbody td {
   height: 42px !important; padding: 5px 12px !important;
-  border-bottom: 1px solid #dde4ec !important;
-  border-left: 1px solid #dbe2ea !important;
+  border-bottom: 1px solid #e0ded9 !important;
+  border-left: 1px solid #e4e2df !important;
 }
 html[data-theme='D'] body [data-panel-main] [data-isletme-report] table tbody tr:last-child td { border-bottom: 0 !important; }
 html[data-theme='D'] body [data-panel-main] [data-isletme-report] table tbody td:first-child {
-  border-left: 0 !important; text-align: left !important; background: #fafcfe !important;
+  border-left: 0 !important; text-align: left !important; background: #fcfbfa !important;
   font-weight: 600 !important; color: var(--mt-ink) !important; box-shadow: none !important;
 }
-html[data-theme='D'] body [data-panel-main] [data-isletme-report] table tbody td:nth-child(2) { border-left: 2px solid #cfd8e3 !important; }
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] table tbody td:nth-child(2) { border-left: 2px solid #cfccc7 !important; }
 
 /* ── B. Tutar ortalı · ORAN bir alt satırda, sakin ─────────────────────────────────────────────── */
 html[data-theme='D'] body [data-panel-main] [data-isletme-report] table tbody td:not(:first-child) { text-align: center !important; }
@@ -206,7 +206,7 @@ html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-r
 
 /* ── C. Renk yalnız blok başlığında ────────────────────────────────────────────────────────────── */
 html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-section-heading] {
-  padding: 11px 14px !important; border-bottom: 2px solid var(--iho-cizgi, #dbe2ea) !important;
+  padding: 11px 14px !important; border-bottom: 2px solid var(--iho-cizgi, #e4e2df) !important;
   background: var(--iho-zemin, #f8fafc) !important;
 }
 html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-section-heading] h2 {
@@ -214,26 +214,26 @@ html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-s
 }
 html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-section-heading] > span {
   background: #fff !important; color: var(--iho-yazi, var(--mt-ink)) !important;
-  border: 1px solid var(--iho-cizgi, #dbe2ea) !important; box-shadow: none !important;
+  border: 1px solid var(--iho-cizgi, #e4e2df) !important; box-shadow: none !important;
 }
 /* Kar/Zarar Özeti · deniz yeşili */
 html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-section='emerald'] { --iho-zemin: #e9fbf5; --iho-cizgi: #b8ecd9; --iho-yazi: #0b7a5f; --iho-vurgu: #d7f3e7; --iho-vurgu-cizgi: #9ad9c0; }
 /* Stok Hareketi · kehribar */
 html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-section='amber'] { --iho-zemin: #fff6e9; --iho-cizgi: #f5d9b0; --iho-yazi: #b55d09; --iho-vurgu: #fdeed6; --iho-vurgu-cizgi: #eec894; }
 /* Geçici Vergi Hesaplaması · çivit */
-html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-section='indigo'] { --iho-zemin: #eef2ff; --iho-cizgi: #c7d2f5; --iho-yazi: #3b4fb8; --iho-vurgu: #e1e8ff; --iho-vurgu-cizgi: #b3c2f0; }
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-section='indigo'] { --iho-zemin: #f5f0ff; --iho-cizgi: #ddd0f5; --iho-yazi: #6741d9; --iho-vurgu: #e1e8ff; --iho-vurgu-cizgi: #b3c2f0; }
 
 /* ── D. Satır kademesi: yalnız zemin, kenar çizgisi yok ────────────────────────────────────────── */
 html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row] > td:first-child { box-shadow: none !important; }
 html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row='detail'] { background: #fff !important; }
-html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row='detail']:hover { background: #f6f9fc !important; }
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row='detail']:hover { background: #faf9f7 !important; }
 html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row='manual'] { background: #fff !important; }
-html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row='total'] { background: #eef2f6 !important; }
-html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row='total'] > td { border-top: 1px solid #cfd8e3 !important; }
-html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row='total'] > td:first-child { background: #eef2f6 !important; }
-html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row='final'] { background: #dde5ee !important; }
-html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row='final'] > td { border-top: 1px solid #b6c2d0 !important; border-bottom: 1px solid #b6c2d0 !important; }
-html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row='final'] > td:first-child { background: #dde5ee !important; }
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row='total'] { background: #f7f6f3 !important; }
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row='total'] > td { border-top: 1px solid #cfccc7 !important; }
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row='total'] > td:first-child { background: #f7f6f3 !important; }
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row='final'] { background: #dedad2 !important; }
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row='final'] > td { border-top: 1px solid #b0a99e !important; border-bottom: 1px solid #b0a99e !important; }
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] [data-report-row='final'] > td:first-child { background: #dedad2 !important; }
 html[data-theme='D'] body [data-panel-main] [data-isletme-report] :is([data-report-row='total'], [data-report-row='final']) > td:first-child { color: #0f172a !important; font-weight: 700 !important; }
 
 /* ── E. Düzenlenebilir hücre: kutu yok, ipucu fareyle gelir ────────────────────────────────────── */
@@ -242,7 +242,7 @@ html[data-theme='D'] body [data-panel-main] [data-isletme-report] input.num-inpu
   width: 100% !important; padding: 3px 8px !important; box-shadow: none !important;
   font-weight: 600 !important; text-align: center !important;
 }
-html[data-theme='D'] body [data-panel-main] [data-isletme-report] input.num-input:hover:not(:disabled) { background: #f1f5fa !important; border-color: #cfd8e3 !important; }
+html[data-theme='D'] body [data-panel-main] [data-isletme-report] input.num-input:hover:not(:disabled) { background: #f7f6f4 !important; border-color: #cfccc7 !important; }
 html[data-theme='D'] body [data-panel-main] [data-isletme-report] input.num-input:focus:not(:disabled) { background: #fff !important; border-color: var(--mt-primary) !important; box-shadow: 0 0 0 3px var(--mt-primary-line) !important; }
 html[data-theme='D'] body [data-panel-main] [data-isletme-report] input.num-input:disabled { background: transparent !important; border-color: transparent !important; opacity: 1 !important; }
 html[data-theme='D'] body [data-panel-main] [data-isletme-report] input.num-input::placeholder { color: #9aa7b8 !important; font-weight: 500 !important; }

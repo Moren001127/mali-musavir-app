@@ -47,37 +47,29 @@ html[data-theme='D'] [data-gelir-report] [data-report-row='detail'] { background
    ana başlığın hemen altındaki satır rastgele farklı tonda çıkıyordu — göz yoruyordu. */
 html[data-theme='D'] [data-gelir-report] [data-report-row='detail'] > td:first-child { color: var(--mt-muted) !important; font-weight: 600 !important; }
 html[data-theme='D'] [data-gelir-report] [data-report-row='detail'] > td:nth-child(2) { color: var(--mt-ink-2) !important; }
-html[data-theme='D'] [data-gelir-report] [data-report-row='group'] { background: #f8fafc !important; }
+
 html[data-theme='D'] [data-gelir-report] [data-report-row='group'] > td { color: var(--mt-ink) !important; font-weight: 700 !important; }
 html[data-theme='D'] [data-gelir-report] [data-report-row='group'] > td:first-child { color: var(--mt-ink-2) !important; }
-html[data-theme='D'] [data-gelir-report] [data-report-row='total'] {
-  background: #f1f5f9 !important;
-  border-top: 2px solid var(--mt-line-strong) !important;
-  border-bottom: 1px solid var(--mt-line) !important;
-}
-html[data-theme='D'] [data-gelir-report] [data-report-row='total'] > td { color: #0f172a !important; font-weight: 700 !important; border-top: 2px solid var(--mt-line-strong) !important; border-bottom-color: var(--mt-line) !important; }
-html[data-theme='D'] [data-gelir-report] [data-report-row='final'] {
-  background: var(--mt-primary-soft) !important;
-  border-top: 2px solid #b9c7f5 !important;
-  border-bottom: 2px solid #b9c7f5 !important;
-}
-html[data-theme='D'] [data-gelir-report] [data-report-row='final'] > td { color: #0f172a !important; font-weight: 700 !important; border-top: 2px solid #b9c7f5 !important; border-bottom-color: #b9c7f5 !important; }
+
+html[data-theme='D'] [data-gelir-report] [data-report-row='total'] > td { color: #0f172a !important; font-weight: 700 !important; }
+
+html[data-theme='D'] [data-gelir-report] [data-report-row='final'] > td { color: #0f172a !important; font-weight: 700 !important; }
 html[data-theme='D'] [data-gelir-report] :is([data-report-row='total'], [data-report-row='final']) > td:first-child { color: var(--mt-ink-2) !important; }
 /* manuel düzeltme satırı: mavi yumuşak, kesikli ayraç */
-html[data-theme='D'] [data-gelir-report] [data-report-row='manual'] { background: #f3f8fe !important; border-top: 1px dashed #c5e3fb !important; }
-html[data-theme='D'] [data-gelir-report] [data-report-row='manual'] > td { border-bottom: 1px dashed #c5e3fb !important; color: #1971c2 !important; }
+html[data-theme='D'] [data-gelir-report] [data-report-row='manual'] { background: #faf8f4 !important; border-top: 1px dashed #ddd6c9 !important; }
+html[data-theme='D'] [data-gelir-report] [data-report-row='manual'] > td { border-bottom: 1px dashed #ddd6c9 !important; color: #8a6d3b !important; }
 html[data-theme='D'] [data-gelir-report] [data-report-row='manual'] input,
 html[data-theme='D'] [data-gelir-report] tbody input.font-mono {
   background: #fff !important;
-  border: 1px solid #c5e3fb !important;
+  border: 1px solid #ddd6c9 !important;
   border-radius: 8px !important;
-  color: #1971c2 !important;
+  color: #8a6d3b !important;
   font-weight: 650 !important;
 }
-html[data-theme='D'] [data-gelir-report] tbody input.font-mono:disabled { background: #f8fafc !important; border-color: var(--mt-line-soft) !important; color: var(--mt-faint) !important; }
+html[data-theme='D'] [data-gelir-report] tbody input.font-mono:disabled { background: #f7f6f3 !important; border-color: var(--mt-line-soft) !important; color: var(--mt-faint) !important; }
 html[data-theme='D'] [data-gelir-report] tbody input.font-mono:focus { border-color: var(--mt-primary) !important; box-shadow: 0 0 0 3px var(--mt-primary-line); }
-html[data-theme='D'] [data-gelir-report] [data-report-row='save'] { background: #f3f8fe !important; border-top: 1px solid #c5e3fb !important; }
-html[data-theme='D'] [data-gelir-report] [data-report-row='save'] > td { color: #1971c2 !important; border-left-color: var(--mt-line-soft) !important; }
+html[data-theme='D'] [data-gelir-report] [data-report-row='save'] { background: #faf8f4 !important; border-top: 1px solid #ddd6c9 !important; }
+html[data-theme='D'] [data-gelir-report] [data-report-row='save'] > td { color: #8a6d3b !important; border-left-color: var(--mt-line-soft) !important; }
 html[data-theme='D'] [data-gelir-report] [data-report-row='save'] button {
   border-radius: 8px !important;
   padding: 5px 12px !important;
@@ -94,11 +86,11 @@ html[data-theme='D'] [data-gelir-report] [data-report-row='save'] button:not([st
   border: 1px solid var(--mt-input-line) !important;
 }
 /* geçici vergi tablosu: kaydet satırı ve girdi */
-html[data-theme='D'] [data-gelir-vergi] tbody tr:last-child { border-top: 1px dashed var(--mt-line-strong) !important; background: #f8fafc; }
+html[data-theme='D'] [data-gelir-vergi] tbody tr:last-child { border-top: 1px dashed var(--mt-line-strong) !important; background: #f7f6f3; }
 html[data-theme='D'] [data-gelir-vergi] tbody tr:last-child td.italic { color: var(--mt-muted) !important; }
 html[data-theme='D'] [data-gelir-vergi] tbody tr:last-child button { border-radius: 8px !important; padding: 5px 12px !important; box-shadow: 0 8px 16px -10px var(--mt-primary); }
 html[data-theme='D'] [data-gelir-vergi] tbody td span.rounded.text-\[9\.5px\] { border-radius: 999px !important; padding: 2px 8px !important; }
-html[data-theme='D'] [data-gelir-vergi] tbody td span.rounded.text-\[9\.5px\]:not([style*='green']) { background: #f1f5f9 !important; color: var(--mt-ink-2) !important; border: 1px solid #e2e8f0; }
+html[data-theme='D'] [data-gelir-vergi] tbody td span.rounded.text-\[9\.5px\]:not([style*='green']) { background: #f3f1ed !important; color: var(--mt-ink-2) !important; border: 1px solid #e4e2df; }
 html[data-theme='D'] [data-gelir-vergi] tbody td:first-child { color: var(--mt-ink-2) !important; }
 html[data-theme='D'] [data-gelir-vergi] tbody td.font-mono[style*='portal-secondary'] { color: var(--mt-zero) !important; font-weight: 500 !important; }
 html[data-theme='D'] [data-gelir-vergi] :is([data-report-row='total'], [data-report-row='final']) > td:first-child { color: #0f172a !important; }
@@ -108,7 +100,7 @@ html[data-theme='D'] [data-gelir-stok] tbody tr:nth-child(even) { background: va
 html[data-theme='D'] [data-gelir-stok] tbody tr > td.font-mono:first-child { color: var(--mt-muted) !important; font-weight: 600 !important; }
 html[data-theme='D'] [data-gelir-stok] tbody tr > td:nth-child(2) { color: var(--mt-ink-2) !important; }
 html[data-theme='D'] [data-gelir-stok] tbody tr[style*='copper'] {
-  background: #f1f5f9 !important;
+  background: #f3f1ed !important;
   border-top: 2px solid var(--mt-line-strong) !important;
 }
 html[data-theme='D'] [data-gelir-stok] tbody tr[style*='copper'] > td { color: #0f172a !important; font-weight: 700 !important; }
@@ -234,14 +226,14 @@ html[data-theme='D'] body [data-panel-main] [data-gelir-stok] tbody tr:not([styl
    Yatay ayraç en açık tonla çiziliyordu; dikey çizgiler görünüp yataylar kaybolunca tablo
    sütunlara bölünmüş ama satırlara bölünmemiş gibi duruyordu. */
 html[data-theme='D'] body [data-panel-main] :is([data-gelir-report], [data-gelir-vergi], [data-gelir-stok]) tbody td {
-  border-bottom: 1px solid #dde4ec !important;
+  border-bottom: 1px solid #e0ded9 !important;
 }
 html[data-theme='D'] body [data-panel-main] :is([data-gelir-report], [data-gelir-vergi], [data-gelir-stok]) :is(td, th) + :is(td, th) {
-  border-left: 1px solid #dbe2ea !important;
+  border-left: 1px solid #e4e2df !important;
 }
-html[data-theme='D'] body [data-panel-main] :is([data-gelir-vergi], [data-gelir-stok]) thead th { border-bottom: 2px solid #cfd8e3 !important; }
+html[data-theme='D'] body [data-panel-main] :is([data-gelir-vergi], [data-gelir-stok]) thead th { border-bottom: 2px solid #cfccc7 !important; }
 /* Geçici vergi ve stok tablolarının kart kenarı da görünür olsun */
-html[data-theme='D'] body [data-panel-main] :is([data-gelir-vergi], [data-gelir-stok]) { border-color: #dbe2ea !important; }
+html[data-theme='D'] body [data-panel-main] :is([data-gelir-vergi], [data-gelir-stok]) { border-color: #e4e2df !important; }
 
 /* ── 9. "KALEM · TUTAR · TUTAR · TUTAR · TUTAR" satırı kaldırıldı (2026-09-25) ────────────────────
    Muzaffer Bey: "baştaki kalem tutar tutar tutar başlıklarını sil". Dönem başlıkları zaten bir üst
@@ -250,5 +242,5 @@ html[data-theme='D'] body [data-panel-main] :is([data-gelir-vergi], [data-gelir-
 html[data-theme='D'] body [data-panel-main] :is([data-gelir-report], [data-gelir-vergi], [data-gelir-stok]) thead tr:last-child { display: none !important; }
 /* Başlık bloğunun alt kenarı artık dönem satırında bitiyor */
 html[data-theme='D'] body [data-panel-main] :is([data-gelir-report], [data-gelir-vergi], [data-gelir-stok]) thead tr:nth-last-child(2) th {
-  border-bottom: 2px solid #cfd8e3 !important;
+  border-bottom: 2px solid #cfccc7 !important;
 }

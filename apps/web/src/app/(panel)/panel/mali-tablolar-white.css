@@ -55,12 +55,12 @@ html[data-theme='D'] .financial-report-readable {
   --mt-muted: #64748b;
   --mt-faint: #94a3b8;
   --mt-zero: #cbd5e1;
-  --mt-line: #e3e8ef;
-  --mt-line-soft: #dde4ec;
-  --mt-line-strong: #cbd5e1;
+  --mt-line: #e4e2df;
+  --mt-line-soft: #e0ded9;
+  --mt-line-strong: #cfccc7;
   --mt-thead: #f8fafc;
-  --mt-zebra: #fbfcfd;
-  --mt-hover: #f4f7fb;
+  --mt-zebra: #fbfaf9;
+  --mt-hover: #f7f6f4;
   --mt-primary: #4263eb;
   --mt-primary-2: #5c7cfa;
   --mt-primary-text: #3b5bdb;
@@ -478,11 +478,11 @@ html[data-theme='D'] body [data-panel-main] .financial-report-readable :is([data
 
 /* ── Satır kademeleri: aynı dört ton ───────────────────────────────────────────────────────────── */
 html[data-theme='D'] body [data-panel-main] .financial-report-readable [data-report-row='detail'] { background: #fff !important; }
-html[data-theme='D'] body [data-panel-main] .financial-report-readable [data-report-row='group'] { background: #f8fafc !important; }
-html[data-theme='D'] body [data-panel-main] .financial-report-readable [data-report-row='total'] { background: #eef2f6 !important; }
+html[data-theme='D'] body [data-panel-main] .financial-report-readable [data-report-row='group'] { background: #f3f1ed !important; }
+html[data-theme='D'] body [data-panel-main] .financial-report-readable [data-report-row='total'] { background: #f7f6f3 !important; }
 html[data-theme='D'] body [data-panel-main] .financial-report-readable [data-report-row='total'] > td { border-top: 2px solid var(--mt-line-strong) !important; }
-html[data-theme='D'] body [data-panel-main] .financial-report-readable [data-report-row='final'] { background: #dde5ee !important; }
-html[data-theme='D'] body [data-panel-main] .financial-report-readable [data-report-row='final'] > td { border-top: 1px solid #b6c2d0 !important; border-bottom: 1px solid #b6c2d0 !important; }
+html[data-theme='D'] body [data-panel-main] .financial-report-readable [data-report-row='final'] { background: #dedad2 !important; }
+html[data-theme='D'] body [data-panel-main] .financial-report-readable [data-report-row='final'] > td { border-top: 2px solid #b0a99e !important; border-bottom: 2px solid #b0a99e !important; }
 html[data-theme='D'] body [data-panel-main] .financial-report-readable [data-report-row='detail']:hover { background: var(--mt-hover) !important; }
 /* Genel zebra KAPALI: grup/toplam satırları da sayıldığı için tek-çift düzeni kayıyor,
    ana başlığın altındaki satır rastgele farklı tonda çıkıyordu. Kademe zaten zeminden okunuyor. */
