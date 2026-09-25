@@ -411,15 +411,20 @@ export default function Sidebar() {
                         ? 'group relative flex items-center justify-center rounded-xl border py-2.5 text-[13px] overflow-hidden'
                         : 'group relative flex items-center gap-3 px-3 py-[6px] rounded-xl border text-[13.5px] overflow-hidden'
                       }
-                      style={ownedThemeStyle({
-                        color: baseColor,
-                        background: baseBackground,
-                        borderColor: baseBorder,
-                        boxShadow: baseShadow,
-                        fontWeight: active ? 600 : 450,
-                        letterSpacing: 0,
-                        transition: 'all 0.28s cubic-bezier(0.16, 1, 0.3, 1)',
-                      })}
+                      style={{
+                        ...ownedThemeStyle({
+                          color: baseColor,
+                          background: baseBackground,
+                          borderColor: baseBorder,
+                          boxShadow: baseShadow,
+                          fontWeight: active ? 600 : 450,
+                          letterSpacing: 0,
+                          transition: 'all 0.28s cubic-bezier(0.16, 1, 0.3, 1)',
+                        }),
+                        // Grup rengi CSS değişkeni olarak: beyaz temada owned-theme.css ikon kutusunu
+                        // ve aktif şeridi bundan boyuyor (2026-09-25). Renk dönüşümüne girmez.
+                        ['--menu-c' as string]: group.color,
+                      } as React.CSSProperties}
                       onMouseEnter={(e) => {
                         showCollapsedTooltip(e, label, group.color);
                         if (!active) {

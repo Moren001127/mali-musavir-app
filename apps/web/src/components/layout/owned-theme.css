@@ -185,17 +185,29 @@ html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-group] p {
   color: rgba(222, 238, 244, 0.78) !important;
 }
 
+/* İkon kutusu grup renginde DOLU (2026-09-25, Muzaffer Bey onayı).
+   Önceden hepsi rgba(255,255,255,.06) idi — dokuz satır da aynı nötr kutu görünüyor,
+   renk yalnız ikonun %78 saydam çizgisinde kalıyordu. Fatura Merkezi menüsündeki dolu
+   kutu dili buraya taşındı; renk satırdaki --menu-c değişkeninden geliyor. */
 html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-icon] {
-  background: rgba(255,255,255,.06) !important;
+  background: linear-gradient(140deg,
+    color-mix(in srgb, var(--menu-c, #4a90e2) 94%, #0d2b45),
+    color-mix(in srgb, var(--menu-c, #4a90e2) 52%, #07243a)) !important;
   border-color: transparent !important;
+}
+html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-icon] svg {
+  color: #ffffff !important;
+  stroke: #ffffff !important;
+  opacity: 1 !important;
 }
 
 html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-item] {
-  font-weight: 400 !important;
+  font-weight: 500 !important;
   font-size: 13px;
   letter-spacing: 0.15px !important;
-  color: rgba(232, 240, 246, 0.92) !important;
-  background: rgba(255,255,255,.04) !important;
+  color: rgba(232, 240, 246, 0.88) !important;
+  /* Satır zemini kaldırıldı: her satırın kendi soluk beyaz kutusu vardı, liste tekdüze duruyordu. */
+  background: transparent !important;
   border-color: transparent !important;
   padding-left: 8px;
   padding-right: 8px;
@@ -214,7 +226,7 @@ html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-item]:focus-visibl
 }
 
 html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-active='true'] {
-  font-weight: 500 !important;
+  font-weight: 650 !important;
   color: #ffffff !important;
   background: rgba(255, 255, 255, 0.13) !important;
   border-color: transparent !important;
@@ -226,7 +238,7 @@ html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-active='true'] svg
 }
 
 html[data-theme='D'] [data-moren-sidebar] [data-moren-sidebar-indicator] {
-  background: #ffffff !important;
+  background: var(--menu-c, #ffffff) !important;
 }
 
 /* Fatura Merkezi'nin Kaushan Script / Cormorant Garamond marka dili.
@@ -578,4 +590,18 @@ html[data-theme='D'] [data-moren-sidebar][data-collapsed='false'] [data-moren-si
 /* Etkin maddede sol nane şerit yerine simge kutusu konuşuyor */
 html[data-theme='D'] [data-moren-sidebar][data-collapsed='false'] [data-moren-sidebar-indicator] {
   display: none !important;
+}
+
+
+/* Grup başlığının yanına ince ayraç çizgisi (2026-09-25) — başlıklar boşlukta duruyordu. */
+html[data-theme='D'] [data-moren-sidebar][data-collapsed='false'] [data-moren-sidebar-group] p {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+html[data-theme='D'] [data-moren-sidebar][data-collapsed='false'] [data-moren-sidebar-group] p::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.10);
 }
