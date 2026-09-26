@@ -31,10 +31,10 @@ function toast(message, type) {
   setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 300); }, type === 'err' ? 5000 : 3200);
 }
 
-function initials(name) {
-  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
-  if (!parts.length) return '—';
-  return (parts[0][0] + (parts[1] ? parts[1][0] : '')).toUpperCase();
+// Sunucudan gelen metin (mükellef adı, bildirim gövdesi…) HTML'e yazılmadan önce kaçışlanır.
+function esc(v) {
+  return String(v == null ? '' : v)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 // ───────── açılış ─────────
@@ -61,6 +61,7 @@ function setupLogin() {
   $('eye').addEventListener('click', () => {
     const p = $('login-password');
     p.type = p.type === 'password' ? 'text' : 'password';
+    $('eye').textContent = p.type === 'password' ? 'Göster' : 'Gizle';
   });
   $('remember').addEventListener('click', () => $('remember').classList.toggle('on'));
 
@@ -96,15 +97,9 @@ async function enterApp(user) {
   hide($('login-view'));
   show($('app-view'));
 
+  // Oturumdaki kullanıcı yalnız Ayarlar'da görünür (sol menüdeki ad + e-posta kaldırıldı, 2026-09-26).
   const setUser = $('set-user');
   if (setUser && user && user.email) setUser.textContent = user.email;
-  const meMail = $('me-mail');
-  if (meMail && user && user.email) meMail.textContent = user.email;
-  const meName = $('me-name');
-  const adSoyad = user && (user.name || user.fullName || (user.firstName ? (user.firstName + ' ' + (user.lastName || '')).trim() : ''));
-  if (meName && adSoyad) meName.textContent = adSoyad;
-  const meAv = $('me-av');
-  if (meAv) meAv.textContent = initials(adSoyad || (user && user.email) || 'M');
 
   try { $('set-version').textContent = 'v' + (await api.appVersion()); } catch { /* yoksay */ }
 
@@ -137,6 +132,10 @@ function logoHtml(portal) {
   return '<img src="' + LOGO_BASE + portal.logo + '" alt="">';
 }
 
+// Logosunda adı YAZMAYAN kısayollar — Hattat'taki gibi logonun altına küçük gri ad düşülür
+// (e-Beyanname = yalnız "e" kıvrımı, e-Defter = yalnız defter simgesi). Diğer logolar adı zaten taşıyor.
+const YAZISIZ_LOGO = new Set(['ebeyanname', 'edefter']);
+
 function hasCredential(portal) {
   if (portal.provider === 'GIB_EBEYANNAME') return !!state.credentials.tenant[portal.provider];
   if (!state.selected) return null; // firma seçilmemiş
@@ -151,15 +150,13 @@ function renderGrid() {
     const cred = hasCredential(portal);
     const card = document.createElement('div');
     card.className = 'kart' + (cred === false ? ' dim' : '');
-    // Yazı yok — köşede renkli nokta: yeşil=şifre kayıtlı, kırmızı=eksik (istek 2026-07-05).
-    let statHtml = '';
-    if (state.selected || portal.provider === 'GIB_EBEYANNAME') {
-      statHtml = cred
-        ? '<span class="stat-dot ok" title="Şifre kayıtlı"></span>'
-        : '<span class="stat-dot no" title="Şifre kayıtlı değil"></span>';
-    }
-    card.innerHTML = statHtml + '<div class="klogo">' + logoHtml(portal) + '</div>'
-      + '<div class="kname">' + portal.label + '</div>';
+    card.title = portal.label;
+    // Şifre durumu (Muzaffer Bey 2026-09-26): YALNIZ eksikse uyarı — kart soluk + köşede "şifre yok".
+    //   Kayıtlıyken işaret yok (eski yeşil nokta kalktı). Mükellef seçilmemişken hiç işaret yok
+    //   (e-Beyanname müşavir geneli şifre kullandığı için onda seçimden bağımsız bakılır).
+    const tagHtml = cred === false ? '<span class="ktag">şifre yok</span>' : '';
+    const capHtml = YAZISIZ_LOGO.has(portal.key) ? '<div class="kcap">' + esc(portal.label) + '</div>' : '';
+    card.innerHTML = tagHtml + '<div class="klogo">' + logoHtml(portal) + '</div>' + capHtml;
     card.addEventListener('click', () => openPortal(portal));
     grid.appendChild(card);
   }
@@ -168,12 +165,12 @@ function renderGrid() {
 async function openPortal(portal) {
   const isTenant = portal.provider === 'GIB_EBEYANNAME';
   if (!isTenant && !state.selected) {
-    toast('Önce yukarıdan bir firma seçin.', 'err');
+    toast('Önce yukarıdan bir mükellef seçin.', 'err');
     return;
   }
   const cred = hasCredential(portal);
   if (cred === false) {
-    toast(portal.label + ' için bu firmada şifre kayıtlı değil. Portaldan ekleyin.', 'err');
+    toast(portal.label + ' için bu mükellefte şifre kayıtlı değil. Portaldan ekleyin.', 'err');
     return;
   }
   toast(portal.label + ' açılıyor, giriş yapılıyor…', 'ok');
@@ -195,31 +192,34 @@ function renderFirmaList(filter) {
   const rows = state.taxpayers.filter((t) =>
     !f || (t.ad || '').toLocaleLowerCase('tr').includes(f) || String(t.vkn || '').includes(f));
   if (!rows.length) {
-    list.innerHTML = '<div class="opt"><span>Firma bulunamadı</span></div>';
+    list.innerHTML = '<div class="bosliste">Mükellef bulunamadı</div>';
     return;
   }
   for (const t of rows) {
     const secili = state.selected && state.selected.id === t.id;
     const opt = document.createElement('div');
     opt.className = 'opt' + (secili ? ' secili' : '');
-    opt.innerHTML = '<div class="oav">' + initials(t.ad) + '</div>'
-      + '<div class="otx"><b>' + t.ad + '</b><span>VKN ' + (t.vkn || '—') + (t.vergiDairesi ? ' · ' + t.vergiDairesi : '') + '</span></div>'
-      + (secili ? '<span class="otik">&#10003;</span>' : '');
+    opt.innerHTML = '<div class="otx"><b>' + esc(t.ad) + '</b><span>VKN ' + esc(t.vkn || '—') + (t.vergiDairesi ? ' · ' + esc(t.vergiDairesi) : '') + '</span></div>'
+      + (secili ? '<span class="otik">seçili</span>' : '');
     opt.addEventListener('click', () => selectFirma(t));
     list.appendChild(opt);
   }
 }
 
+function firmaListesiKapat() {
+  $('firma-dd').classList.remove('open');
+  $('firma-sel').classList.remove('acik');
+}
+
 function selectFirma(t) {
   state.selected = t;
-  $('firma-label').textContent = 'Seçili firma';
+  $('firma-sel').classList.remove('bos');
   $('firma-name').textContent = t.ad;
   $('firma-meta').textContent = 'VKN ' + (t.vkn || '—') + (t.vergiDairesi ? ' · ' + t.vergiDairesi : '');
-  $('firma-av').textContent = initials(t.ad);
-  $('firma-btn').innerHTML = 'Değiştir <span class="car">&#9662;</span>';
-  $('firma-dd').classList.remove('open');
-  // Seçimi hatırla — pencere yenilense/yeniden odaklansa da firma seçili kalsın.
+  firmaListesiKapat();
+  // Seçimi hatırla — pencere yenilense/yeniden odaklansa da mükellef seçili kalsın.
   try { localStorage.setItem('moren-selected-firma', t.id); } catch { /* yoksay */ }
+  renderFirmaList($('firma-search').value);
   renderGrid();
 }
 
@@ -233,14 +233,20 @@ function restoreSelectedFirma() {
 }
 
 function setupFirmaPicker() {
-  $('firma-sel').addEventListener('click', (e) => {
-    e.stopPropagation();
-    $('firma-dd').classList.toggle('open');
-    if ($('firma-dd').classList.contains('open')) $('firma-search').focus();
+  const ac = () => {
+    const acik = $('firma-dd').classList.toggle('open');
+    $('firma-sel').classList.toggle('acik', acik);
+    if (acik) $('firma-search').focus();
+  };
+  $('firma-sel').addEventListener('click', (e) => { e.stopPropagation(); ac(); });
+  // Kutu klavyeyle de açılır (Enter / boşluk); Esc listeyi kapatır.
+  $('firma-sel').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ac(); }
   });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') firmaListesiKapat(); });
   $('firma-search').addEventListener('input', (e) => renderFirmaList(e.target.value));
-  $('firma-search').addEventListener('click', (e) => e.stopPropagation());
-  document.addEventListener('click', () => $('firma-dd').classList.remove('open'));
+  $('firma-dd').addEventListener('click', (e) => e.stopPropagation());
+  document.addEventListener('click', firmaListesiKapat);
 }
 
 // ───────── navigasyon ─────────
@@ -266,7 +272,11 @@ function goPage(page) {
     const el = $('page-' + p);
     if (el) el.classList.toggle('hidden', p !== page);
   });
-  // Üst başlık bandı kaldırıldı (kullanıcı isteği 2026-07-05) — alan içeriğe kaldı.
+  // Sayfa adı şeridi GERİ (Muzaffer Bey 2026-09-26, Hattat düzeni) — Temmuz'da yer açmak için kaldırılmıştı.
+  //   Şerit içerikle birlikte kayar (yapışkan değil); sayfa değişince görünüm başa döner.
+  $('page-title').textContent = (PAGES[page] && PAGES[page].title) || '';
+  const ana = document.querySelector('.main');
+  if (ana) ana.scrollTop = 0;
   if (page === 'whatsapp') startWaPoll();
   else stopWaPoll();
   if (page === 'bildirimler' || page === 'tebligatlar' || page === 'raporlar') refreshInbox();
@@ -319,10 +329,12 @@ function updateBadges() {
   setBadge('badge-bildirimler', state.bildirimler.filter((n) => !n.isRead).length);
 }
 
-function counterHtml(total, okunmus, okunmamis) {
-  return '<span class="cnt c-tot">+' + total + '</span>'
-    + '<span class="cnt c-ok">&#128065; ' + okunmus + '</span>'
-    + '<span class="cnt c-no">&#10060; ' + okunmamis + '</span>';
+// Sayaç YAZIYLA (Hattat kuralı: durum simgeyle değil kelimeyle) — "Toplam 12 · Görülen 8 · Görülmeyen 4".
+function counterHtml(total, okunmus, okunmamis, adlar) {
+  const [okAd, yokAd] = adlar || ['Görülen', 'Görülmeyen'];
+  return '<span>Toplam <b>' + total + '</b></span><span class="sep">·</span>'
+    + '<span>' + okAd + ' <b>' + okunmus + '</b></span><span class="sep">·</span>'
+    + '<span class="' + (okunmamis > 0 ? 'c-no' : '') + '">' + yokAd + ' <b>' + okunmamis + '</b></span>';
 }
 
 function applyReadFilter(rows, filter, isReadFn) {
@@ -353,27 +365,33 @@ function docCardHtml(d, tur) {
     satirlar.push(['Tarih', fmtTarih(d.issuedAt || d.receivedAt || d.createdAt)]);
   }
   const rowsHtml = satirlar
-    .map(([k, v]) => '<div class="dr"><span>' + k + ':</span><b>' + String(v) + '</b></div>')
+    .map(([k, v]) => '<div class="dr"><span>' + esc(k) + ':</span><b>' + esc(v) + '</b></div>')
     .join('');
-  return '<div class="doc-card' + (okundu ? '' : ' unread') + '" data-id="' + d.id + '">'
+  // Durum ve eylem YAZIYLA (eski göz simgeleri kalktı): "Görülmedi/Görüldü" + "Belgeyi aç" ya da "Görüldü say".
+  //   Görülmüş ve belgesi olmayan kayıtta düğme gerekmez (yapılacak iş yok).
+  const dugme = d.storageKey
+    ? '<button class="dbtn" data-act="open" data-id="' + esc(d.id) + '">Belgeyi aç</button>'
+    : (okundu ? '' : '<button class="dbtn" data-act="seen" data-id="' + esc(d.id) + '">Görüldü say</button>');
+  return '<div class="doc-card' + (okundu ? '' : ' unread') + '" data-id="' + esc(d.id) + '">'
     + '<div class="doc-head">'
-    +   '<span class="kbadge">' + kurum + '</span>'
-    +   '<button class="eye ' + (okundu ? 'seen' : 'new') + '" data-act="' + (d.storageKey ? 'open' : 'seen') + '" data-id="' + d.id + '" title="'
-    +     (d.storageKey ? 'Belgeyi aç (PDF)' : 'Görüldü işaretle') + '">' + (okundu ? '&#128065;' : '&#128064;') + '</button>'
+    +   '<span class="kbadge">' + esc(kurum) + '</span>'
+    +   '<span class="doc-durum ' + (okundu ? 'gordu' : 'yeni') + '">' + (okundu ? 'Görüldü' : 'Görülmedi') + '</span>'
+    +   dugme
     + '</div>'
-    + '<div class="doc-firma">' + firma + '</div>'
+    + '<div class="doc-firma">' + esc(firma) + '</div>'
     + '<div class="doc-rows">' + rowsHtml + '</div>'
     + '</div>';
 }
 
 function bindDocActions(listEl) {
-  listEl.querySelectorAll('.eye').forEach((btn) => {
+  listEl.querySelectorAll('.dbtn').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
       const id = btn.dataset.id;
       try {
         if (btn.dataset.act === 'open') {
-          btn.innerHTML = '&#8987;';
+          btn.textContent = 'Açılıyor…';
+          btn.disabled = true;
           await api.openDocument(id); // sunucu görüntülendi damgası vurur + PDF açılır
         } else {
           await api.markDocsViewed({ ids: [id] });
@@ -417,18 +435,19 @@ function renderRaporlar() {
   bindDocActions(list);
 }
 
+// Bildirim türü etiketi — yazı (Hattat kuralı: emoji/simge yok).
 const BIL_TIP_ETIKET = {
-  E_TEBLIGAT: ['📨', 'e-Tebligat'],
-  TAX_DEADLINE: ['⏰', 'Vergi süresi'],
-  PORTAL_CREDENTIAL_FAIL: ['🔑', 'Şifre hatası'],
-  LUCA_SYNC_ERROR: ['🔴', 'Luca'],
-  AI_COST_LIMIT: ['💰', 'AI maliyet'],
-  AUTH_NEW_DEVICE: ['🖥️', 'Yeni cihaz'],
-  PENDING_DECISION: ['❓', 'Onay bekliyor'],
-  BANK_TRANSACTION_ALERT: ['🏦', 'Banka'],
-  INVOICE_OVERDUE: ['🧾', 'Fatura'],
-  TASK_DUE: ['📌', 'Görev'],
-  WHATSAPP: ['💬', 'WhatsApp'],
+  E_TEBLIGAT: 'e-Tebligat',
+  TAX_DEADLINE: 'Vergi süresi',
+  PORTAL_CREDENTIAL_FAIL: 'Şifre hatası',
+  LUCA_SYNC_ERROR: 'Luca',
+  AI_COST_LIMIT: 'AI maliyet',
+  AUTH_NEW_DEVICE: 'Yeni cihaz',
+  PENDING_DECISION: 'Onay bekliyor',
+  BANK_TRANSACTION_ALERT: 'Banka',
+  INVOICE_OVERDUE: 'Fatura',
+  TASK_DUE: 'Görev',
+  WHATSAPP: 'WhatsApp',
 };
 
 function renderBildirimler() {
@@ -439,15 +458,16 @@ function renderBildirimler() {
     state.bildirimler.length,
     state.bildirimler.filter((n) => n.isRead).length,
     state.bildirimler.filter((n) => !n.isRead).length,
+    ['Okunan', 'Okunmayan'],
   );
   list.innerHTML = rows.length
     ? rows.map((n) => {
-        const [emoji, etiket] = BIL_TIP_ETIKET[n.type] || ['🔔', n.type || 'Bildirim'];
+        const etiket = BIL_TIP_ETIKET[n.type] || n.type || 'Bildirim';
         const zaman = new Date(n.createdAt).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-        return '<div class="notif-row' + (n.isRead ? '' : ' unread') + '" data-id="' + n.id + '">'
-          + '<span class="ntip">' + emoji + ' ' + etiket + '</span>'
-          + '<div class="ntxt"><b>' + (n.title || '') + '</b><span>' + (n.body || '') + '</span></div>'
-          + '<span class="nzaman">' + zaman + '</span>'
+        return '<div class="notif-row' + (n.isRead ? '' : ' unread') + '" data-id="' + esc(n.id) + '"' + (n.isRead ? '' : ' title="Okundu saymak için tıklayın"') + '>'
+          + '<span class="ntip">' + esc(etiket) + '</span>'
+          + '<div class="ntxt"><b>' + esc(n.title || '') + '</b><span>' + esc(n.body || '') + '</span></div>'
+          + '<span class="nzaman">' + esc(zaman) + '</span>'
           + '</div>';
       }).join('')
     : '<div class="empty">Bu filtrede bildirim yok.</div>';
@@ -489,7 +509,7 @@ function renderWaStatus(s) {
   if (s && s.connected) {
     stateEl.className = 'state s-ok';
     stateEl.innerHTML = '<span class="d"></span>Bağlı' + (s.phone ? ' · ' + s.phone : '');
-    qrEl.innerHTML = '<div class="ph">✓ WhatsApp bağlı. Gönderimler aktif.</div>';
+    qrEl.innerHTML = '<div class="ph">WhatsApp bağlı. Gönderimler aktif.</div>';
   } else if (s && (s.qrDataUrl || s.qr)) {
     stateEl.className = 'state s-wait';
     stateEl.innerHTML = '<span class="d"></span>QR bekliyor';

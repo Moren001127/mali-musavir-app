@@ -21,7 +21,7 @@ function createMainWindow() {
     maximizable: false,
     fullscreenable: false,
     title: appName,
-    backgroundColor: '#0a0906',
+    backgroundColor: '#0e2a58', // açılış ekranının lacivert zemini (2026-09-26) — ilk karede renk atlaması olmasın
     autoHideMenuBar: true,
     icon: path.join(__dirname, '..', '..', 'build', 'icon.ico'),
     webPreferences: {
