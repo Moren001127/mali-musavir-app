@@ -1,12 +1,17 @@
 'use client';
 import '@/app/(panel)/panel/ajanlar/_components/operations-white.css';
 import '@/components/portal-automation/portal-automation-white.css';
+import '@/components/portal-automation/sgk-rapor/sgk-rapor-white.css';
 
 import { portalStyle } from '@/lib/portal-theme';
 
-
-import { ShieldCheck } from 'lucide-react';
+import { Suspense } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { Loader2, ShieldCheck } from 'lucide-react';
 import SgkBildirgeModule from '@/components/portal-automation/SgkBildirgeModule';
+import SgkRaporBolumu from '@/components/portal-automation/sgk-rapor/SgkRaporBolumu';
+
+type Bolum = 'bildirge' | 'rapor';
 
 export default function SgkAutomationPage() {
   return (
@@ -33,7 +38,56 @@ export default function SgkAutomationPage() {
         </div>
       </div>
 
-      <SgkBildirgeModule />
+      {/* useSearchParams (?bolum=rapor) için Suspense sınırı */}
+      <Suspense fallback={<div className="px-3 py-10 text-center text-[12px]" style={portalStyle({ color: 'rgba(250,250,249,0.45)' })}><Loader2 size={18} className="animate-spin inline" /> Yükleniyor…</div>}>
+        <SgkBolumleri />
+      </Suspense>
+    </div>
+  );
+}
+
+// Bölüm sekmeleri: "Bildirgeler" (varsayılan, adreste bolum yok) · "Rapor · İş Kazası · Giriş-Çıkış" (?bolum=rapor).
+// Diğer adres parametreleri (Bildirgeler'in sayfa/boyut'u) korunur.
+function SgkBolumleri() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const bolum: Bolum = searchParams.get('bolum') === 'rapor' ? 'rapor' : 'bildirge';
+
+  const sec = (b: Bolum) => {
+    if (b === bolum) return;
+    const p = new URLSearchParams(searchParams.toString());
+    if (b === 'rapor') p.set('bolum', 'rapor');
+    else p.delete('bolum');
+    const qs = p.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  };
+
+  const sekme = (b: Bolum, ad: string) => {
+    const secili = bolum === b;
+    return (
+      <button
+        type="button"
+        role="tab"
+        aria-selected={secili}
+        data-sr-sekme
+        onClick={() => sec(b)}
+        className="inline-flex h-9 items-center gap-2 whitespace-nowrap rounded-[10px] px-4 text-[13px] font-semibold transition"
+        style={portalStyle(secili ? { background: 'rgba(212,184,118,0.16)', color: '#d4b876' } : { background: 'transparent', color: 'rgba(250,250,249,0.7)' })}
+      >
+        {ad}
+      </button>
+    );
+  };
+
+  return (
+    <div className="space-y-4">
+      <div data-sr-sekmeler role="tablist" aria-label="SGK bölümleri" className="inline-flex max-w-full flex-wrap items-center gap-1 rounded-xl border p-1"
+        style={portalStyle({ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)' })}>
+        {sekme('bildirge', 'Bildirgeler')}
+        {sekme('rapor', 'Rapor · İş Kazası · Giriş-Çıkış')}
+      </div>
+      {bolum === 'rapor' ? <SgkRaporBolumu /> : <SgkBildirgeModule />}
     </div>
   );
 }

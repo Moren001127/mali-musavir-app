@@ -2,8 +2,8 @@
 //   Ham tür kodu (BUTCE_KRITIK, GALERI_HGS_OZET…) ekranda GÖRÜNMEZ; her türün Türkçe adı, rengi, ikonu, açıklaması burada.
 import type { LucideIcon } from 'lucide-react';
 import {
-  AlertCircle, AlertTriangle, Banknote, Bell, Bot, CalendarClock, CheckCircle2, FileText, HandCoins, Inbox, Key,
-  Lightbulb, Mail, MessageCircle, Receipt, ShieldAlert, Sparkles, Upload, Zap,
+  AlertCircle, AlertTriangle, Ambulance, Banknote, Bell, Bot, CalendarClock, CheckCircle2, FileText, HandCoins, Inbox, Key,
+  Lightbulb, Mail, MessageCircle, Receipt, ShieldAlert, Sparkles, Stethoscope, Upload, Zap,
 } from 'lucide-react';
 
 // Renkler — portal dili (e-Defter teması ile aynı sakin ton; tek renge boğma yok).
@@ -57,9 +57,11 @@ export const TUR: Record<string, TurTanimi> = {
   PORTAL_CREDENTIAL_FAIL: { ad: 'Portal şifre hatası', renk: KIRMIZI, ton: 'kirmizi', Ikon: Key, kritik: true, aciklama: 'GİB/SGK girişinde şifre hatası (şifre güncellenene kadar 1 kez)' },
   CAPTCHA_SOLVER_ERROR: { ad: 'Güvenlik kodu servisi', renk: KIRMIZI, ton: 'kirmizi', Ikon: ShieldAlert, kritik: true, aciklama: 'Güvenlik kodu çözücü bakiyesi bitince otomasyonlar durur' },
   AUTH_NEW_DEVICE: { ad: 'Yeni cihaz girişi', renk: KIRMIZI, ton: 'kirmizi', Ikon: ShieldAlert, kritik: true, aciklama: 'Hesabınıza yeni bir adresten giriş yapıldığında', kapatilamaz: true },
+  SGK_IS_KAZASI: { ad: 'SGK İş Kazası', renk: KIRMIZI, ton: 'kirmizi', Ikon: Ambulance, kritik: true, aciklama: "Hastane SGK'ya iş kazası bildirdiğinde (işveren bildirimi kazadan sonraki 3. iş gününe kadar)" },
   AI_COST_LIMIT: { ad: 'AI maliyet tavanı', renk: KIRMIZI, ton: 'kirmizi', Ikon: HandCoins, kritik: true, aciklama: 'Günlük AI harcaması sınırı aşınca' },
   LUCA_SYNC_ERROR: { ad: 'Luca aktarımı', renk: TURUNCU, ton: 'kehribar', Ikon: AlertTriangle, kritik: true, aciklama: 'Luca veri çekme işi hata verince ya da sırada beklerken' },
   PENDING_DECISION: { ad: 'Onay bekleyen karar', renk: TURUNCU, ton: 'kehribar', Ikon: AlertTriangle, aciklama: 'Fatura/işletme kaydında karar sizden bekleniyor' },
+  SGK_RAPOR: { ad: 'SGK e-Rapor', renk: TURUNCU, ton: 'kehribar', Ikon: Stethoscope, aciklama: 'Çalışanın SGK raporu işveren onayı beklediğinde' },
   TASK_DUE: { ad: 'Görev hatırlatması', renk: TURUNCU, ton: 'kehribar', Ikon: CheckCircle2, aciklama: 'Görevin vadesi yaklaşınca ya da geçince' },
   INVOICE_OVERDUE: { ad: 'Bekleyen alış faturaları', renk: TURUNCU, ton: 'kehribar', Ikon: Receipt, aciklama: '60+ gündür muhasebeleşmemiş alış faturası özeti (haftalık)' },
   WHATSAPP: { ad: 'WhatsApp', renk: '#27d39a', ton: 'yesil', Ikon: MessageCircle, aciklama: 'Kayıtsız numara ya da müşavir yanıtı bekleyen mesaj' },
@@ -135,6 +137,7 @@ export function bildirimBaglantisi(n: Bildirim): string {
     case 'AUTH_NEW_DEVICE': return '/panel/ayarlar';
     case 'BUTCE': case 'BUTCE_KRITIK': return '/panel/butce';
     case 'GALERI_HGS_OZET': return '/panel/galeri/hgs-ihlal';
+    case 'SGK_RAPOR': case 'SGK_IS_KAZASI': return '/panel/ajanlar/sgk?bolum=rapor';
     default: return '';
   }
 }

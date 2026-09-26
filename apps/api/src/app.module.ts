@@ -42,6 +42,7 @@ import { FaturaMuhasebelestirmeModule } from './fatura-muhasebelestirme/fatura-m
 import { EDefterControlModule } from './edefter-control/edefter-control.module';
 import { PortalAutomationModule } from './portal-automation/portal-automation.module';
 import { GenelSorgularModule } from './genel-sorgular/genel-sorgular.module';
+import { SgkViziteModule } from './sgk-vizite/sgk-vizite.module';
 import { DesktopModule } from './desktop/desktop.module';
 import { AutomationsModule } from './automations/automations.module';
 import { OfficeChatModule } from './office-chat/office-chat.module';
@@ -109,6 +110,8 @@ import { InvoiceOverdueCron } from './schedule/invoice-overdue.cron';
     EDefterControlModule,
     PortalAutomationModule,
     GenelSorgularModule,
+    // 2026-09-26: SGK e-Rapor (vizite) + hastane iş kazası — WS_Vizite web servisi
+    SgkViziteModule,
     DesktopModule,
     AutomationsModule,
     OfficeChatModule,

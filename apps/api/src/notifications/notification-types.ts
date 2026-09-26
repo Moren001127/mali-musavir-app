@@ -20,6 +20,10 @@ export const NOTIFICATION_TYPES = {
   // Genel Sorgulamalar (2026-09-22): Dijital Vergi Dairesi gece/elle sorgusunda YENİ e-Haciz bildirisi ya da
   // yoklama tutanağı bulununca (portal-automation completeJob). Vergi borcu / POS / gelen e-Arşiv bildirim üretmez.
   GENEL_SORGU: 'GENEL_SORGU',
+  // SGK e-Rapor (2026-09-26): gece/elle Vizite sorgusunda YENİ onay bekleyen rapor (sgk-vizite.service).
+  SGK_RAPOR: 'SGK_RAPOR',
+  // SGK hastane iş kazası bildirimi (2026-09-26): işveren 3 iş günü içinde SGK'ya bildirmek zorunda → kritik.
+  SGK_IS_KAZASI: 'SGK_IS_KAZASI',
 
   // === Yeni: Kritik (Sprint 1) ===
   TASK_DUE: 'TASK_DUE',
@@ -63,6 +67,7 @@ export const CRITICAL_TYPES = new Set<NotificationType>([
   NOTIFICATION_TYPES.E_TEBLIGAT,
   NOTIFICATION_TYPES.TAX_DEADLINE,
   NOTIFICATION_TYPES.CAPTCHA_SOLVER_ERROR,
+  NOTIFICATION_TYPES.SGK_IS_KAZASI,
 ]);
 
 /** Hangi tipler tenant geneli (userId=null) varsayılan olarak atılır? */
@@ -71,6 +76,8 @@ export const TENANT_WIDE_TYPES = new Set<NotificationType>([
   NOTIFICATION_TYPES.AI,
   NOTIFICATION_TYPES.E_TEBLIGAT,
   NOTIFICATION_TYPES.GENEL_SORGU,
+  NOTIFICATION_TYPES.SGK_RAPOR,
+  NOTIFICATION_TYPES.SGK_IS_KAZASI,
   NOTIFICATION_TYPES.PORTAL_CREDENTIAL_FAIL,
   NOTIFICATION_TYPES.LUCA_SYNC_ERROR,
   NOTIFICATION_TYPES.CAPTCHA_SOLVER_ERROR,
@@ -92,6 +99,8 @@ export const DEFAULT_LINK_BY_TYPE: Partial<Record<NotificationType, string>> = {
   BANK_TRANSACTION_ALERT: '/panel/banka-takip',
   E_TEBLIGAT: '/panel/beyannameler',
   GENEL_SORGU: '/panel/genel-sorgular',
+  SGK_RAPOR: '/panel/ajanlar/sgk?bolum=rapor',
+  SGK_IS_KAZASI: '/panel/ajanlar/sgk?bolum=rapor',
   AGENT: '/panel/ajanlar',
   AI: '/panel/moren-ai',
   AI_PROPOSAL: '/panel/moren-ai',

@@ -266,10 +266,129 @@ model Taxpayer {
   genelSorguSonuclari  GenelSorguSonucu[]
   eDefterBeratlari     EDefterBerat[]
   eDefterSorgulari     EDefterSorguKaydi[]
+  // 2026-09-26: SGK e-Rapor (vizite) + hastane iş kazası (WS_Vizite web servisi)
+  sgkRaporlar          SgkRapor[]
+  sgkIsKazalari        SgkIsKazasi[]
+  sgkViziteDurumu      SgkViziteDurum?
 
   @@index([tenantId])
   @@index([taxNumber])
   @@map("taxpayers")
+}
+
+// ============================================================
+// SGK e-RAPOR (VİZİTE) + HASTANE İŞ KAZASI (2026-09-26)
+// Kaynak: SGK WS_Vizite web servisi (işyeri şifresiyle, SMS/güvenlik kodu yok).
+// Tarih alanları "YYYY-AA-GG" METİN — SGK gün olarak veriyor; saat dilimi kayması olmasın.
+// Sözleşme: packages/shared/src/constants/sgk-vizite.ts
+// ============================================================
+model SgkRapor {
+  id                  String   @id @default(cuid())
+  tenantId            String
+  taxpayerId          String
+  medulaRaporId       String
+  tcKimlikNo          String
+  adSoyad             String
+  vaka                String?
+  vakaAdi             String?
+  raporTakipNo        String?
+  raporSiraNo         String?
+  poliklinikTarihi    String?
+  raporBaslangic      String?
+  raporBitis          String?
+  isbasiKontrolTarihi String?
+  isKazasiTarihi      String?
+  raporDurumuKodu     String?
+  /// BEKLIYOR | PARCALI | ONAYLANDI
+  durum               String
+  /// Son başarılı onay-bekleyen sorgusunda (raporAramaTarihile) listede mi
+  bekleyenListede     Boolean  @default(false)
+  /// Son başarılı onaylı sorgusunda (onayliRaporlarTarihile) listede mi
+  onayliListede       Boolean  @default(false)
+  /// onayliRaporlarDetay: [{baslangic,bitis,calisti,islemTarihi,odemeCikti,bildirimId}]
+  onayParcalari       Json?
+  detayAt             DateTime?
+  ilkGorulme          DateTime @default(now())
+  sonGorulme          DateTime @default(now())
+  raw                 Json?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  taxpayer Taxpayer @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, taxpayerId, medulaRaporId])
+  @@index([tenantId, durum])
+  @@map("sgk_raporlar")
+}
+
+model SgkIsKazasi {
+  id                String   @id @default(cuid())
+  tenantId          String
+  taxpayerId        String
+  bildirimId        String
+  tcKimlikNo        String
+  adSoyad           String?
+  cinsiyet          String?
+  isKazasiTarihi    String?
+  provizyonTarihi   String?
+  provizyonTipi     String?
+  tesisAdi          String?
+  unvani            String?
+  islemTuru         String?
+  sgkBildirimSonGun String?
+  ilkGorulme        DateTime @default(now())
+  sonGorulme        DateTime @default(now())
+  raw               Json?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  taxpayer Taxpayer @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, taxpayerId, bildirimId])
+  @@index([tenantId, isKazasiTarihi])
+  @@map("sgk_is_kazalari")
+}
+
+/// Portaldan SGK'ya gönderilen işveren beyanları (rapor onayı / personelim değil) — denetim izi.
+model SgkRaporIslem {
+  id            String   @id @default(cuid())
+  tenantId      String
+  taxpayerId    String
+  raporId       String
+  medulaRaporId String
+  /// ONAY | PERSONELIM_DEGIL
+  islem         String
+  istek         Json
+  basarili      Boolean  @default(false)
+  sonucKod      Int?
+  sonucAciklama String?
+  userId        String?
+  createdAt     DateTime @default(now())
+
+  @@index([tenantId, raporId])
+  @@map("sgk_rapor_islemleri")
+}
+
+/// Mükellef başına Vizite sorgu durumu. Ortak SGK şifre kaydının lastError'ına YAZILMAZ
+/// (hizmet listesi çekimini etkilemesin diye ayrı tutulur).
+model SgkViziteDurum {
+  id          String    @id @default(cuid())
+  tenantId    String
+  taxpayerId  String    @unique
+  /// İlk başarılı sorgu — öncesinde görülen kayıtlar "yeni" sayılmaz (bildirim tabanı)
+  ilkBasariAt DateTime?
+  sonSorguAt  DateTime?
+  sonBasariAt DateTime?
+  sonHata     String?
+  sonHataKod  Int?
+  sonKaynak   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  taxpayer Taxpayer @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("sgk_vizite_durumlari")
 }
 
 // ============================================================

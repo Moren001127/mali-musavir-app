@@ -1306,7 +1306,10 @@ export class PortalAutomationService {
     const { start, end } = lastThreeDaysRange();
     const todayStart = startOfIstanbulDay(new Date());
     return this.createJobs(tenantId, {
-      jobTypes: ['EBEYANNAME_DAILY_DOWNLOAD', 'E_TEBLIGAT_CHECK', ...SGK_JOB_TYPES],
+      // 2026-09-26: SGK_ISE_GIRIS_CIKIS / SGK_ISGOREMEZLIK içi boş iskeletti — her gece mükellef başına güvenlik
+      // kodlu SGK girişi yapıp 0 belgeyle bitiyordu (26.09 gecesi 84 iş). e-Rapor + hastane iş kazası artık
+      // sgk-vizite modülünde (WS_Vizite web servisi, 02:30); işe giriş/çıkış ikinci aşamada bağlanacak.
+      jobTypes: ['EBEYANNAME_DAILY_DOWNLOAD', 'E_TEBLIGAT_CHECK', ...SGK_JOB_TYPES.filter((t) => t !== 'SGK_ISE_GIRIS_CIKIS' && t !== 'SGK_ISGOREMEZLIK')],
       source: 'nightly',
       userId: 'scheduler',
       taxpayerIds: [],
