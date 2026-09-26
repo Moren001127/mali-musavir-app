@@ -11427,7 +11427,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       .filter((r) => this.turmobIsCancelled(r) || !this.turmobRowInPeriod(r, opts.period))
       .map((r) => ({
         faturaNo: String(this.turmobField(r, ['FaturaNo', 'faturaNo', 'BelgeNo', 'belgeNo', 'InvoiceNumber', 'invoiceNumber']) || '').trim(),
-        neden: this.turmobIsCancelled(r) ? 'iptal/itiraz edilmiş' : 'dönem dışı (tarih aralığında değil)',
+        // TÜRMOB'un kendi durum metni gösterilir ("Alıcı Reddetti", "İptal Edildi"…) — genel "iptal/itiraz" yerine.
+        neden: this.turmobIsCancelled(r)
+          ? (String(this.turmobField(r, ['DurumAdi', 'Durum', 'IptalItirazDurumu', 'OnayDurumu']) || '').trim().replace(/^0$/, '') || 'iptal/itiraz edilmiş')
+          : 'dönem dışı (tarih aralığında değil)',
       }))
       .filter((x) => x.faturaNo);
     // KESİK LİSTE: sunucu daha fazla toplam bildirdi ama (yeniden deneme + parçalamaya rağmen) daha az aldık.
