@@ -21,7 +21,7 @@ import { reconcileMatrahSplit } from './kalem-split';
 // PLAN/15 Faz 1-B (2026-09-12): plan adayları TEK kaynaktan (yön sıralı + rol etiketli + grup tavanlı) + satış gelir kuralı sabiti.
 import { planAdaylariHazirla, planAdayKodSeti, SATIS_GELIR_HESABI_KURALI, PLAN_ADAY_ROL_ACIKLAMASI } from './plan-adaylari';
 import { ogrenilmisKararSec, adCozumAdaylari, kodKategori, mevzuatUygunMu, planYaprakHaritasi, HizliYolKarar, HizliYolSecim } from './ogrenme-hizli-yol';
-import { parseUblInvoice, ublOcrDataFields, clearUblOnlyOcrFields, resolveTevkifatOrani, kdvDisiVergiOivMi, ParsedProviderInvoice } from './ubl-parse';
+import { parseUblInvoice, ublOcrDataFields, clearUblOnlyOcrFields, resolveTevkifatOrani, kdvDisiVergiOivMi, ParsedProviderInvoice, ublTarihOku } from './ubl-parse';
 // PLAN/15 Faz 6 (2026-09-13): kalemsiz sağlayıcı XML'inde (Paraşüt özeti gibi) kalemler belgenin PDF/görselinden tamamlanır (saf modül).
 import { kalemPdfGerekliMi, kalemPdfTamamla, aiMatrahGuvenTavani, odenecekDenklemiTutmuyorMu, pdfDigerVergiKodu, KalemPdfDosya, KalemKaynak } from './kalem-pdf';
 import { VendorMemoryService } from '../vendor-memory/vendor-memory.service';
@@ -349,6 +349,12 @@ type IntegrationFetchInput = {
   limit?: number;
   mode?: 'query' | 'download';
   selectedRefs?: string[];
+  /** İsteğe bağlı kanal (e-Fatura Sorgu ekranıyla aynı adlar): IN_EFATURA | OUT_EFATURA | OUT_EARSIV.
+   *  Verilirse yön kanaldan çıkar (OUT_* → SATIS) ve fetchProviderInvoices'a geçirilir. */
+  channel?: string;
+  /** GECE İPTAL/RED BEKLEMESİ (2026-09-26): 'YYYY-MM-DD' verilirse fatura tarihi bundan SONRA olan belge
+   *  OLUŞTURULMAZ (bekletilir; süre dolunca sonraki gece gelir). Yalnız gece akışı verir; elle sorgu etkilenmez. */
+  sonTarih?: string;
 };
 
 type RuntimeIntegrationConfig = {
@@ -419,6 +425,18 @@ const INTEGRATOR_CATALOG = [
   //   hesap başka altyapıdaysa servis adresi entegratör kartından değiştirilir.
   { provider: 'AKINSOFT', label: 'Akınsoft', kind: 'efatura', tone: 'blue' },
 ] as const;
+
+/**
+ * SATIŞ e-ARŞİV ÇEKİMİ DESTEKLENMEYEN SAĞLAYICILAR (2026-09-26). Bu sağlayıcılarda OUT_EARSIV istenirse
+ *   indirme HİÇ yapılmaz, açık mesaj döner (eskiden e-Fatura indirilip "N belge kanal dışı" diye atılıyordu).
+ *   Bir sağlayıcıya e-Arşiv çekimi eklenince BURADAN ÇIKARILIR. 'MIKRO' ayrı: yalnız e-Portal yedek yolu
+ *   (web servisi reddetmişse) desteksizdir — bkz. syncEfaturaInboxFromIntegrations.
+ */
+const EARSIV_DESTEKSIZ_SAGLAYICILAR: ReadonlySet<string> = new Set([
+  // UYUMSOFT çıkarıldı (2026-09-26): giden liste sorgusundaki senaryo alanıyla satış e-Arşiv ayrı çekiliyor
+  //   (halka açık test ortamında doğrulandı: e-Arşiv 1747, e-Fatura 393 belge ayrı listelendi).
+  'IZIBIZ', 'AKINSOFT', 'FORIBA', 'ECZACIKART', 'KOLAYSOFT', 'LOGO_ISBASI',
+]);
 
 const PROVIDER_DEFAULT_BASE_URL: Record<string, string> = {
   // ⚠️ ESKİDEN 'http://efatura.uyumsoft.com.tr/Services/BasicIntegration' YAZIYORDU (2026-09-25'e kadar).
@@ -2886,7 +2904,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   ) {
     const taxpayerId = String(input.taxpayerId || '').trim();
     if (!taxpayerId) throw new BadRequestException('taxpayerId gerekli');
-    const direction = input.direction === 'SATIS' ? 'SATIS' : 'ALIS';
+    // KANAL (2026-09-26): eskiden yalnız Alış/Satış gidiyordu, kanal hiç geçmiyordu → gece akışı ve
+    //   Entegratörler ekranı satış e-Arşiv'i HİÇ çekmiyordu. Kanal verilirse yönü de o belirler.
+    const kanalHam = String(input.channel || '').trim().toUpperCase();
+    const channel: string | undefined = ['IN_EFATURA', 'OUT_EFATURA', 'OUT_EARSIV'].includes(kanalHam) ? kanalHam : undefined;
+    if (kanalHam && !channel) throw new BadRequestException(`Geçersiz kanal: ${kanalHam} (IN_EFATURA | OUT_EFATURA | OUT_EARSIV)`);
+    const direction = channel
+      ? (channel.startsWith('OUT_') ? 'SATIS' : 'ALIS')
+      : (input.direction === 'SATIS' ? 'SATIS' : 'ALIS');
     const mode = input.mode === 'query' ? 'query' : 'download';
     // SERBEST TARİH ARALIĞI (Mihsap örneği — kullanıcı talebi): dateFrom/dateTo verildiyse AY bazlı
     //   monthRange'i (1 ayla sınırlı) bypass et — sorgu gerçek başlangıç/bitiş gününe göre çalışır.
@@ -2908,6 +2933,21 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const period = (dateFromOk && dateToOk && String(input.dateFrom) <= String(input.dateTo))
       ? { donem: `${input.dateFrom}_${input.dateTo}`, startDate: String(input.dateFrom), endDate: String(input.dateTo) }
       : this.monthRange(input.donem);
+    // GECE İPTAL/RED BEKLEMESİ: son tarihten (dahil) sonra kesilmiş fatura bu çekimde oluşturulmaz.
+    if (String(input.sonTarih || '').trim() && !ymdOk(input.sonTarih)) {
+      throw new BadRequestException('Son tarih geçersiz: YYYY-AA-GG biçiminde olmalı.');
+    }
+    const sonTarih: string | null = ymdOk(input.sonTarih) ? String(input.sonTarih) : null;
+    // Son tarih sağlayıcıya da gider (2026-09-26 inceleme): eskiden ayın sonu gidiyordu → yeniden eskiye sıralı,
+    //   tavanlı sağlayıcılarda (Turkcell/Paraşüt/Eczacıkart/TÜRMOB) tavanı önce son 10 günün belgeleri dolduruyor,
+    //   sonra hepsi kapıda atılıyordu (boşa indirme + hız sınırı). Kapı yine durur: sağlayıcı pencereyi geliş
+    //   tarihine göre genişletirse (Uyumsoft/eLogo/TÜRMOB alış) son tarihten sonraki fatura belge olmaz.
+    if (sonTarih && period.endDate > sonTarih) {
+      if (period.startDate > sonTarih) {
+        return { ok: true, taxpayerId, direction, ...(channel ? { channel } : {}), donem: period.donem, sonTarih, created: 0, alreadyQueued: 0, failed: 0, skipped: 0, fetched: 0, bekletilen: 0, providers: [] };
+      }
+      period.endDate = sonTarih;
+    }
     const limit = Math.min(Math.max(Number(input.limit || 500), 1), 1000);
     const requestedProviders = new Set(
       (input.providers || [])
@@ -2928,8 +2968,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     });
     if (!taxpayer) throw new NotFoundException('Mukellef bulunamadi');
 
-    const totals: { created: number; alreadyQueued: number; failed: number; skipped: number; fetched: number; iptalAtlanan?: number } = { created: 0, alreadyQueued: 0, failed: 0, skipped: 0, fetched: 0 };
-    const shouldTryGibPortal = !requestedProviders.size || requestedProviders.has('GIB_PORTAL');
+    const totals: { created: number; alreadyQueued: number; failed: number; skipped: number; fetched: number; iptalAtlanan?: number; bekletilen?: number } = { created: 0, alreadyQueued: 0, failed: 0, skipped: 0, fetched: 0 };
+    // GİB e-Arşiv portalı YALNIZ kanal verilmemişse ya da kanal Satış e-Arşiv ise çalışır (2026-09-26 inceleme):
+    //   "Üçü birden" GIB_PORTAL'ı Satış e-Fatura kanalıyla da çağırınca aynı mükellefe İKİ GİB işi (force:true,
+    //   mükerrer denetimi yok) açılıyordu. Alış kanalında zaten "yalnız satış" diye atlanır.
+    const gibKanaliUygun = !channel || channel === 'OUT_EARSIV';
+    const shouldTryGibPortal = gibKanaliUygun && (!requestedProviders.size || requestedProviders.has('GIB_PORTAL'));
     const gibPortalStatus: any[] = [];
     if (shouldTryGibPortal) {
       if (direction !== 'SATIS') {
@@ -3039,6 +3083,19 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         statuses.push({ provider: item.provider, label: cfg.label, status: 'SKIPPED', reason: credentialCheck });
         continue;
       }
+      // e-ARŞİV DESTEKSİZ SAĞLAYICI: indirme hiç yapılmaz, HATA DEĞİL — açık mesaj (gece akışı bunu hata saymaz).
+      if (channel === 'OUT_EARSIV' && EARSIV_DESTEKSIZ_SAGLAYICILAR.has(String(cfg.provider || item.provider).toUpperCase())) {
+        totals.skipped++;
+        statuses.push({
+          provider: item.provider,
+          label: cfg.label,
+          status: 'SKIPPED',
+          channel,
+          earsivDesteksiz: true,
+          reason: `${cfg.label}: bu entegratörde satış e-Arşiv çekimi yok; GİB e-Arşiv Sorgu'yu kullanın.`,
+        });
+        continue;
+      }
 
       const job = await (this.prisma as any).integrationJob.create({
         data: {
@@ -3050,9 +3107,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           payload: {
             taxpayerId,
             direction,
+            ...(channel ? { channel } : {}),
             donem: period.donem,
             startDate: period.startDate,
             endDate: period.endDate,
+            ...(sonTarih ? { sonTarih } : {}),
             limit,
           },
         },
@@ -3062,12 +3121,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       try {
         // ELLE ÇEKİM de hız sınırını ÖĞRENSİN (2026-09-22): tıklama engellenmez, ama 429 görülürse hesaba soğuma
         //   yazılır — yoksa gece çekimi 02:00'de aynı duvara toslamaya devam ediyordu.
-        const elleProgress: { rateLimited?: boolean } = {};
+        const elleProgress: { rateLimited?: boolean; uyarilar?: string[] } = {};
         const payloads = await this.fetchProviderInvoices(cfg, {
           taxpayer,
           direction,
           period,
           limit,
+          ...(channel ? { channel } : {}),
           progress: elleProgress,
         });
         if (elleProgress.rateLimited) {
@@ -3080,9 +3140,32 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         let created = 0;
         let alreadyQueued = 0;
         let failed = 0;
+        let bekletilen = 0;
+        let durumAtlanan = 0;
         const errors: Array<{ ref: string; message: string }> = [];
         for (const payload of payloads) {
           try {
+            // BELGE OLUŞTURMADAN ÖNCE İKİ KAPI (2026-09-26):
+            //   (a) İPTAL/RED: sağlayıcı liste durumu (Turkcell/eLogo/Eczacıkart/Mikro) iptal/red diyorsa belge
+            //       oluşturulmaz. UBL değişmediği için createDocumentFromProviderXml bunu göremiyordu; e-Fatura Sorgu →
+            //       Aktar yolunda (belgeDurumuEngelli) zaten engelliydi — iki yol aynı kuralı kullanır.
+            //   (b) GECE BEKLEMESİ: sonTarih verildiyse (gece akışı) fatura tarihi ondan sonra olan belge BEKLETİLİR —
+            //       iptal/red süresi dolmadan portala girmez; süre dolunca sonraki gece gelir.
+            const onOkuma = payload.xml ? (this.parseProviderUblInvoice(payload.xml) || this.regexProviderInvoiceFallback(payload.xml)) : null;
+            if (onOkuma) {
+              if (this.belgeDurumuEngelli(this.inboxApprovalFields(onOkuma, payload.providerStatus), onOkuma.belgeDurumu).engelli) {
+                durumAtlanan++;
+                totals.iptalAtlanan = (totals.iptalAtlanan || 0) + 1;
+                continue;
+              }
+              const faturaGunu = onOkuma.faturaTarihi instanceof Date && !Number.isNaN(onOkuma.faturaTarihi.getTime())
+                ? onOkuma.faturaTarihi.toISOString().slice(0, 10)
+                : '';
+              if (sonTarih && faturaGunu && faturaGunu > sonTarih) {
+                bekletilen++;
+                continue;
+              }
+            }
             const result = await this.createDocumentFromProviderXml(
               tenantId,
               userId,
@@ -3105,31 +3188,49 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         totals.alreadyQueued += alreadyQueued;
         totals.failed += failed;
         totals.fetched += payloads.length;
-        await (this.prisma as any).integrationConnection.update({
-          where: { id: row.id },
-          data: { lastSyncAt: new Date() },
-        });
+        if (bekletilen) totals.bekletilen = (totals.bekletilen || 0) + bekletilen;
+        const kapiSayilari = {
+          ...(bekletilen ? { bekletilen, sonTarih } : {}),
+          ...(durumAtlanan ? { iptalRedAtlanan: durumAtlanan } : {}),
+        };
+        const saglayiciBasarili = !(failed && !created && !alreadyQueued);
+        // "Son çekim" tarihi YALNIZ başarılı çekimde ilerler (tamamen başarısız çekim eski tarihi korur).
+        if (saglayiciBasarili) {
+          await (this.prisma as any).integrationConnection.update({
+            where: { id: row.id },
+            data: { lastSyncAt: new Date() },
+          });
+        }
+        // UYARILAR: sağlayıcı yolları progress.uyarilar'a (ya da dönen dizinin .warnings'ine) not düşer —
+        //   ekrana `warning` (birleşik metin) + `warnings` (liste) olarak gider.
+        const saglayiciUyarilari: string[] = [];
+        if (elleProgress.rateLimited) saglayiciUyarilari.push('Sağlayıcı hız sınırı verdi — çekim yarıda kaldı, kalanlar soğuma bitince (gece çekimi) tamamlanır.');
+        for (const w of [...(elleProgress.uyarilar || []), ...(((payloads as any)?.warnings as string[]) || [])]) {
+          const t = String(w || '').trim();
+          if (t && !saglayiciUyarilari.includes(t)) saglayiciUyarilari.push(t);
+        }
         await (this.prisma as any).integrationJob.update({
           where: { id: job.id },
           data: {
-            status: failed && !created && !alreadyQueued ? 'FAILED' : 'SUCCESS',
+            status: saglayiciBasarili ? 'SUCCESS' : 'FAILED',
             completedAt: new Date(),
-            result: { fetched: payloads.length, created, alreadyQueued, failed, errors },
+            result: { fetched: payloads.length, created, alreadyQueued, failed, errors, ...kapiSayilari, ...(saglayiciUyarilari.length ? { warnings: saglayiciUyarilari } : {}) },
             errorMessage: failed && errors.length ? errors[0].message : null,
           },
         });
         statuses.push({
           provider: item.provider,
           label: cfg.label,
-          status: failed && !created && !alreadyQueued ? 'FAILED' : 'SUCCESS',
+          status: saglayiciBasarili ? 'SUCCESS' : 'FAILED',
+          ...(channel ? { channel } : {}),
           fetched: payloads.length,
           created,
           alreadyQueued,
           failed,
           errors,
-          ...(elleProgress.rateLimited
-            ? { rateLimited: true, partial: true, cooldown: true, warning: 'Sağlayıcı hız sınırı verdi — çekim yarıda kaldı, kalanlar soğuma bitince (gece çekimi) tamamlanır.' }
-            : {}),
+          ...kapiSayilari,
+          ...(elleProgress.rateLimited ? { rateLimited: true, partial: true, cooldown: true } : {}),
+          ...(saglayiciUyarilari.length ? { warning: saglayiciUyarilari.join(' · '), warnings: saglayiciUyarilari } : {}),
         });
       } catch (e: any) {
         totals.failed++;
@@ -3138,7 +3239,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           where: { id: job.id },
           data: { status: 'FAILED', completedAt: new Date(), errorMessage: message },
         });
-        statuses.push({ provider: item.provider, label: cfg.label, status: 'FAILED', reason: message });
+        statuses.push({ provider: item.provider, label: cfg.label, status: 'FAILED', ...(channel ? { channel } : {}), reason: message });
       }
     }
 
@@ -3153,12 +3254,24 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       }
     }
 
+    // Tüm sağlayıcı uyarıları tek listede (ekran "Uyarılar" satırında gösterir).
+    const warnings: string[] = [];
+    for (const s of statuses) {
+      for (const w of (Array.isArray(s?.warnings) ? s.warnings : (s?.warning ? [s.warning] : []))) {
+        const t = `${s?.label || s?.provider || ''}: ${String(w)}`.trim();
+        if (!warnings.includes(t)) warnings.push(t);
+      }
+    }
+
     return {
       ok: true,
       taxpayerId,
       direction,
+      ...(channel ? { channel } : {}),
       donem: period.donem,
+      ...(sonTarih ? { sonTarih } : {}),
       ...totals,
+      ...(warnings.length ? { warnings } : {}),
       providers: statuses,
     };
   }
@@ -5850,6 +5963,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           const turmobLookup: ProviderPayloadLookup = { cfg, payloads: [], byKey: new Map(), error: null };
           let providerFetched = 0, providerAdded = 0, providerUpdated = 0, providerSkipped = 0, providerFailed = 0;
           let providerDownloaded = 0, providerMissingDocument = 0;
+          let turmobIlkHata = ''; // yazma hatası sessiz kalmasın → durum satırına uyarı olarak çıkar
           for (const sourceRow of listed.liveRows.slice(0, limit)) {
             try {
               const summary = this.turmobSummaryFromRow(sourceRow, { channel, taxpayer, direction });
@@ -5882,12 +5996,20 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
               });
               // MÜKERRER KORUMASI: uuid türetimi (ettn||rowId||faturaNo) zaman içinde değişebiliyor
               //   (IdArsiv tanınınca rowId dolmaya başladı → aynı fatura yeni uuid'le İKİNCİ satır
-              //   oldu, kullanıcı 18→36 gördü). uuid tutmazsa FATURA NO ile de mevcut satır aranır.
-              if (!existing && String(summary.faturaNo || '').trim()) {
-                existing = await (this.prisma as any).eFaturaInbox.findFirst({
-                  where: { tenantId, taxpayerId: opts.taxpayerId, entegrator: cfg.provider, faturaNo: String(summary.faturaNo).trim() },
-                  select: { id: true, rawJson: true, documentId: true, isTransferred: true, processedAt: true, ublXmlRaw: true },
+              //   oldu, kullanıcı 18→36 gördü). uuid tutmazsa FATURA NO + SATICI VKN + YÖN ile aranır.
+              //   Yalnız numarayla aramak FARKLI satıcının aynı numaralı faturasını (GIB2026… ortak önek)
+              //   ya da alış↔satış karşı satırını ezebiliyordu → satıcı VKN yoksa numarayla eşleştirme YOK.
+              const turmobNo = String(summary.faturaNo || '').trim();
+              const turmobVkn = String(summary.senderVkn || '').replace(/\D/g, '');
+              if (!existing && turmobNo && turmobVkn) {
+                const adaylar = await (this.prisma as any).eFaturaInbox.findMany({
+                  where: { tenantId, taxpayerId: opts.taxpayerId, entegrator: cfg.provider, direction: inboxDirection, faturaNo: turmobNo },
+                  select: { id: true, rawJson: true, documentId: true, isTransferred: true, processedAt: true, ublXmlRaw: true, senderVkn: true },
                 });
+                existing = adaylar.find((a: any) => {
+                  const araw = a.rawJson && typeof a.rawJson === 'object' ? a.rawJson : {};
+                  return String(a.senderVkn || (araw as any).senderVkn || '').replace(/\D/g, '') === turmobVkn;
+                }) || null;
               }
               const currentRaw = existing?.rawJson && typeof existing.rawJson === 'object' ? existing.rawJson : {};
               const existingXml = String(existing?.ublXmlRaw || '').trim();
@@ -5987,6 +6109,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             } catch (e: any) {
               providerFailed++;
               failed++;
+              if (!turmobIlkHata) turmobIlkHata = String(e?.message || e).replace(/\s+/g, ' ').slice(0, 240);
               this.logger.warn(`TURMOB e-Fatura liste satiri yazilamadi: ${e?.message || e}`);
             }
           }
@@ -6007,6 +6130,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
               // GRUP ANAHTARI = faturaNo + satıcı VKN. Yalnız faturaNo ile anahtarlanınca FARKLI
               //   satıcıların aynı fatura numarasına sahip belgeleri tek grup sanılıp biri siliniyordu.
               const svkn = String(satir.senderVkn || (sraw as any).senderVkn || '').replace(/\D/g, '');
+              if (!svkn) continue; // satıcı VKN'siz satır numarayla BİRLEŞTİRİLMEZ (yanlış silme riski)
               const key = `${no}|${svkn}`;
               const liste = noGrup.get(key) || [];
               liste.push(satir);
@@ -6031,6 +6155,21 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           added += providerAdded;
           updated += providerUpdated;
           skipped += providerSkipped + Math.max(0, listed.liveRows.length - providerFetched);
+          // UYARILAR BİRLEŞİR (2026-09-26): liste yolunun kendi uyarıları (sayfa tavanı, kesik liste, alınamayan tarih
+          //   parçası) eskiden ekrana hiç çıkmıyordu; boş liste / yazma hatası uyarıları da birbirini eziyordu.
+          const turmobUyarilari: string[] = [];
+          for (const w of (Array.isArray((listed as any).warnings) ? (listed as any).warnings : [])) {
+            const t = String(w || '').trim();
+            if (t && !turmobUyarilari.includes(t)) turmobUyarilari.push(t);
+          }
+          if (listed.liveRows.length === 0) {
+            turmobUyarilari.push(listed.rows.length > 0
+              ? `TÜRMOB listesi ${listed.rows.length} satır döndürdü ama dönem/iptal süzgeci sonrası 0 kaldı (uç: ${listed.usedListUrl}) — tarih aralığını kontrol edin.`
+              : `TÜRMOB listesi BOŞ döndü (uç: ${listed.usedListUrl}, yöntem: ${listed.usedMethod}) — bu kanalın liste ucu değişmiş olabilir; portalda fatura göründüğü halde boşsa desteğe bu mesajı iletin.`);
+          }
+          if (providerFailed > 0) turmobUyarilari.push(`${providerFailed} fatura portala YAZILAMADI — ilk hata: ${turmobIlkHata || 'bilinmiyor'}`);
+          await (this.prisma as any).integrationConnection.update({ where: { id: row.id }, data: { lastSyncAt: new Date() } })
+            .catch((e: any) => this.logger.warn(`TURMOB son çekim tarihi yazılamadı: ${e?.message || e}`));
           statuses.push({
             provider: item.provider,
             label: cfg.label,
@@ -6051,18 +6190,38 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             listUrl: listed.usedListUrl,
             // HARİÇ TUTULANLAR: "Mihsap X, biz Y" farkını açıklar — iptal/dönem-dışı elenen faturalar.
             excluded: Array.isArray((listed as any).excludedRows) ? (listed as any).excludedRows.slice(0, 50) : [],
-            ...(listed.liveRows.length === 0 ? {
-              warning: listed.rows.length > 0
-                ? `TÜRMOB listesi ${listed.rows.length} satır döndürdü ama dönem/iptal süzgeci sonrası 0 kaldı (uç: ${listed.usedListUrl}) — tarih aralığını kontrol edin.`
-                : `TÜRMOB listesi BOŞ döndü (uç: ${listed.usedListUrl}, yöntem: ${listed.usedMethod}) — bu kanalın liste ucu değişmiş olabilir; portalda fatura göründüğü halde boşsa desteğe bu mesajı iletin.`,
-            } : {}),
+            ...(providerFailed > 0 ? { ilkHata: turmobIlkHata || null } : {}),
+            ...(turmobUyarilari.length ? { warning: turmobUyarilari.join(' · '), warnings: turmobUyarilari } : {}),
           });
           if (providerMissingDocument > 0) turmobNeedsPrefetch = true;
           continue;
         }
 
+        // SATIŞ e-ARŞİV DESTEKSİZ SAĞLAYICI (2026-09-26): indirme HİÇ yapılmadan açık mesaj. Eskiden e-Fatura
+        //   belgeleri indirilip "N belge kanal dışı" diye atılıyor, kullanıcı boş listeyle kalıyordu.
+        //   Mikro: yalnız web servisi yakın zamanda reddedip e-Portal yedek yoluna düşülecekse desteksiz.
+        //   Dışarıdan hazır belge geldiyse (ajan/tarayıcı) engellenmez — kanal süzgeci ayıklar.
+        if (channel === 'OUT_EARSIV' && !Array.isArray(opts.hazirPayloadlar)) {
+          let earsivDesteksiz = EARSIV_DESTEKSIZ_SAGLAYICILAR.has(cfg.provider);
+          if (!earsivDesteksiz && cfg.provider === 'MIKRO') {
+            const mVkn = String(taxpayer?.taxNumber || cfg.senderVkn || '').replace(/\D/g, '');
+            const mAtla = (FaturaMuhasebelestirmeService as any).mikroFirmboxAtla?.get?.(this.mikroFirmboxKullanici(cfg.username, mVkn));
+            earsivDesteksiz = !!(mAtla && Date.now() - mAtla.ts < 6 * 60 * 60 * 1000);
+          }
+          if (earsivDesteksiz) {
+            const ad = cfg.label || item.label || cfg.provider;
+            const mesaj = `${ad} için satış e-Arşiv çekimi henüz desteklenmiyor; e-Arşiv faturalarınızı GİB e-Arşiv Sorgu ekranından alın.`;
+            statuses.push({ provider: item.provider, label: cfg.label, status: 'SKIPPED', reason: mesaj, warning: mesaj, earsivDesteksiz: true });
+            skipped++;
+            continue;
+          }
+        }
+
         let providerAdded = 0, providerUpdated = 0, providerSkipped = 0, providerFetched = 0;
         const atlananlar: string[] = []; // neden atlandi — kullaniciya ve loga aciklama
+        let kanalDisiSayisi = 0;           // öbür kanalın belgesi (bilgi düzeyi, uyarı değil)
+        let providerFailed = 0;            // inbox'a YAZILAMAYAN (hata) — sessiz kalmasın
+        let ilkHata = '';
         // Tek fatura yazımı — ARTIMLI persistence için closure. Turkcell gibi çok-belgeli/uzun çekimlerde
         //   onPayload olarak GEÇİLİR → her UBL inince ANINDA yazılır (uzun/kesintili sorguda ilerleme kaybolmaz;
         //   frontend efatura-inbox'u poll edip satırların gelişini görür). Diğer sağlayıcılarda dönüş dizisi üstünde çalışır.
@@ -6092,10 +6251,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
                 (channel === 'OUT_EARSIV' && docType !== 'E_ARSIV') ||
                 (channel === 'OUT_EFATURA' && docType === 'E_ARSIV');
               if (kanalDisi) {
+                // BİLGİ, UYARI DEĞİL (2026-09-26): Paraşüt gibi e-Fatura + e-Arşiv'i birlikte indirenlerde öbür
+                //   kanalın belgesi burada normal olarak ayıklanır → "indirildi ama kaydedilmedi" yanlış alarmı vermez.
                 providerSkipped++;
-                const atlanan = `${parsed.faturaNo || payload.externalId || '?'}: ${docType} belgesi ${channel} kanalinda degil`;
-                atlananlar.push(atlanan);
-                this.logger.warn(`[${cfg.provider}] fatura atlandi — ${atlanan}`);
+                kanalDisiSayisi++;
+                this.logger.debug?.(`[${cfg.provider}] ${parsed.faturaNo || payload.externalId || '?'}: ${docType} belgesi ${channel} kanalinda degil (ayiklandi)`);
                 return;
               }
             }
@@ -6109,12 +6269,16 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             //   (purchase_bills:X ↔ e_invoices:X) → uuid tutmayınca İKİNCİ satır oluşuyordu (aktarılan
             //   4 fatura tekrar görünüyordu). FATURA NO ile mevcut satır(lar)ı bul; AKTARILMIŞ/belgeli
             //   olanı KORU, fazlalıkları sil, o satırı güncelle → tek satır kalır, aktarım durumu korunur.
+            //   ANAHTAR = fatura no + SATICI VKN + YÖN (2026-09-26): yalnız numarayla eşleşince FARKLI satıcıların
+            //   aynı numaralı faturası (GIB2026… ortak önek) birbirini SİLİYORDU, alış↔satış karışabiliyordu.
+            //   Satıcı VKN'si okunamadıysa numarayla hiç birleştirme yapılmaz (yanlış silmektense çift satır iyidir).
             const faturaNoKey = String(parsed.faturaNo || '').trim();
-            if (faturaNoKey) {
-              const sameNo = await (this.prisma as any).eFaturaInbox.findMany({
-                where: { tenantId, taxpayerId: opts.taxpayerId, entegrator: cfg.provider, faturaNo: faturaNoKey },
-                select: { id: true, isTransferred: true, documentId: true },
-              });
+            const saticiVknKey = String(parsed.saticiVergiNo || '').replace(/\D/g, '');
+            if (faturaNoKey && saticiVknKey) {
+              const sameNo = (await (this.prisma as any).eFaturaInbox.findMany({
+                where: { tenantId, taxpayerId: opts.taxpayerId, entegrator: cfg.provider, direction: inboxDirection, faturaNo: faturaNoKey },
+                select: { id: true, isTransferred: true, documentId: true, senderVkn: true },
+              })).filter((r: any) => String(r.senderVkn || '').replace(/\D/g, '') === saticiVknKey);
               const havuz = existing && !sameNo.some((r: any) => r.id === existing.id) ? [existing, ...sameNo] : sameNo;
               if (havuz.length > 1 || (havuz.length === 1 && havuz[0].id !== existing?.id)) {
                 const keep = havuz.find((r: any) => r.documentId || r.isTransferred) || havuz.find((r: any) => r.id === existing?.id) || havuz[0];
@@ -6187,6 +6351,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             }
           } catch (e: any) {
             failed++;
+            providerFailed++;
+            if (!ilkHata) ilkHata = `${payload.originalName || payload.externalId || '?'}: ${String(e?.message || e).replace(/\s+/g, ' ').slice(0, 240)}`;
             this.logger.warn(`e-Fatura inbox yazilamadi (${cfg.provider}): ${e?.message || e}`);
           }
         };
@@ -6203,7 +6369,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           });
           skipExistingExternalIds = new Set<string>(mevcut.map((m: any) => String(m.uuid)));
         }
-        const tcProgress = { rateLimited: false };
+        // uyarilar: sağlayıcı ucunun kendi uyarıları (indirilemeyen belge, dolan tavan, atlanan belge — entegratorUyarisi).
+        const tcProgress: { rateLimited: boolean; uyarilar?: string[] } = { rateLimited: false, uyarilar: [] };
         const payloads = await this.fetchProviderInvoices(cfg, {
           taxpayer, direction, period, limit, channel,
           hazirPayloadlar: opts.hazirPayloadlar,
@@ -6224,22 +6391,48 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         added += providerAdded;
         updated += providerUpdated;
         skipped += providerSkipped;
+        // UYARILAR BİRLEŞİR (2026-09-26): eskiden her koşul `warning`'i ayrı yazıp öncekini eziyordu
+        //   (ör. hız sınırı uyarısı, "kaydedilmedi" uyarısıyla kayboluyordu). Hepsi sırayla eklenir.
+        const uyarilar: string[] = [];
+        if (tcProgress.rateLimited) uyarilar.push('Sağlayıcı hız sınırı verdi — kalan faturalar soğuma bitince (otomatik) tamamlanır.');
+        for (const w of [...(tcProgress.uyarilar || []), ...((((payloads as any)?.warnings as string[]) || []))]) {
+          const t = String(w || '').trim();
+          if (t && !uyarilar.includes(t)) uyarilar.push(t);
+        }
+        // Sayfalama yok: entegratörden inen HAM adet (yazılan değil) limite ulaştıysa ya da entegratörün
+        //   bildirdiği toplam inenden fazlaysa dönemde daha fazla fatura olabilir — sessiz kırpma yerine uyarı.
+        //   (reportedTotal: sağlayıcı ucu progress'e doldurursa kullanılır; artımlı çekimde zaten-var olanlar
+        //   indirilmediği için bu karşılaştırma yapılmaz.)
+        const hamAdet = Math.max(providerFetched, Array.isArray(payloads) ? payloads.length : 0);
+        const bildirilenToplam = Number((tcProgress as any).reportedTotal || 0);
+        const sinirda = hamAdet >= limit || (!incremental && bildirilenToplam > hamAdet);
+        if (sinirda) {
+          uyarilar.push(bildirilenToplam > hamAdet
+            ? `Entegratör ${bildirilenToplam} fatura bildirdi, ${hamAdet} tanesi indirildi — kalanlar için tarih aralığını bölerek tekrar sorgulayın.`
+            : `Sağlayıcı ${limit} kayıt sınırına ulaştı — dönemde daha fazla fatura olabilir; tarih aralığını bölerek tekrar sorgulayın.`);
+        }
+        // SESSIZ KAYIP ALARMI: entegratörden inen belge sayısı ile portala yazılan sayı tutmuyorsa
+        //   kullanıcı BUNU GÖRSÜN. (2026-08-20: BİM faturaları e-posta adresindeki "earsiv" kelimesi
+        //   yüzünden e-Arşiv sanılıp atılıyordu; ekranda hiçbir uyarı çıkmadığı için fark edilmiyordu.)
+        if (atlananlar.length > 0) {
+          uyarilar.push(`${atlananlar.length} belge indirildi ama kaydedilmedi: ${atlananlar.slice(0, 3).join(' · ')}${atlananlar.length > 3 ? ' …' : ''}`);
+        }
+        // YAZMA HATASI: eskiden yalnız sayaçta artıyor, durum "başarılı" görünüyordu.
+        if (providerFailed > 0) uyarilar.push(`${providerFailed} fatura portala YAZILAMADI — ilk hata: ${ilkHata || 'bilinmiyor'}`);
+        // "Son çekim" tarihi e-Fatura Sorgu çekiminde de ilerler (eskiden yalnız Entegratörler/gece yolunda
+        //   güncelleniyordu → TÜRMOB 25.06'da, eLogo 20.08'de takılı görünüyordu).
+        await (this.prisma as any).integrationConnection.update({ where: { id: row.id }, data: { lastSyncAt: new Date() } })
+          .catch((e: any) => this.logger.warn(`${cfg.provider} son çekim tarihi yazılamadı: ${e?.message || e}`));
         statuses.push({
           provider: item.provider, label: cfg.label, status: 'SUCCESS', fetched: providerFetched, added: providerAdded, updated: providerUpdated, skipped: providerSkipped,
-          ...(tcProgress.rateLimited ? { rateLimited: true, partial: true, cooldown: true, warning: 'Sağlayıcı hız sınırı verdi — kalan faturalar soğuma bitince (otomatik) tamamlanır.' } : {}),
-          // Sayfalama yok: dönen adet limite ULAŞTIYSA dönemde daha fazla fatura olabilir — sessiz
-          //   kırpma yerine görünür uyarı (kullanıcı limiti artırır ya da aralığı böler).
-          ...(providerFetched >= limit ? { truncated: true, warning: `Sağlayıcı ${limit} kayıt sınırına ulaştı — dönemde daha fazla fatura olabilir; tarih aralığını bölerek tekrar sorgulayın.` } : {}),
-          // SESSIZ KAYIP ALARMI: entegratörden inen belge sayısı ile portala yazılan sayı tutmuyorsa
-          //   kullanıcı BUNU GÖRSÜN. (2026-08-20: BİM faturaları e-posta adresindeki "earsiv" kelimesi
-          //   yüzünden e-Arşiv sanılıp atılıyordu; ekranda hiçbir uyarı çıkmadığı için fark edilmiyordu.)
-          ...(atlananlar.length > 0
-            ? {
-                atlanan: atlananlar.length,
-                atlananlar: atlananlar.slice(0, 20),
-                warning: `${atlananlar.length} belge indirildi ama kaydedilmedi: ${atlananlar.slice(0, 3).join(' · ')}${atlananlar.length > 3 ? ' …' : ''}`,
-              }
-            : {}),
+          failed: providerFailed,
+          ...(providerFailed > 0 ? { ilkHata } : {}),
+          ...(tcProgress.rateLimited ? { rateLimited: true, partial: true, cooldown: true } : {}),
+          ...(sinirda ? { truncated: true, rawCount: hamAdet, ...(bildirilenToplam ? { reportedTotal: bildirilenToplam } : {}) } : {}),
+          ...(atlananlar.length > 0 ? { atlanan: atlananlar.length, atlananlar: atlananlar.slice(0, 20) } : {}),
+          // Öbür kanalın belgesi (Paraşüt gibi ikisini birden indirenler) — uyarı değil, bilgi.
+          ...(kanalDisiSayisi > 0 ? { kanalDisi: kanalDisiSayisi, bilgi: `${kanalDisiSayisi} belge diğer kanala ait (e-Fatura/e-Arşiv) — o kanalın sorgusunda listelenir.` } : {}),
+          ...(uyarilar.length ? { warning: uyarilar.join(' · ') } : {}),
         });
       } catch (e: any) {
         failed++;
@@ -9974,7 +10167,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (I2I_SOAP_PROVIDERS.has(cfg.provider) || /EInvoiceWS/i.test(cfg.baseUrl)) {
       return this.fetchI2iInvoices(cfg, opts);
     }
-    if (cfg.provider === 'TURMOB_EFATURA') return this.fetchTurmobPortalInvoices(cfg, opts);
+    // TÜRMOB tek-oturum: gece/elle toplu çekim de aynı TCKN kilidinden geçsin (sorgu/Aktar/arka plan indirme
+    //   ile eşzamanlı login = oturum çakışması olmasın). opts.channel verilmezse satışta e-Fatura + e-Arşiv çekilir.
+    if (cfg.provider === 'TURMOB_EFATURA') return this.withTurmobAccess(cfg.username, () => this.fetchTurmobPortalInvoices(cfg, opts));
     if (cfg.provider === 'PARASUT') return this.fetchParasutInvoices(cfg, opts);
     if (cfg.provider === 'TURKCELL') return this.fetchTurkcellInvoices(cfg, opts);
     if (cfg.provider === 'ECZACIKART') return this.fetchEczacikartInvoices(cfg, opts);
@@ -10273,29 +10468,36 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   ADIna göre firma listesinden IdFirma'yı bul → CompanyId ile TEKRAR gir. Firma listesi (GetCompanyList)
     //   VKN döndürmediği için eşleştirme ADla yapılır (matchVkn'den mükellef adını DB'den buluruz). Tek-firmalı
     //   hesaplar ilk POST'ta 302 alıp buraya HİÇ girmez (sıfır regresyon). Belirsizse mevcut hata akışına düşer.
+    // Çok-firma listesi geldi ama mükellef eşleşmedi → sonda "parola değişmiş" yerine GERÇEK neden söylenir.
+    let firmaEslesmedi: { firmaSayisi: number; ad: string; vkn: string } | null = null;
     if (loginRes.status !== 302 && loginRes.status !== 301) {
       let matchName = '';
       let vkn = String(matchVkn || '').replace(/\D/g, '');
+      // ŞAHIS MÜKELLEF: firma adı (companyName) boşsa ad+soyad ile eşleştir; VKN/TCKN de aşağıda ayrıca denenir.
+      const adOf = (tp: any) => String(tp?.companyName || '').trim()
+        || [tp?.firstName, tp?.lastName].map((x: any) => String(x || '').trim()).filter(Boolean).join(' ');
       // senderVkn BOŞSA (İLGİ OTO/ÖZ ELA gibi çok-firmalı hesaplarda çoğu kez tanımsız): çekim YAPILAN
       //   mükellefi taxpayerId'den bul → doğru firma adı+VKN. Böylece firma-seçme ekranında takılmadan
       //   CompanyId çözülür. (Kök neden: iki mükellef aynı TCKN, ikisinin de senderVkn'i boş.)
       if (!vkn && matchTaxpayerId) {
         try {
-          const tp = await (this.prisma as any).taxpayer.findUnique({ where: { id: matchTaxpayerId }, select: { companyName: true, taxNumber: true } });
-          matchName = String(tp?.companyName || '').trim();
+          const tp = await (this.prisma as any).taxpayer.findUnique({ where: { id: matchTaxpayerId }, select: { companyName: true, firstName: true, lastName: true, taxNumber: true } });
+          matchName = adOf(tp);
           vkn = String(tp?.taxNumber || '').replace(/\D/g, '');
         } catch (e: any) { this.logger.warn(`[TURMOB-COMPANY] taxpayerId ile mükellef bulunamadı: ${e?.message || e}`); }
       }
       if (!matchName && vkn) {
         try {
-          const tp = await (this.prisma as any).taxpayer.findFirst({ where: { taxNumber: vkn }, select: { companyName: true } });
-          matchName = String(tp?.companyName || '').trim();
+          const tp = await (this.prisma as any).taxpayer.findFirst({ where: { taxNumber: vkn }, select: { companyName: true, firstName: true, lastName: true } });
+          matchName = adOf(tp);
         } catch (e: any) { this.logger.warn(`[TURMOB-COMPANY] mükellef adı bulunamadı: ${e?.message || e}`); }
       }
       this.logger.log(`[TURMOB-COMPANY] ilk giriş ${loginRes.status} (çok-firma olabilir); matchVkn=${vkn || 'YOK'} ad="${matchName}"`);
-      if (matchName) {
-        const companyId = await this.turmobResolveCompanyId(BASE, cookieHeader(), token, matchName).catch((e) => { this.logger.warn(`[TURMOB-COMPANY] resolve hata: ${e?.message || e}`); return null; });
-        this.logger.log(`[TURMOB-COMPANY] resolve sonucu CompanyId=${companyId ?? 'YOK'}`);
+      if (matchName || vkn) {
+        const resolved = await this.turmobResolveCompanyId(BASE, cookieHeader(), token, matchName, vkn).catch((e) => { this.logger.warn(`[TURMOB-COMPANY] resolve hata: ${e?.message || e}`); return { id: null, firmaSayisi: 0 }; });
+        const companyId = resolved.id;
+        this.logger.log(`[TURMOB-COMPANY] resolve sonucu CompanyId=${companyId ?? 'YOK'} (listede ${resolved.firmaSayisi} firma)`);
+        if (!companyId && resolved.firmaSayisi > 1) firmaEslesmedi = { firmaSayisi: resolved.firmaSayisi, ad: matchName, vkn };
         if (companyId) {
           const retry = await postLogin(companyId);
           addCookies(pick(retry));
@@ -10346,6 +10548,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   O yüzden 200/redirect-dışı = TÜRMOB kullanıcı adı/parolayı KABUL ETMEDİ demektir. Eyleme
       //   dönük mesaj ver: parola çoğu kez TÜRMOB'da değişmiştir, Entegratörler'den güncellenmeli.
       if (uyari) throw new Error(`TÜRMOB girişi başarısız — ${uyari} (HTTP ${loginRes.status})`);
+      // ÇOK-FİRMA: firma listesi geldi (hesap birden çok firmalı) ama mükellef hiçbiriyle eşleşmedi →
+      //   sorun parola DEĞİL, firma seçimi. Yanlış yönlendirmesin diye gerçek nedeni söyle.
+      if (firmaEslesmedi) {
+        throw new Error(`TÜRMOB hesabında bu mükellefin firması bulunamadı (VKN/ad eşleşmedi) — hesapta ${firmaEslesmedi.firmaSayisi} firma var; aranan: "${firmaEslesmedi.ad || '-'}"${firmaEslesmedi.vkn ? ` / ${firmaEslesmedi.vkn}` : ''}. Mükellef adını TÜRMOB'daki firma adıyla uyumlu hale getirin ya da doğru TÜRMOB kullanıcısını tanımlayın.`);
+      }
       throw new Error(`TÜRMOB kullanıcı adı/parolası kabul edilmedi (HTTP ${loginRes.status}). Bu mükellefin TÜRMOB parolası büyük olasılıkla değişmiş — Entegratörler ekranından TÜRMOB parolasını güncelleyip tekrar deneyin.`);
     }
     // 3) Redirect hedefini İZLE — ASP.NET'te auth/session çerezi çoğu zaman bu adımda tamamlanır.
@@ -10375,8 +10582,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   //   ile arar; parametre q=FirmaAdi (VKN DEĞİL!), yanıt {IdFirma, FirmaAdi} — VKN alanı YOK. q=''
   //   oturumdaki TÜM firmaları döndürür. Seçince #CompanyId=item.IdFirma. Bu yüzden isim örtüşmesiyle
   //   eşleştiriyoruz; belirsizse (skor beraberliği) null → yanlış firmaya girmeyi önler.
-  private async turmobResolveCompanyId(BASE: string, cookie: string, token: string, matchName: string): Promise<string | null> {
+  //   VKN/TCKN ile de eşleştirilir (2026-09-26): yanıtta VKN benzeri alan varsa ya da firma metninde VKN
+  //   geçiyorsa KESİN eşleşme sayılır (şahıs mükellefte firma adı boş olabilir). firmaSayisi = listede görülen
+  //   firma sayısı → eşleşme yoksa çağıran "parola" yerine "firma bulunamadı" diyebilsin.
+  private async turmobResolveCompanyId(BASE: string, cookie: string, token: string, matchName: string, matchVkn?: string): Promise<{ id: string | null; firmaSayisi: number }> {
     const target = this.turmobNameTokens(matchName);
+    const vkn = String(matchVkn || '').replace(/\D/g, '');
+    let firmaSayisi = 0;
+    const readVkn = (o: any) => String(o?.VknTckn ?? o?.vknTckn ?? o?.Vkn ?? o?.vkn ?? o?.Tckn ?? o?.tckn ?? o?.VergiNo ?? o?.VergiKimlikNo ?? o?.TaxNumber ?? '').replace(/\D/g, '');
     const headers = {
       'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
       Cookie: cookie,
@@ -10386,8 +10599,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     };
     const readId = (o: any) => String(o?.IdFirma ?? o?.idFirma ?? o?.Id ?? o?.id ?? o?.CompanyId ?? o?.companyId ?? '').trim();
     const readName = (o: any) => String(o?.FirmaAdi ?? o?.firmaAdi ?? o?.text ?? o?.Text ?? o?.label ?? o?.Name ?? o?.ad ?? '').trim();
-    // Önce q='' (hepsi); sonra ismin ilk anlamlı kelimesiyle daralt (yedek).
-    const queries = Array.from(new Set(['', ...(target[0] ? [target[0]] : [])]));
+    // Önce q='' (hepsi); sonra ismin ilk anlamlı kelimesiyle ve VKN ile daralt (yedek).
+    const queries = Array.from(new Set(['', ...(target[0] ? [target[0]] : []), ...(vkn ? [vkn] : [])]));
     for (const q of queries) {
       try {
         const res = await this.turmobFetch(BASE + '/Account/GetCompanyList', {
@@ -10403,8 +10616,17 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           : Array.isArray(data?.Data) ? data.Data
           : Array.isArray(data?.options) ? data.options
           : [];
-        this.logger.log(`[TURMOB-COMPANY] GetCompanyList q="${q}" -> ${list.length} firma; hedef=[${target.join(',')}]`);
+        this.logger.log(`[TURMOB-COMPANY] GetCompanyList q="${q}" -> ${list.length} firma; hedef=[${target.join(',')}] vkn=${vkn || '-'}`);
         if (!list.length) continue;
+        if (q === '') firmaSayisi = Math.max(firmaSayisi, list.length);
+        // VKN/TCKN KESİN eşleşmesi (alan varsa ya da firma metninde VKN geçiyorsa) — tekil ise seç.
+        if (vkn.length >= 10) {
+          const vknHit = list.filter((o) => readId(o) && (readVkn(o) === vkn || String(readName(o)).replace(/\D/g, ' ').split(/\s+/).includes(vkn)));
+          if (vknHit.length === 1) {
+            this.logger.log(`[TURMOB-COMPANY] VKN eşleşmesi IdFirma=${readId(vknHit[0])}`);
+            return { id: readId(vknHit[0]), firmaSayisi };
+          }
+        }
         // İsim örtüşme puanı (ortak anlamlı kelime sayısı). En yüksek + tekil ise seç.
         let best: { id: string; score: number; name: string } | null = null;
         let tie = false;
@@ -10416,11 +10638,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           else if (score === best.score) tie = true;
         }
         if (best) this.logger.log(`[TURMOB-COMPANY] en iyi aday IdFirma=${best.id} "${best.name.slice(0, 45)}" skor=${best.score} beraberlik=${tie}`);
-        if (best && best.score >= 1 && !tie) return best.id;
-        if (list.length === 1) { const id = readId(list[0]); if (id) return id; }
+        if (best && best.score >= 1 && !tie) return { id: best.id, firmaSayisi };
+        if (list.length === 1) { const id = readId(list[0]); if (id) return { id, firmaSayisi }; }
       } catch (e: any) { this.logger.warn(`[TURMOB-COMPANY] GetCompanyList q="${q}" hata: ${e?.message || e}`); }
     }
-    return null;
+    return { id: null, firmaSayisi };
   }
 
   private turmobDateProfiles(period: { startDate: string; endDate: string }, channel?: string) {
@@ -10605,8 +10827,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (!raw) return null;
     const msDate = raw.match(/\/Date\((\d+)(?:[+-]\d+)?\)\//i);
     if (msDate) {
-      const d = new Date(Number(msDate[1]));
-      return Number.isNaN(d.getTime()) ? null : d;
+      // /Date(ms)/ mutlak an'dır; fatura tarihi ise TÜRKİYE günüdür. 01.07 00:00 TR = 30.06 21:00Z olarak
+      //   yazılırsa belge bir önceki güne/aya kayıyordu. TR (sabit UTC+3) takvim gününe indirip, diğer
+      //   biçimlerle (gg.aa.yyyy / yyyy-aa-gg) aynı şekilde o günün UTC gece yarısı olarak döndür.
+      const d = new Date(Number(msDate[1]) + 3 * 60 * 60 * 1000);
+      if (Number.isNaN(d.getTime())) return null;
+      return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
     }
     const dot = raw.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})/);
     if (dot) {
@@ -10691,11 +10917,20 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   yazan HERHANGİ bir alan satırı iptal işaretler. (Aktarımdaki 2. emniyet — rawJson
     //   approvalStatus/iptalItiraz süzgeci — aynen durur.)
     for (const key of statusKeys) {
-      const v = String(this.turmobField(row, [key]) || '').toLowerCase();
+      // 'İ'.toLowerCase() = 'i̇' (i + birleşik nokta) → "İptal Edildi" /iptal/ ile HİÇ eşleşmiyordu. İ/ı önce 'i' yapılır.
+      const v = String(this.turmobField(row, [key]) || '').replace(/İ/g, 'i').replace(/ı/g, 'i').toLowerCase();
       if (!v) continue;
       if (/\byok\b|false|hayir|hayır/.test(v)) continue; // "İptal İtiraz Durumu: Yok" → temiz
       if (/iptal talebi redded|itiraz redded/.test(v)) continue; // iptal/itiraz TALEBİ reddedilmiş = fatura geçerli
-      if (/iptal|itiraz|reddedil|red edildi|cancel/.test(v)) return true;
+      // SONUÇLANMAMIŞ talep ("İptal Talebi Gönderildi", "İtiraz Beklemede") = fatura HENÜZ geçerli → eleme.
+      //   DAR kalıp (2026-09-26 inceleme): eskiden metinde "gönderildi/bekl/talep/süreç" geçmesi yetiyordu →
+      //   "İptal Edildi – GİB'e gönderildi" gibi KESİNLEŞMİŞ iptal de geçiyordu. Artık iptal/itiraz/red sözcüğünün
+      //   HEMEN ardından (isteğe bağlı "talebi") bekleme fiili gelmeli ve metinde kesinleşme ifadesi olmamalı.
+      const kesinlesmis = /iptal edildi|iptal olmu[sş]|reddedildi|red edildi|kabul|onaylan|kesinle|tamamlan/.test(v);
+      const bekleyenTalep = /(iptal|itiraz|red)\s*(talebi|talep|iste[gğ]i)?\s*(g[oö]nderildi|iletildi|bekl|s[uü]re[cç](te|inde)|incelen)/.test(v);
+      if (bekleyenTalep && !kesinlesmis) continue;
+      // "Alıcı Reddetti" de red (aktarım kapısı belgeDurumuEngelli ile aynı: reddett*).
+      if (/iptal|itiraz|reddedil|reddett|red edildi|cancel/.test(v)) return true;
     }
     // BOOLEAN bayraklar (Giden e-Arşiv satırında canlı görüldü: IptalEdildi/ItirazEdildi=true/false) —
     //   anahtar adı iptali söylüyor, değer yalnız true/false; üstteki kelime-bazlı kontrol yakalayamaz.
@@ -10806,11 +11041,17 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       period: { donem: string; startDate: string; endDate: string };
       limit: number;
       channel?: string;
+      /** İç kullanım (tarih-bölme): üst çağrının AÇIK oturumu. Verilirse yeniden login YAPILMAZ —
+       *  TÜRMOB tek-oturum; her parça için yeni login hem öncekini düşürüyor hem 60+ ek giriş demekti. */
+      __cookie?: string;
+      __splitDepth?: number;
     },
     attempt = 0,
   ): Promise<any> {
     if (!cfg.username || !cfg.password) throw new Error('TURMOB icin TCKN (kullanici adi) ve parola gerekli');
-    const cookie = await this.turmobLogin(cfg.username, cfg.password, cfg.senderVkn || undefined, cfg.taxpayerId);
+    let cookie = opts.__cookie || await this.turmobLogin(cfg.username, cfg.password, cfg.senderVkn || undefined, cfg.taxpayerId);
+    // Kullanıcıya dönecek UYARILAR (sayfa tavanı / kesik liste) — sonuçta `warnings` + `warning` alanı.
+    const warnings: string[] = [];
     const BASE = this.TURMOB_BASE;
     const channel = String(opts.channel || (opts.direction === 'SATIS' ? 'OUT_EFATURA' : 'IN_EFATURA')).toUpperCase();
     const { refererPath, listUrls } = this.turmobListPaths(channel);
@@ -10869,7 +11110,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   BİTİŞİNİ SORGU GÜNÜNE (bugüne) kadar çek → fatura ne zaman düşerse düşsün yakalanır. Eski aylarda
     //   pencere şişmesin diye üst sınır +45 gün (fatura hemen daima ~6 hafta içinde düşer). Sonuç yine
     //   turmobRowInPeriod ile FATURA TARİHİNE göre TAM aya süzülür (7377/7490) → gerçek sonraki-ay elenir.
+    // YALNIZ ALIŞ (2026-09-26): genişletme yalnız GELİŞ tarihiyle süzen alış ucunda gerekir. SATIŞ (e-Fatura
+    //   ve e-Arşiv) FATURA tarihiyle süzülür; orada genişletmek, 25 satırlık satış yanıtını sonraki ayın
+    //   faturalarıyla doldurup istenen ayı EKSİK bırakıyordu (bugün Ağustos sorgusu → ilk 25'i Eylül).
+    //   Tarih-bölme parçalarında da (splitDepth>0) genişletme yapılmaz.
+    const genisletilebilir = !channel.startsWith('OUT') && !Number(opts.__splitDepth || 0);
     const genisPeriod = (() => {
+      if (!genisletilebilir) return opts.period;
       const end = new Date(`${String(opts.period.endDate).slice(0, 10)}T00:00:00.000Z`);
       if (Number.isNaN(end.getTime())) return opts.period;
       const bugunMs = Date.now();
@@ -10917,6 +11164,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   yok → hiçbir kombo satır bulamıyor, tamamlandi tetiklenmiyordu). 22sn genel tavan.
     const komboDeadline = Date.now() + 22000;
     const seedKombo = kombinasyonlar[0];
+    // TEŞHİS SAYAÇLARI: hiç JSON yanıt gelmediyse neden? Giriş sayfası döndüyse = OTURUM DÜŞTÜ; istekler
+    //   zaman aşımına/bağlantı hatasına düştüyse = TÜRMOB YANIT VERMEDİ. Eskiden ikisi de "BAŞARILI + boş liste,
+    //   uç değişmiş olabilir" görünüyordu → kullanıcı yanlış yöne bakıyordu. Artık açık hata dönülür.
+    let jsonYanitVar = false;
+    let girisSayfasiDondu = false;
+    let zamanAsimi = 0;
     for (const kombo of kombinasyonlar) {
       if (tamamlandi) break;
       if (Date.now() > komboDeadline) break; // süre tavanı — sonsuz matris taramasını kes, eldekini döndür
@@ -10946,11 +11199,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           //   bekliyordu. Takılan kombinasyon atlanır, sıradaki denenir.
           signal: (AbortSignal as any).timeout ? (AbortSignal as any).timeout(8000) : undefined,
         });
-      } catch { continue; }
+      } catch { zamanAsimi++; continue; }
       ct = res.headers.get('content-type') || '';
       raw = await res.text().catch(() => '');
       data = null;
-      try { data = JSON.parse(raw); } catch { /* HTML = probably login redirect */ }
+      try { data = JSON.parse(raw); jsonYanitVar = true; } catch {
+        // HTML: giriş sayfasına geri atıldıysak (302 → /account/login ya da parola formu) oturum düşmüştür.
+        const loc = String(res.headers.get('location') || '');
+        if (/account\/login/i.test(loc) || /name=["']?password["']?/i.test(raw) || /account\/login/i.test(raw.slice(0, 4000))) girisSayfasiDondu = true;
+      }
       const candidateRows = this.turmobRowsFromListResponse(data);
       const candidateLiveRows = candidateRows.filter((row) => !this.turmobIsCancelled(row) && this.turmobRowInPeriod(row, opts.period));
       if (
@@ -10984,6 +11241,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       }
     }
     this.logger.log(`TURMOB list ${channel}: url=${usedListUrl} method=${usedMethod} profile=${usedProfile} ct=${selectedCt.slice(0, 40)} len=${selectedRaw.length} rows=${rows.length} live=${liveRows.length}`);
+    if (!jsonYanitVar && !rows.length) {
+      if (girisSayfasiDondu) {
+        throw new Error(`TÜRMOB oturumu düştü (${channel} liste isteği giriş sayfasına geri döndü) — aynı TÜRMOB kullanıcısıyla başka yerden giriş yapılmış olabilir; birkaç dakika sonra tekrar deneyin.`);
+      }
+      if (zamanAsimi > 0) {
+        throw new Error(`TÜRMOB yanıt vermedi (${channel} liste isteği ${zamanAsimi} kez zaman aşımına/bağlantı hatasına düştü) — portal yavaş ya da erişilemiyor; biraz sonra tekrar deneyin.`);
+      }
+    }
 
     // SAYFALAMA: TÜRMOB tek sayfada en çok `length` (≤1000) satır döndürür. Toplam bundan büyükse
     //   (1000+ faturalı mükellef) ÜST faturalar sessizce inmiyordu. Kazanan kombinasyonla start'ı artırıp
@@ -11025,6 +11290,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const pageSize = Math.max(1, rows.length);
       let sayfa = 1;
       const MAX_SAYFA = 40;
+      let sayfaKesildi = ''; // sonraki sayfa zaman aşımı/bozuk yanıtla kesildiyse nedeni (kullanıcıya uyarı)
       while (sayfa < MAX_SAYFA) {
         const pageParams: any = { ...baseListParams, ...(winProfile?.params || {}), start: String(start), length: String(pageSize) };
         if (listPageToken) pageParams.__RequestVerificationToken = listPageToken;
@@ -11047,10 +11313,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             body: usedMethod === 'POST' ? pageBody : undefined,
             signal: (AbortSignal as any).timeout ? (AbortSignal as any).timeout(8000) : undefined,
           });
-        } catch { break; }
+        } catch { sayfaKesildi = `${sayfa + 1}. sayfa zaman aşımına uğradı`; break; }
         const praw = await pres.text().catch(() => '');
         let pdata: any = null;
-        try { pdata = JSON.parse(praw); } catch { break; }
+        try { pdata = JSON.parse(praw); } catch {
+          sayfaKesildi = /name=["']?password["']?|account\/login/i.test(praw) ? `${sayfa + 1}. sayfada TÜRMOB oturumu düştü` : `${sayfa + 1}. sayfa okunamadı`;
+          break;
+        }
         const prows = this.turmobRowsFromListResponse(pdata);
         if (!prows.length) break;
         let eklenen = 0;
@@ -11066,7 +11335,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         if (eklenen === 0) break; // yeni satır gelmedi → dur (sonsuz döngü koruması)
       }
       liveRows = rows.filter((r) => !this.turmobIsCancelled(r) && this.turmobRowInPeriod(r, opts.period));
-      if (sayfa >= MAX_SAYFA) this.logger.warn(`TURMOB ${channel}: sayfalama ${MAX_SAYFA} sayfa sınırına ulaştı (${rows.length}/${bildirilenToplam}) — bazı üst faturalar hâlâ inmemiş olabilir.`);
+      if (sayfa >= MAX_SAYFA) {
+        this.logger.warn(`TURMOB ${channel}: sayfalama ${MAX_SAYFA} sayfa sınırına ulaştı (${rows.length}/${bildirilenToplam}) — bazı üst faturalar hâlâ inmemiş olabilir.`);
+        warnings.push(`TÜRMOB ${channel}: liste ${MAX_SAYFA} sayfa sınırına ulaştı (${rows.length} satır alındı) — dönemde daha fazla fatura olabilir; tarih aralığını daraltıp tekrar sorgulayın.`);
+      }
+      if (sayfaKesildi) {
+        this.logger.warn(`TURMOB ${channel}: sayfalama kesildi — ${sayfaKesildi} (${rows.length} satır alındı)`);
+        warnings.push(`TÜRMOB ${channel}: liste eksik olabilir — ${sayfaKesildi} (${rows.length} satır alındı); tekrar sorgulayın.`);
+      }
       this.logger.log(`TURMOB ${channel}: sayfalama ${rows.length}/${bildirilenToplam} (${sayfa} sayfa)`);
     }
     // EKSIK YANIT (throttle): TURMOB toplam-kayit > aldigimiz satir → yanit kesik gelmis. Kisa bekleyip
@@ -11077,14 +11353,26 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       ?? selectedData?.RecordsFiltered ?? selectedData?.RecordsTotal
       ?? selectedData?.iTotalDisplayRecords ?? selectedData?.iTotalRecords ?? 0,
     );
-    if (attempt < 2 && Number.isFinite(reportedTotal) && reportedTotal > rows.length && reportedTotal < 5000) {
+    // Tarih-bölme PARÇALARINDA (splitDepth>0) yeniden deneme YOK: yeniden deneme yeni login demek, üst çağrının
+    //   oturumunu düşürür (TÜRMOB tek-oturum).
+    if (attempt < 2 && !Number(opts.__splitDepth || 0) && Number.isFinite(reportedTotal) && reportedTotal > rows.length && reportedTotal < 5000) {
       this.logger.warn(`TURMOB liste EKSIK geldi (${rows.length}/${reportedTotal}) → tekrar deneniyor (#${attempt + 1}): ${channel}`);
       await new Promise((r) => setTimeout(r, 1500));
       try {
-        const retry = await this.fetchTurmobPortalRows(cfg, opts, attempt + 1);
+        const retry = await this.fetchTurmobPortalRows(cfg, { ...opts, __cookie: undefined }, attempt + 1);
         if ((retry?.liveRows?.length || 0) > liveRows.length) return retry;
+        // Yeniden deneme YENİ oturum açtı → eldeki çerez artık geçersiz; sonraki istekler (tarih-bölme,
+        //   belge indirme) yeni oturumla sürsün.
+        if (retry?.cookie) cookie = retry.cookie;
       } catch (e: any) {
         this.logger.warn(`TURMOB liste retry hatasi: ${e?.message || e}`);
+        // Yeniden deneme YENİ OTURUM açıp sonra düşmüş olabilir → eldeki çerez artık geçersiz (TÜRMOB tek-oturum).
+        //   Tarih-bölme ve belge indirmeleri toptan düşmesin diye taze oturum açılır (2026-09-26 inceleme).
+        try {
+          cookie = await this.turmobLogin(cfg.username, cfg.password, cfg.senderVkn || undefined, cfg.taxpayerId);
+        } catch (e2: any) {
+          this.logger.warn(`TURMOB retry sonrası yeniden giriş başarısız: ${e2?.message || e2}`);
+        }
       }
     }
     // TARİH-BÖLME (satış ucu tek-sayfa limiti): TÜRMOB satış ucu (OutgoingInvoice) length=500'ü YOK
@@ -11105,8 +11393,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         const nextYmd = new Date(midMs + 86400000).toISOString().slice(0, 10);
         const p1 = { ...opts.period, endDate: midYmd };
         const p2 = { ...opts.period, startDate: nextYmd };
-        const r1 = await this.fetchTurmobPortalRows(cfg, { ...opts, period: p1, __splitDepth: splitDepth + 1 } as any).catch(() => null);
-        const r2 = await this.fetchTurmobPortalRows(cfg, { ...opts, period: p2, __splitDepth: splitDepth + 1 } as any).catch(() => null);
+        // Parçalar AYNI oturumla (__cookie) sorgulanır → yeniden login yok, genişletme yok (splitDepth>0).
+        const r1 = await this.fetchTurmobPortalRows(cfg, { ...opts, period: p1, __splitDepth: splitDepth + 1, __cookie: cookie }).catch(() => null);
+        const r2 = await this.fetchTurmobPortalRows(cfg, { ...opts, period: p2, __splitDepth: splitDepth + 1, __cookie: cookie }).catch(() => null);
+        for (const w of [...(r1?.warnings || []), ...(r2?.warnings || [])]) if (!warnings.includes(w)) warnings.push(w);
+        if (!r1 || !r2) warnings.push(`TÜRMOB ${channel}: dönem parçalı sorgulanırken bir parça alınamadı (${!r1 ? `${p1.startDate}..${p1.endDate}` : `${p2.startDate}..${p2.endDate}`}) — liste eksik olabilir; tekrar sorgulayın.`);
         const keyOf = (r: any) => this.providerKey(
           this.turmobField(r, ['Ettn', 'ETTN', 'Uuid', 'UUID', 'Guid', 'GUID'])
           || this.turmobField(r, ['IdFaturaGelen', 'IdFaturaGiden', 'IdFaturaArsiv', 'IdArsiv', 'InvoiceId', 'Id'])
@@ -11139,6 +11430,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         neden: this.turmobIsCancelled(r) ? 'iptal/itiraz edilmiş' : 'dönem dışı (tarih aralığında değil)',
       }))
       .filter((x) => x.faturaNo);
+    // KESİK LİSTE: sunucu daha fazla toplam bildirdi ama (yeniden deneme + parçalamaya rağmen) daha az aldık.
+    if (!Number(opts.__splitDepth || 0) && Number.isFinite(reportedTotal) && reportedTotal > rows.length && reportedTotal < 5000) {
+      warnings.push(`TÜRMOB ${channel}: portal ${reportedTotal} kayıt bildirdi, ${rows.length} satır alınabildi — liste kesik gelmiş olabilir; tekrar sorgulayın.`);
+    }
     return {
       cookie,
       channel,
@@ -11146,6 +11441,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       rows,
       liveRows,
       excludedRows,
+      warnings,
+      warning: warnings.length ? warnings.join(' ') : null,
       reportedTotal,
       usedListUrl,
       usedMethod,
@@ -11337,122 +11634,74 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       direction: 'ALIS' | 'SATIS';
       period: { donem: string; startDate: string; endDate: string };
       limit: number;
+      /** KANAL: 'IN_EFATURA' (alış) · 'OUT_EFATURA' (satış e-Fatura) · 'OUT_EARSIV' (satış e-Arşiv).
+       *  Verilmezse: alışta IN_EFATURA; satışta (hedef satır yoksa) OUT_EFATURA + OUT_EARSIV İKİSİ de çekilir. */
       channel?: string;
       targetRows?: any[];
     },
   ): Promise<ProviderInvoicePayload[]> {
     if (!cfg.username || !cfg.password) throw new Error('TÜRMOB için TCKN (kullanıcı adı) ve parola gerekli');
-    const cookie = await this.turmobLogin(cfg.username, cfg.password, cfg.senderVkn || undefined, cfg.taxpayerId);
-    const BASE = this.TURMOB_BASE;
-    // Gelen=alış (/IncomingInvoice), Giden=satış (/OutgoingInvoice). e-Arşiv ucu ilk testte eklenecek.
-    const channel = String(opts.channel || (opts.direction === 'SATIS' ? 'OUT_EFATURA' : 'IN_EFATURA')).toUpperCase();
-    const { refererPath, listUrls } = this.turmobListPaths(channel);
-    // Liste çekme boyutu: hedef satır aramasında küçük limit gelirse (ör. 8 PENDING), TÜRMOB yalnızca
-    //   ilk N satırı döndürür ve hedefler bulunamaz. Her zaman en az 500 satır iste; gerçek dönüş
-    //   limiti (opts.limit) aşağıda slice() ile uygulanır.
-    const listFetchLimit = String(Math.min(Math.max(Number(opts.limit) || 500, 500), 1000));
-    const baseListParams = {
-      draw: '1',
-      start: '0',
-      length: listFetchLimit,
-      'search[value]': '',
-      'search[regex]': 'false',
-      'order[0][column]': '0',
-      'order[0][dir]': 'desc',
-    };
-    let listPageToken = '';
-    let listPageHtml = '';
-    try {
-      const listPage = await this.turmobFetch(BASE +refererPath, {
-        headers: { Cookie: cookie, 'User-Agent': 'MorenPortal/1.0', Accept: 'text/html,application/xhtml+xml,*/*' },
-        redirect: 'manual',
-      });
-      listPageHtml = await listPage.text();
-      listPageToken = listPageHtml.match(/name="__RequestVerificationToken"[^>]*value="([^"]+)"/)?.[1]
-        || listPageHtml.match(/__RequestVerificationToken[^>]*value="([^"]+)"/)?.[1]
-        || '';
-    } catch {
-      // Liste ekrani isinma istegi opsiyonel; AJAX denemeleri devam eder.
-    }
-    let ct = '';
-    let raw = '';
-    let data: any = null;
-    let rows: any[] = [];
-    let selectedLiveRows: any[] = [];
-    let usedListUrl = listUrls[0];
-    let usedProfile = 'none';
-    let usedMethod = 'POST';
-    let directPayloads: ProviderInvoicePayload[] = [];
-    const profiles = this.turmobDateProfiles(opts.period, channel);
-    let done = false; // erken çıkış: canlı satırlar sunucunun bildirdiği toplama ulaşınca kalan kombinasyonları deneme
-    for (const listUrl of listUrls) {
-      if (done) break;
-      for (const profile of profiles) {
-        if (done) break;
-        const listBody = new URLSearchParams(
-          listPageToken
-            ? { ...baseListParams, ...profile.params, __RequestVerificationToken: listPageToken }
-            : { ...baseListParams, ...profile.params },
-        ).toString();
-        for (const method of ['POST', 'GET'] as const) {
-          const requestUrl = method === 'GET' ? `${BASE}${listUrl}?${listBody}` : BASE + listUrl;
-          let res: any;
-          try {
-            res = await this.turmobFetch(requestUrl, {
-              method,
-              headers: {
-                ...(method === 'POST' ? { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' } : {}),
-                Accept: 'application/json, text/javascript, */*; q=0.01',
-                Origin: BASE,
-                Referer: BASE + refererPath,
-                'X-Requested-With': 'XMLHttpRequest',
-                ...(listPageToken ? { RequestVerificationToken: listPageToken, __RequestVerificationToken: listPageToken } : {}),
-                Cookie: cookie,
-                'User-Agent': 'MorenPortal/1.0',
-              },
-              body: method === 'POST' ? listBody : undefined,
-              // TEK İSTEK TAVANI (8sn): portal yavaşladığında kombinasyon matrisi sınırsız beklemesin
-              //   (fetchTurmobPortalRows'daki ile aynı korumanın ikiz döngüye taşınması).
-              signal: (AbortSignal as any).timeout ? (AbortSignal as any).timeout(8000) : undefined,
-            });
-          } catch { continue; }
-          const candidateCt = res.headers.get('content-type') || '';
-          const candidateRaw = await res.text().catch(() => '');
-          let candidateData: any = null;
-          try { candidateData = JSON.parse(candidateRaw); } catch { /* HTML = muhtemelen login redirect */ }
-          const candidateRows = this.turmobRowsFromListResponse(candidateData);
-          const candidateLiveRows = candidateRows.filter((row) => !this.turmobIsCancelled(row) && this.turmobRowInPeriod(row, opts.period));
-          const candidateDirectPayloads = await this.extractPayloadsFromProviderResponse(candidateRaw, ['xml', 'ubl', 'content', 'data', 'base64', 'DocumentXml', 'InvoiceXml']);
-          if (
-            candidateDirectPayloads.length > directPayloads.length
-            || candidateLiveRows.length > selectedLiveRows.length
-            || (!selectedLiveRows.length && candidateRows.length > rows.length)
-          ) {
-            raw = candidateRaw;
-            data = candidateData;
-            ct = candidateCt;
-            rows = candidateRows;
-            selectedLiveRows = candidateLiveRows;
-            usedListUrl = listUrl;
-            usedProfile = profile.name;
-            usedMethod = method;
-            directPayloads = candidateDirectPayloads;
-          }
-          // Satır geldi ve sunucunun bildirdiği toplam kadar → yeter, kalan kombinasyonları deneme.
-          if (candidateLiveRows.length > 0) {
-            const bildirilen = Number(candidateData?.recordsFiltered ?? candidateData?.RecordsFiltered ?? candidateData?.recordsTotal ?? candidateData?.RecordsTotal ?? NaN);
-            if (!Number.isFinite(bildirilen) || candidateRows.length >= bildirilen) { done = true; break; }
-          }
+    const istenenKanal = String(opts.channel || '').toUpperCase();
+    const hedefliCagri = Array.isArray(opts.targetRows) && opts.targetRows.length > 0;
+    // KANALSIZ SATIŞ (gece çekimi): eskiden yalnız OUT_EFATURA çekiliyordu → satış e-Arşiv hiç gelmiyordu.
+    //   İki satış kanalı SIRAYLA çekilir (aynı kilit içinde; her kanal kendi oturumunu açar, sıralı olduğu
+    //   için tek-oturum çakışması olmaz). Bir kanal hata verirse diğerinin sonucu korunur.
+    if (!istenenKanal && !hedefliCagri && opts.direction === 'SATIS') {
+      const toplanan: ProviderInvoicePayload[] = [];
+      const hatalar: string[] = [];
+      for (const kanal of ['OUT_EFATURA', 'OUT_EARSIV']) {
+        try {
+          toplanan.push(...await this.fetchTurmobPortalInvoices(cfg, { ...opts, channel: kanal }));
+        } catch (e: any) {
+          hatalar.push(`${kanal}: ${e?.message || e}`);
+          this.logger.warn(`TURMOB ${kanal} cekim hatasi (diger kanal suruyor): ${e?.message || e}`);
         }
       }
+      if (!toplanan.length && hatalar.length) throw new Error(hatalar.join(' | '));
+      const tekil = new Map<string, ProviderInvoicePayload>();
+      for (const p of toplanan) {
+        const key = p.externalId || createHash('sha1').update(p.xml).digest('hex');
+        if (!tekil.has(key)) tekil.set(key, p);
+      }
+      return [...tekil.values()].slice(0, opts.limit);
     }
+    const BASE = this.TURMOB_BASE;
+    const channel = String(istenenKanal || (opts.direction === 'SATIS' ? 'OUT_EFATURA' : 'IN_EFATURA')).toUpperCase();
+    const { refererPath } = this.turmobListPaths(channel);
+    // LİSTE = elle sorgunun SAĞLAM yolu (fetchTurmobPortalRows): e-Arşiv bayrakları (IsArchive/IsArchiveInvoice),
+    //   sayfa sayfa çekim, satışta tarih-bölme (25 satır sınırı), alışta ay-sonu genişletmesi, oturum/zaman aşımı
+    //   için açık hata. Eskiden bu işlevin kendi ikiz döngüsü vardı; satışta en fazla 25 satır, e-Arşiv'de
+    //   bayraksız uç (yalnız e-Fatura döndürür) kullanıyordu → gece çekimi ve yedek indirme eksik kalıyordu.
+    //   Liste boyutu: hedef aramasında küçük limit gelse de en az 500 iste (dönüş opts.limit ile kesilir).
+    const listed = await this.fetchTurmobPortalRows(cfg, {
+      direction: opts.direction,
+      period: opts.period,
+      limit: Math.min(Math.max(Number(opts.limit) || 500, 500), 1000),
+      channel,
+    });
+    for (const w of (listed.warnings || [])) this.logger.warn(`TURMOB ${channel} uyari: ${w}`);
+    // ÖNEMLİ: liste işlevi (yeniden deneme vb.) yeni oturum açmış olabilir → EN SON geçerli çerez budur.
+    const cookie: string = listed.cookie;
+    const listPageHtml: string = String(listed.listPageHtml || '');
+    const rows: any[] = Array.isArray(listed.rows) ? listed.rows : [];
+    const raw: string = String(listed.raw || '');
+    const data: any = listed.data;
+    const ct: string = String(listed.ct || '');
+    const usedListUrl: string = String(listed.usedListUrl || '');
+    const usedMethod: string = String(listed.usedMethod || '');
+    const usedProfile: string = String(listed.usedProfile || '');
+    // Liste yanıtının içinde doğrudan XML/UBL gömülü gelirse (bazı sürümler) onu da al.
+    const directPayloads: ProviderInvoicePayload[] = raw
+      ? await this.extractPayloadsFromProviderResponse(raw, ['xml', 'ubl', 'content', 'data', 'base64', 'DocumentXml', 'InvoiceXml'])
+      : [];
     const first = raw.trimStart().slice(0, 1); // '<' = HTML/login redirect (cookie yetersiz), '{'/'[' = JSON (parametre/dönem)
     // TEŞHİS: first='<' → oturum liste için yetersiz; '{' ama rows=0 → parametre/dönem filtresi gerekli.
-    this.logger.log(`TURMOB portal ${channel}: url=${usedListUrl} method=${usedMethod} profile=${usedProfile} ct=${ct.slice(0, 40)} len=${raw.length} first=${first} rows=${rows.length} topKeys=${JSON.stringify(Object.keys(data || {})).slice(0, 150)} rowKeys=${JSON.stringify(Object.keys(rows[0] || {})).slice(0, 250)}`);
-    // İptal filtresi ALAN-BAZLI olmalı (sınıftaki turmobIsCancelled). Eskiden yerel isCancelled tüm
-    //   durum alanlarını tek metne birleştirip bakıyordu → "önce onaylandı SONRA iptal edilen" fatura
-    //   'onaylandı' kelimesiyle temiz sanılıyordu. turmobIsCancelled her alanı kendi içinde değerlendirir.
-    const liveAll = rows.filter((r) => !this.turmobIsCancelled(r) && this.turmobRowInPeriod(r, opts.period));
+    this.logger.log(`TURMOB portal ${channel}: url=${usedListUrl} method=${usedMethod} profile=${usedProfile} ct=${ct.slice(0, 40)} len=${raw.length} first=${first} rows=${rows.length} live=${(listed.liveRows || []).length} topKeys=${JSON.stringify(Object.keys(data || {})).slice(0, 150)} rowKeys=${JSON.stringify(Object.keys(rows[0] || {})).slice(0, 250)}`);
+    // Kanalsız/hedefsiz çekimde (gece) boş liste = o dönem bu kanalda fatura YOK → hata değil, boş dön.
+    //   (Oturum düşmesi / zaman aşımı liste işlevinde AÇIK hata olarak zaten fırlatılır.)
+    if (!rows.length && !directPayloads.length && !hedefliCagri) return [];
+    // İptal filtresi ALAN-BAZLI (turmobIsCancelled) + dönem süzgeci liste işlevinde uygulandı (liveRows).
+    const liveAll: any[] = Array.isArray(listed.liveRows) ? listed.liveRows : [];
     const targetRows = Array.isArray(opts.targetRows) ? opts.targetRows : [];
     const targetKeys = new Set<string>();
     const addTargetKey = (value: any) => {
@@ -11472,6 +11721,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       addTargetKey(summaryRaw?.IdFaturaGelen);
       addTargetKey(summaryRaw?.IdFaturaGiden);
       addTargetKey(summaryRaw?.IdFaturaArsiv);
+      addTargetKey(summaryRaw?.IdArsiv);
       const amountKey = this.providerAmountKey(target?.toplam ?? summaryRaw?.OdenecekTutar ?? summaryRaw?.OdenecekTutarFormatted);
       const faturaKey = this.providerKey(target?.faturaNo || summaryRaw?.FaturaNo || summaryRaw?.IadeFaturaNo);
       if (faturaKey && amountKey) addTargetKey(`${faturaKey}:${amountKey}`);
@@ -11490,6 +11740,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         summary.raw?.IdFaturaGelen,
         summary.raw?.IdFaturaGiden,
         summary.raw?.IdFaturaArsiv,
+        summary.raw?.IdArsiv,
       ];
       for (const candidate of candidates) {
         const key = this.providerKey(candidate);
@@ -11518,22 +11769,30 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   Her satır için XML(veri)+görsel DİREKT + EŞZAMANLI iner; eşleştirme satır-bazlı (off-by-one yok).
     //   GetInvoiceXml → UBL XML · Detail&IsPrint → orijinal görsel HTML (TÜRMOB portalında doğrulandı 2026-06-29).
     //   IdFatura olan tüm satırlar bu yoldan iner → 520-URL brute-force çoğu zaman HİÇ çalışmaz.
+    //   e-ARŞİV: kimlik IdArsiv, parametre ArchiveId (elle sorgu/arka plan indirmeyle aynı; TÜRMOB'da doğrulandı).
+    //   İSTEKLER turmobFetch ile (Türkiye çıkış sunucusu) — düz fetch canlıda (yurtdışı IP) engelleniyordu.
     const directInOrOut = channel === 'IN_EFATURA' ? 'True' : 'False';
     const directHeaders = { Cookie: cookie, 'User-Agent': 'MorenPortal/1.0', Accept: 'application/xml,text/xml,text/html,*/*', Origin: BASE, Referer: BASE + refererPath };
     const directRows = live
-      .map((row) => ({ row, id: String(this.turmobField(row, ['IdFatura', 'idFatura', 'IdFaturaEk']) || '').replace(/\D/g, '') }))
+      .map((row) => {
+        const arsivId = channel === 'OUT_EARSIV'
+          ? String(this.turmobField(row, ['IdArsiv', 'idArsiv', 'IdArsivEk']) || '').replace(/\D/g, '')
+          : '';
+        if (arsivId) return { row, id: arsivId, idParam: 'ArchiveId' };
+        return { row, id: String(this.turmobField(row, ['IdFatura', 'idFatura', 'IdFaturaEk']) || '').replace(/\D/g, ''), idParam: 'InvoiceId' };
+      })
       .filter((x) => x.id);
     let directOk = 0;
     if (directRows.length) {
       const CONC = 6;
       for (let i = 0; i < directRows.length; i += CONC) {
-        await Promise.all(directRows.slice(i, i + CONC).map(async ({ row, id }) => {
+        await Promise.all(directRows.slice(i, i + CONC).map(async ({ row, id, idParam }) => {
           const ctl = new AbortController();
-          const tm = setTimeout(() => { try { ctl.abort(); } catch { /* */ } }, 9000);
+          const tm = setTimeout(() => { try { ctl.abort(); } catch { /* */ } }, 15000);
           try {
             const [xmlRes, visRes] = await Promise.all([
-              fetch(`${BASE}/Invoice/GetInvoiceXml?InOrOut=${directInOrOut}&InvoiceId=${id}`, { headers: directHeaders, signal: ctl.signal }),
-              fetch(`${BASE}/Invoice/Detail?InOrOut=${directInOrOut}&InvoiceId=${id}&IsPrint=True`, { headers: directHeaders, signal: ctl.signal }).catch(() => null),
+              this.turmobFetch(`${BASE}/Invoice/GetInvoiceXml?InOrOut=${directInOrOut}&${idParam}=${id}`, { headers: directHeaders, signal: ctl.signal }),
+              this.turmobFetch(`${BASE}/Invoice/Detail?InOrOut=${directInOrOut}&${idParam}=${id}&IsPrint=True`, { headers: directHeaders, signal: ctl.signal }).catch(() => null),
             ]);
             const xml = await xmlRes.text();
             if (!/^\s*<\?xml|<[\w:]*Invoice\b/i.test(xml.slice(0, 400))) return; // geçerli UBL değil → atla
@@ -11954,6 +12213,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       if (uniqueCount >= targetPayloadCount) break;
     }
 
+    // Hedefsiz çekimde (gece) dönemde geçerli (iptal/dönem-dışı olmayan) satır yoksa → boş sonuç, hata değil.
+    if (!payloads.length && !hedefliCagri && !live.length) return [];
     if (!payloads.length && first === '<') {
       throw new Error('TURMOB oturumu liste ekranina gecemedi; portal login sayfasina geri dondu');
     }
@@ -11999,6 +12260,16 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
    *      liste JSON alanları) teyit edilip gerekiyorsa buradan ayarlanacak.
    */
   /**
+   * ENTEGRATÖR KISMİ SORUN UYARISI (2026-09-26 denetim): indirilemeyen belge, tarama tavanının dolması, atlanan
+   *   belge türü gibi durumlar eskiden YALNIZ günlüğe yazılıyordu → ekranda "N fatura çekildi" görünüp eksik
+   *   sessiz kalıyordu. Artık çağıranın verdiği `progress.uyarilar` dizisine de eklenir (çekim sürer, hata değil).
+   */
+  private entegratorUyarisi(progress: { uyarilar?: string[] } | undefined, mesaj: string) {
+    this.logger.warn(`[ENTEGRATOR UYARI] ${mesaj}`);
+    if (progress) (progress.uyarilar ||= []).push(mesaj);
+  }
+
+  /**
    * ECZACIKART (TEB Eczacı Kart) — altyapı KOLAYSOFT "E-Dönüşüm Portal" (React + Spring).
    *
    * 2026-09-22 canlı keşif (kimliksiz; giriş formuna SAHTE kullanıcı yazılarak ağ izi okundu + portal paketi çözüldü):
@@ -12028,7 +12299,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       channel?: string;
       onPayload?: (p: ProviderInvoicePayload) => Promise<void>;
       skipExistingExternalIds?: Set<string>;
-      progress?: { rateLimited?: boolean };
+      progress?: { rateLimited?: boolean; uyarilar?: string[] };
     },
   ): Promise<ProviderInvoicePayload[]> {
     const base = (cfg.baseUrl || PROVIDER_DEFAULT_BASE_URL.ECZACIKART).replace(/\/+$/, '');
@@ -12070,10 +12341,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   2026-09-22 canlı: month=8 sorgusunda 21.09.2026 tarihli satır geldi) → sayfa büyük tutulur.
     const sayfaBoyu = Math.min(Math.max(opts.limit, 100), 200);
     const listeUcu = gelen ? '/inbox/getInboxes' : '/outbox/getOutboxes';
-    // Portal ekranı ayı 1-12 gönderiyor; bazı kurulumlarda 12 = "yılın tamamı" anlamına geliyor. Önce gerçek ay,
-    //   satır gelmezse 12 denenir; dönem süzmesini zaten istemci tarafında tarihe bakarak yapıyoruz.
-    // Portal ekranının "yılın tamamı" değeri 12; ay parametresi düzenleme tarihini süzmediği için ONCE 12 denenir.
-    const ayAdaylari = ay === 12 ? [12] : [12, ay];
+    // AY PARAMETRESİ (2026-09-26 denetim): ÖNCE DÖNEM AYI gönderilir (portal ekranının yaptığı gibi). Eskiden önce
+    //   12 ("yılın tamamı" sanılıyordu) deneniyordu — 12 gerçekte ARALIK ayı ise yanlış ayın listesi gelip dönem
+    //   süzgecinde hepsi atılıyor, dönem ayı hiç sorgulanmıyordu. 12 artık YALNIZ dönem ayı 0 satır dönerse denenen
+    //   eski yedek. Dönem süzmesi yine istemci tarafında fatura tarihine bakılarak yapılır.
+    const ayAdaylari = ay === 12 ? [12] : [ay, 12];
     // Parametre kalıpları: portal ekranının gönderdiği tam kalıp (isArchive dahil) → sadeleştirilmiş → en yalın.
     //   Spring @RequestParam zorunlu olduğunda eksik parametre 400 veriyor; ilk tutan kalıp log'a yazılır.
     //   Ekranın ilk hâli (chunk 34 state): headerSearch=[] · notInList=false · documentIds=[] · isArchive=0 ·
@@ -12091,7 +12363,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       (sayfa: number, m: number) => `?year=${yil}&month=${m}&page=${sayfa}&size=${sayfaBoyu}&sort=documentIssueDate,desc&isArchive=0`,
     ];
     let kalipNo = 0;
-    const sayfaYolu = (sayfa: number, listeAyi: number) => `${listeUcu}${kaliplar[kalipNo](sayfa, listeAyi)}`;
+    // ARŞİV KLASÖRÜ (2026-09-26): kalıplar isArchive=0 gönderiyor → portalda "arşivlenmiş" faturalar hiç gelmiyordu.
+    //   Tarama önce isArchive=0, sonra isArchive=1 ile yapılır; tekrarlar ETTN'e göre ayıklanır.
+    const sayfaYolu = (sayfa: number, listeAyi: number, arsiv = 0) =>
+      `${listeUcu}${kaliplar[kalipNo](sayfa, listeAyi)}`.replace('isArchive=0', `isArchive=${arsiv}`);
     const satirlariAl = (j: any): any[] | null =>
       Array.isArray(j?.content) ? j.content
         : Array.isArray(j?.data?.content) ? j.data.content
@@ -12103,12 +12378,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     let ilkSayfa: any[] | null = null;
     let tarihSiraliMi = false; // çalışan kalıp düzenleme tarihine göre mi sıralıyor (dur kuralı buna bağlı)
     const denenen: string[] = [];
+    let sonHttp = 0;
     for (let k = 0; k < kaliplar.length && listeAyi === null; k++) {
       kalipNo = k;
       for (const aday of ayAdaylari) {
         const r = await fetch(`${api}${sayfaYolu(0, aday)}`, { headers: authHeaders });
         const t = await r.text();
-        if (!r.ok) { denenen.push(`kalıp${k + 1}(ay=${aday})=${r.status}: ${t.replace(/\s+/g, ' ').slice(0, 120)}`); continue; }
+        if (!r.ok) { sonHttp = r.status; denenen.push(`kalıp${k + 1}(ay=${aday})=${r.status}: ${t.replace(/\s+/g, ' ').slice(0, 120)}`); continue; }
         let j: any; try { j = JSON.parse(t); } catch { denenen.push(`kalıp${k + 1}(ay=${aday})=JSON değil`); continue; }
         const satirlar = satirlariAl(j);
         if (!satirlar) { denenen.push(`kalıp${k + 1}(ay=${aday})=liste alanı yok (${Object.keys(j || {}).slice(0, 6).join('/')})`); continue; }
@@ -12119,7 +12395,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       }
     }
     if (listeAyi === null || !ilkSayfa) {
-      throw new Error(`Eczacıkart fatura listesi alınamadı — denenen uçlar: ${denenen.join(', ')}. (Portal ızgara ucu değişmiş olabilir.)`);
+      // Tek bir liste ucu var (getInboxes/getOutboxes); kalıplar yalnız parametre biçimini değiştiriyor. Hepsi
+      //   HTTP hatası verdiyse sorun parametre değil ADRES — kullanıcıya anlaşılır söylenir, ayrıntı sonda kalır.
+      throw new Error(
+        (sonHttp ? `Eczacıkart fatura listesi adresi yanıt vermiyor (HTTP ${sonHttp})` : 'Eczacıkart fatura listesi okunamadı')
+        + ` — denenen uçlar: ${denenen.join(', ')}. (Portal ızgara ucu değişmiş olabilir.)`,
+      );
     }
 
     // ── 3) SATIRLARI SÜZ + BELGEYİ İNDİR ──
@@ -12138,62 +12419,86 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
 
     const payloads: ProviderInvoicePayload[] = [];
     let kept = 0;
-    let dur = false;
     const MAX_SAYFA = 40;
-    for (let sayfa = 0; sayfa < MAX_SAYFA && kept < opts.limit && !dur; sayfa++) {
-      let satirlar: any[];
-      if (sayfa === 0) satirlar = ilkSayfa;
-      else {
-        await nefes(800); // sayfalar arası nazik bekleme
-        const r = await fetch(`${api}${sayfaYolu(sayfa, listeAyi)}`, { headers: authHeaders });
-        if (!r.ok) { this.logger.warn(`Eczacıkart liste sayfa ${sayfa} hata ${r.status} — kısmi bitiş`); break; }
-        let j: any; try { j = JSON.parse(await r.text()); } catch { break; }
-        satirlar = satirlariAl(j) || [];
-      }
-      if (!satirlar.length) break;
-
-      for (const it of satirlar) {
-        if (kept >= opts.limit) break;
-        const ms = tarihAl(it);
-        // Tarihi okunamayan satır ATILMAZ (alan adı değişmiş olabilir); açıkça dönem dışı olan atlanır.
-        //   Liste düzenleme tarihine göre yeniden eskiye sıralıysa, dönem başından eskiye düşünce durulur.
-        if (Number.isFinite(ms) && ms < bas) { if (tarihSiraliMi) { dur = true; break; } continue; }
-        if (Number.isFinite(ms) && ms > bit) continue;
-        const uuid = it?.documentUuid || it?.uuid || it?.ettn || it?.invoiceUuid;
-        if (!uuid) continue;
-        const externalId = `eczacikart:${modul}:${uuid}`;
-        if (opts.skipExistingExternalIds?.has(externalId)) { kept++; continue; }
-        const faturaNo = String(it?.documentId || it?.documentNumber || it?.invoiceNumber || it?.faturaNo || uuid).trim();
-        const belgeYili = Number.isFinite(ms) ? new Date(ms).getFullYear() : yil;
-        const belgeAyi = Number.isFinite(ms) ? new Date(ms).getMonth() + 1 : ay;
-
-        const dRes = await fetch(`${api}/${modul}/downloadMedia/xml`, {
-          method: 'POST',
-          headers: { ...authHeaders, Accept: 'application/xml, application/octet-stream, */*' },
-          body: JSON.stringify({ documentUuid: uuid, year: belgeYili, month: belgeAyi }),
-        });
-        if (!dRes.ok) { this.logger.warn(`Eczacıkart belge indirilemedi (${faturaNo}): HTTP ${dRes.status}`); continue; }
-        const buf = Buffer.from(await dRes.arrayBuffer());
-        let xml: string | null = null;
-        if (buf.length >= 2 && buf[0] === 0x50 && buf[1] === 0x4b) xml = await this.elogoUnzipXml(buf);
+    const gorulen = new Set<string>(); // isArchive=0 ve 1 taramaları arasında tekrar ayıklama (ETTN)
+    const indirilemeyen: string[] = [];
+    const calisanAy = listeAyi;
+    // arsiv=0: normal klasör (ilk sayfa zaten elimizde) · arsiv=1: arşivlenmiş faturalar.
+    for (const arsiv of [0, 1]) {
+      let dur = false;
+      for (let sayfa = 0; sayfa < MAX_SAYFA && kept < opts.limit && !dur; sayfa++) {
+        let satirlar: any[];
+        if (sayfa === 0 && arsiv === 0) satirlar = ilkSayfa;
         else {
-          const metin = buf.toString('utf8').trim();
-          xml = metin.startsWith('<') ? metin
-            : (/^[A-Za-z0-9+/=\s]+$/.test(metin) && metin.length > 100 ? Buffer.from(metin, 'base64').toString('utf8') : null);
+          if (sayfa > 0 || arsiv > 0) await nefes(800); // sayfalar arası nazik bekleme
+          const r = await fetch(`${api}${sayfaYolu(sayfa, calisanAy, arsiv)}`, { headers: authHeaders });
+          const t = await r.text();
+          let j: any = null;
+          if (r.ok) { try { j = JSON.parse(t); } catch { j = null; } }
+          const liste = j ? satirlariAl(j) : null;
+          if (!r.ok || !liste) {
+            const neden = !r.ok ? `HTTP ${r.status}` : 'yanıt okunamadı (JSON/liste değil)';
+            // ARŞİV KLASÖRÜ hatası (her sayfası): normal klasörden inen belgeler ÇÖPE GİTMESİN (2026-09-26 inceleme:
+            //   arşivin 2. sayfasındaki geçici hata tüm çekimi başarısız sayıyordu) → uyar, arşiv taramasını bitir.
+            if (arsiv === 1) {
+              this.entegratorUyarisi(opts.progress, `Eczacıkart arşiv klasörü ${sayfa + 1}. sayfada sorgulanamadı (${neden}) — arşivlenmiş faturaların bir kısmı bu çekime girmedi, tekrar sorgulayın`);
+              break;
+            }
+            // SESSİZ KISMİ BİTİŞ YASAK (2026-09-26 denetim): eskiden "kısmi bitiş" diye günlüğe yazılıp susuluyordu.
+            throw new Error(`Eczacıkart fatura listesi ${sayfa + 1}. sayfada kesildi (${neden}${arsiv ? ', arşiv' : ''}) — ${kept} belge alınmıştı, çekim eksik kalmasın diye durduruldu.`);
+          }
+          satirlar = liste;
         }
-        if (!xml || !xml.includes('<')) { this.logger.warn(`Eczacıkart belge boş/çözülemedi: ${faturaNo}`); continue; }
+        if (!satirlar.length) break;
 
-        const payload: ProviderInvoicePayload = {
-          externalId,
-          originalName: `${faturaNo}.xml`,
-          xml,
-          providerStatus: this.providerStatusFromListItem(it),
-        };
-        kept++;
-        if (opts.onPayload) await opts.onPayload(payload);
-        else payloads.push(payload);
-        await nefes(400); // belge indirmeleri arası nazik hız
+        for (const it of satirlar) {
+          if (kept >= opts.limit) break;
+          const ms = tarihAl(it);
+          // Tarihi okunamayan satır ATILMAZ (alan adı değişmiş olabilir); açıkça dönem dışı olan atlanır.
+          //   Liste düzenleme tarihine göre yeniden eskiye sıralıysa, dönem başından eskiye düşünce durulur.
+          if (Number.isFinite(ms) && ms < bas) { if (tarihSiraliMi) { dur = true; break; } continue; }
+          if (Number.isFinite(ms) && ms > bit) continue;
+          const uuid = it?.documentUuid || it?.uuid || it?.ettn || it?.invoiceUuid;
+          if (!uuid) continue;
+          if (gorulen.has(String(uuid))) continue;
+          gorulen.add(String(uuid));
+          const externalId = `eczacikart:${modul}:${uuid}`;
+          if (opts.skipExistingExternalIds?.has(externalId)) { kept++; continue; }
+          const faturaNo = String(it?.documentId || it?.documentNumber || it?.invoiceNumber || it?.faturaNo || uuid).trim();
+          const belgeYili = Number.isFinite(ms) ? new Date(ms).getFullYear() : yil;
+          const belgeAyi = Number.isFinite(ms) ? new Date(ms).getMonth() + 1 : ay;
+
+          const dRes = await fetch(`${api}/${modul}/downloadMedia/xml`, {
+            method: 'POST',
+            headers: { ...authHeaders, Accept: 'application/xml, application/octet-stream, */*' },
+            body: JSON.stringify({ documentUuid: uuid, year: belgeYili, month: belgeAyi }),
+          });
+          if (!dRes.ok) { indirilemeyen.push(`${faturaNo} (HTTP ${dRes.status})`); continue; }
+          const buf = Buffer.from(await dRes.arrayBuffer());
+          let xml: string | null = null;
+          if (buf.length >= 2 && buf[0] === 0x50 && buf[1] === 0x4b) xml = await this.elogoUnzipXml(buf);
+          else {
+            const metin = buf.toString('utf8').trim();
+            xml = metin.startsWith('<') ? metin
+              : (/^[A-Za-z0-9+/=\s]+$/.test(metin) && metin.length > 100 ? Buffer.from(metin, 'base64').toString('utf8') : null);
+          }
+          if (!xml || !xml.includes('<')) { indirilemeyen.push(`${faturaNo} (boş/çözülemedi)`); continue; }
+
+          const payload: ProviderInvoicePayload = {
+            externalId,
+            originalName: `${faturaNo}.xml`,
+            xml,
+            providerStatus: this.providerStatusFromListItem(it),
+          };
+          kept++;
+          if (opts.onPayload) await opts.onPayload(payload);
+          else payloads.push(payload);
+          await nefes(400); // belge indirmeleri arası nazik hız
+        }
       }
+    }
+    if (indirilemeyen.length) {
+      this.entegratorUyarisi(opts.progress, `Eczacıkart: ${indirilemeyen.length} belge indirilemedi (${opts.period.donem}): ${indirilemeyen.slice(0, 5).join(', ')}${indirilemeyen.length > 5 ? ' …' : ''}`);
     }
     if (!kept && ilkSayfa.length) {
       const ornek = ilkSayfa[0] || {};
@@ -12216,7 +12521,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       channel?: string;
       onPayload?: (p: ProviderInvoicePayload) => Promise<void>;
       skipExistingExternalIds?: Set<string>;
-      progress?: { rateLimited?: boolean };
+      progress?: { rateLimited?: boolean; uyarilar?: string[] };
     },
   ): Promise<ProviderInvoicePayload[]> {
     const baseUrl = (cfg.baseUrl || PROVIDER_DEFAULT_BASE_URL.TURKCELL).replace(/\/+$/, '');
@@ -12298,9 +12603,25 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   sorguda ilerleme kaybolmaz). Bellekte tümünü biriktirmeyiz (yalnız sayaç).
     const faturaStart = String(opts.period.startDate).slice(0, 10);
     const faturaEnd = String(opts.period.endDate).slice(0, 10);
-    const execYmd = (it: any) => String(it?.executionDate ?? it?.ExecutionDate ?? it?.createdDate ?? '').slice(0, 10);
+    // SAAT DİLİMİ (2026-09-26 denetim): executionDate Greenwich saatiyle ("2026-08-31T21:30:00Z") gelirse ilk 10
+    //   karakter bir ÖNCEKİ günü verir → ay sonu/ay başı faturası yanlış döneme düşer. Saat dilimi işareti (Z ya da
+    //   ±hh:mm) varsa Türkiye saatine (UTC+3) çevrilip gün alınır; işaret yoksa yazıldığı gibi (yerel gün) kabul edilir.
+    const execYmd = (it: any) => {
+      const ham = String(it?.executionDate ?? it?.ExecutionDate ?? it?.createdDate ?? '').trim();
+      if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(ham) && /(Z|[+-]\d{2}:?\d{2})$/i.test(ham)) {
+        const ms = Date.parse(ham);
+        if (Number.isFinite(ms)) return new Date(ms + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      }
+      return ham.slice(0, 10);
+    };
+    const ublIssueYmd = (x: string) => (x.match(/<(?:\w+:)?IssueDate>\s*([0-9]{4}-[0-9]{2}-[0-9]{2})/i) || [])[1] || '';
     const payloads: ProviderInvoicePayload[] = [];
+    // `kept` YALNIZ bu çekimde yeni yazılan belgeleri sayar (üst sınır buna uygulanır). Eskiden zaten çekilmiş
+    //   (skip-existing) belgeler de sayılıyor, çok faturalı hesapta tavan eskilerle dolup yeniler hiç inmiyordu.
     let kept = 0;
+    let mevcutAtlanan = 0;
+    let donemDisiUbl = 0;
+    const indirilemeyen: string[] = [];
     let stop = false;
     const MAX_PAGES = 600; // dönem başından eskiye düşünce zaten durur; tavan güvenlik amaçlı
     // SAYFA BOYUTU (2026-09-22 canlı): PageSize=500 kabul ediliyor (48.616 faturalı hesapta doğrulandı) → aynı dönem için
@@ -12327,10 +12648,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         // Backoff'a rağmen liste çağrısı düştü (hard rate-limit). İlerleme VARSA (skip-existing sayesinde
         //   bu tetikleme eksikleri indiriyordu) THROW ETME → nazikçe bitir; kalan eksikler bir sonraki
         //   tetiklemede tamamlanır (zaten indirilenler atlanır). Hiç ilerleme yoksa hatayı yükselt.
-        if (is429(listRes.status, listText) && opts.progress) opts.progress.rateLimited = true;
         // 429 ise HER ZAMAN nazik bitiş (hata fırlatmak tur döngüsünü tetikleyip cezayı uzatıyordu, 2026-09-22).
-        if (is429(listRes.status, listText) || kept > 0 || opts.skipExistingExternalIds) { this.logger.warn(`Turkcell ${box} liste ${listRes.status} — kismi bitis (soğuma sonrası devam eder)`); break; }
-        throw new Error(`Turkcell ${box} liste hatası: ${listRes.status} ${listText.slice(0, 250)}`);
+        if (is429(listRes.status, listText)) {
+          if (opts.progress) opts.progress.rateLimited = true;
+          this.logger.warn(`Turkcell ${box} liste ${listRes.status} — kismi bitis (soğuma sonrası devam eder)`);
+          break;
+        }
+        // HIZ SINIRI DIŞINDAKİ hata (2026-09-26 denetim): eskiden ilerleme varsa "kısmi bitiş" diye susuluyordu →
+        //   liste yarıda kesilince eksik dönem "tamamlandı" görünüyordu. Artık hata olarak döner (yazılanlar korunur).
+        throw new Error(`Turkcell ${box} liste hatası (sayfa ${page}${kept ? `, ${kept} yeni belge yazılmıştı` : ''}): ${listRes.status} ${listText.slice(0, 250)}`);
       }
       let listJson: any;
       try { listJson = JSON.parse(listText); } catch { throw new Error(`Turkcell liste yanıtı JSON değil: ${listText.slice(0, 200)}`); }
@@ -12347,7 +12673,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         if (!id) continue;
         const externalId = `turkcell:${box}:${id}`;
         // SKIP-EXISTING: bu fatura zaten çekilmişse TEKRAR İNDİRME (hız-sınırı bütçesini koru). Kapsamda say.
-        if (opts.skipExistingExternalIds && opts.skipExistingExternalIds.has(externalId)) { kept++; continue; }
+        if (opts.skipExistingExternalIds && opts.skipExistingExternalIds.has(externalId)) { mevcutAtlanan++; continue; }
         const invoiceNo = String(item?.InvoiceNumber || item?.invoiceNumber || item?.DocumentNumber || id).trim();
         // UBL indir: GET /v2/{box}/{id}/ubl. Yanıt ZIP (PK) → JSZip; değilse düz XML.
         await tsleep(1200); // UBL indirmeleri arası nefes payı — 2026-09-22: 600 ms agresifti, ~0.8/s'e indirildi
@@ -12364,14 +12690,19 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             stop = true;
             break;
           }
-          this.logger.warn(`Turkcell ubl ${id} hata ${ublRes.status}`);
+          indirilemeyen.push(`${invoiceNo} (HTTP ${ublRes.status})`);
           continue;
         }
         const buf = ublRes.buf;
         let xml: string | null = null;
         if (buf.length >= 2 && buf[0] === 0x50 && buf[1] === 0x4b) xml = await this.elogoUnzipXml(buf);
         else { const t2 = buf.toString('utf8').trim(); xml = t2.startsWith('<') ? t2 : (/^[A-Za-z0-9+/=\s]+$/.test(t2) ? Buffer.from(t2, 'base64').toString('utf8') : t2); }
-        if (!xml || !xml.includes('<')) continue;
+        if (!xml || !xml.includes('<')) { indirilemeyen.push(`${invoiceNo} (boş/çözülemedi)`); continue; }
+        // ESAS TARİH UBL'deki IssueDate: liste tarihi yalnız ön süzgeç. UBL başka gün diyorsa belge YİNE YAZILIR
+        //   (2026-09-26 inceleme): atılırsa ay sınırındaki fatura (liste 01.09, UBL 31.08) Ağustos sorgusunda
+        //   indirilmez, Eylül sorgusunda atılır → HİÇBİR döneme girmez. Liste satırı UBL tarihiyle kendi ayında görünür.
+        const iss = ublIssueYmd(xml);
+        if (iss && (iss < faturaStart || iss > faturaEnd)) donemDisiUbl++;
         const payload: ProviderInvoicePayload = { externalId: `turkcell:${box}:${id}`, originalName: `${invoiceNo || id}.xml`, xml, providerStatus: this.providerStatusFromListItem(item) };
         kept++;
         if (opts.onPayload) { await opts.onPayload(payload); } // ARTIMLI: anında yaz, bellekte tutma
@@ -12379,6 +12710,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       }
       if (pageItems.length < pageSize) break; // son sayfa
     }
+    if (indirilemeyen.length) {
+      this.entegratorUyarisi(opts.progress, `Turkcell ${box}: ${indirilemeyen.length} belge indirilemedi (${opts.period.startDate.slice(0, 7)}): ${indirilemeyen.slice(0, 5).join(', ')}${indirilemeyen.length > 5 ? ' …' : ''}`);
+    }
+    if (kept >= opts.limit) {
+      this.entegratorUyarisi(opts.progress, `Turkcell ${box}: tek çekim üst sınırı (${opts.limit}) doldu — kalan faturalar bir sonraki çekimde alınır`);
+    }
+    this.logger.log(`Turkcell ${box} çekim bitti: yeni ${kept}, zaten vardı ${mevcutAtlanan}, liste tarihi ≠ UBL tarihi (yine yazıldı) ${donemDisiUbl}`);
     return payloads;
   }
 
@@ -12390,6 +12728,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       direction: 'ALIS' | 'SATIS';
       period: { donem: string; startDate: string; endDate: string };
       limit: number;
+      /** OUT_EFATURA | OUT_EARSIV verilirse öbür kanalın satışı İNDİRİLMEZ (PDF iki kez inmesin; 429 riski yarıya). */
+      channel?: string;
+      progress?: { rateLimited?: boolean; uyarilar?: string[] };
     },
   ): Promise<ProviderInvoicePayload[]> {
     const baseUrl = cfg.baseUrl || PROVIDER_DEFAULT_BASE_URL.PARASUT;
@@ -12456,7 +12797,17 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // (yeni→eski) çekip İSTEMCİ tarafında [start,end] aralığına göre süz, aralığın gerisine düşünce dur.
     let useDateFilter = true;
     let stop = false;
+    // BELGE TÜRÜ SÜZGECİ (2026-09-26 denetim): sales_invoices listesinde TEKLİF (estimate), İPTAL (cancelled),
+    //   TEKRARLAYAN ŞABLON (recurring_invoice), ARŞİVLENMİŞ ve e-belgesi olmayan KÂĞIT fatura da var; hepsi
+    //   "Satış e-Fatura" diye geliyordu. Paraşüt v4 item_type: invoice | export | refund | estimate | cancelled |
+    //   recurring_invoice. Alınan: invoice + export (ihracat da gerçek faturadır) + refund (İADE olarak işaretlenir).
+    const ALINAN_TURLER = new Set(['invoice', 'export', 'refund']);
+    const atlanan = { tur: 0, iptal: 0, ebelgesiz: 0, turOkunamadi: 0, kanalDisi: 0 };
+    const satisKanali = String((opts as any).channel || '').toUpperCase();
+    let sonSayfaDolu = false;
+    let taranan = 0;
     for (let page = 1; page <= scanCap && payloads.length < opts.limit && !stop; page++) {
+      taranan = page;
       const params = new URLSearchParams({
         'page[number]': String(page),
         'page[size]': String(pageSize),
@@ -12488,15 +12839,24 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           if (d && start && d < start) { stop = true; break; } // sıralı yeni→eski: aralığın gerisine düştük
           if (d && end && d > end) continue;                    // aralıktan yeni: atla
         }
+        const tur = String(item?.attributes?.item_type || 'invoice').toLowerCase();
+        // İPTAL yalnız item_type=cancelled. `archived` Paraşüt'te "arşive kaldırıldı" demektir, iptal DEĞİL
+        //   (2026-09-26 inceleme: arşivlenmiş gerçek e-Arşiv faturası atılıyordu).
+        if (tur === 'cancelled') { atlanan.iptal++; continue; }
+        if (!ALINAN_TURLER.has(tur)) { atlanan.tur++; continue; }
         // E-BELGE TÜRÜ GÜVENCESİ (2026-09-15, ZEKİ ÖZKAYNAK KE42026000000001 — ADEM AYAS'a kesilen e-ARŞİV):
         //   liste satırında active_e_document ilişkisi gelmeyince belge e-FATURA sanılıp Satış e-Arşiv kanalından
         //   düşüyor, PDF'i de inmiyordu ("orijinal görüntü yok"). İlişki listede yoksa faturayı TEKİL çekip
         //   (include=active_e_document) ilişkiyi tamamla; karar her belge için loglanır.
         let ed = item?.relationships?.active_e_document?.data || null;
+        let tekilSorguBasarili = !!(ed && ed.type);
         if (!ed || !ed.type) {
           try {
             const r1 = await pfetch(`${baseUrl.replace(/\/+$/, '')}/${firmaNo}/${path}/${item?.id}?include=active_e_document`);
+            if (!r1 && opts.progress) opts.progress.rateLimited = true; // 5 denemede de 429 → soğuma
             const tek: any = r1 && r1.ok ? await r1.json().catch(() => null) : null;
+            // Yanıt geldi ve okundu → e-belge ilişkisi YOKSA bu gerçekten e-belgesiz (kâğıt/taslak) faturadır.
+            tekilSorguBasarili = !!tek?.data;
             const ed1 = tek?.data?.relationships?.active_e_document?.data || null;
             if (ed1 && ed1.type) {
               ed = ed1;
@@ -12506,6 +12866,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             this.logger.warn(`[PARASUT] ${item?.attributes?.invoice_no || item?.id}: tekil e-belge sorgusu başarısız: ${e?.message || e}`);
           }
         }
+        // Tekil sorgu DÜŞTÜYSE (hız sınırı/bağlantı) fatura kâğıt SAYILMAZ (2026-09-26 inceleme: gerçek fatura
+        //   "kâğıt" diye atılıyordu) — ayrı sayılır, "tekrar sorgulayın" uyarısı verilir; sonraki sorguda gelir.
+        if ((!ed || !ed.type) && !tekilSorguBasarili) { atlanan.turOkunamadi++; continue; }
+        // e-BELGESİ OLMAYAN (kâğıt/taslak) satış faturası e-Fatura/e-Arşiv DEĞİLDİR → alınmaz, uyarıda sayılır.
+        //   e-SMM (serbest meslek makbuzu) e-Fatura değil, e-Arşiv gibi GİB'e raporlanan belge → Satış e-Arşiv kanalında.
+        if (!ed || !/^e_(invoices|archives|smms)$/.test(String(ed.type || ''))) { atlanan.ebelgesiz++; continue; }
+        // KANAL: öbür kanalın belgesi indirilmez (PDF iki kez inmesin). Kanal verilmezse (eski çağrılar) hepsi alınır.
+        const earsivTuru = ed.type === 'e_archives' || ed.type === 'e_smms';
+        if ((satisKanali === 'OUT_EFATURA' && earsivTuru) || (satisKanali === 'OUT_EARSIV' && !earsivTuru)) { atlanan.kanalDisi++; continue; }
         this.logger.log(`[PARASUT] ${item?.attributes?.invoice_no || item?.id}: e-belge=${ed?.type || 'YOK'}${ed?.id ? '#' + ed.id : ''} → ${ed?.type === 'e_archives' ? 'e-ARŞİV' : 'e-FATURA'} (alıcı ${String(this.parasutCounterparty(item, included)?.attributes?.tax_number || '').replace(/\D/g, '').length === 11 ? 'TCKN' : 'VKN/-'})`);
         const payload = this.parasutInvoicePayload(item, included, opts.direction, opts.taxpayer, path);
         // GERÇEK e-belge PDF'ini indir → "görüntüle" gerçek faturayı göstersin (sentetik liste değil).
@@ -12514,7 +12883,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         else this.logger.warn(`[PARASUT] ${item?.attributes?.invoice_no || item?.id}: e-belge PDF'i inmedi (e-belge=${ed?.type || 'YOK'})`);
         payloads.push(payload);
       }
+      sonSayfaDolu = items.length >= pageSize;
       if (items.length < pageSize) break;
+    }
+    if (atlanan.ebelgesiz) this.entegratorUyarisi(opts.progress, `Paraşüt: e-belgesi olmayan ${atlanan.ebelgesiz} satış faturası atlandı (kâğıt/taslak fatura — e-Fatura/e-Arşiv değil)`);
+    if (atlanan.turOkunamadi) this.entegratorUyarisi(opts.progress, `Paraşüt: ${atlanan.turOkunamadi} satış faturasının e-belge türü okunamadı (hız sınırı/bağlantı) — bu faturalar alınmadı, birkaç dakika sonra tekrar sorgulayın`);
+    if (atlanan.tur || atlanan.iptal || atlanan.kanalDisi) this.logger.log(`[PARASUT] satış süzgeci: ${atlanan.tur} teklif/şablon, ${atlanan.iptal} iptal, ${atlanan.kanalDisi} diğer kanal belgesi atlandı`);
+    if (!stop && sonSayfaDolu && taranan >= scanCap && payloads.length < opts.limit) {
+      this.entegratorUyarisi(opts.progress, `Paraşüt satış: tarama üst sınırı (${scanCap} sayfa × ${pageSize} = ${scanCap * pageSize} fatura) doldu, dönemin tamamına inilemedi — eksik olabilir`);
     }
     return payloads;
   }
@@ -12527,7 +12903,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   private async fetchParasutInboundEInvoices(
     baseUrl: string,
     firmaNo: string,
-    opts: { taxpayer: any; direction: 'ALIS' | 'SATIS'; period: { donem: string; startDate: string; endDate: string }; limit: number },
+    opts: { taxpayer: any; direction: 'ALIS' | 'SATIS'; period: { donem: string; startDate: string; endDate: string }; limit: number; progress?: { uyarilar?: string[] } },
     pfetch: (url: string) => Promise<any>,
     psleep: (ms: number) => Promise<unknown>,
   ): Promise<ProviderInvoicePayload[]> {
@@ -12537,7 +12913,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const inbound: any[] = [];
     let useDate = true;
     let stop = false;
-    for (let page = 1; page <= 40 && inbound.length < opts.limit && !stop; page++) {
+    const TARAMA_TAVANI = 40; // 40 × 25 = 1000 e-belge
+    let taranan = 0;
+    let sonSayfaDolu = false;
+    for (let page = 1; page <= TARAMA_TAVANI && inbound.length < opts.limit && !stop; page++) {
+      taranan = page;
       const params = new URLSearchParams({ 'page[number]': String(page), 'page[size]': '25', sort: '-issue_date', include: 'invoice' });
       if (useDate) params.set('filter[issue_date]', `${start}..${end}`);
       let r = await pfetch(`${base}/${firmaNo}/e_invoices?${params}`);
@@ -12560,7 +12940,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         if (inbound.length >= opts.limit) break;
       }
       await psleep(1200); // sayfalar arası boşluk (429 önle)
+      sonSayfaDolu = items.length >= 25;
       if (items.length < 25) break;
+    }
+    if (!stop && sonSayfaDolu && taranan >= TARAMA_TAVANI && inbound.length < opts.limit) {
+      this.entegratorUyarisi(opts.progress, `Paraşüt alış: tarama üst sınırı (${TARAMA_TAVANI} sayfa × 25 = ${TARAMA_TAVANI * 25} e-belge) doldu, dönemin tamamına inilemedi — eksik olabilir`);
     }
     const payloads: ProviderInvoicePayload[] = [];
     for (const it of inbound) {
@@ -12594,24 +12978,52 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const issueDate = String(a.issue_date || a.created_at || '').slice(0, 10);
     const currency = String(a.currency || 'TRL').toUpperCase() === 'TRL' ? 'TRY' : String(a.currency || 'TRY').toUpperCase();
     const totalVat = this.parasutNumber(a.total_vat);
-    const total = this.parasutNumber(a.net_total); // net_total = KDV DAHİL ödenecek toplam
-    const taxExclusive = Number.isFinite(total) && Number.isFinite(totalVat) ? total - totalVat : total;
+    // net_total = ÖDENECEK toplam (satış tarafıyla AYNI kabul: Paraşüt "Genel Toplam" kesintiler düşülmüş tutardır).
+    //   Tevkifatsız belgede ödenecek = KDV dahil toplam. TEVKİFATLI ALIŞTA (2026-09-26 denetim) ödenecek = matrah +
+    //   KDV − tevkifat; eskiden matrah "net_total − KDV" diye tevkifat kadar EKSİK çıkıyor, KDV dahil = ödenecek
+    //   yazıldığı için ayrıştırıcı tevkifatı hiç görmüyordu. Artık tevkifat alanı varsa: matrah = net_total − KDV +
+    //   tevkifat, KDV dahil = matrah + KDV, ödenecek = net_total ve WithholdingTaxTotal yazılır.
+    const total = this.parasutNumber(a.net_total);
+    const kdvTevkifat = Math.max(0, this.parasutNumber(a.total_vat_withholding ?? a.vat_withholding));
+    const cur = this.xmlEscape(currency);
+    const taxExclusive = a.before_taxes_total != null && a.before_taxes_total !== ''
+      ? this.parasutNumber(a.before_taxes_total)
+      : total - totalVat + kdvTevkifat;
+    const kdvDahil = kdvTevkifat > 0.005 ? taxExclusive + totalVat : total;
+    let tevkifatYuzde = 0;
+    if (kdvTevkifat > 0 && totalVat > 0) {
+      const pay = Math.round((kdvTevkifat / totalVat) * 10);
+      if (pay >= 1 && pay <= 10 && Math.abs((totalVat * pay) / 10 - kdvTevkifat) <= 0.05) tevkifatYuzde = pay * 10;
+    }
+    const withholdingXml = kdvTevkifat > 0.005
+      ? `<WithholdingTaxTotal><TaxAmount currencyID="${cur}">${this.parasutMoney(kdvTevkifat)}</TaxAmount><TaxSubtotal><TaxableAmount currencyID="${cur}">${this.parasutMoney(totalVat)}</TaxableAmount><TaxAmount currencyID="${cur}">${this.parasutMoney(kdvTevkifat)}</TaxAmount><TaxCategory>${tevkifatYuzde ? `<Percent>${tevkifatYuzde}</Percent>` : ''}<TaxScheme><Name>KDV Tevkifatı</Name></TaxScheme></TaxCategory></TaxSubtotal></WithholdingTaxTotal>`
+      : '';
     const uuid = String(a.uuid || '').trim();
     return `<?xml version="1.0" encoding="UTF-8"?>
 <Invoice>
   <ID>${this.xmlEscape(invoiceNo)}</ID>
   ${uuid ? `<UUID>${this.xmlEscape(uuid)}</UUID>` : ''}
   ${issueDate ? `<IssueDate>${this.xmlEscape(issueDate)}</IssueDate>` : ''}
-  <DocumentCurrencyCode>${this.xmlEscape(currency)}</DocumentCurrencyCode>
+  <DocumentCurrencyCode>${cur}</DocumentCurrencyCode>
   ${this.syntheticParasutPartyXml('AccountingSupplierParty', supplierName, supplierTaxNo)}
   ${this.syntheticParasutPartyXml('AccountingCustomerParty', ownName, ownTaxNo)}
-  <TaxTotal><TaxAmount currencyID="${this.xmlEscape(currency)}">${this.parasutMoney(totalVat)}</TaxAmount></TaxTotal>
+  ${this.parasutKurXml(currency, a.exchange_rate)}
+  <TaxTotal><TaxAmount currencyID="${cur}">${this.parasutMoney(totalVat)}</TaxAmount></TaxTotal>
+  ${withholdingXml}
   <LegalMonetaryTotal>
-    <TaxExclusiveAmount currencyID="${this.xmlEscape(currency)}">${this.parasutMoney(taxExclusive)}</TaxExclusiveAmount>
-    <TaxInclusiveAmount currencyID="${this.xmlEscape(currency)}">${this.parasutMoney(total)}</TaxInclusiveAmount>
-    <PayableAmount currencyID="${this.xmlEscape(currency)}">${this.parasutMoney(total)}</PayableAmount>
+    <TaxExclusiveAmount currencyID="${cur}">${this.parasutMoney(taxExclusive)}</TaxExclusiveAmount>
+    <TaxInclusiveAmount currencyID="${cur}">${this.parasutMoney(kdvDahil)}</TaxInclusiveAmount>
+    <PayableAmount currencyID="${cur}">${this.parasutMoney(total)}</PayableAmount>
   </LegalMonetaryTotal>
 </Invoice>`;
+  }
+
+  /** Döviz faturasında kur (2026-09-26 denetim): Paraşüt exchange_rate alanı XML'e yazılmıyordu → TL karşılığı
+   *  hesaplanamıyordu. TL belgede ya da kur yoksa boş döner (XML değişmez). */
+  private parasutKurXml(currency: string, rate: any): string {
+    const kur = this.parasutNumber(rate);
+    if (!(kur > 0) || currency === 'TRY' || currency === 'TL') return '';
+    return `<PricingExchangeRate><SourceCurrencyCode>${this.xmlEscape(currency)}</SourceCurrencyCode><TargetCurrencyCode>TRY</TargetCurrencyCode><CalculationRate>${kur}</CalculationRate></PricingExchangeRate>`;
   }
 
   /** Gelen e-Fatura'nın gerçek PDF'i: GET /e_invoices/{id}/pdf → {url} → indir. */
@@ -12715,9 +13127,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const currency = String(attrs.currency || 'TRL').toUpperCase() === 'TRL' ? 'TRY' : String(attrs.currency || 'TRY').toUpperCase();
     const totalVat = this.parasutNumber(attrs.total_vat);
     const total = this.parasutNumber(attrs.net_total ?? attrs.gross_total);
-    const taxExclusive = this.parasutNumber(
-      attrs.before_taxes_total ?? attrs.gross_total ?? (Number.isFinite(total) && Number.isFinite(totalVat) ? total - totalVat : undefined),
-    );
+    // MATRAH YEDEĞİ (2026-09-26 denetim): before_taxes_total yoksa eskiden gross_total (İSKONTO ÖNCESİ brüt) alınıyordu
+    //   → iskontolu faturada matrah şişiyordu. Artık ödenecekten geri hesaplanır:
+    //   net_total = matrah + KDV + ÖTV + ÖİV − KDV tevkifatı − stopaj  ⇒  matrah = net_total − KDV − ÖTV − ÖİV + tevkifat + stopaj.
+    //   Kesinti/ek vergi yoksa bu düz "net_total − total_vat" olur.
+    const taxExclusive = attrs.before_taxes_total != null && attrs.before_taxes_total !== ''
+      ? this.parasutNumber(attrs.before_taxes_total)
+      : total - totalVat
+        - Math.max(0, this.parasutNumber(attrs.total_excise_duty)) - Math.max(0, this.parasutNumber(attrs.total_communications_tax))
+        + Math.max(0, this.parasutNumber(attrs.total_vat_withholding)) + Math.max(0, this.parasutNumber(attrs.withholding));
     const supplier = direction === 'SATIS'
       ? { name: ownName, taxNo: ownTaxNo }
       : { name: counterName, taxNo: counterTaxNo };
@@ -12729,8 +13147,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   ise SATIŞ e-FATURA. Sentetik XML'e ProfileID markörü koy → documentTypeFromProviderXml EARSIV'i
     //   tanır, OUT_EARSIV/OUT_EFATURA kanalları doğru ayrışır. (Eskiden hepsi e-Fatura sayılıp e-Arşiv boştu.)
     const edType = String(item?.relationships?.active_e_document?.data?.type || '').trim();
-    const isEArsiv = direction === 'SATIS' && edType === 'e_archives';
+    // e-SMM (serbest meslek makbuzu) da e-Fatura değil → Satış e-Arşiv kanalında (fetchParasutInvoices ile aynı kural).
+    const isEArsiv = direction === 'SATIS' && (edType === 'e_archives' || edType === 'e_smms');
     const profileId = isEArsiv ? 'EARSIVFATURA' : 'TICARIFATURA';
+    // İADE (2026-09-26): Paraşüt item_type=refund → UBL-TR InvoiceTypeCode IADE (ayrıştırıcı iade olarak tanır).
+    const iadeMi = String(attrs.item_type || '').toLowerCase() === 'refund';
     // ── TEVKİFAT / STOPAJ / ÖTV / ÖİV (2026-09-15 canlı bulgu — Zeki Özkaynak satış faturaları) ──
     //   Paraşüt liste alanları (apidocs swagger): total_vat_withholding "Tevkifat", withholding "Stopaj",
     //   total_excise_duty ÖTV, total_communications_tax ÖİV; net_total "Genel Toplam" = ÖDENECEK (kesintiler
@@ -12776,9 +13197,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   ${uuid ? `<UUID>${this.xmlEscape(uuid)}</UUID>` : ''}
   <ProfileID>${profileId}</ProfileID>
   ${issueDate ? `<IssueDate>${this.xmlEscape(issueDate)}</IssueDate>` : ''}
+  ${iadeMi ? '<InvoiceTypeCode>IADE</InvoiceTypeCode>' : ''}
   <DocumentCurrencyCode>${cur}</DocumentCurrencyCode>
   ${this.syntheticParasutPartyXml('AccountingSupplierParty', supplier.name, supplier.taxNo)}
   ${this.syntheticParasutPartyXml('AccountingCustomerParty', customer.name, customer.taxNo)}
+  ${this.parasutKurXml(currency, attrs.exchange_rate)}
   ${taxTotalXml}
   ${withholdingXml}
   <LegalMonetaryTotal>
@@ -12820,6 +13243,20 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     return this.parasutNumber(value).toFixed(2);
   }
 
+  /**
+   * UYUMSOFT BasicIntegration (WCF SOAP, ns http://tempuri.org/).
+   * 2026-09-26 YENİDEN (denetim): eskiden Get{Inbox|Outbox}InvoicesData TÜM UBL'leri TEK yanıtta, PageIndex=0 ile
+   *   döndürüyordu → (a) sayfalama yoktu, limiti aşan fatura sessizce düşüyordu; (b) 16 fatura 7 MB / ~100 sn,
+   *   fatura arttıkça 300 sn sınırı aşılıyordu. Artık:
+   *   1) LİSTE: Get{Inbox|Outbox}InvoiceList (hafif özet, PageIndex 0 tabanlı, yanıtta TotalPages) — tüm sayfalar;
+   *   2) BELGE: her satır için Get{Inbox|Outbox}InvoiceData(invoiceId = liste DocumentId/ETTN) — tek UBL, ayrı istek.
+   *   Alan adları halka açık TEST ortamının WSDL'inden alındı ve Uyumsoft/Uyumsoft test hesabıyla denendi
+   *   (efatura-test.uyumsoft.com.tr, 2026-09-26: liste ~0,5-0,8 sn, tek belge ~5-7 sn / ~0,4 MB).
+   * SATIŞ e-ARŞİV (2026-09-26 eklendi): giden liste sorgusunun Scenario alanı (eInvoice | eArchive) ile ayrılır;
+   *   OUT_EFATURA → Scenario=eInvoice, OUT_EARSIV → Scenario=eArchive (belge türü providerDocType ile işaretlenir).
+   * ADRES: https:// karşılığı SOAP'ta 404 (test ortamında POST ile denendi; canlıda https ?wsdl WSDL değil
+   *   yardım sayfası döndürüyor) → varsayılan http:// kalır.
+   */
   private async fetchUyumsoftInvoices(
     cfg: RuntimeIntegrationConfig,
     opts: {
@@ -12827,14 +13264,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       direction: 'ALIS' | 'SATIS';
       period: { startDate: string; endDate: string };
       limit: number;
+      channel?: string;
+      progress?: { rateLimited?: boolean; uyarilar?: string[] };
     },
-  ) {
-    const method = opts.direction === 'SATIS' ? 'GetOutboxInvoicesData' : 'GetInboxInvoicesData';
-    const action = `http://tempuri.org/IBasicIntegration/${method}`;
-    const queryAttrs =
-      opts.direction === 'SATIS'
-        ? `PageIndex="0" PageSize="${opts.limit}"`
-        : `PageIndex="0" PageSize="${opts.limit}" SetTaken="false" OnlyNewestInvoices="false"`;
+  ): Promise<ProviderInvoicePayload[]> {
+    const channel = String(opts.channel || (opts.direction === 'SATIS' ? 'OUT_EFATURA' : 'IN_EFATURA')).toUpperCase();
+    const isEarsiv = channel === 'OUT_EARSIV';
+    const giden = opts.direction === 'SATIS' || isEarsiv;
+    const kutu = giden ? 'Outbox' : 'Inbox';
     // 🗓️ AY SONU TUZAĞI (2026-09-25 canlı kanıt): ExecutionDate FATURA TARİHİ DEĞİL, faturanın Uyumsoft'a
     //   DÜŞTÜĞÜ tarih. Ayın son günü kesilen fatura ertesi ay penceresine kayıyor → ay sonu faturaları
     //   sessizce eksik kalıyordu. KANIT (SULTAN OSMAN): 01.08–31.08 sorgusu 16 fatura getirdi ama ikisinin
@@ -12849,47 +13286,143 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       return t.toISOString().slice(0, 10);
     };
     const sorguBitis = gunEkle(opts.period.endDate, 10);
-    const body = `
-      <${method} xmlns="http://tempuri.org/">
-        <userInfo Username="${this.xmlEscape(cfg.username)}" Password="${this.xmlEscape(cfg.password)}" />
-        <query ${queryAttrs}>
-          <ExecutionStartDate>${opts.period.startDate}T00:00:00</ExecutionStartDate>
-          <ExecutionEndDate>${sorguBitis}T23:59:59</ExecutionEndDate>
-        </query>
-      </${method}>`;
     const url = cfg.baseUrl || PROVIDER_DEFAULT_BASE_URL.UYUMSOFT;
+    const kullanici = `<userInfo Username="${this.xmlEscape(cfg.username)}" Password="${this.xmlEscape(cfg.password)}" />`;
+
     // IP TUZAĞI (2026-09-22 canlı): Uyumsoft "Bu sisteme erişmek için gerekli yetkiniz yok, Kullanıcı: X, Ip: Y"
     //   diyor — bu mesaj hem WEB SERVİS YETKİSİ eksikliğinde hem de IP izinli değilse çıkıyor. Hangisi olduğunu
-    //   anlamak için Türkiye vekili reddedilirse İKİNCİ ÇIKIŞ (doğrudan) denenir; biri geçerse çekim sürer,
+    //   anlamak için Türkiye vekili reddedilirse İKİNCİ ÇIKIŞ (doğrudan) denenir; biri geçerse çekim o çıkışla sürer,
     //   ikisi de geçmezse hata mesajında HER İKİ IP de yazar → Uyumsoft'a "şu IP'lere izin verin" denebilir.
     const yetkiHatasiMi = (e: any) => /yetkiniz yok|Permission/i.test(String(e?.message || ''));
-    // SÜRE (2026-09-25 canlı ölçüm): Uyumsoft bu uçta faturaların TAM UBL'ini tek yanıtta döndürüyor.
-    //   SULTAN OSMAN Ağustos alışı = 16 fatura, 7,2 MB, 95-105 sn. Varsayılan 60 sn'lik sınır bunu
-    //   kesiyordu ("The operation was aborted due to timeout"). Sayfa boyutunu küçültmek İŞE YARAMIYOR,
-    //   yavaşlık Uyumsoft'un kendi tarafında. Fatura sayısı arttıkça süre uzar → geniş pay bırakıldı.
-    const UYUMSOFT_SURE = 300_000;
-    try {
-      const text = await this.soapPost(url, action, body, { trProxy: true, timeoutMs: UYUMSOFT_SURE });
-      return this.extractPayloadsFromProviderResponse(text, ['Data']);
-    } catch (e: any) {
-      if (!yetkiHatasiMi(e)) throw e;
-      this.logger.warn(`[UYUMSOFT] Türkiye çıkışı reddedildi (${String(e?.message || '').slice(0, 160)}) — doğrudan çıkış deneniyor`);
-      try {
-        const text2 = await this.soapPost(url, action, body, { trProxy: false, timeoutMs: UYUMSOFT_SURE });
-        this.logger.log('[UYUMSOFT] doğrudan çıkış KABUL edildi — Türkiye vekilinin IP adresi izinli değil');
-        return this.extractPayloadsFromProviderResponse(text2, ['Data']);
-      } catch (e2: any) {
-        if (!yetkiHatasiMi(e2)) throw e2;
-        const ipler = [String(e?.message || ''), String(e2?.message || '')]
-          .map((m) => (m.match(/Ip:\s*([0-9a-fA-F:.]+)/) || [])[1])
-          .filter(Boolean);
-        throw new Error(
-          'Uyumsoft web servisi erişimi reddetti (kullanıcı yetkisi ya da IP izni yok). '
-          + `Denenen çıkış IP'leri: ${ipler.join(' ve ') || 'bilinmiyor'}. `
-          + 'Uyumsoft tarafindan bu kullaniciya WEB SERVIS yetkisi ve bu IP adreslerine izin verilmesi gerekiyor.',
-        );
+    let trProxy: boolean | null = null; // null = çıkış henüz belirlenmedi (ilk istekte belirlenir)
+    const cagir = async (method: string, ic: string, timeoutMs: number): Promise<string> => {
+      const action = `http://tempuri.org/IBasicIntegration/${method}`;
+      const body = `<${method} xmlns="http://tempuri.org/">${kullanici}${ic}</${method}>`;
+      if (trProxy !== null) {
+        const cikis = trProxy;
+        try {
+          return await this.soapPost(url, action, body, { trProxy: cikis, timeoutMs });
+        } catch (e: any) {
+          // Bağlantı kopması (test ortamında ölçüldü: "terminated") → bir kez tekrar; diğer hatalar olduğu gibi.
+          if (!/terminated|ECONNRESET|socket|fetch failed|other side closed/i.test(String(e?.message || ''))) throw e;
+          await new Promise((r) => setTimeout(r, 2000));
+          return this.soapPost(url, action, body, { trProxy: cikis, timeoutMs });
+        }
       }
+      try {
+        const t = await this.soapPost(url, action, body, { trProxy: true, timeoutMs });
+        trProxy = true;
+        return t;
+      } catch (e: any) {
+        if (!yetkiHatasiMi(e)) throw e;
+        this.logger.warn(`[UYUMSOFT] Türkiye çıkışı reddedildi (${String(e?.message || '').slice(0, 160)}) — doğrudan çıkış deneniyor`);
+        try {
+          const t2 = await this.soapPost(url, action, body, { trProxy: false, timeoutMs });
+          this.logger.log('[UYUMSOFT] doğrudan çıkış KABUL edildi — Türkiye vekilinin IP adresi izinli değil');
+          trProxy = false;
+          return t2;
+        } catch (e2: any) {
+          if (!yetkiHatasiMi(e2)) throw e2;
+          const ipler = [String(e?.message || ''), String(e2?.message || '')]
+            .map((m) => (m.match(/Ip:\s*([0-9a-fA-F:.]+)/) || [])[1])
+            .filter(Boolean);
+          throw new Error(
+            'Uyumsoft web servisi erişimi reddetti (kullanıcı yetkisi ya da IP izni yok). '
+            + `Denenen çıkış IP'leri: ${ipler.join(' ve ') || 'bilinmiyor'}. `
+            + 'Uyumsoft tarafindan bu kullaniciya WEB SERVIS yetkisi ve bu IP adreslerine izin verilmesi gerekiyor.',
+          );
+        }
+      }
+    };
+
+    // ── 1) LİSTE (tüm sayfalar) ──
+    const SAYFA_BOYU = 50;
+    const MAX_SAYFA = 200;
+    const nil = 'xsi:nil="true" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"';
+    const satirlar: Array<{ id: string; no: string; durum: string }> = [];
+    const gorulen = new Set<string>();
+    let toplamSayfa = 1;
+    let listeKesildi = false;
+    for (let sayfa = 0; sayfa < toplamSayfa; sayfa++) {
+      if (sayfa >= MAX_SAYFA) { listeKesildi = true; break; }
+      const sorgu =
+        `<query PageIndex="${sayfa}" PageSize="${SAYFA_BOYU}"${giden ? '' : ' OnlyNewestInvoices="false"'}>`
+        + `<ExecutionStartDate>${opts.period.startDate}T00:00:00</ExecutionStartDate>`
+        + `<ExecutionEndDate>${sorguBitis}T23:59:59</ExecutionEndDate>`
+        + `<CreateStartDate ${nil}/><CreateEndDate ${nil}/><Status ${nil}/><SortColumn ${nil}/><SortMode ${nil}/><IsArchived ${nil}/>`
+        + `<IncludeTagList>false</IncludeTagList>`
+        + (giden ? `<Scenario>${isEarsiv ? 'eArchive' : 'eInvoice'}</Scenario>` : '')
+        + `</query>`;
+      const liste = await cagir(`Get${kutu}InvoiceList`, sorgu, 120_000);
+      const tp = Number((liste.match(/<(?:\w+:)?Value\b[^>]*\bTotalPages="(\d+)"/i) || [])[1]);
+      if (Number.isFinite(tp) && tp > 0) toplamSayfa = tp;
+      const bloklar = liste.match(/<(?:\w+:)?Items\b[^>]*>[\s\S]*?<\/(?:\w+:)?Items>/gi) || [];
+      for (const b of bloklar) {
+        const id = this.tagText(b, 'DocumentId');
+        if (!id || gorulen.has(id)) continue;
+        gorulen.add(id);
+        satirlar.push({ id, no: this.tagText(b, 'InvoiceId') || id, durum: this.tagText(b, 'Status') });
+      }
+      if (!bloklar.length) break;
     }
+    if (listeKesildi) {
+      this.entegratorUyarisi(opts.progress, `Uyumsoft ${kutu}: liste ${MAX_SAYFA} sayfa (${MAX_SAYFA * SAYFA_BOYU} belge) üst sınırında kesildi — eksik olabilir`);
+    }
+
+    // ── 2) BELGELER (tek tek, en çok 3 eş zamanlı; her istek kendi 120 sn sınırıyla) ──
+    const alinacak = satirlar.slice(0, opts.limit);
+    if (satirlar.length > alinacak.length) {
+      this.entegratorUyarisi(opts.progress, `Uyumsoft ${kutu}: listede ${satirlar.length} belge var, tek çekim üst sınırı (${opts.limit}) yüzünden ${satirlar.length - alinacak.length} belge alınamadı — eksik`);
+    }
+    // Liste durumu → rozet: yalnız iptal / taslak / red işaretlenir; diğerleri eskisi gibi UBL'den türetilir.
+    const durumu = (d: string): ProviderInvoicePayload['providerStatus'] =>
+      /cancel/i.test(d) ? { approval: 'Iptal', iptal: 'Iptal' }
+        : /^draft$/i.test(d) ? { approval: 'Taslak', iptal: null }
+          : /declin|reject/i.test(d) ? { approval: 'Reddedildi', iptal: null }
+            : null;
+    const payloads: ProviderInvoicePayload[] = [];
+    const indirilemeyen: string[] = [];
+    let sira = 0;
+    // SÜRE BÜTÇESİ (2026-09-26 inceleme): belge başı 5-7 sn × 3 eş zamanlı → 300+ belgede gece akışının 10 dk tavanı
+    //   aşılıyordu; tavan işi durdurmadığı için çekim arkada sürüp sonraki kanalın 3'lü paketiyle üst üste biniyordu.
+    //   7 dk dolunca yeni belge istenmez, kalanlar uyarıyla bildirilir (sonraki sorguda tekrar denenir).
+    const belgeBitis = Date.now() + 7 * 60 * 1000;
+    let sureDoldu = false;
+    const isci = async () => {
+      while (sira < alinacak.length) {
+        if (Date.now() > belgeBitis) { sureDoldu = true; return; }
+        const s = alinacak[sira++];
+        try {
+          const yanit = await cagir(`Get${kutu}InvoiceData`, `<invoiceId>${this.xmlEscape(s.id)}</invoiceId>`, 120_000);
+          const bulunan = await this.extractPayloadsFromProviderResponse(yanit, ['Data']);
+          if (!bulunan.length) { indirilemeyen.push(`${s.no} (boş belge)`); continue; }
+          const ps = durumu(s.durum);
+          for (const pl of bulunan) {
+            payloads.push({
+              ...pl,
+              ...(ps ? { providerStatus: ps } : {}),
+              ...(giden ? { providerDocType: isEarsiv ? ('E_ARSIV' as const) : ('E_FATURA' as const) } : {}),
+            });
+          }
+        } catch (e: any) {
+          indirilemeyen.push(`${s.no} (${String(e?.message || e).replace(/\s+/g, ' ').slice(0, 60)})`);
+        }
+      }
+    };
+    // İlk belge çıkışı (vekil/doğrudan) belirlesin diye liste zaten bir istek yaptı → trProxy artık sabit.
+    await Promise.all([isci(), isci(), isci()]);
+    if (sureDoldu) {
+      this.entegratorUyarisi(opts.progress, `Uyumsoft ${kutu}: 7 dk süre sınırı doldu — listedeki ${alinacak.length} belgenin ${alinacak.length - sira} tanesi bu çekimde indirilemedi; tarih aralığını daraltıp tekrar sorgulayın`);
+    }
+    // SESSİZ KAYIP YASAK: listede belge var ama hiçbiri inmediyse "0 fatura" deme.
+    if (!payloads.length && indirilemeyen.length) {
+      throw new Error(`Uyumsoft listede ${alinacak.length} belge var ama hiçbiri indirilemedi: ${indirilemeyen.slice(0, 3).join(', ')}`);
+    }
+    if (indirilemeyen.length) {
+      this.entegratorUyarisi(opts.progress, `Uyumsoft: ${indirilemeyen.length} belge indirilemedi: ${indirilemeyen.slice(0, 5).join(', ')}${indirilemeyen.length > 5 ? ' …' : ''}`);
+    }
+    this.logger.log(`[UYUMSOFT] ${kutu}${giden ? (isEarsiv ? ' e-Arşiv' : ' e-Fatura') : ''}: liste ${satirlar.length}, indirilen ${payloads.length}, indirilemeyen ${indirilemeyen.length}`);
+    return payloads;
   }
 
   private async fetchI2iInvoices(
@@ -12899,8 +13432,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       direction: 'ALIS' | 'SATIS';
       period: { startDate: string; endDate: string };
       limit: number;
+      progress?: { rateLimited?: boolean; uyarilar?: string[] };
     },
-  ) {
+  ): Promise<ProviderInvoicePayload[]> {
+    // FORIBA (Sovos, api.fitbulut.com) i2i/İzibiz SOAP şablonuyla ÇALIŞMAZ — farklı bir servis. Eskiden bu yola
+    //   düşüp anlamsız bir SOAP hatası veriyordu; artık açık mesaj (2026-09-26 denetim).
+    if (String(cfg.provider || '').toUpperCase() === 'FORIBA' || /fitbulut|sovos/i.test(String(cfg.baseUrl || ''))) {
+      throw new Error('Foriba entegrasyonu henüz hazır değil (Sovos web servis belgesi bekleniyor)');
+    }
     const baseUrl = cfg.baseUrl || PROVIDER_DEFAULT_BASE_URL.IZIBIZ;
     const loginBody = `
       <LoginRequest xmlns="http://schemas.i2i.com/ei/wsdl">
@@ -12932,25 +13471,72 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       );
     }
     const direction = opts.direction === 'SATIS' ? 'OUT' : 'IN';
-    const fetchBody = `
+    // SAYFALAMA + SON GÜN (2026-09-26 denetim; İzibiz EInvoiceWS WSDL'i okundu):
+    //   • GetInvoiceRequest'te sayfa parametresi YOK, yalnız LIMIT var → tek istek LIMIT'te kesiliyor, fazlası sessizce
+    //     düşüyordu. Çözüm: istek LIMIT kadar dolu dönerse tarih aralığı ikiye bölünüp ayrı ayrı sorulur (gün düzeyine
+    //     kadar); tek gün bile dolu dönerse uyarı verilir.
+    //   • START_DATE/END_DATE tipi xsd:date (saat YAZILAMAZ). Bitiş saatsiz gidince son günün faturaları kayboluyordu →
+    //     bitiş BİR SONRAKİ GÜN gönderilir, fazla gelenler UBL fatura tarihine göre dönem dışı diye elenir.
+    const gunEkle = (iso: string, gun: number) => {
+      const t = new Date(`${String(iso).slice(0, 10)}T12:00:00Z`);
+      if (Number.isNaN(t.getTime())) return iso;
+      t.setUTCDate(t.getUTCDate() + gun);
+      return t.toISOString().slice(0, 10);
+    };
+    const gunFarki = (a: string, b: string) => Math.round((Date.parse(`${b}T12:00:00Z`) - Date.parse(`${a}T12:00:00Z`)) / 86_400_000);
+    const donemBas = String(opts.period.startDate).slice(0, 10);
+    const donemBit = String(opts.period.endDate).slice(0, 10);
+    const ISTEK_LIMITI = Math.max(1, Math.min(opts.limit, 200));
+    const MAX_ISTEK = 64;
+    let istekSayisi = 0;
+    const tumu = new Map<string, ProviderInvoicePayload>();
+    const doluGunler: string[] = [];
+    const sorgula = async (bas: string, bit: string): Promise<void> => {
+      if (tumu.size >= opts.limit) return;
+      if (++istekSayisi > MAX_ISTEK) throw new Error(`İzibiz çekimi ${MAX_ISTEK} istek sınırını aştı (dönemde çok fazla belge) — dönem daha küçük parçalarla sorgulanmalı`);
+      const fetchBody = `
       <GetInvoiceRequest xmlns="http://schemas.i2i.com/ei/wsdl">
         <REQUEST_HEADER>
           <SESSION_ID>${this.xmlEscape(sessionId)}</SESSION_ID>
           <APPLICATION_NAME>MOREN_PORTAL</APPLICATION_NAME>
         </REQUEST_HEADER>
         <INVOICE_SEARCH_KEY>
-          <LIMIT>${opts.limit}</LIMIT>
+          <LIMIT>${ISTEK_LIMITI}</LIMIT>
           <DATE_TYPE>ISSUE</DATE_TYPE>
-          <START_DATE>${opts.period.startDate}</START_DATE>
-          <END_DATE>${opts.period.endDate}</END_DATE>
+          <START_DATE>${bas}</START_DATE>
+          <END_DATE>${gunEkle(bit, 1)}</END_DATE>
           <READ_INCLUDED>true</READ_INCLUDED>
           <DIRECTION>${direction}</DIRECTION>
         </INVOICE_SEARCH_KEY>
         <HEADER_ONLY>N</HEADER_ONLY>
         <INVOICE_CONTENT_TYPE>XML</INVOICE_CONTENT_TYPE>
       </GetInvoiceRequest>`;
-    const text = await this.soapPost(baseUrl, '', fetchBody);
-    return this.extractPayloadsFromProviderResponse(text, ['CONTENT', 'XML_CONTENT', 'DATA']);
+      const text = await this.soapPost(baseUrl, '', fetchBody);
+      // Yanıttaki INVOICE öğe sayısı (büyük harf; UBL'in <Invoice> kökü sayılmaz, INVOICE_SEARCH_KEY \b'de elenir).
+      const adet = (text.match(/<(?:\w+:)?INVOICE\b[\s>/]/g) || []).length;
+      if (adet >= ISTEK_LIMITI) {
+        if (bas < bit) {
+          const orta = gunEkle(bas, Math.floor(gunFarki(bas, bit) / 2));
+          await sorgula(bas, orta);
+          await sorgula(gunEkle(orta, 1), bit);
+          return;
+        }
+        doluGunler.push(bas);
+      }
+      for (const pl of await this.extractPayloadsFromProviderResponse(text, ['CONTENT', 'XML_CONTENT', 'DATA'])) {
+        const anahtar = pl.externalId || createHash('sha1').update(pl.xml).digest('hex');
+        if (!tumu.has(anahtar)) tumu.set(anahtar, pl);
+      }
+    };
+    await sorgula(donemBas, donemBit);
+    if (doluGunler.length) {
+      this.entegratorUyarisi(opts.progress, `İzibiz: ${doluGunler.join(', ')} günü(leri) istek sınırını (${ISTEK_LIMITI}) doldurdu — o günlerde eksik belge olabilir`);
+    }
+    // Bitiş bir sonraki gün gönderildiği için dönem dışı kalanlar UBL fatura tarihine göre elenir.
+    const ublGun = (x: string) => (x.match(/<(?:\w+:)?IssueDate>\s*([0-9]{4}-[0-9]{2}-[0-9]{2})/i) || [])[1] || '';
+    return [...tumu.values()]
+      .filter((pl) => { const g = ublGun(pl.xml); return !g || (g >= donemBas && g <= donemBit); })
+      .slice(0, opts.limit);
   }
 
   /**
@@ -12971,6 +13557,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       period: { donem: string; startDate: string; endDate: string };
       limit: number;
       channel?: string;
+      progress?: { rateLimited?: boolean; uyarilar?: string[] };
     },
   ): Promise<ProviderInvoicePayload[]> {
     if (!cfg.username || !cfg.password) throw new Error('eLogo web servis kullanıcı adı (kod) ve şifresi gerekli');
@@ -12984,7 +13571,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
 
     // 1) Oturum — HER çekimde yeni giriş, eLogo'nun 10-hatalı-giriş kilidini riske atar.
     //    sessionID kullanıcı bazında önbelleklenip (~8 dk) tekrar kullanılır; oturum düşerse temizlenir.
-    const sessionID = await this.elogoLogin(endpoint, ACT, cfg.username, cfg.password);
+    let sessionID = await this.elogoLogin(endpoint, ACT, cfg.username, cfg.password);
+    let yenidenGirisYapildi = false;
 
     try {
       // Kanal: Alış e-Fatura (IN_EFATURA), Satış e-Fatura (OUT_EFATURA), Satış e-Arşiv (OUT_EARSIV).
@@ -12993,12 +13581,23 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const docType = isEarsiv ? 'EARCHIVE' : 'EINVOICE';
       const optype = channel === 'IN_EFATURA' ? '2' : '1'; // 2=Gelen(alış), 1=Giden(satış/e-arşiv)
       // KULLANICI KURALI (fatura tarihi vs alınma/geliş): dönem [başlangıç..bitiş] fatura tarihiyle sorgulanır,
-      //   ama SORGU penceresi başlangıç..BUGÜN'e genişletilir (ay sonunda kesilip sonraki ay eLogo'ya düşen
+      //   ama SORGU penceresi dönem sonundan SONRAYA uzatılır (ay sonunda kesilip sonraki ay eLogo'ya düşen
       //   faturalar kaçmasın), sonra UBL FATURA TARİHİNE göre döneme süzülür.
+      // PENCERE SINIRI (2026-09-26 denetim): eskiden BUGÜNE kadar uzuyordu → eski bir dönem sorgulanınca aylarca
+      //   belge indirilip atılıyordu (e-Arşiv'de gün gün yüzlerce istek). Artık dönem sonu + 15 gün, bugünü aşmaz;
+      //   "bugün" Türkiye saatine (UTC+3) göre — gece 00:00-03:00 arası dünün tarihi kullanılmasın.
       const faturaStart = String(opts.period.startDate).slice(0, 10);
       const faturaEnd = String(opts.period.endDate).slice(0, 10);
-      const bugun = new Date().toISOString().slice(0, 10);
-      const sorguEnd = bugun > faturaEnd ? bugun : faturaEnd;
+      const trBugun = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const payliSon = (() => {
+        const t = new Date(`${faturaEnd}T12:00:00Z`);
+        if (Number.isNaN(t.getTime())) return faturaEnd;
+        t.setUTCDate(t.getUTCDate() + 15);
+        return t.toISOString().slice(0, 10);
+      })();
+      let sorguEnd = payliSon < trBugun ? payliSon : trBugun;
+      if (sorguEnd < faturaStart) sorguEnd = faturaStart;
+      const indirilemeyen: string[] = [];
       const ublIssueYmd = (x: string) => { const m = x.match(/<cbc:IssueDate>\s*([0-9]{4}-[0-9]{2}-[0-9]{2})/i) || x.match(/<IssueDate>\s*([0-9]{4}-[0-9]{2}-[0-9]{2})/i); return m ? m[1] : ''; };
       // eLogo e-Arşiv sorgusunda BEGINDATE=ENDDATE aynı gün olmalı → gün-gün; e-Fatura ≤30 günlük parçalar.
       const chunks = this.splitDateChunks(faturaStart, sorguEnd, isEarsiv ? 1 : 30);
@@ -13007,15 +13606,47 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       for (const ch of chunks) {
         if (payloads.length >= opts.limit) break;
         const listParams = [`DOCUMENTTYPE=${docType}`, `OPTYPE=${optype}`, `BEGINDATE=${ch.start}`, `ENDDATE=${ch.end}`, 'DATEBY=1'];
-        const listBody =
+        const listeIste = () => this.soapPost(
+          endpoint,
+          ACT + 'GetDocumentList',
           `<GetDocumentList xmlns="http://tempuri.org/">` +
           `<sessionID>${this.xmlEscape(sessionID)}</sessionID>` +
           this.elogoParamList(listParams) +
-          `</GetDocumentList>`;
-        const listResp = await this.soapPost(endpoint, ACT + 'GetDocumentList', listBody);
-        const uuids = (listResp.match(/<(?:\w+:)?documentUuid>([^<]+)<\/(?:\w+:)?documentUuid>/gi) || [])
+          `</GetDocumentList>`,
+        );
+        let listResp = await listeIste();
+        let uuids = (listResp.match(/<(?:\w+:)?documentUuid>([^<]+)<\/(?:\w+:)?documentUuid>/gi) || [])
           .map((m) => m.replace(/<[^>]+>/g, '').trim())
           .filter(Boolean);
+        // SONUÇ KODU (2026-09-26 denetim): GetDocumentListResult {resultCode (1=başarılı), resultMsg, errorCode}.
+        //   Eskiden okunmuyordu → oturum düşmüşse ya da eLogo hata verdiyse sessizce "0 fatura" dönüyordu.
+        //   • oturum hatası → önbellek temizlenir, BİR KEZ yeniden giriş yapılıp aynı parça tekrar istenir;
+        //   • "kayıt bulunamadı" / mesajsız boş liste → boş parça (hata değil);
+        //   • diğer her hata → HATA fırlatılır.
+        const sonucOku = (x: string) => {
+          const blok = x.match(/<(?:\w+:)?GetDocumentListResult\b[\s\S]*?<\/(?:\w+:)?GetDocumentListResult>/i)?.[0] || '';
+          const kodMetni = this.tagText(blok, 'resultCode');
+          return { kod: kodMetni === '' ? null : Number(kodMetni), mesaj: this.tagText(blok, 'resultMsg'), hataKodu: this.tagText(blok, 'errorCode') };
+        };
+        let sonuc = sonucOku(listResp);
+        const oturumHatasiMi = (m: string) => /oturum|session|login|giri[sş]|expired|süresi dol|yetkisiz/i.test(m);
+        if (sonuc.kod !== null && sonuc.kod !== 1 && !uuids.length && oturumHatasiMi(sonuc.mesaj) && !yenidenGirisYapildi) {
+          this.logger.warn(`[ELOGO] liste oturum hatası (kod ${sonuc.kod}: ${sonuc.mesaj.slice(0, 120)}) — önbellek temizlenip bir kez yeniden giriş yapılıyor`);
+          FaturaMuhasebelestirmeService.elogoSessions.delete(`${endpoint}|${cfg.username}`);
+          yenidenGirisYapildi = true;
+          sessionID = await this.elogoLogin(endpoint, ACT, cfg.username, cfg.password);
+          listResp = await listeIste();
+          uuids = (listResp.match(/<(?:\w+:)?documentUuid>([^<]+)<\/(?:\w+:)?documentUuid>/gi) || [])
+            .map((m) => m.replace(/<[^>]+>/g, '').trim())
+            .filter(Boolean);
+          sonuc = sonucOku(listResp);
+        }
+        if (sonuc.kod !== null && sonuc.kod !== 1 && !uuids.length) {
+          const bosMu = !sonuc.mesaj || /bulunamad|kay[ıi]t yok|belge yok|no (record|data|document)|not found|empty/i.test(sonuc.mesaj);
+          if (!bosMu) {
+            throw new Error(`eLogo belge listesi hatası (${ch.start}–${ch.end}, kod ${sonuc.kod}${sonuc.hataKodu ? `/${sonuc.hataKodu}` : ''}): ${sonuc.mesaj.slice(0, 200)}`);
+          }
+        }
         // Faz 2 — liste yanıtındaki belge durumu (stateCode/stateExplanation/envelopeStatus) uuid'ye göre.
         const elogoStatus = this.elogoStatusMapFromList(listResp);
         for (const uuid of uuids) {
@@ -13037,13 +13668,18 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             if (b64) xml = await this.elogoUnzipXml(Buffer.from(b64, 'base64'));
           } catch (e: any) {
             this.logger.warn(`eLogo GetDocumentData ${uuid} hata: ${e?.message}`);
+            indirilemeyen.push(`${uuid.slice(0, 8)}… (${String(e?.message || e).replace(/\s+/g, ' ').slice(0, 60)})`);
+            continue;
           }
-          if (!xml || !xml.includes('<')) continue;
-          // FATURA TARİHİ süzgeci: sorgu penceresi bugüne genişti; asıl ölçüt fatura tarihi → dönem dışını ele.
+          if (!xml || !xml.includes('<')) { indirilemeyen.push(`${uuid.slice(0, 8)}… (boş belge)`); continue; }
+          // FATURA TARİHİ süzgeci: sorgu penceresi dönem sonundan sonraya uzadı; asıl ölçüt fatura tarihi → dönem dışını ele.
           const iss = ublIssueYmd(xml);
           if (iss && (iss < faturaStart || iss > faturaEnd)) continue;
           payloads.push({ externalId: `elogo:${uuid}`, originalName: `${uuid}.xml`, xml, providerStatus: elogoStatus.get(uuid) || null, providerDocType: isEarsiv ? 'E_ARSIV' : 'E_FATURA' });
         }
+      }
+      if (indirilemeyen.length) {
+        this.entegratorUyarisi(opts.progress, `eLogo: ${indirilemeyen.length} belge indirilemedi (${opts.period.donem}): ${indirilemeyen.slice(0, 5).join(', ')}${indirilemeyen.length > 5 ? ' …' : ''}`);
       }
       return payloads;
     } catch (err: any) {
@@ -13057,6 +13693,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   }
 
   private static readonly elogoSessions = new Map<string, { sid: string; ts: number }>();
+  /** eLogo girişi REDDEDİLEN kimlikler (anahtar: adres|kullanıcı|şifre özeti) — AYNI şifre 12 saat yeniden denenmez
+   *  (10 hatalı giriş = hesap kilidi); şifre güncellenince özet değişir, hemen denenir. */
+  private static readonly elogoGirisRet = new Map<string, { ts: number; neden: string }>();
+  private static readonly ELOGO_RET_BEKLEME_MS = 12 * 60 * 60 * 1000;
 
   /** eLogo oturumu — kullanıcı bazında önbellekli (~8 dk). Her çekimde yeni giriş yapıp eLogo'nun
    *  10-hatalı-giriş kilidini tetiklememek için sessionID tekrar kullanılır. */
@@ -13064,6 +13704,16 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const key = `${endpoint}|${username}`;
     const cached = FaturaMuhasebelestirmeService.elogoSessions.get(key);
     if (cached && Date.now() - cached.ts < 8 * 60 * 1000) return cached.sid;
+    // KİLİT KORUMASI (2026-09-26 denetim): yanlış şifre ile her çekim (elle + gece + tekrar turları) yeni giriş
+    //   deniyordu → 10 hatalı girişte eLogo hesabı kilitleniyor. Ret alan ŞİFRE 12 saat hiç denenmez; kayıt şifre
+    //   özetiyle tutulduğu için Entegratörler ekranında şifre güncellenince beklemeden denenir (inceleme 2026-09-26:
+    //   30 dk'lık bekleme hem düzeltilmiş şifreyi bekletiyor hem de birkaç saatte yine 10 hatalı girişe ulaşıyordu).
+    const retKey = `${key}|${createHash('sha256').update(String(password)).digest('hex').slice(0, 16)}`;
+    const ret = FaturaMuhasebelestirmeService.elogoGirisRet.get(retKey);
+    if (ret && Date.now() - ret.ts < FaturaMuhasebelestirmeService.ELOGO_RET_BEKLEME_MS) {
+      const kalanSa = Math.ceil((FaturaMuhasebelestirmeService.ELOGO_RET_BEKLEME_MS - (Date.now() - ret.ts)) / 3600000);
+      throw new Error(`eLogo bu şifreyi reddetmişti; hesap kilidi riskine karşı aynı şifre ~${kalanSa} saat denenmeyecek — Entegratörler ekranından şifreyi güncelleyin (güncellenince hemen denenir). Son ret: ${ret.neden.slice(0, 160)}`);
+    }
     const loginBody =
       `<Login xmlns="http://tempuri.org/">` +
       `<login xmlns:a="http://schemas.datacontract.org/2004/07/eFaturaWebService">` +
@@ -13072,11 +13722,25 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       `<a:userName>${this.xmlEscape(username)}</a:userName>` +
       `<a:version>1.0</a:version>` +
       `</login></Login>`;
-    const loginResp = await this.soapPost(endpoint, act + 'Login', loginBody);
+    let loginResp: string;
+    try {
+      loginResp = await this.soapPost(endpoint, act + 'Login', loginBody);
+    } catch (e: any) {
+      // SOAP Fault içinde kimlik reddi (şifre/kullanıcı/kilit) → bekleme listesine al; ağ/zaman aşımı hatası → alma.
+      const m = String(e?.message || e);
+      // Yalnız KİMLİK reddi kalıpları (12 saatlik bekleme yanlış alarmda ağır olur — genel "user/invalid/yetki" çıkarıldı).
+      if (/IdmLoginFailed|hatal[ıi]\s*giri[şs]|şifre|sifre|parola|password|kilit|bloke|locked/i.test(m) && !/timeout|aborted|ECONN|fetch failed/i.test(m)) {
+        FaturaMuhasebelestirmeService.elogoGirisRet.set(retKey, { ts: Date.now(), neden: m });
+      }
+      throw e;
+    }
     const sid = this.tagText(loginResp, 'sessionID');
     if (!sid || !/<(?:\w+:)?LoginResult>\s*true/i.test(loginResp)) {
-      throw new Error('eLogo giriş başarısız (kullanıcı adı/şifre): ' + (this.tagText(loginResp, 'faultstring') || 'sessionID alınamadı'));
+      const neden = this.tagText(loginResp, 'faultstring') || 'sessionID alınamadı';
+      FaturaMuhasebelestirmeService.elogoGirisRet.set(retKey, { ts: Date.now(), neden });
+      throw new Error('eLogo giriş başarısız (kullanıcı adı/şifre): ' + neden + ' — hesap kilidi riskine karşı bu şifre 12 saat yeniden denenmeyecek; şifreyi güncelleyince hemen denenir');
     }
+    FaturaMuhasebelestirmeService.elogoGirisRet.delete(retKey);
     FaturaMuhasebelestirmeService.elogoSessions.set(key, { sid, ts: Date.now() });
     return sid;
   }
@@ -13143,6 +13807,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       period: { donem: string; startDate: string; endDate: string };
       limit: number;
       channel?: string;
+      progress?: { rateLimited?: boolean; uyarilar?: string[] };
     },
   ): Promise<ProviderInvoicePayload[]> {
     if (!cfg.username || !cfg.password) {
@@ -13300,7 +13965,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       if (!payloads.length && indirmeHatasi) {
         throw new Error(`Mikro listede fatura var ama ${indirmeHatasi} belge indirilemedi: ${ilkHata}`);
       }
-      if (indirmeHatasi) this.logger.warn(`[MIKRO] ${indirmeHatasi} belge indirilemedi (${opts.period.donem}) — ilk hata: ${ilkHata}`);
+      // KISMİ indirme hatası (2026-09-26 denetim): eskiden yalnız günlükteydi → artık çağırana UYARI olarak da döner.
+      if (indirmeHatasi) this.entegratorUyarisi(opts.progress, `Mikro: ${indirmeHatasi} belge indirilemedi (${opts.period.donem}) — ilk hata: ${ilkHata.slice(0, 160)}`);
       return payloads;
     } catch (err: any) {
       // Oturum düştüyse önbelleği temizle → sonraki çekim yeniden giriş yapsın.
@@ -13341,7 +14007,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   private async fetchMikroEportalInvoices(
     cfg: RuntimeIntegrationConfig,
     opts: { taxpayer: any; direction: 'ALIS' | 'SATIS'; period: { donem: string; startDate: string; endDate: string }; limit: number; channel?: string;
-            onPayload?: (p: ProviderInvoicePayload) => Promise<void>; skipExistingExternalIds?: Set<string> },
+            onPayload?: (p: ProviderInvoicePayload) => Promise<void>; skipExistingExternalIds?: Set<string>;
+            progress?: { rateLimited?: boolean; uyarilar?: string[] } },
   ): Promise<ProviderInvoicePayload[]> {
     const B = MIKRO_EPORTAL_URL;
     const nefes = (ms: number) => new Promise((res) => setTimeout(res, ms));
@@ -13435,6 +14102,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const payloads: ProviderInvoicePayload[] = [];
     let kept = 0;
     let toplamSayfa = 1;
+    const indirilemeyen: string[] = [];
     for (let sayfa = 1; sayfa <= toplamSayfa && kept < opts.limit; sayfa++) {
       const r = await go(`/cp/${guid}/${modul}/${listeUcu}?${suzgec(sayfa)}`);
       if (r.status === 302) throw new Error(MIKRO_OTURUM_DUSTU_MESAJI);
@@ -13455,13 +14123,18 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         if (!id) continue;
         const externalId = `mikro:${modul}:${id}`;
         if (opts.skipExistingExternalIds?.has(externalId)) { kept++; continue; }
-        const faturaNo = String(it?.FormattedGibNumber || it?.GIBNumber?.Serial ? `${it?.GIBNumber?.Serial || ''}${it?.GIBNumber?.Number || ''}` : id).trim() || id;
+        // ÖNCELİK HATASI (2026-09-26 denetim): eski `A || B ? x : y` ifadesi `(A || B) ? x : y` diye çalışıyordu →
+        //   FormattedGibNumber doluyken bile GIBNumber parçaları (çoğu zaman boş) alınıp belge adı ETTN'e düşüyordu.
+        const faturaNo = String(
+          it?.FormattedGibNumber
+          || (it?.GIBNumber?.Serial ? `${it?.GIBNumber?.Serial || ''}${it?.GIBNumber?.Number || ''}` : id),
+        ).trim() || id;
 
         const dRes = await go(`/cp/${guid}/${modul}/downloadUBL?id=${encodeURIComponent(id)}&enveloped=false`, {
           headers: { Accept: 'application/xml, application/octet-stream, */*' },
         });
         if (dRes.status === 302) throw new Error('Mikro e-Portal oturumu düştü (belge indirme) — ajanın yeni oturum açması gerekiyor.');
-        if (!dRes.ok) { this.logger.warn(`[MIKRO] belge indirilemedi (${faturaNo}): HTTP ${dRes.status}`); continue; }
+        if (!dRes.ok) { indirilemeyen.push(`${faturaNo} (HTTP ${dRes.status})`); continue; }
         const buf = Buffer.from(await dRes.arrayBuffer());
         let xml: string | null = null;
         if (buf.length >= 2 && buf[0] === 0x50 && buf[1] === 0x4b) xml = await this.elogoUnzipXml(buf);
@@ -13470,7 +14143,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           xml = metin.startsWith('<') ? metin
             : (/^[A-Za-z0-9+/=\s]+$/.test(metin) && metin.length > 100 ? Buffer.from(metin, 'base64').toString('utf8') : null);
         }
-        if (!xml || !xml.includes('<')) { this.logger.warn(`[MIKRO] belge boş/çözülemedi: ${faturaNo}`); continue; }
+        if (!xml || !xml.includes('<')) { indirilemeyen.push(`${faturaNo} (boş/çözülemedi)`); continue; }
 
         const iptalMi = !!(it?.CancelationDate || it?.CancelationReason);
         const payload: ProviderInvoicePayload = {
@@ -13487,6 +14160,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         else payloads.push(payload);
         await nefes(350); // nazik hız
       }
+    }
+    // İndirilemeyen belgeler eskiden yalnız günlüğe yazılıyordu (2026-09-26 denetim) → artık UYARI olarak da döner.
+    if (indirilemeyen.length) {
+      this.entegratorUyarisi(opts.progress, `Mikro e-Portal: ${indirilemeyen.length} belge indirilemedi (${opts.period.donem}): ${indirilemeyen.slice(0, 5).join(', ')}${indirilemeyen.length > 5 ? ' …' : ''}`);
     }
     this.logger.log(`[MIKRO] ${modul} çekim bitti: ${kept} belge (dönem ${opts.period.donem})`);
     return payloads;
@@ -13614,7 +14291,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   private async mikroEportalYedek(
     cfg: RuntimeIntegrationConfig,
     opts: { taxpayer: any; direction: 'ALIS' | 'SATIS'; period: { donem: string; startDate: string; endDate: string }; limit: number; channel?: string;
-            onPayload?: (p: ProviderInvoicePayload) => Promise<void>; skipExistingExternalIds?: Set<string> },
+            onPayload?: (p: ProviderInvoicePayload) => Promise<void>; skipExistingExternalIds?: Set<string>;
+            progress?: { rateLimited?: boolean; uyarilar?: string[] } },
     firmboxNedeni: string,
   ): Promise<ProviderInvoicePayload[]> {
     try {
@@ -13673,7 +14351,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       limit: number;
     },
   ) {
+    // TAHMİNİ ADRES YASAK (2026-09-26 denetim): Kolaysoft ve Logo İşbaşı için kodda gerçek bir web servis
+    //   sözleşmesi YOK; bu genel yol uydurma parametrelerle (taxpayerId/vkn/donem…) tahmini adrese istek atıyor ve
+    //   anlamsız bir HTTP hatası dönüyordu. Belge gelene kadar ağa çıkmadan açık mesaj verilir.
+    const HAZIR_OLMAYAN: Record<string, string> = { KOLAYSOFT: 'Kolaysoft', LOGO_ISBASI: 'Logo İşbaşı' };
+    const hazirDegil = HAZIR_OLMAYAN[String(cfg.provider || '').toUpperCase()];
+    if (hazirDegil) throw new Error(`${hazirDegil} entegrasyonu henüz hazır değil (web servis belgesi bekleniyor)`);
     if (!cfg.baseUrl) throw new Error('API adresi eksik');
+    // ZAMAN SINIRI: yanıt vermeyen adres isteği süresiz asılı bırakıyordu → her istek en çok 30 sn.
+    const zamanSiniri = () => AbortSignal.timeout(30_000);
     const taxNo = opts.taxpayer.taxNumber || opts.taxpayer.identityNumber || cfg.senderVkn || '';
     const url = new URL(cfg.baseUrl);
     const addParam = (key: string, value: string | number) => {
@@ -13688,10 +14374,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     addParam('limit', opts.limit);
 
     const headers = this.providerHeaders(cfg);
-    let res = await fetch(url.toString(), { method: 'GET', headers });
+    let res = await fetch(url.toString(), { method: 'GET', headers, signal: zamanSiniri() });
     if (res.status === 405 || res.status === 404) {
       res = await fetch(cfg.baseUrl, {
         method: 'POST',
+        signal: zamanSiniri(),
         headers: { ...headers, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           taxpayerId: opts.taxpayer.id,
@@ -14744,7 +15431,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const uuid = this.tagText(xml, 'UUID');
     if (!id && !uuid) return null;
     const dateRaw = this.tagText(xml, 'IssueDate');
-    const issueDate = dateRaw ? new Date(dateRaw) : null;
+    const issueDate = ublTarihOku(dateRaw); // '2026-08-31+03:00' / '31.08.2026' da okunur
     const amount = (tag: string) => {
       const raw = this.tagText(xml, tag);
       if (!raw) return undefined;

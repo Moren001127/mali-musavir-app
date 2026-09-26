@@ -7,6 +7,9 @@
  *   • Saat seçimi: 'HH:MM', 00:00–06:59 aralığı; varsayılan 02:00. Cron her saat başı (00:05…06:05) tikler;
  *     yalnız saati o saate denk gelen satırlar işlenir (dakika yok sayılır).
  *   • Global kill-switch: NIGHTLY_EFATURA = off | 0 | false | kapali → hiçbir şey çekilmez.
+ *
+ * Kullanıcı kararı (2026-09-26): fatura tarihi son 10 gün içinde olanlar gece HİÇ alınmaz (iptal/red süresi) —
+ *   bkz. GECE_BEKLEME_GUN / geceSonTarih. Gece çekimi belgeyi yalnız portala getirir; Luca'ya aktarım kullanıcı onayıyla.
  */
 
 export const GECE_VARSAYILAN_SAAT = '02:00';
@@ -52,13 +55,39 @@ export function istanbulTarihi(now: Date): { yil: number; ay: number; gun: numbe
   return { yil: y, ay: m, gun: d, ymd };
 }
 
-/** Gece koşusunda taranacak dönemler ("YYYY-MM"): içinde bulunulan ay; ayın ilk 10 günü önceki ay da. */
-export function geceDonemleri(now: Date): string[] {
+/**
+ * İPTAL/RED BEKLEMESİ (kullanıcı kararı 2026-09-26): gece çekimi fatura tarihi SON 10 GÜN içinde olanları HİÇ
+ *   getirmez — bu sürede satıcı faturayı iptal edebilir, alıcı reddedebilir. Örnek: 26.09.2026 gecesi 01.09–16.09
+ *   arası gelir; 17.09 ve sonrası 10 gün dolunca sonraki gecelerde gelir (o gün iptal/red olmuşsa hiç gelmez).
+ *   Elle sorgu (e-Fatura Sorgu / Entegratörler "Sorgula") bu kuraldan ETKİLENMEZ.
+ */
+export const GECE_BEKLEME_GUN = 10;
+
+/** Gece çekiminin alacağı SON fatura tarihi (dahil, 'YYYY-MM-DD'): İstanbul bugünü − GECE_BEKLEME_GUN. 26.09 → 16.09. */
+export function geceSonTarih(now: Date): string {
   const t = istanbulTarihi(now);
-  const donemler = [`${t.yil}-${String(t.ay).padStart(2, '0')}`];
-  if (t.gun <= 10) {
-    const oncekiAy = t.ay === 1 ? 12 : t.ay - 1;
-    const oncekiYil = t.ay === 1 ? t.yil - 1 : t.yil;
+  return new Date(Date.UTC(t.yil, t.ay - 1, t.gun - GECE_BEKLEME_GUN)).toISOString().slice(0, 10);
+}
+
+/**
+ * Önceki ayın da tarandığı son gün (dahil) — SON TARİHİN günü üzerinden. Ay tamamlandıktan (son tarih ayın 1'ine
+ *   geçtikten) sonra 15 gece daha taranır: geç düşen ay sonu faturaları + başarısız gecelerin telafisi.
+ *   KDV beyanı ayın 28'ine kadar; önceki ay en geç ayın 10'unda (son tarih = ay sonu) tamamlanır.
+ */
+export const GECE_ONCEKI_AY_SON_GUN = 15;
+
+/**
+ * Gece koşusunda taranacak dönemler ("YYYY-MM"): SON TARİHİN (bugün − 10 gün) ayı; son tarih ayın ilk 15 günündeyse
+ *   bir önceki ay da. Son tarihten sonraki günler zaten alınmaz (fetchConfiguredIntegrations sonTarih kapısı).
+ *   26.09 → son tarih 16.09 → ['2026-09'] · 05.10 → 25.09 → ['2026-09'] (Ekim'den henüz bir şey alınmaz)
+ *   · 11.10 → 01.10 → ['2026-09','2026-10'].
+ */
+export function geceDonemleri(now: Date): string[] {
+  const [yil, ay, gun] = geceSonTarih(now).split('-').map(Number);
+  const donemler = [`${yil}-${String(ay).padStart(2, '0')}`];
+  if (gun <= GECE_ONCEKI_AY_SON_GUN) {
+    const oncekiAy = ay === 1 ? 12 : ay - 1;
+    const oncekiYil = ay === 1 ? yil - 1 : yil;
     donemler.unshift(`${oncekiYil}-${String(oncekiAy).padStart(2, '0')}`);
   }
   return donemler;
@@ -135,7 +164,39 @@ export function gecePlaniOlustur(baglantilar: GeceBaglanti[], now: Date | number
   return plan;
 }
 
-export type GeceKosuOzeti = { tarih: string; taxpayerId: string; provider: string; alis: number; satis: number; hata: number; sure: number };
+export type GeceKosuOzeti = {
+  tarih: string; taxpayerId: string; provider: string; alis: number; satis: number; hata: number; sure: number;
+  /** Kanal bazlı yeni belge sayısı (IN_EFATURA / OUT_EFATURA / OUT_EARSIV). */
+  kanallar?: Record<string, number>;
+  /** Hata sayılmayan notlar (ör. "bu entegratörde e-Arşiv yok"). */
+  notlar?: string[];
+  /** Alınan son fatura tarihi (bugün − GECE_BEKLEME_GUN) ve iptal/red süresi için bekletilen (alınmayan) belge sayısı. */
+  sonTarih?: string;
+  bekletilen?: number;
+};
+
+/** Gece akışında her entegratör için ayrı ayrı çalıştırılan kanallar (e-Fatura Sorgu ekranındaki adlar). */
+export const GECE_KANALLARI = [
+  { kanal: 'IN_EFATURA', direction: 'ALIS' },
+  { kanal: 'OUT_EFATURA', direction: 'SATIS' },
+  { kanal: 'OUT_EARSIV', direction: 'SATIS' },
+] as const;
+export type GeceKanal = (typeof GECE_KANALLARI)[number]['kanal'];
+
+/**
+ * Sağlayıcı durum satırı "bu entegratörde e-Arşiv yok" türünden bir DESTEKSİZLİK mi? (hata sayılmaz, bildirim yapılmaz)
+ *   Servis bu durumda { status: 'SKIPPED', earsivDesteksiz: true } döndürür; eski/başka yolların metin mesajı da yakalanır.
+ */
+export function earsivDesteksizMi(durum: any): boolean {
+  if (!durum) return false;
+  if (durum.earsivDesteksiz === true || durum.unsupportedChannel === true) return true;
+  const metin = `${durum.reason || ''} ${durum.message || ''} ${durum.warning || ''}`;
+  return /e-?ar[şs][iı]v/i.test(metin) && /(desteklen|yok|desteksiz)/i.test(metin);
+}
+
+/** Uzun süre RUNNING kalan integration_job'lar bu süreden eskiyse "takılı" sayılır. */
+export const TAKILI_IS_ESIGI_MS = 2 * 60 * 60 * 1000;
+export const TAKILI_IS_MESAJI = 'zaman aşımı — takılı kaldı';
 
 /** AuditLog GECE_CEKIM kayıtlarından (son 24 saat) sabah özeti satırı: "gece çekimi: N belge geldi (X mükellef, Y hata)". */
 export function geceOzetSatiri(kayitlar: Array<Partial<GeceKosuOzeti> | null | undefined>): string {

@@ -16,7 +16,8 @@
  *   3) geceCekimEnvKapaliMi: off|0|false|kapali|KAPALI → kapalı; tanımsız/on/1 → açık.
  *   4) geceTalimatGirdisiDogrula: global+aç → HATA; global+kapat ok; saat yoksa 02:00; geçersiz saat HATA; provider büyük harf.
  *   5) gecePlaniOlustur: talimat!==true elenir; 'global' elenir; isActive=false elenir; saat eşleşmeyen elenir; bozuk saat → 02:00 varsayılan.
- *   6) geceDonemleri Istanbul takvimi: 1 Ekim 00:30 İstanbul (30 Eylül 21:30 UTC) → ['2026-09','2026-10']; 20 Eylül → ['2026-09'].
+ *   6) İptal/red beklemesi (2026-09-26): son 10 gün alınmaz — 26.09 → 01.09–16.09 (geceSonTarih); dönemler son tarihten:
+ *      1 Ekim → ['2026-09']; 11 Ekim → ['2026-09','2026-10']; son tarih ayın ≤15'i ise önceki ay da.
  *   7) geceOzetSatiri: kayıt yok → "çalışmadı"; kayıtlar → "N belge geldi (X mükellef, Y hata)".
  *   8) Servis (mock prisma): setIntegrationTalimat global+aç → BadRequest; mükellef+aç+saat '03:00' config'e yazılır; kapatma saati korur;
  *      listIntegrations çıktısında talimat/saat (global anahtarında talimat hep false).
@@ -111,14 +112,31 @@ console.log('5) plan oluşturma');
   assert(gc.gecePlaniOlustur([], 2).length === 0 && gc.gecePlaniOlustur(null, 2).length === 0, 'boş/null bağlantı listesi');
 }
 
-console.log('6) dönemler (Istanbul takvimi)');
+console.log('6) dönemler + iptal/red beklemesi (Istanbul takvimi; son 10 gün alınmaz — kullanıcı kararı 2026-09-26)');
 {
-  const d1 = gc.geceDonemleri(new Date('2026-09-30T21:30:00Z')); // 1 Ekim 00:30 İstanbul
-  assert(d1.join(',') === '2026-09,2026-10', `ay başı: önceki dönem de taranır → ${d1.join(',')}`);
-  const d2 = gc.geceDonemleri(new Date('2026-09-20T00:05:00Z'));
-  assert(d2.join(',') === '2026-09', `ayın 20'si: yalnız içinde bulunulan ay → ${d2.join(',')}`);
-  const d3 = gc.geceDonemleri(new Date('2027-01-04T23:05:00Z')); // 5 Ocak 02:05
-  assert(d3.join(',') === '2026-12,2027-01', 'yıl geçişi: Aralık + Ocak');
+  assert(gc.GECE_BEKLEME_GUN === 10, 'bekleme 10 gün');
+  // Kullanıcı örneği: bugün 26.09.2026 → 01.09.2026 – 16.09.2026 arası çekilir.
+  assert(gc.geceSonTarih(new Date('2026-09-25T23:05:00Z')) === '2026-09-16', '26 Eylül 02:05 İstanbul → son tarih 16.09');
+  assert(gc.geceDonemleri(new Date('2026-09-25T23:05:00Z')).join(',') === '2026-09', '26 Eylül: yalnız Eylül (01.09–16.09)');
+  assert(gc.geceSonTarih(new Date('2026-09-25T20:30:00Z')) === '2026-09-15', '25 Eylül 23:30 İstanbul (UTC 20:30) → 15.09 (İstanbul günü esas)');
+  const d1 = gc.geceDonemleri(new Date('2026-09-30T21:30:00Z')); // 1 Ekim 00:30 İstanbul → son tarih 21.09
+  assert(d1.join(',') === '2026-09', `1 Ekim: son tarih 21.09 → Ekim'den henüz bir şey alınmaz → ${d1.join(',')}`);
+  const d6 = gc.geceDonemleri(new Date('2026-10-04T23:05:00Z')); // 5 Ekim → son tarih 25.09
+  assert(d6.join(',') === '2026-09' && gc.geceSonTarih(new Date('2026-10-04T23:05:00Z')) === '2026-09-25', `5 Ekim: yalnız Eylül ≤ 25.09 → ${d6.join(',')}`);
+  const d7 = gc.geceDonemleri(new Date('2026-10-10T23:05:00Z')); // 11 Ekim → son tarih 01.10
+  assert(d7.join(',') === '2026-09,2026-10', `11 Ekim: Eylül tamam + Ekim 1'i → ${d7.join(',')}`);
+  const d2 = gc.geceDonemleri(new Date('2026-09-20T00:05:00Z')); // 20 Eylül → son tarih 10.09
+  assert(d2.join(',') === '2026-08,2026-09', `20 Eylül: son tarih 10.09 (≤15) → Ağustos da taranır → ${d2.join(',')}`);
+  const d3 = gc.geceDonemleri(new Date('2027-01-10T23:05:00Z')); // 11 Ocak 2027 → son tarih 01.01.2027
+  assert(d3.join(',') === '2026-12,2027-01', `yıl geçişi: Aralık + Ocak → ${d3.join(',')}`);
+  const d8 = gc.geceDonemleri(new Date('2027-01-04T23:05:00Z')); // 5 Ocak 2027 → son tarih 26.12.2026
+  assert(d8.join(',') === '2026-12', `5 Ocak: yalnız Aralık ≤ 26.12 → ${d8.join(',')}`);
+  const d4 = gc.geceDonemleri(new Date('2026-09-25T00:05:00Z')); // 25 Eylül → son tarih 15.09
+  assert(d4.join(',') === '2026-08,2026-09', `son tarih ayın 15'i: önceki ay da taranır → ${d4.join(',')}`);
+  const d5 = gc.geceDonemleri(new Date('2026-09-26T00:05:00Z')); // 26 Eylül 03:05 → son tarih 16.09
+  assert(d5.join(',') === '2026-09', `son tarih ayın 16'sı: yalnız Eylül → ${d5.join(',')}`);
+  assert(gc.GECE_KANALLARI.map((k) => k.kanal).join(',') === 'IN_EFATURA,OUT_EFATURA,OUT_EARSIV', 'gece kanalları');
+  assert(gc.earsivDesteksizMi({ status: 'SKIPPED', earsivDesteksiz: true }) && gc.earsivDesteksizMi({ reason: 'Uyumsoft: bu entegratörde satış e-Arşiv çekimi yok' }) && !gc.earsivDesteksizMi({ status: 'FAILED', reason: 'giriş hatası' }), 'earsivDesteksizMi');
   assert(gc.istanbulTarihi(new Date('2026-09-30T21:30:00Z')).ymd === '2026-10-01', 'istanbulTarihi ymd');
 }
 
@@ -190,10 +208,17 @@ console.log('8) servis (mock prisma): setIntegrationTalimat + listIntegrations')
     assert(!/0 15 3 \* \* \*/.test(cron), "eski '0 15 3 * * *' kalmadı");
     assert(/if \(geceCekimEnvKapaliMi\(\)\) \{[\s\S]*?env ile KAPALI[\s\S]*?return;/.test(cron), 'tik başında env kapısı (log + return)');
     assert(/gecePlaniOlustur\(connections, saat\)/.test(cron), 'plan gecePlaniOlustur ile (talimat===true + saat)');
-    assert(/syncAll\(tenant\.id, \{ direction: 'IN', only \}\)/.test(cron) && /syncAll\(tenant\.id, \{ direction: 'OUT', only \}\)/.test(cron), 'inbox senkronu yalnız planlı satırlar (only)');
+    assert(!/syncAll\(/.test(cron) && !/EFaturaSyncService/.test(cron), 'eski adaptör senkronu (syncAll) gece akışından KALDIRILDI (2026-09-26)');
+    assert(/GECE_KANALLARI/.test(cron) && /channel: kanal/.test(cron), 'gece akışı her entegratör için 3 kanalı ayrı çalıştırır');
+    assert(/earsivDesteksizMi\(/.test(cron), 'e-Arşiv desteksiz mesajı hata sayılmaz');
+    assert(/TAKILI_IS_MESAJI/.test(cron) && /status: 'RUNNING'/.test(cron), 'takılı iş temizliği (2 saat)');
     assert(/if \(plan\.length === 0\) \{[\s\S]*?continue;/.test(cron), 'plan boşsa tenant için HİÇBİR çağrı yok (senkron dahil)');
     assert(/action: 'GECE_CEKIM'/.test(cron) && /resource: 'gece-cekim'/.test(cron), 'AuditLog GECE_CEKIM kaydı');
     assert(/geceDonemleri\(now\)/.test(cron), 'dönemler Istanbul takvimine göre');
+    assert(/const sonTarih = geceSonTarih\(now\)/.test(cron) && /donem,\s*sonTarih,/.test(cron), 'gece akışı son tarihi (bugün − 10 gün) her çekime geçirir');
+    const svcKaynak = fs.readFileSync(path.join(ROOT, 'apps/api/src/fatura-muhasebelestirme/fatura-muhasebelestirme.service.ts'), 'utf8');
+    assert(/if \(sonTarih && faturaGunu && faturaGunu > sonTarih\) \{\s*bekletilen\+\+;\s*continue;/.test(svcKaynak), 'servis: son tarihten sonraki fatura OLUŞTURULMAZ (bekletilir)');
+    assert(/this\.belgeDurumuEngelli\(this\.inboxApprovalFields\(onOkuma, payload\.providerStatus\), onOkuma\.belgeDurumu\)\.engelli/.test(svcKaynak), 'servis: liste durumu iptal/red olan belge OLUŞTURULMAZ');
     assert(!/hepsini|talimat-hepsi|talimat\/all|setAllTalimat/i.test(fs.readFileSync(path.join(ROOT, 'apps/api/src/fatura-muhasebelestirme/fatura-muhasebelestirme.controller.ts'), 'utf8')), "controller'da 'hepsini aç/kapat' ucu YOK");
     const sync = fs.readFileSync(path.join(ROOT, 'apps/api/src/efatura-adapters/efatura-sync.service.ts'), 'utf8');
     assert(/only\?: Array<\{ taxpayerId: string; provider: string \}>/.test(sync) && /if \(izinli && entries\.length === 0\) continue;/.test(sync), "syncAll 'only' süzgeci + global toplu senkron kapalı");

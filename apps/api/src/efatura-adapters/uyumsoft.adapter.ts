@@ -1,5 +1,16 @@
 import { EFaturaAdapter, EFaturaCredentials, RawEFatura, DeltaState } from './efatura-adapter.interface';
 
+/**
+ * ⛔ "ALINDI" İŞARETLEME DEVRE DIŞI (2026-09-26, denetim bulgusu — YÜKSEK).
+ *   Bu eski adaptör Uyumsoft faturaları entegratörde "alındı/okundu" işaretliyordu (SetInvoicesTaken).
+ *   İşaretlenen fatura entegratörün "alınmamış" listesinden düşer → mükellefin kendi muhasebe
+ *   programı / başka programlar o faturayı artık GÖREMEZ. Ana çekim yolu
+ *   (FaturaMuhasebelestirmeService.fetchConfiguredIntegrations) tarih aralığıyla sorgular,
+ *   işaretlemeye ihtiyaç duymaz. Bu yüzden markAsTransferred artık ağ çağrısı YAPMAZ.
+ *   Yeniden açmak için bilinçli karar gerekir: ISARETLEME_ACIK = true.
+ */
+const ISARETLEME_ACIK = false as boolean;
+
 const DEFAULT_BASE = 'https://efatura.uyumsoft.com.tr/services/Integration';
 const SESSION_TTL_MS = 7 * 60 * 60 * 1000;
 
@@ -162,6 +173,7 @@ export class UyumsoftAdapter implements EFaturaAdapter {
     ids: string[],
     deltaState?: DeltaState,
   ): Promise<void> {
+    if (!ISARETLEME_ACIK) return; // bkz. dosya başı: 'alındı' işaretleme devre dışı
     if (ids.length === 0) return;
     const { sessionId } = await this.ensureSession(credentials, deltaState);
     const idsXml = ids.map((id) => `<string>${xmlEsc(id)}</string>`).join('');

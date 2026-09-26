@@ -125,6 +125,28 @@ export function ublText(value: any): string | undefined {
   return undefined;
 }
 
+/**
+ * UBL fatura tarihi → Date (UTC gece yarısı) | null.
+ *   Eskiden `new Date(ham)`: '2026-08-31+03:00' ve '31.08.2026' Invalid Date → tarih BOŞ kalıyordu.
+ *   Kural: ilk YYYY-AA-GG alınır (saat/saat dilimi eki atılır); yoksa GG.AA.YYYY / GG/AA/YYYY / GG-AA-YYYY.
+ *   Sonuç `new Date('YYYY-AA-GG')` ile AYNI (UTC 00:00) → mevcut dönem hesapları değişmez. Geçersiz gün/ay → null.
+ */
+export function ublTarihOku(value: any): Date | null {
+  const raw = value instanceof Date ? (Number.isNaN(value.getTime()) ? '' : value.toISOString()) : ublText(value);
+  if (!raw) return null;
+  let y: number, m: number, d: number;
+  const iso = raw.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+  const tr = iso ? null : raw.match(/(\d{1,2})[./-](\d{1,2})[./-](\d{4})/);
+  if (iso) { y = +iso[1]; m = +iso[2]; d = +iso[3]; }
+  else if (tr) { y = +tr[3]; m = +tr[2]; d = +tr[1]; }
+  else return null;
+  if (m < 1 || m > 12 || d < 1 || d > 31 || y < 1900 || y > 2999) return null;
+  const tarih = new Date(Date.UTC(y, m - 1, d));
+  // 31.02 gibi taşan gün → geçersiz (Date.UTC sessizce Mart'a kaydırır)
+  if (tarih.getUTCMonth() !== m - 1 || tarih.getUTCDate() !== d) return null;
+  return tarih;
+}
+
 /** UBL sayısal alan → number (TR "1.234,56" ve EN "1234.56" ikisini de okur). */
 export function ublNum(value: any): number | undefined {
   const raw = ublText(value);
@@ -248,7 +270,7 @@ export function parseUblInvoice(xml: string, warn?: (msg: string) => void): Pars
     const faturaNo = /^nan$/i.test(faturaNoRaw) ? '' : faturaNoRaw;
     const ettn = txt(get(['UUID']));
     const issueDateRaw = txt(get(['IssueDate']));
-    const issueDate = issueDateRaw ? new Date(issueDateRaw) : null;
+    const issueDate = ublTarihOku(issueDateRaw);
     const supplier = get(['AccountingSupplierParty', 'Party']);
     const customer = get(['AccountingCustomerParty', 'Party']);
     const monetaryTotal = get(['LegalMonetaryTotal']) || get(['RequestedMonetaryTotal']) || {};

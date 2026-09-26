@@ -1,5 +1,16 @@
 import { EFaturaAdapter, EFaturaCredentials, RawEFatura, DeltaState } from './efatura-adapter.interface';
 
+/**
+ * ⛔ "ALINDI" İŞARETLEME DEVRE DIŞI (2026-09-26, denetim bulgusu — YÜKSEK).
+ *   Bu eski adaptör Nilvera faturaları entegratörde "alındı/okundu" işaretliyordu (Purchase/Operation/Transferred).
+ *   İşaretlenen fatura entegratörün "alınmamış" listesinden düşer → mükellefin kendi muhasebe
+ *   programı / başka programlar o faturayı artık GÖREMEZ. Ana çekim yolu
+ *   (FaturaMuhasebelestirmeService.fetchConfiguredIntegrations) tarih aralığıyla sorgular,
+ *   işaretlemeye ihtiyaç duymaz. Bu yüzden markAsTransferred artık ağ çağrısı YAPMAZ.
+ *   Yeniden açmak için bilinçli karar gerekir: ISARETLEME_ACIK = true.
+ */
+const ISARETLEME_ACIK = false as boolean;
+
 const DEFAULT_BASE = 'https://api.nilvera.com';
 
 function nilveraHeaders(credentials: EFaturaCredentials): Record<string, string> {
@@ -90,6 +101,7 @@ export class NilveraAdapter implements EFaturaAdapter {
   }
 
   async markAsTransferred(credentials: EFaturaCredentials, uuids: string[]): Promise<void> {
+    if (!ISARETLEME_ACIK) return; // bkz. dosya başı: 'alındı' işaretleme devre dışı
     if (uuids.length === 0) return;
     const base = credentials.baseUrl || DEFAULT_BASE;
     await fetch(`${base}/einvoice/Purchase/Operation/Transferred`, {

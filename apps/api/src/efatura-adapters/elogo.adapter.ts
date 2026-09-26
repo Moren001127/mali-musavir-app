@@ -2,6 +2,17 @@ import * as AdmZip from 'adm-zip';
 import { EFaturaAdapter, EFaturaCredentials, RawEFatura, DeltaState } from './efatura-adapter.interface';
 
 /**
+ * ⛔ "ALINDI" İŞARETLEME DEVRE DIŞI (2026-09-26, denetim bulgusu — YÜKSEK).
+ *   Bu eski adaptör e-Logo faturaları entegratörde "alındı/okundu" işaretliyordu (GetDocumentDone).
+ *   İşaretlenen fatura entegratörün "alınmamış" listesinden düşer → mükellefin kendi muhasebe
+ *   programı / başka programlar o faturayı artık GÖREMEZ. Ana çekim yolu
+ *   (FaturaMuhasebelestirmeService.fetchConfiguredIntegrations) tarih aralığıyla sorgular,
+ *   işaretlemeye ihtiyaç duymaz. Bu yüzden markAsTransferred artık ağ çağrısı YAPMAZ.
+ *   Yeniden açmak için bilinçli karar gerekir: ISARETLEME_ACIK = true.
+ */
+const ISARETLEME_ACIK = false as boolean;
+
+/**
  * e-Logo (eLogo) Özel Entegratör — PostBox SOAP web servisi adapteri.
  *
  * Akış:
@@ -381,6 +392,7 @@ export class ElogoAdapter implements EFaturaAdapter {
     uuids: string[],
     deltaState?: DeltaState,
   ): Promise<void> {
+    if (!ISARETLEME_ACIK) return; // bkz. dosya başı: 'alındı' işaretleme devre dışı
     if (uuids.length === 0) return;
     const { sessionId } = await this.ensureSession(credentials, deltaState);
     // Yönü bilmiyoruz — mark listesi her iki yönden gelebilir; documentType olarak

@@ -1,5 +1,16 @@
 import { EFaturaAdapter, EFaturaCredentials, RawEFatura, DeltaState } from './efatura-adapter.interface';
 
+/**
+ * ⛔ "ALINDI" İŞARETLEME DEVRE DIŞI (2026-09-26, denetim bulgusu — YÜKSEK).
+ *   Bu eski adaptör İzibiz faturaları entegratörde "alındı/okundu" işaretliyordu (MarkInvoice READ).
+ *   İşaretlenen fatura entegratörün "alınmamış" listesinden düşer → mükellefin kendi muhasebe
+ *   programı / başka programlar o faturayı artık GÖREMEZ. Ana çekim yolu
+ *   (FaturaMuhasebelestirmeService.fetchConfiguredIntegrations) tarih aralığıyla sorgular,
+ *   işaretlemeye ihtiyaç duymaz. Bu yüzden markAsTransferred artık ağ çağrısı YAPMAZ.
+ *   Yeniden açmak için bilinçli karar gerekir: ISARETLEME_ACIK = true.
+ */
+const ISARETLEME_ACIK = false as boolean;
+
 const TEST_AUTH_URL = 'https://efaturatest.izibiz.com.tr/AuthenticationWS';
 const TEST_INVOICE_URL = 'https://efaturatest.izibiz.com.tr/EInvoiceWS';
 const PROD_AUTH_URL = 'https://efatura.izibiz.com.tr/AuthenticationWS';
@@ -189,6 +200,7 @@ export class IzibizAdapter implements EFaturaAdapter {
     uuids: string[],
     deltaState?: DeltaState,
   ): Promise<void> {
+    if (!ISARETLEME_ACIK) return; // bkz. dosya başı: 'alındı' işaretleme devre dışı
     if (uuids.length === 0) return;
     const { sessionId } = await this.ensureSession(credentials, deltaState);
     const invoiceItems = uuids

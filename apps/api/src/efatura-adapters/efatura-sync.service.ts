@@ -36,6 +36,22 @@ function partyTitleFromUbl(xml: any, which: 'CUSTOMER' | 'SUPPLIER'): string | n
   return name && !isPlaceholderTitle(name) ? name : null;
 }
 
+/**
+ * ⛔ ESKİ İKİNCİ ÇEKİM SİSTEMİ — GECE AKIŞINDAN ÇIKARILDI (2026-09-26, denetim bulgusu — YÜKSEK).
+ *   Bu servis (adaptör tabanlı efatura_inbox senkronu) talimatlı mükellefte ana yolun YANINDA
+ *   ikinci kez çalışıyordu ve üç zarar veriyordu:
+ *     1) eLogo'ya yanlış biçimli giriş → 10 hatalı girişte hesap KİLİDİ riski,
+ *     2) GetDocumentDone / SetInvoicesTaken / MarkInvoice ile faturaları entegratörde "alındı"
+ *        işaretliyordu → mükellefin başka programları o faturaları artık göremiyordu,
+ *     3) Uyumsoft'un ESKİ adresine gidiyordu (yeni platform kullanıcıyı tanımıyor).
+ *   Ana çekim yolu FaturaMuhasebelestirmeService.fetchConfiguredIntegrations zaten çekiyor.
+ *   • syncAll artık hiçbir şey yapmaz (ESKI_EFATURA_SYNC=acik env'i verilmedikçe).
+ *   • "alındı" işaretleme (markAsTransferred) burada ve adaptörlerde KAPALI.
+ *   • listInbox (efatura_inbox okuma) çalışmaya devam eder — Fatura Merkezi ekranı kullanıyor.
+ */
+const ESKI_SYNC_ACIK = () => String(process.env.ESKI_EFATURA_SYNC || '').trim().toLowerCase() === 'acik';
+const ALINDI_ISARETLE = false as boolean;
+
 @Injectable()
 export class EFaturaSyncService {
   private readonly logger = new Logger(EFaturaSyncService.name);
@@ -144,7 +160,8 @@ export class EFaturaSyncService {
 
       // Entegratöre "aktarıldı" bayrağı at — Delta sync için kritik.
       // Yalnız bu çalıştırmada YENİ alınanlar gönderilir; mevcutlar tekrar mark'lanmaz.
-      if (newMarkIds.length > 0) {
+      // DEVRE DIŞI (2026-09-26): 'alındı' işaretleme başka programların faturayı görmesini engelliyordu — bkz. dosya başı.
+      if (ALINDI_ISARETLE && newMarkIds.length > 0) {
         try {
           await adapter.markAsTransferred(credentials, newMarkIds);
           await (this.prisma as any).eFaturaInbox.updateMany({
@@ -479,6 +496,10 @@ export class EFaturaSyncService {
       only?: Array<{ taxpayerId: string; provider: string }>;
     } = {},
   ): Promise<{ added: number; skipped: number; errors: string[]; connections: number }> {
+    if (!ESKI_SYNC_ACIK()) {
+      this.logger.warn(`syncAll çağrıldı ama eski adaptör senkronu KAPALI (tenant ${tenantId}) — ana yol fetchConfiguredIntegrations.`);
+      return { added: 0, skipped: 0, errors: [], connections: 0 };
+    }
     const connections = await (this.prisma as any).integrationConnection.findMany({
       where: {
         tenantId,

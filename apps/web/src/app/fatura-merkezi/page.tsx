@@ -60,7 +60,31 @@ function showFetchResult(d: any) {
   } else {
     toast.success('Sorgu tamamlandı');
   }
+  // UYARILAR (2026-09-26): API sonucu `warnings` (liste) ve sağlayıcı satırında `warning`/`warnings` taşır
+  //   (hız sınırı, sayfa tavanı, kesik liste…). Eskiden yutuluyordu — ayrı bir uyarı kutusu olarak göster.
+  const uyarilar: string[] = [];
+  const ekle = (w: any) => { const t = String(w || '').trim(); if (t && !uyarilar.includes(t)) uyarilar.push(t); };
+  (Array.isArray(d?.warnings) ? d.warnings : []).forEach(ekle);
+  if (!uyarilar.length) {
+    for (const p of provs) {
+      const ad = p?.label || p?.provider || '';
+      (Array.isArray(p?.warnings) ? p.warnings : p?.warning ? [p.warning] : []).forEach((w: any) => ekle(ad ? `${ad}: ${w}` : w));
+    }
+  }
+  if (uyarilar.length) toast.warning(`Uyarı — ${uyarilar.slice(0, 4).join(' · ')}${uyarilar.length > 4 ? ` (+${uyarilar.length - 4})` : ''}`, { duration: 12000 });
 }
+
+/** Satış e-Arşiv çekimi OLMAYAN entegratörler (API'deki EARSIV_DESTEKSIZ_SAGLAYICILAR ile aynı liste). */
+const FM_EARSIV_DESTEKSIZ = new Set(['IZIBIZ', 'AKINSOFT', 'ECZACIKART', 'FORIBA', 'KOLAYSOFT', 'LOGO_ISBASI']);
+const FM_EARSIV_YOK_METNI = "Bu entegratörde e-Arşiv yok; GİB e-Arşiv Sorgu'yu kullanın.";
+/** Entegratörler kartındaki "Sorgula" kanal seçimi. HEPSI = üç kanal sırayla. */
+type FmSorguKanal = 'HEPSI' | 'IN_EFATURA' | 'OUT_EFATURA' | 'OUT_EARSIV';
+const FM_SORGU_KANALLARI: Array<{ v: FmSorguKanal; l: string }> = [
+  { v: 'HEPSI', l: 'Üçü birden' },
+  { v: 'IN_EFATURA', l: 'Alış e-Fatura' },
+  { v: 'OUT_EFATURA', l: 'Satış e-Fatura' },
+  { v: 'OUT_EARSIV', l: 'Satış e-Arşiv' },
+];
 
 /**
  * Fatura İşleme Merkezi v2 — ana sayfa (CANLI)
@@ -3493,9 +3517,13 @@ function ScreenSorgu({ taxpayerId, period, source, onOpenEntegrator }: { taxpaye
           <div className="ch sourcehead sq-head">
             <div className="segmini">
               {efaturaKanalSecenek.map((k) => (
-                <button key={k.v} type="button" className={efaturaChannel === k.v ? 'on' : ''} onClick={() => setEfaturaChannel(k.v)}>{k.l}</button>
+                <button key={k.v} type="button" className={efaturaChannel === k.v ? 'on' : ''} onClick={() => setEfaturaChannel(k.v)}
+                  title={k.v === 'OUT_EARSIV' && FM_EARSIV_DESTEKSIZ.has(String(activeEfaturaProvider?.provider || '').toUpperCase()) ? FM_EARSIV_YOK_METNI : undefined}>{k.l}</button>
               ))}
             </div>
+            {efaturaChannel === 'OUT_EARSIV' && FM_EARSIV_DESTEKSIZ.has(String(activeEfaturaProvider?.provider || '').toUpperCase()) && (
+              <span className="sq-pill warn" role="note" title={FM_EARSIV_YOK_METNI}>● {FM_EARSIV_YOK_METNI}</span>
+            )}
             {/* Entegratör adı + kimlik rozeti (integrations: connected = configured && isActive; hasApiKey/hasPassword/username ayrıntı) */}
             <div className="sq-prov">
               {activeEfaturaProvider ? (
@@ -6063,7 +6091,7 @@ const PROVIDER_OPTS = [
   { v: 'TURMOB_EFATURA', l: 'TÜRMOB e-Fatura' },
   { v: 'UYUMSOFT', l: 'Uyumsoft' },
   { v: 'IZIBIZ', l: 'İzibiz' },
-  { v: 'NILVERA', l: 'Nilvera' },
+  // Nilvera KALDIRILDI (2026-09-26): API kataloğunda yok, kaydedilemiyordu.
   { v: 'GIB_PORTAL', l: 'GİB e-Arşiv' },
   { v: 'ELOGO', l: 'e-Logo' },
   // Mikro = e-Mikro / Mikrogrup e-Portal (eportal.mikrogrup.com). Kimlik: e-Portal e-postası + parolası.
@@ -6096,6 +6124,20 @@ function provKisalt(label: string, provider: string): string {
 // Saat başı adımlar: sunucu cron'u her saat başı (HH:05) tikler ve dakikayı yok sayar — yarım saat seçeneği yanıltıcıydı (2026-09-12).
 const GH_GECE_SAATLERI: string[] = ['00:00', '01:00', '02:00', '03:00', '04:00', '05:00', '06:00'];
 const GH_GECE_VARSAYILAN_SAAT = '02:00';
+/** Gece çekimi fatura tarihi son 10 gün içinde olanları almaz (iptal/red süresi) — backend gece-cekim.ts GECE_BEKLEME_GUN ile aynı. */
+const GH_GECE_BEKLEME_GUN = 10;
+/** Bugüne göre gece çekiminin aldığı fatura tarihi aralığı (İstanbul takvimi): 26.09 → 01.09 – 16.09. */
+function ghGeceAraligi(simdi: Date = new Date()): { bugun: string; bas: string; son: string; oncekiAy: string | null } {
+  const ymd = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Istanbul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(simdi);
+  const [y, m, d] = ymd.split('-').map(Number);
+  const tr = (dt: Date) => `${String(dt.getUTCDate()).padStart(2, '0')}.${String(dt.getUTCMonth() + 1).padStart(2, '0')}.${dt.getUTCFullYear()}`;
+  const son = new Date(Date.UTC(y, m - 1, d - GH_GECE_BEKLEME_GUN));
+  // Son tarih ayın ilk 15 günündeyse önceki ay da yeniden taranır (backend geceDonemleri ile aynı kural).
+  const oncekiAy = son.getUTCDate() <= 15
+    ? new Date(Date.UTC(son.getUTCFullYear(), son.getUTCMonth() - 1, 1)).toLocaleDateString('tr-TR', { month: 'long', year: 'numeric', timeZone: 'UTC' })
+    : null;
+  return { bugun: tr(new Date(Date.UTC(y, m - 1, d))), bas: tr(new Date(Date.UTC(son.getUTCFullYear(), son.getUTCMonth(), 1))), son: tr(son), oncekiAy };
+}
 
 function ScreenEntegrator({ taxpayerId, period }: { taxpayerId: string; period: string }) {
   const qc = useQueryClient();
@@ -6147,10 +6189,35 @@ function ScreenEntegrator({ taxpayerId, period }: { taxpayerId: string; period: 
     },
     onError: (e: any) => toast.error('Kaydedilemedi: ' + (e?.response?.data?.message || e?.message || 'hata')),
   });
+  // KANAL SEÇİMİ (2026-09-26): eskiden "Sorgula" yalnız ALIŞ gönderiyordu — satış e-Fatura / e-Arşiv hiç çekilmiyordu.
+  //   Kart başına seçim; varsayılan "Üçü birden" (Alış e-Fatura → Satış e-Fatura → Satış e-Arşiv, sırayla).
+  const [sorguKanali, setSorguKanali] = useState<Record<string, FmSorguKanal>>({});
   const fetchMut = useMutation({
-    mutationFn: async (prov: string) => {
+    mutationFn: async (v: { prov: string; kanal: FmSorguKanal }) => {
+      const { prov, kanal } = v;
       if (prov === 'MIKRO') await mikroOturumuTazele(); // yalnız yedek yol için, sessiz (bkz. efaturaFetchMut)
-      return api.post('/fatura-muhasebelestirme/integrations/fetch', { taxpayerId: taxpayerId || undefined, providers: [prov], direction: 'ALIS', donem: period });
+      const kanallar = (kanal === 'HEPSI' ? ['IN_EFATURA', 'OUT_EFATURA', 'OUT_EARSIV'] : [kanal])
+        // e-Arşiv desteksiz entegratörde "üçü birden" e-Arşiv'i hiç sormaz (tek başına seçilemez de).
+        .filter((k) => !(kanal === 'HEPSI' && k === 'OUT_EARSIV' && FM_EARSIV_DESTEKSIZ.has(String(prov).toUpperCase())));
+      const kanalAdi = (k: string) => FM_SORGU_KANALLARI.find((x) => x.v === k)?.l || k;
+      const birlesik: any = { created: 0, alreadyQueued: 0, fetched: 0, failed: 0, skipped: 0, providers: [] as any[], warnings: [] as string[] };
+      for (const k of kanallar) {
+        let d: any;
+        try {
+          const r: any = await api.post('/fatura-muhasebelestirme/integrations/fetch', { taxpayerId: taxpayerId || undefined, providers: [prov], channel: k, donem: period });
+          d = r?.data || {};
+        } catch (e: any) {
+          // Tek kanal hatası diğerlerini durdurmasın — satır olarak göster.
+          d = { providers: [{ provider: prov, status: 'FAILED', reason: e?.response?.data?.message || e?.message || 'hata' }] };
+        }
+        for (const alan of ['created', 'alreadyQueued', 'fetched', 'failed', 'skipped']) birlesik[alan] += Number(d?.[alan] || 0);
+        for (const p of Array.isArray(d?.providers) ? d.providers : []) {
+          birlesik.providers.push({ ...p, label: `${p?.label || p?.provider || prov} (${kanalAdi(k)})` });
+        }
+        for (const w of Array.isArray(d?.warnings) ? d.warnings : []) birlesik.warnings.push(`${kanalAdi(k)} — ${w}`);
+      }
+      if (!birlesik.warnings.length) delete birlesik.warnings;
+      return { data: birlesik };
     },
     onSuccess: (r: any) => { showFetchResult(r?.data); qc.invalidateQueries({ queryKey: ['fm2'] }); },
     onError: (e: any) => toast.error('Sorgu başarısız: ' + (e?.response?.data?.message || e?.message || 'hata')),
@@ -6188,6 +6255,7 @@ function ScreenEntegrator({ taxpayerId, period }: { taxpayerId: string; period: 
     );
   }
 
+  const geceAralik = ghGeceAraligi();
   return (
     <section className="screen">
       <div className="h2">Entegratörler</div>
@@ -6197,7 +6265,9 @@ function ScreenEntegrator({ taxpayerId, period }: { taxpayerId: string; period: 
         <Ico html={I.info} size={16} />
         <div>
           <b>Gece çekimi varsayılan KAPALI.</b> Sistem oturunca mükellef bazında, her entegratör için tek tek açılır ("hepsini aç/kapat" yok).
-          Çekim saati 00:00–06:00 arasından seçilir (varsayılan 02:00); açıkken içinde bulunulan dönem çekilir.
+          Çekim saati 00:00–06:00 arasından seçilir (varsayılan 02:00).
+          {' '}<b>Son {GH_GECE_BEKLEME_GUN} günün faturaları alınmaz</b> (iptal/red süresi): bugün {geceAralik.bugun} için {geceAralik.bas} – {geceAralik.son} arası gelir{geceAralik.oncekiAy ? `; önceki ay (${geceAralik.oncekiAy}) da kaçan fatura kalmasın diye yeniden taranır` : ''}; sonraki günler süre dolunca, iptal/red olmadıysa gelir.
+          Belgeler yalnız portala gelir; Luca'ya aktarım sizin onayınızla yapılır.
           Global <code>NIGHTLY_EFATURA=off</code> ile tümü durdurulabilir.
         </div>
       </div>
@@ -6250,14 +6320,32 @@ function ScreenEntegrator({ taxpayerId, period }: { taxpayerId: string; period: 
                           {kilit
                             ? 'Kilitli — önce kimlik tanımla (entegratör bağlı değil).'
                             : acik
-                              ? `Her gece ${saat} · içinde bulunulan dönem çekilir${c.talimatUpdatedAt ? ` · son değişiklik ${fmtDate(c.talimatUpdatedAt)}` : ''}`
+                              ? `Her gece ${saat} · fatura tarihi ${GH_GECE_BEKLEME_GUN} günden eski olanlar çekilir (iptal/red süresi)${c.talimatUpdatedAt ? ` · son değişiklik ${fmtDate(c.talimatUpdatedAt)}` : ''}`
                               : 'Kapalı — sistem oturunca bu mükellef için aç.'}
                         </div>
                       </>
                     );
                   })()}
                   <div className="ebtns">
-                    <button className="btn sm eana" disabled={fetchMut.isPending} onClick={() => fetchMut.mutate(c.provider)}>{fetchMut.isPending ? 'Sorgulanıyor…' : 'Sorgula'}</button>
+                    {(() => {
+                      const earsivYok = FM_EARSIV_DESTEKSIZ.has(String(c.provider || '').toUpperCase());
+                      const secili: FmSorguKanal = sorguKanali[c.provider] || 'HEPSI';
+                      const busy = fetchMut.isPending && fetchMut.variables?.prov === c.provider;
+                      return (
+                        <>
+                          <select className="gh-saat ekanal" value={secili} disabled={fetchMut.isPending} aria-label="Sorgulanacak kanal"
+                            title={earsivYok ? `Hangi faturalar sorgulansın? ${FM_EARSIV_YOK_METNI}` : 'Hangi faturalar sorgulansın?'}
+                            onChange={(e) => setSorguKanali((m) => ({ ...m, [c.provider]: e.target.value as FmSorguKanal }))}>
+                            {FM_SORGU_KANALLARI.map((k) => (
+                              <option key={k.v} value={k.v} disabled={earsivYok && k.v === 'OUT_EARSIV'}>
+                                {k.v === 'HEPSI' && earsivYok ? 'Alış + Satış e-Fatura' : earsivYok && k.v === 'OUT_EARSIV' ? 'Satış e-Arşiv (bu entegratörde yok)' : k.l}
+                              </option>
+                            ))}
+                          </select>
+                          <button className="btn sm eana" disabled={fetchMut.isPending} onClick={() => fetchMut.mutate({ prov: c.provider, kanal: secili })}>{busy ? 'Sorgulanıyor…' : 'Sorgula'}</button>
+                        </>
+                      );
+                    })()}
                     <button className="btn ghost sm" onClick={() => openEdit(c)}>Güncelle</button>
                     <button className="btn ghost sm esil" disabled={delMut.isPending} onClick={() => { if (window.confirm(`${c.label || c.provider} kaldırılsın mı?`)) delMut.mutate(c.provider); }}>Kaldır</button>
                   </div>
@@ -8519,6 +8607,7 @@ const CSS = `
 #fm-root .ecard .ek .v{font-size:13px;font-weight:850;margin-top:5px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 #fm-root .ecard .ek .v.bos{color:var(--faint);font-weight:700}
 #fm-root .ecard .ebtns{display:flex;gap:8px;padding:12px 17px 16px;flex-wrap:wrap}
+#fm-root .ecard .ebtns .ekanal{height:30px;font-family:inherit;font-weight:600;max-width:100%}
 #fm-root .ecard .btn.eana{background:var(--accent);border-color:transparent;color:#fff;font-weight:800}
 #fm-root .ecard .btn.eana:hover:not(:disabled){filter:brightness(1.07);color:#fff}
 #fm-root .ecard .btn.esil{color:#b91c1c;border-color:#f0d2d2}
