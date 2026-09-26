@@ -31,6 +31,13 @@ function toast(message, type) {
   setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 300); }, type === 'err' ? 5000 : 3200);
 }
 
+// Mükellef satırındaki "VKN … · vergi dairesi". Vergi dairesi boş ya da "-" ise hiç yazılmaz
+// (canlıda "VKN 9821096129 · -" görünüyordu, 2026-09-26).
+function vknYazisi(t) {
+  const vd = String((t && t.vergiDairesi) || '').trim();
+  return 'VKN ' + ((t && t.vkn) || '—') + (vd && vd !== '-' && vd !== '—' ? ' · ' + vd : '');
+}
+
 // Sunucudan gelen metin (mükellef adı, bildirim gövdesi…) HTML'e yazılmadan önce kaçışlanır.
 function esc(v) {
   return String(v == null ? '' : v)
@@ -199,7 +206,7 @@ function renderFirmaList(filter) {
     const secili = state.selected && state.selected.id === t.id;
     const opt = document.createElement('div');
     opt.className = 'opt' + (secili ? ' secili' : '');
-    opt.innerHTML = '<div class="otx"><b>' + esc(t.ad) + '</b><span>VKN ' + esc(t.vkn || '—') + (t.vergiDairesi ? ' · ' + esc(t.vergiDairesi) : '') + '</span></div>'
+    opt.innerHTML = '<div class="otx"><b>' + esc(t.ad) + '</b><span>' + esc(vknYazisi(t)) + '</span></div>'
       + (secili ? '<span class="otik">seçili</span>' : '');
     opt.addEventListener('click', () => selectFirma(t));
     list.appendChild(opt);
@@ -215,7 +222,7 @@ function selectFirma(t) {
   state.selected = t;
   $('firma-sel').classList.remove('bos');
   $('firma-name').textContent = t.ad;
-  $('firma-meta').textContent = 'VKN ' + (t.vkn || '—') + (t.vergiDairesi ? ' · ' + t.vergiDairesi : '');
+  $('firma-meta').textContent = vknYazisi(t);
   firmaListesiKapat();
   // Seçimi hatırla — pencere yenilense/yeniden odaklansa da mükellef seçili kalsın.
   try { localStorage.setItem('moren-selected-firma', t.id); } catch { /* yoksay */ }
@@ -276,7 +283,7 @@ function goPage(page) {
   //   Şerit içerikle birlikte kayar (yapışkan değil); sayfa değişince görünüm başa döner.
   $('page-title').textContent = (PAGES[page] && PAGES[page].title) || '';
   const ana = document.querySelector('.main');
-  if (ana) ana.scrollTop = 0;
+  if (ana) { ana.scrollTop = 0; ana.dataset.sayfa = page; } // Kısayollar'da blok 4 kutu genişliğinde (styles.css)
   if (page === 'whatsapp') startWaPoll();
   else stopWaPoll();
   if (page === 'bildirimler' || page === 'tebligatlar' || page === 'raporlar') refreshInbox();

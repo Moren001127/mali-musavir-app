@@ -1,6 +1,7 @@
 /* Moren Masaüstü — 2026-09-26 yeniden tasarım.
-   DÜZEN = Hattat Müşavir Masaüstü v3.3.3 (Muzaffer Bey'in gönderdiği ekran): açık zemin, yuvarlak köşeli
-   koyu sol menü, üstte sayfa adı şeridi, tam genişlikte mükellef kutusu, logoyu dolduran büyük beyaz kartlar.
+   DÜZEN = Hattat Müşavir Masaüstü v3.3.3 (Muzaffer Bey'in gönderdiği ekran): açık zemin, üstte sayfa adı şeridi,
+   mükellef kutusu, logolu beyaz kartlar. 2026-09-26 düzeltme: sol menü portaldaki gibi kenara yapışık tam boy
+   (kutu değil), şerit ince, kartlar derli toplu (~150-165px), içerik en fazla 1040px.
    RENK = portalın beyaz teması (apps/web portal-white.css + owned-theme.css): zemin #f6f7f9, vurgu turkuaz
    #087f78, sol menü lacivert→turkuaz degrade. Eski koyu-altın tema kalktı.
    LOGO = portalın sol menüsündeki logo (beyaz Kaushan Script "Moren" + "Mali Müşavirlik", moren-portal-logo.png);
@@ -65,10 +66,11 @@ svg{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-lin
 /* ===== UYGULAMA ===== */
 #app-view{display:grid;grid-template-columns:236px 1fr;background:var(--bg)}
 
-/* Sol menü — Hattat'taki gibi pencereden boşluklu, yuvarlak köşeli koyu panel; renk portalın menüsü */
-.side{margin:14px 0 14px 14px;height:calc(100vh - 28px);border-radius:18px;background:var(--nav);
-  display:flex;flex-direction:column;padding:16px 10px 10px;color:#e8f0f6;box-shadow:0 10px 28px rgba(14,42,88,.20);overflow:hidden}
-.side .brandbar{text-align:center;padding:4px 8px 16px;border-bottom:1px solid rgba(222,238,244,.14);margin-bottom:12px}
+/* Sol menü — PORTALDAKİ GİBİ pencere kenarına yapışık tam boy şerit (Muzaffer Bey 2026-09-26: "kutu gibi olmasın,
+   portalda olduğu gibi olsun, çok parçalı duruyor"). Yuvarlak köşe/boşluk/gölge yok; sağda ince çizgi (owned-theme.css). */
+.side{height:100vh;background:var(--nav);border-right:1px solid rgba(222,238,244,.12);
+  display:flex;flex-direction:column;padding:14px 10px 10px;color:#e8f0f6;overflow:hidden}
+.side .brandbar{text-align:center;padding:8px 8px 18px;border-bottom:1px solid rgba(222,238,244,.14);margin-bottom:12px}
 .side .brandbar img{width:100%;max-width:158px;height:auto}
 .nav{display:flex;flex-direction:column;gap:3px;flex:1}
 .nv{position:relative;display:flex;align-items:center;gap:11px;padding:7px 9px;border-radius:10px;color:rgba(232,240,246,.88);font-size:13.5px;font-weight:500;letter-spacing:.1px;
@@ -84,17 +86,24 @@ svg{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-lin
 .side .foot .nv{color:rgba(232,240,246,.74)}
 .side .foot .nv .ib{background:rgba(255,255,255,.09)}
 
-/* Sağ alan tek kaydırma kabı — şerit + mükellef kutusu içerikle birlikte kayar (yapışkan başlık YOK) */
-.main{height:100vh;overflow:auto;padding:14px 18px 22px 18px}
-.pagebar{background:var(--bar);border-radius:16px;padding:17px 26px;margin-bottom:14px;box-shadow:0 8px 22px rgba(14,42,88,.14)}
-.pagebar h1{font-size:23px;font-weight:650;color:#fff;letter-spacing:.2px;line-height:1.25}
+/* Sağ alan tek kaydırma kabı — şerit + mükellef kutusu içerikle birlikte kayar (yapışkan başlık YOK).
+   İçerik en fazla 1040px ve ORTALI: geniş pencerede şerit/kutu/kartlar tek derli toplu blok kalır,
+   sağda boşluk birikmez (2026-09-26). */
+.main{height:100vh;overflow:auto;padding:16px 22px 24px}
+.pagebar,.content{max-width:1040px;margin-left:auto;margin-right:auto}
+/* Kısayollar sayfası: HER SATIRDA 4 KUTU (Muzaffer Bey 2026-09-26: "5 kutu fazla, çok geniş duruyor").
+   Şerit + mükellef kutusu + kartlar 4 kutunun genişliğinde tek blok (760px → kart ~180px). */
+.main[data-sayfa="kisayollar"] .pagebar,.main[data-sayfa="kisayollar"] #page-kisayollar{max-width:760px}
+/* Şerit İNCE (Muzaffer Bey: "Kısayollar yazısı ve arka planı çok geniş, daralt") — eski 17px dolgu/23px yazı */
+.pagebar{background:var(--bar);border-radius:12px;padding:10px 20px;margin-bottom:12px;box-shadow:0 4px 14px rgba(14,42,88,.12)}
+.pagebar h1{font-size:17px;font-weight:650;color:#fff;letter-spacing:.2px;line-height:1.3}
 
 /* Mükellef kutusu — Hattat'taki gibi tam genişlikte sade açılır kutu; açılınca arama */
-.firma-bar{position:relative;margin-bottom:16px}
-.firma-sel{display:flex;align-items:center;gap:12px;width:100%;min-height:54px;background:#fff;border:1px solid var(--line-2);border-radius:12px;padding:10px 16px;cursor:pointer;transition:border-color .15s,box-shadow .15s;outline:none}
+.firma-bar{position:relative;margin-bottom:14px}
+.firma-sel{display:flex;align-items:center;gap:12px;width:100%;min-height:46px;background:#fff;border:1px solid var(--line-2);border-radius:10px;padding:8px 14px;cursor:pointer;transition:border-color .15s,box-shadow .15s;outline:none}
 .firma-sel:hover{border-color:var(--accent)}
 .firma-sel.acik,.firma-sel:focus-visible{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
-.firma-sel .fs-ad{font-size:15.5px;font-weight:600;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.firma-sel .fs-ad{font-size:14.5px;font-weight:600;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .firma-sel.bos .fs-ad{color:var(--txt-3);font-weight:500}
 .firma-sel .fs-meta{margin-left:auto;font-size:12.5px;color:var(--txt-3);white-space:nowrap;flex-shrink:0}
 .firma-sel .fs-ok{width:19px;height:19px;color:var(--txt-2);flex-shrink:0;transition:transform .15s}
@@ -114,19 +123,20 @@ svg{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-lin
 .firma-dd .opt .otik{color:var(--accent);font-size:12px;font-weight:700;white-space:nowrap}
 .firma-dd .bosliste{padding:14px 16px;font-size:13px;color:var(--txt-3)}
 
-/* Kısayol kartları — büyük beyaz kare kart, logo kartı doldurur (Hattat) */
-.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
-.kart{position:relative;aspect-ratio:1/1;background:#fff;border:1px solid var(--line-3);border-radius:18px;box-shadow:var(--shadow);
-  display:flex;flex-direction:column;align-items:center;padding:16px;cursor:pointer;transition:transform .16s,box-shadow .16s,border-color .16s}
-.kart:hover{transform:translateY(-3px);box-shadow:var(--shadow-hover);border-color:var(--accent-line)}
+/* Kısayol kartları — DERLİ TOPLU ve HER SATIRDA 4 (Muzaffer Bey 2026-09-26): blok en fazla 760px olduğu için
+   pencere büyüse de kart ~180px'te kalır (v1.4.0'da 4 sütun tam genişlikteydi, geniş pencerede ~270px'e şişiyordu). */
+.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+.kart{position:relative;aspect-ratio:1/1;background:#fff;border:1px solid var(--line-3);border-radius:14px;box-shadow:var(--shadow);
+  display:flex;flex-direction:column;align-items:center;padding:12px;cursor:pointer;transition:transform .16s,box-shadow .16s,border-color .16s}
+.kart:hover{transform:translateY(-2px);box-shadow:var(--shadow-hover);border-color:var(--accent-line)}
 .kart .klogo{position:relative;flex:1 1 auto;width:100%;min-height:0}
 .kart .klogo img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
-.kart .kcap{margin-top:6px;font-size:14px;font-weight:500;color:var(--txt-4);line-height:1.2}
+.kart .kcap{margin-top:4px;font-size:12.5px;font-weight:500;color:var(--txt-4);line-height:1.2}
 .kart.dim .klogo,.kart.dim .kcap{opacity:.42;filter:grayscale(.3)}
-.kart .ktag{position:absolute;top:10px;right:10px;z-index:2;font-size:11px;font-weight:700;color:var(--red);background:var(--red-soft);border:1px solid var(--red-line);border-radius:999px;padding:3px 9px}
-.earsiv-box{position:absolute;inset:6% 4%;border-radius:14px;background:#d62b2b;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff}
-.earsiv-box b{font-size:clamp(20px,2.6vw,31px);font-weight:800;line-height:1}
-.earsiv-box small{font-size:clamp(11px,1.2vw,14px);font-weight:700;margin-top:7px;opacity:.96}
+.kart .ktag{position:absolute;top:7px;right:7px;z-index:2;font-size:10px;font-weight:700;color:var(--red);background:var(--red-soft);border:1px solid var(--red-line);border-radius:999px;padding:2px 7px}
+.earsiv-box{position:absolute;inset:8% 5%;border-radius:11px;background:#d62b2b;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff}
+.earsiv-box b{font-size:21px;font-weight:800;line-height:1}
+.earsiv-box small{font-size:10.5px;font-weight:700;margin-top:5px;opacity:.96}
 
 /* Liste araç çubuğu (Bildirimler / Tebligatlar / SGK Raporları) — sayaç yazıyla */
 .list-tools{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 12px}
