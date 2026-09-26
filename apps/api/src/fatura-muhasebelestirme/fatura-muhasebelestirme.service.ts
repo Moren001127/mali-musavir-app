@@ -12763,7 +12763,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (!accessToken) throw new Error('Parasut access_token donmedi');
 
     // Firma No verilmediyse hesaptan OTOMATİK bul (Mihsap gibi — her mükellefte elle yazmaya gerek yok).
-    if (!firmaNo) firmaNo = await this.parasutFirmaNo(baseUrl, accessToken);
+    if (!firmaNo) firmaNo = await this.parasutFirmaNo(baseUrl, accessToken, cfg.username);
     if (!firmaNo) throw new Error('Parasut Firma No otomatik bulunamadı — hesaba bağlı firma yok gibi. Formdan Firma No girin.');
 
     // Paraşüt HIZ-LIMITLI (429 "Try again in N seconds"). Ortak throttled fetcher (Bearer sabit).
@@ -13080,11 +13080,26 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   }
 
   /** Paraşüt hesabındaki firma (company) id'sini /me üzerinden otomatik bulur. */
-  private async parasutFirmaNo(baseUrl: string, accessToken: string): Promise<string> {
+  /** Paraşüt Firma No önbelleği (kullanıcı → firma no, 6 saat): her çekimde /me çağrılıp hız sınırına takılmasın. */
+  private static readonly parasutFirmaOnbellek = new Map<string, { firmaNo: string; ts: number }>();
+
+  private async parasutFirmaNo(baseUrl: string, accessToken: string, kullanici?: string): Promise<string> {
+    const anahtar = String(kullanici || '').trim().toLowerCase();
+    const onbellek = anahtar ? FaturaMuhasebelestirmeService.parasutFirmaOnbellek.get(anahtar) : undefined;
+    if (onbellek && Date.now() - onbellek.ts < 6 * 60 * 60 * 1000) return onbellek.firmaNo;
     try {
       const url = `${baseUrl.replace(/\/+$/, '')}/me`;
-      const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' } });
-      if (!res.ok) return '';
+      // HIZ SINIRI (2026-09-26 canlı test, WASH CLEAN): art arda çekimlerde /me 429 dönünce "hesaba bağlı firma yok"
+      //   denip çekim düşüyordu (yanıltıcı). 429'da söylenen süre kadar beklenip yeniden denenir; başka hata AÇIKÇA söylenir.
+      let res: Response | null = null;
+      for (let deneme = 0; deneme < 4; deneme++) {
+        res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' } });
+        if (res.status !== 429) break;
+        const sn = Number(((await res.text().catch(() => '')).match(/(\d+)\s*second/) || [])[1] || 5);
+        await new Promise((r) => setTimeout(r, sn * 1000 + 500));
+      }
+      if (!res || res.status === 429) throw new Error('Paraşüt hız sınırı (429) sürüyor — birkaç dakika sonra tekrar sorgulayın');
+      if (!res.ok) throw new Error(`Paraşüt firma bilgisi alınamadı (HTTP ${res.status})`);
       const j: any = await res.json().catch(() => ({}));
       const rel = j?.data?.relationships || {};
       const cand =
@@ -13092,9 +13107,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         rel?.companies?.data?.[0]?.id ??
         (Array.isArray(j?.included) ? j.included.find((x: any) => /compan/i.test(String(x?.type)))?.id : undefined) ??
         j?.data?.attributes?.company_id;
-      return cand ? String(cand) : '';
-    } catch {
-      return '';
+      const firmaNo = cand ? String(cand) : '';
+      if (firmaNo && anahtar) FaturaMuhasebelestirmeService.parasutFirmaOnbellek.set(anahtar, { firmaNo, ts: Date.now() });
+      return firmaNo;
+    } catch (e: any) {
+      // Hız sınırı / HTTP hatası "firma yok" diye YUTULMAZ — çağıran gerçek nedeni gösterir.
+      throw new Error(`Paraşüt Firma No otomatik bulunamadı: ${e?.message || e}`);
     }
   }
 
@@ -13441,11 +13459,19 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       throw new Error('Foriba entegrasyonu henüz hazır değil (Sovos web servis belgesi bekleniyor)');
     }
     const baseUrl = cfg.baseUrl || PROVIDER_DEFAULT_BASE_URL.IZIBIZ;
+    // İZİBİZ ŞEMASI (2026-09-26 canlı sınama, sahte kullanıcıyla): kök öğe i2i ad alanında, ALT ÖĞELER AD ALANSIZ
+    //   (unqualified) olmalı ve ilk öğe REQUEST_HEADER. Eskiden varsayılan xmlns tüm alt öğelere yayılıyordu →
+    //   "INVALID XML: Expected element 'REQUEST_HEADER'" (Zeyrek/Akınsoft hiç oturum açamıyordu). Düzeltilmiş
+    //   istek sahte kullanıcıda "Kullanıcı adı veya şifre hatalı" döndü = şema geçti.
     const loginBody = `
-      <LoginRequest xmlns="http://schemas.i2i.com/ei/wsdl">
+      <wsdl:LoginRequest xmlns:wsdl="http://schemas.i2i.com/ei/wsdl">
+        <REQUEST_HEADER>
+          <SESSION_ID>-1</SESSION_ID>
+          <APPLICATION_NAME>MOREN_PORTAL</APPLICATION_NAME>
+        </REQUEST_HEADER>
         <USER_NAME>${this.xmlEscape(cfg.username)}</USER_NAME>
         <PASSWORD>${this.xmlEscape(cfg.password)}</PASSWORD>
-      </LoginRequest>`;
+      </wsdl:LoginRequest>`;
     const loginText = await this.soapPost(baseUrl, '', loginBody);
     const sessionId = this.tagText(loginText, 'SESSION_ID');
     if (!sessionId) {
@@ -13495,7 +13521,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       if (tumu.size >= opts.limit) return;
       if (++istekSayisi > MAX_ISTEK) throw new Error(`İzibiz çekimi ${MAX_ISTEK} istek sınırını aştı (dönemde çok fazla belge) — dönem daha küçük parçalarla sorgulanmalı`);
       const fetchBody = `
-      <GetInvoiceRequest xmlns="http://schemas.i2i.com/ei/wsdl">
+      <wsdl:GetInvoiceRequest xmlns:wsdl="http://schemas.i2i.com/ei/wsdl">
         <REQUEST_HEADER>
           <SESSION_ID>${this.xmlEscape(sessionId)}</SESSION_ID>
           <APPLICATION_NAME>MOREN_PORTAL</APPLICATION_NAME>
@@ -13509,8 +13535,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           <DIRECTION>${direction}</DIRECTION>
         </INVOICE_SEARCH_KEY>
         <HEADER_ONLY>N</HEADER_ONLY>
-        <INVOICE_CONTENT_TYPE>XML</INVOICE_CONTENT_TYPE>
-      </GetInvoiceRequest>`;
+      </wsdl:GetInvoiceRequest>`;
+      // (INVOICE_CONTENT_TYPE şemada YOK — "Element not allowed" veriyordu; 2026-09-26 sahte oturumla sınandı.)
       const text = await this.soapPost(baseUrl, '', fetchBody);
       // Yanıttaki INVOICE öğe sayısı (büyük harf; UBL'in <Invoice> kökü sayılmaz, INVOICE_SEARCH_KEY \b'de elenir).
       const adet = (text.match(/<(?:\w+:)?INVOICE\b[\s>/]/g) || []).length;
