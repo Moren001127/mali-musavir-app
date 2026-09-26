@@ -12344,11 +12344,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   2026-09-22 canlı: month=8 sorgusunda 21.09.2026 tarihli satır geldi) → sayfa büyük tutulur.
     const sayfaBoyu = Math.min(Math.max(opts.limit, 100), 200);
     const listeUcu = gelen ? '/inbox/getInboxes' : '/outbox/getOutboxes';
-    // AY PARAMETRESİ (2026-09-26 denetim): ÖNCE DÖNEM AYI gönderilir (portal ekranının yaptığı gibi). Eskiden önce
-    //   12 ("yılın tamamı" sanılıyordu) deneniyordu — 12 gerçekte ARALIK ayı ise yanlış ayın listesi gelip dönem
-    //   süzgecinde hepsi atılıyor, dönem ayı hiç sorgulanmıyordu. 12 artık YALNIZ dönem ayı 0 satır dönerse denenen
-    //   eski yedek. Dönem süzmesi yine istemci tarafında fatura tarihine bakılarak yapılır.
-    const ayAdaylari = ay === 12 ? [12] : [ay, 12];
+    // AY PARAMETRESİ — CANLI KANIT (2026-09-26, YAVUZ ÖZKAN): Eczacıkart listesinde `month` SIFIRDAN sayılıyor
+    //   (0 = Ocak): month=8 → EYLÜL satırları (ilk satır 26.09.2026, toplam 247), month=9 → 0 satır (Ekim),
+    //   month=12 → geniş liste (1809 satır, bugüne kadar). Aynı gün "önce dönem ayı (8)" denemesi Ağustos'u EYLÜL
+    //   listesiyle sorgulayıp 0 fatura getirdi (eskiden 374). Bu yüzden ÖNCE 12 (kanıtlanmış geniş liste; dönem
+    //   süzmesi istemci tarafında fatura tarihine göre), boş dönerse sıfırdan sayılan dönem ayı (ay − 1), en son eski ay.
+    const ayAdaylari = [...new Set([12, ay - 1, ay])];
     // Parametre kalıpları: portal ekranının gönderdiği tam kalıp (isArchive dahil) → sadeleştirilmiş → en yalın.
     //   Spring @RequestParam zorunlu olduğunda eksik parametre 400 veriyor; ilk tutan kalıp log'a yazılır.
     //   Ekranın ilk hâli (chunk 34 state): headerSearch=[] · notInList=false · documentIds=[] · isArchive=0 ·

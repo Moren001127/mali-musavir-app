@@ -32,7 +32,7 @@ const opts = {
 };
 
 const API = 'https://portal.eczacikartfatura.com/accounting/api';
-const LISTE_YIL = '/inbox/getInboxes?year=2026&month=8&headerSearch=&notInList=false&documentIds=&multipleVkn=&chemistWarehouseFilter=ALL&page=0&size=100&sort=documentIssueDate,desc&isArchive=0';
+const LISTE_YIL = '/inbox/getInboxes?year=2026&month=12&headerSearch=&notInList=false&documentIds=&multipleVkn=&chemistWarehouseFilter=ALL&page=0&size=100&sort=documentIssueDate,desc&isArchive=0';
 const yanit = (body: any, init: { status?: number; xml?: string } = {}) => ({
   ok: (init.status ?? 200) < 400,
   status: init.status ?? 200,
@@ -92,26 +92,46 @@ describe('Eczacıkart adaptörü', () => {
     expect(cagrilar).toContain('POST /inbox/downloadMedia/xml');
   });
 
-  it('önce DÖNEM AYI gönderilir; 0 satır dönerse eski yedek ay=12 denenir', async () => {
+  it('önce ay=12 (geniş liste); 0 satır dönerse SIFIRDAN sayılan dönem ayı (Ağustos → 7) denenir', async () => {
     const cagrilar: string[] = [];
     global.fetch = jest.fn(async (url: any) => {
       const u = String(url).replace(API, '');
       cagrilar.push(u);
       if (u === '/auth/signin') return yanit({ token: { accessToken: 'JWT' } }) as any;
       if (u.startsWith('/inbox/getInboxes')) {
-        if (u.includes('month=8')) return yanit({ content: [], totalElements: 0 }) as any;
-        return yanit({ content: u.includes('page=0') ? [satir('u-9', 'A9', '2026-08-02')] : [] }) as any;
+        if (u.includes('month=12')) return yanit({ content: [], totalElements: 0 }) as any;
+        return yanit({ content: u.includes('page=0') && u.includes('month=7') ? [satir('u-9', 'A9', '2026-08-02')] : [] }) as any;
       }
       if (u === '/inbox/downloadMedia/xml') return yanit('', { xml: '<Invoice/>' }) as any;
       return yanit('yok', { status: 404 }) as any;
     }) as any;
     const payloads = await servis().fetchEczacikartInvoices(cfg, opts);
     expect(payloads).toHaveLength(1);
-    expect(cagrilar[1]).toContain('month=8');
-    expect(cagrilar[2]).toContain('month=12');
+    expect(cagrilar[1]).toContain('month=12');
+    expect(cagrilar[2]).toContain('month=7');
   });
 
-  it('dönem ayı satır döndürürse ay=12 HİÇ denenmez', async () => {
+  it('CANLI GERİLEME KİLİDİ (2026-09-26): month=8 EYLÜL döndürür — Ağustos sorgusu 12 ile yapılır, Ağustos faturası bulunur', async () => {
+    const cagrilar: string[] = [];
+    global.fetch = jest.fn(async (url: any) => {
+      const u = String(url).replace(API, '');
+      cagrilar.push(u);
+      if (u === '/auth/signin') return yanit({ token: { accessToken: 'JWT' } }) as any;
+      if (u.startsWith('/inbox/getInboxes')) {
+        if (!u.includes('page=0')) return yanit({ content: [] }) as any;
+        // Portalın gerçek davranışı: month SIFIR tabanlı → 8 = Eylül; 12 = geniş (yeni→eski) liste.
+        if (u.includes('month=8')) return yanit({ content: [satir('eylul', 'E1', '2026-09-26')], totalElements: 247 }) as any;
+        if (u.includes('month=12')) return yanit({ content: [satir('eylul', 'E1', '2026-09-26'), satir('agustos', 'G1', '2026-08-14'), satir('temmuz', 'T1', '2026-07-30')] }) as any;
+        return yanit({ content: [] }) as any;
+      }
+      return yanit('', { xml: '<Invoice/>' }) as any;
+    }) as any;
+    const payloads = await servis().fetchEczacikartInvoices(cfg, opts);
+    expect(payloads.map((p: any) => p.externalId)).toEqual(['eczacikart:inbox:agustos']);
+    expect(cagrilar.some((u) => u.includes('month=8'))).toBe(false);
+  });
+
+  it('ay=12 satır döndürürse başka ay HİÇ denenmez', async () => {
     const cagrilar: string[] = [];
     global.fetch = jest.fn(async (url: any) => {
       const u = String(url).replace(API, '');
@@ -121,7 +141,7 @@ describe('Eczacıkart adaptörü', () => {
       return yanit('', { xml: '<Invoice/>' }) as any;
     }) as any;
     await servis().fetchEczacikartInvoices(cfg, opts);
-    expect(cagrilar.some((u) => u.includes('month=12'))).toBe(false);
+    expect(cagrilar.some((u) => /month=(7|8)\b/.test(u))).toBe(false);
   });
 
   it('arşiv klasörü (isArchive=1) de taranır; tekrarlar ETTN ile ayıklanır', async () => {
@@ -237,7 +257,7 @@ describe('Eczacıkart adaptörü', () => {
       if (u === '/auth/signin') return yanit({ token: { accessToken: 'JWT' } }) as any;
       return yanit('yok', { status: 404 }) as any;
     }) as any;
-    await expect(servis().fetchEczacikartInvoices(cfg, opts)).rejects.toThrow(/denenen uçlar:.*kalıp1\(ay=8\)=404.*kalıp5\(ay=12\)=404/s);
+    await expect(servis().fetchEczacikartInvoices(cfg, opts)).rejects.toThrow(/denenen uçlar:.*kalıp1\(ay=12\)=404.*kalıp5\(ay=8\)=404/s);
   });
 
   it('portal 400 verirse sonraki parametre kalıbı denenir; sunucunun metni hataya taşınır', async () => {
